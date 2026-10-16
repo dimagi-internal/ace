@@ -1,0 +1,2797 @@
+<h:html xmlns:h="http://www.w3.org/1999/xhtml" xmlns:orx="http://openrosa.org/jr/xforms" xmlns="http://www.w3.org/2002/xforms" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:jr="http://openrosa.org/javarosa" xmlns:vellum="http://commcarehq.org/xforms/vellum">
+  <h:head>
+    <h:title>Village Monitoring Form</h:title>
+    <model>
+      <instance>
+        <data xmlns:jrm="http://dev.commcarehq.org/jr/xforms" xmlns="http://openrosa.org/formdesigner/C48CFB6F-5CED-415E-8BA3-2820E5768AF5" uiVersion="1" version="1392" name="Village Monitoring Form">
+          <lang-code/>
+          <village/>
+          <date_of_meeting/>
+          <meeting_conducted/>
+          <community_meeting>
+            <step/>
+            <attach_a_photo_for_the_meeting/>
+            <meeting_type/>
+            <activity_number/>
+            <community_meeting_activities jr:template="">
+              <activity/>
+              <activity_completed/>
+              <activity_position/>
+            </community_meeting_activities>
+            <question5>
+              <hh_represented_at_the_meeting/>
+              <male_attendance/>
+              <female_attendance/>
+              <members_with_disability/>
+              <Total_Attendance/>
+              <male_participants/>
+              <female_participants/>
+              <Total_participation/>
+              <Percentage_Participation/>
+            </question5>
+            <meeting_details>
+              <male_leader_attendence/>
+              <female_leader_attendence/>
+              <SparkTrainer_attendance/>
+              <SEDO_attendance/>
+              <meeting_on_time/>
+              <why_did_the_meeting_start_late/>
+              <financial_update/>
+              <updated_cash_book/>
+              <accurate_cash_book/>
+              <meeting_conflict/>
+              <conflict_details/>
+              <conflict_resolved/>
+            </meeting_details>
+          </community_meeting>
+          <meeting_did_not_happen>
+            <question2/>
+            <other_reason/>
+            <expected_meeting_date/>
+            <reschedule_date/>
+          </meeting_did_not_happen>
+          <independent_projects>
+            <ind_projects/>
+            <implementing_ind_project/>
+            <ind_project_number/>
+            <project_details>
+              <project_details_repeat jr:template="">
+                <when_did_the_independent_project_start/>
+                <what_is_the_nature_of_the_project/>
+                <if_others_please_specify/>
+                <what_type_of_business_is_the_community_implementing/>
+                <copy-1-of-what_type_of_construction_is_the_community_implementing/>
+              </project_details_repeat>
+              <ind_project_description/>
+              <total_community_investment/>
+              <funding_source/>
+              <other_source/>
+              <project_beneficiaries/>
+            </project_details>
+          </independent_projects>
+          <project_monitoring>
+            <microgrant_rounds/>
+            <project_monitoring_repeat_count/>
+            <project_monitoring_repeat jr:template="">
+              <project_nature/>
+              <project_type/>
+              <animal_type/>
+              <total_animals/>
+              <crop_type/>
+              <community_project_type_construction/>
+              <construction_project_state/>
+              <community_project_type_business/>
+              <beneficiaries_hhds/>
+              <nps/>
+              <nps_probe/>
+              <external_financing/>
+              <external_financing_value/>
+              <external_financing_no/>
+              <mg_challenges/>
+            </project_monitoring_repeat>
+          </project_monitoring>
+          <note>
+            <this_section_captures_the_progress_of_savings_within_your_community/>
+            <currently_saving/>
+            <savings_use/>
+            <currently_not-saving/>
+            <if_other_please_specify/>
+            <hh_saving/>
+            <males_saving/>
+            <females_saving/>
+            <amt_savings/>
+            <savings_for_the_independent_project/>
+            <savings_for_the_vslaloaning/>
+            <savings_for_the_mg_project/>
+            <next_meeting_date/>
+          </note>
+          <advocacy>
+            <advocacy_attempts/>
+            <advocacy_attempts_yes/>
+            <advocacy_attempts_no/>
+            <advocacy_received/>
+            <advocacy_received_type/>
+          </advocacy>
+          <next_meeting_date/>
+          <project_id/>
+          <year_of_expansion/>
+          <case xmlns="http://commcarehq.org/case/transaction/v2" case_id="" date_modified="" user_id="">
+            <update>
+              <Total_Attendance/>
+              <Total_Participation/>
+              <date_of_meeting/>
+              <project_id/>
+              <village/>
+            </update>
+          </case>
+          <orx:meta xmlns:cc="http://commcarehq.org/xforms">
+            <orx:deviceID/>
+            <orx:timeStart/>
+            <orx:timeEnd/>
+            <orx:username/>
+            <orx:userID/>
+            <orx:instanceID/>
+            <cc:appVersion/>
+            <orx:drift/>
+          </orx:meta>
+        </data>
+      </instance>
+      <instance src="jr://instance/casedb" id="casedb"/>
+      <instance src="jr://instance/session" id="commcaresession"/>
+      <instance src="jr://fixture/item-list:malawi_steps" id="malawi_steps"/>
+      <instance src="jr://fixture/item-list:malawi_activities" id="malawi_activities"/>
+      <bind nodeset="/data/lang-code" relevant="1 = 2"/>
+      <bind nodeset="/data/village" calculate="instance('casedb')/casedb/case[@case_id = instance('commcaresession')/session/data/case_id]/case_name"/>
+      <bind nodeset="/data/date_of_meeting" type="xsd:date" constraint=". &lt;= today()" jr:constraintMsg="jr:itext('date_of_meeting-constraintMsg')" required="true()"/>
+      <bind nodeset="/data/meeting_conducted" required="true()"/>
+      <bind nodeset="/data/community_meeting" relevant="/data/meeting_conducted = 'yes'"/>
+      <bind nodeset="/data/community_meeting/step" required="true()"/>
+      <bind nodeset="/data/community_meeting/attach_a_photo_for_the_meeting" type="binary" required="true()"/>
+      <bind nodeset="/data/community_meeting/meeting_type" required="true()"/>
+      <bind nodeset="/data/community_meeting/activity_number" type="xsd:int" required="true()"/>
+      <bind nodeset="/data/community_meeting/community_meeting_activities"/>
+      <bind nodeset="/data/community_meeting/community_meeting_activities/activity" required="true()"/>
+      <bind nodeset="/data/community_meeting/community_meeting_activities/activity_completed" required="true()"/>
+      <bind nodeset="/data/community_meeting/community_meeting_activities/activity_position" calculate="position(..) + 1"/>
+      <bind nodeset="/data/community_meeting/question5"/>
+      <bind nodeset="/data/community_meeting/question5/hh_represented_at_the_meeting" type="xsd:int" required="true()"/>
+      <bind nodeset="/data/community_meeting/question5/male_attendance" type="xsd:int" required="true()"/>
+      <bind nodeset="/data/community_meeting/question5/female_attendance" type="xsd:int" required="true()"/>
+      <bind nodeset="/data/community_meeting/question5/members_with_disability" type="xsd:int"/>
+      <bind nodeset="/data/community_meeting/question5/Total_Attendance" calculate="/data/community_meeting/question5/female_attendance + /data/community_meeting/question5/male_attendance"/>
+      <bind nodeset="/data/community_meeting/question5/male_participants" type="xsd:int" constraint=". &lt;= /data/community_meeting/question5/male_attendance" jr:constraintMsg="jr:itext('community_meeting/question5/male_participants-constraintMsg')" required="true()"/>
+      <bind nodeset="/data/community_meeting/question5/female_participants" type="xsd:int" constraint=". &lt;= /data/community_meeting/question5/female_attendance" jr:constraintMsg="jr:itext('community_meeting/question5/female_participants-constraintMsg')" required="true()"/>
+      <bind nodeset="/data/community_meeting/question5/Total_participation" calculate="/data/community_meeting/question5/male_participants + /data/community_meeting/question5/female_participants"/>
+      <bind nodeset="/data/community_meeting/question5/Percentage_Participation" calculate="/data/community_meeting/question5/Total_participation div /data/community_meeting/question5/Total_Attendance"/>
+      <bind nodeset="/data/community_meeting/meeting_details"/>
+      <bind nodeset="/data/community_meeting/meeting_details/male_leader_attendence" type="xsd:int" required="true()"/>
+      <bind nodeset="/data/community_meeting/meeting_details/female_leader_attendence" type="xsd:int" required="true()"/>
+      <bind nodeset="/data/community_meeting/meeting_details/SparkTrainer_attendance" required="true()"/>
+      <bind nodeset="/data/community_meeting/meeting_details/SEDO_attendance" required="true()"/>
+      <bind nodeset="/data/community_meeting/meeting_details/meeting_on_time" required="true()"/>
+      <bind nodeset="/data/community_meeting/meeting_details/why_did_the_meeting_start_late" type="xsd:string" relevant="/data/community_meeting/meeting_details/meeting_on_time = 'no'" required="true()"/>
+      <bind nodeset="/data/community_meeting/meeting_details/financial_update" relevant="instance('casedb')/casedb/case[@case_id = instance('commcaresession')/session/data/case_id]/phase != 'planning'" required="true()"/>
+      <bind nodeset="/data/community_meeting/meeting_details/updated_cash_book" relevant="instance('casedb')/casedb/case[@case_id = instance('commcaresession')/session/data/case_id]/phase != 'planning'" required="true()"/>
+      <bind nodeset="/data/community_meeting/meeting_details/accurate_cash_book" relevant="/data/community_meeting/meeting_details/updated_cash_book = 'yes' and instance('casedb')/casedb/case[@case_id = instance('commcaresession')/session/data/case_id]/phase != 'planning'" required="true()"/>
+      <bind nodeset="/data/community_meeting/meeting_details/meeting_conflict" required="true()"/>
+      <bind nodeset="/data/community_meeting/meeting_details/conflict_details" type="xsd:string" relevant="/data/community_meeting/meeting_details/meeting_conflict = 'yes'" required="true()"/>
+      <bind nodeset="/data/community_meeting/meeting_details/conflict_resolved" relevant="/data/community_meeting/meeting_details/meeting_conflict = 'yes'" required="true()"/>
+      <bind nodeset="/data/meeting_did_not_happen" relevant="/data/meeting_conducted = 'no'"/>
+      <bind nodeset="/data/meeting_did_not_happen/question2" required="true()"/>
+      <bind nodeset="/data/meeting_did_not_happen/other_reason" type="xsd:string" relevant="selected(/data/meeting_did_not_happen/question2, 'other')" required="true()"/>
+      <bind nodeset="/data/meeting_did_not_happen/expected_meeting_date" type="xsd:date" constraint=". &lt;= today()" jr:constraintMsg="jr:itext('meeting_did_not_happen/expected_meeting_date-constraintMsg')" required="true()"/>
+      <bind nodeset="/data/meeting_did_not_happen/reschedule_date" type="xsd:date" constraint=". &gt;= today()" jr:constraintMsg="jr:itext('meeting_did_not_happen/reschedule_date-constraintMsg')" required="true()"/>
+      <bind nodeset="/data/independent_projects"/>
+      <bind nodeset="/data/independent_projects/ind_projects"/>
+      <bind nodeset="/data/independent_projects/implementing_ind_project" required="true()"/>
+      <bind nodeset="/data/independent_projects/ind_project_number" type="xsd:int" relevant="/data/independent_projects/implementing_ind_project = '1'" required="true()"/>
+      <bind nodeset="/data/independent_projects/project_details" relevant="/data/independent_projects/implementing_ind_project = '1'"/>
+      <bind nodeset="/data/independent_projects/project_details/project_details_repeat" relevant="/data/independent_projects/implementing_ind_project = '1'"/>
+      <bind nodeset="/data/independent_projects/project_details/project_details_repeat/when_did_the_independent_project_start" type="xsd:date" required="true()"/>
+      <bind nodeset="/data/independent_projects/project_details/project_details_repeat/what_is_the_nature_of_the_project" required="true()"/>
+      <bind nodeset="/data/independent_projects/project_details/project_details_repeat/if_others_please_specify" type="xsd:string" relevant="/data/independent_projects/project_details/project_details_repeat/what_is_the_nature_of_the_project = '8'"/>
+      <bind nodeset="/data/independent_projects/project_details/project_details_repeat/what_type_of_business_is_the_community_implementing" relevant="/data/independent_projects/project_details/project_details_repeat/what_is_the_nature_of_the_project = '4'" required="true()"/>
+      <bind nodeset="/data/independent_projects/project_details/project_details_repeat/copy-1-of-what_type_of_construction_is_the_community_implementing" relevant="/data/independent_projects/project_details/project_details_repeat/what_is_the_nature_of_the_project = '5'" required="true()"/>
+      <bind nodeset="/data/independent_projects/project_details/ind_project_description" type="xsd:string" required="true()"/>
+      <bind nodeset="/data/independent_projects/project_details/total_community_investment" type="xsd:int" required="true()"/>
+      <bind nodeset="/data/independent_projects/project_details/funding_source" required="true()"/>
+      <bind nodeset="/data/independent_projects/project_details/other_source" type="xsd:string" relevant="/data/independent_projects/project_details/funding_source = '2'" required="true()"/>
+      <bind nodeset="/data/independent_projects/project_details/project_beneficiaries" type="xsd:int" required="true()"/>
+      <bind nodeset="/data/project_monitoring" relevant="instance('casedb')/casedb/case[@case_id = instance('commcaresession')/session/data/case_id]/phase != 'planning'"/>
+      <bind nodeset="/data/project_monitoring/microgrant_rounds" required="true()"/>
+      <bind nodeset="/data/project_monitoring/project_monitoring_repeat_count" type="string" calculate="/data/project_monitoring/microgrant_rounds" readonly="true()"/>
+      <bind nodeset="/data/project_monitoring/project_monitoring_repeat"/>
+      <bind nodeset="/data/project_monitoring/project_monitoring_repeat/project_nature" required="true()"/>
+      <bind nodeset="/data/project_monitoring/project_monitoring_repeat/project_type" required="true()"/>
+      <bind nodeset="/data/project_monitoring/project_monitoring_repeat/animal_type" relevant="selected(/data/project_monitoring/project_monitoring_repeat/project_type, 'animal_rearing')" required="true()"/>
+      <bind nodeset="/data/project_monitoring/project_monitoring_repeat/total_animals" type="xsd:int" relevant="selected(/data/project_monitoring/project_monitoring_repeat/project_type, 'animal_rearing')" required="true()"/>
+      <bind nodeset="/data/project_monitoring/project_monitoring_repeat/crop_type" relevant="selected(/data/project_monitoring/project_monitoring_repeat/project_type, 'crop_husbandry')" required="true()"/>
+      <bind nodeset="/data/project_monitoring/project_monitoring_repeat/community_project_type_construction" relevant="selected(/data/project_monitoring/project_monitoring_repeat/project_type, 'construction')" required="true()"/>
+      <bind nodeset="/data/project_monitoring/project_monitoring_repeat/construction_project_state" relevant="selected(/data/project_monitoring/project_monitoring_repeat/project_type, 'construction')" required="true()"/>
+      <bind nodeset="/data/project_monitoring/project_monitoring_repeat/community_project_type_business" relevant="selected(/data/project_monitoring/project_monitoring_repeat/project_type, 'business')" required="true()"/>
+      <bind nodeset="/data/project_monitoring/project_monitoring_repeat/beneficiaries_hhds" type="xsd:int" required="true()"/>
+      <bind nodeset="/data/project_monitoring/project_monitoring_repeat/nps" type="xsd:int" constraint=". &gt;= 0 and . &lt;= 10" jr:constraintMsg="jr:itext('project_monitoring/project_monitoring_repeat/nps-constraintMsg')" required="true()"/>
+      <bind nodeset="/data/project_monitoring/project_monitoring_repeat/nps_probe" type="xsd:string" required="true()"/>
+      <bind nodeset="/data/project_monitoring/project_monitoring_repeat/external_financing" required="true()"/>
+      <bind nodeset="/data/project_monitoring/project_monitoring_repeat/external_financing_value" type="xsd:int" required="true()"/>
+      <bind nodeset="/data/project_monitoring/project_monitoring_repeat/external_financing_no" type="xsd:string" relevant="selected(/data/project_monitoring/project_monitoring_repeat/external_financing, 'No')" required="true()"/>
+      <bind nodeset="/data/project_monitoring/project_monitoring_repeat/mg_challenges" type="xsd:string" required="true()"/>
+      <bind nodeset="/data/note"/>
+      <bind nodeset="/data/note/this_section_captures_the_progress_of_savings_within_your_community"/>
+      <bind nodeset="/data/note/currently_saving" required="true()"/>
+      <bind nodeset="/data/note/savings_use" relevant="/data/note/currently_saving = '1'" required="true()"/>
+      <bind nodeset="/data/note/currently_not-saving" relevant="/data/note/currently_saving = '2'" required="true()"/>
+      <bind nodeset="/data/note/if_other_please_specify" type="xsd:string" relevant="/data/note/currently_not-saving = 'others_96'" required="true()"/>
+      <bind nodeset="/data/note/hh_saving" type="xsd:int" relevant="/data/note/currently_saving = '1'" required="true()"/>
+      <bind nodeset="/data/note/males_saving" type="xsd:int" relevant="/data/note/currently_saving = '1'" required="true()"/>
+      <bind nodeset="/data/note/females_saving" type="xsd:int" relevant="/data/note/currently_saving = '1'" required="true()"/>
+      <bind nodeset="/data/note/amt_savings" type="xsd:double" relevant="/data/note/currently_saving = '1'" required="true()"/>
+      <bind nodeset="/data/note/savings_for_the_independent_project" type="xsd:double" relevant="/data/note/savings_use = 'independent_project'" required="true()"/>
+      <bind nodeset="/data/note/savings_for_the_vslaloaning" type="xsd:double" relevant="/data/note/savings_use = 'vsla'" required="true()"/>
+      <bind nodeset="/data/note/savings_for_the_mg_project" type="xsd:double" relevant="/data/note/savings_use = 'mg_project'" required="true()"/>
+      <bind nodeset="/data/note/next_meeting_date" type="xsd:date" required="true()"/>
+      <bind nodeset="/data/advocacy"/>
+      <bind nodeset="/data/advocacy/advocacy_attempts" required="true()"/>
+      <bind nodeset="/data/advocacy/advocacy_attempts_yes" relevant="selected(/data/advocacy/advocacy_attempts, 'yes')" required="true()"/>
+      <bind nodeset="/data/advocacy/advocacy_attempts_no" type="xsd:string" relevant="selected(/data/advocacy/advocacy_attempts, 'no')" required="true()"/>
+      <bind nodeset="/data/advocacy/advocacy_received" relevant="selected(/data/advocacy/advocacy_attempts, 'yes')" required="true()"/>
+      <bind nodeset="/data/advocacy/advocacy_received_type" relevant="selected(/data/advocacy/advocacy_received, 'yes')" required="true()"/>
+      <bind nodeset="/data/next_meeting_date" type="xsd:date" constraint=". &gt; today() and . &lt; (today() + 30)" jr:constraintMsg="jr:itext('next_meeting_date-constraintMsg')" required="true()"/>
+      <bind nodeset="/data/project_id" calculate="instance('casedb')/casedb/case[@case_id = instance('commcaresession')/session/data/case_id]/project_id"/>
+      <bind nodeset="/data/year_of_expansion" calculate="instance('casedb')/casedb/case[@case_id = instance('commcaresession')/session/data/case_id]/Year_of_Expansion"/>
+      <itext>
+        <translation lang="en" default="">
+          <text id="lang-code-label">
+            <value>en</value>
+          </text>
+          <text id="date_of_meeting-label">
+            <value>Date of Meeting</value>
+          </text>
+          <text id="date_of_meeting-constraintMsg">
+            <value>This date should not be in the future</value>
+          </text>
+          <text id="meeting_conducted-label">
+            <value>Did the planned community/committee meeting happen</value>
+          </text>
+          <text id="community_meeting-label">
+            <value>Community Meeting</value>
+          </text>
+          <text id="community_meeting/step-label">
+            <value>Which FCAP step is the Village in?</value>
+          </text>
+          <text id="community_meeting/attach_a_photo_for_the_meeting-label">
+            <value>Attach a photo for the meeting</value>
+          </text>
+          <text id="community_meeting/meeting_type-label">
+            <value>Meeting type</value>
+          </text>
+          <text id="community_meeting/meeting_type-community_meeting-label">
+            <value>Community meeting</value>
+          </text>
+          <text id="community_meeting/meeting_type-committee_meeting-label">
+            <value>Committee meeting</value>
+          </text>
+          <text id="community_meeting/activity_number-label">
+            <value>How many activities were handled during the meeting?</value>
+          </text>
+          <text id="community_meeting/community_meeting_activities-label">
+            <value>Community meeting activities</value>
+          </text>
+          <text id="community_meeting/community_meeting_activities/activity-label">
+            <value>Please select activity <output value="/data/community_meeting/community_meeting_activities/activity_position"/> that was conducted during the meeting?</value>
+          </text>
+          <text id="community_meeting/community_meeting_activities/activity_completed-label">
+            <value>Was activity <output value="/data/community_meeting/community_meeting_activities/activity_position"/> completed?</value>
+          </text>
+          <text id="community_meeting/community_meeting_activities/activity_completed-yes-label">
+            <value>Yes</value>
+          </text>
+          <text id="community_meeting/community_meeting_activities/activity_completed-no-label">
+            <value>No</value>
+          </text>
+          <text id="community_meeting/question5-label">
+            <value>Community meeting attendance &amp; participation</value>
+          </text>
+          <text id="community_meeting/question5/hh_represented_at_the_meeting-label">
+            <value>How many households are represented at the meeting?</value>
+          </text>
+          <text id="community_meeting/question5/male_attendance-label">
+            <value>How many males attended the meeting?</value>
+          </text>
+          <text id="community_meeting/question5/female_attendance-label">
+            <value>How many females attended the meeting?</value>
+          </text>
+          <text id="community_meeting/question5/members_with_disability-label">
+            <value>How many people with disabilities attended the meeting?</value>
+          </text>
+          <text id="community_meeting/question5/male_participants-label">
+            <value>How many males spoke during the meeting?</value>
+          </text>
+          <text id="community_meeting/question5/male_participants-constraintMsg">
+            <value>Male participants cant exceed male attendees</value>
+          </text>
+          <text id="community_meeting/question5/female_participants-label">
+            <value>How many females spoke during the meeting?</value>
+          </text>
+          <text id="community_meeting/question5/female_participants-constraintMsg">
+            <value>Female participants cant exceed female attendees</value>
+          </text>
+          <text id="community_meeting/meeting_details-label">
+            <value>Additional community meeting details</value>
+          </text>
+          <text id="community_meeting/meeting_details/male_leader_attendence-label">
+            <value>How many male FCAP committee leaders attended the meeting?</value>
+          </text>
+          <text id="community_meeting/meeting_details/female_leader_attendence-label">
+            <value>How many female FCAP committee leaders attended the meeting?</value>
+          </text>
+          <text id="community_meeting/meeting_details/female_leader_attendence-hint">
+            <value>only when the fcap leaders are elected</value>
+          </text>
+          <text id="community_meeting/meeting_details/SparkTrainer_attendance-label">
+            <value>Was the meeting attended by a Spark trainer?</value>
+          </text>
+          <text id="community_meeting/meeting_details/SEDO_attendance-label">
+            <value>Was the meeting attended by a AFES/SPRODETA/Njira/Soff Staff/trainer?</value>
+          </text>
+          <text id="community_meeting/meeting_details/meeting_on_time-label">
+            <value>Did the meeting start on time?</value>
+          </text>
+          <text id="community_meeting/meeting_details/why_did_the_meeting_start_late-label">
+            <value>Why did the meeting start late?</value>
+          </text>
+          <text id="community_meeting/meeting_details/financial_update-label">
+            <value>Did the FCAP leaders provide an update on finances during the meeting?</value>
+          </text>
+          <text id="community_meeting/meeting_details/updated_cash_book-label">
+            <value>Did the FCAP leaders present an updated (current) cash book?</value>
+          </text>
+          <text id="community_meeting/meeting_details/accurate_cash_book-label">
+            <value>Was the cash book accurate?</value>
+          </text>
+          <text id="community_meeting/meeting_details/meeting_conflict-label">
+            <value>Were there any disagreements/conflicts during the meeting?</value>
+          </text>
+          <text id="community_meeting/meeting_details/conflict_details-label">
+            <value>What were the disagreements about?</value>
+          </text>
+          <text id="community_meeting/meeting_details/conflict_resolved-label">
+            <value>Were the disagreements resolved?</value>
+          </text>
+          <text id="meeting_did_not_happen-label">
+            <value>Meeting did not happen</value>
+          </text>
+          <text id="meeting_did_not_happen/question2-label">
+            <value>Why didn't the meeting happen?</value>
+          </text>
+          <text id="meeting_did_not_happen/question2-bad_weather-label">
+            <value>Bad weather</value>
+          </text>
+          <text id="meeting_did_not_happen/question2-poor_mobilization-label">
+            <value>Poor mobilization</value>
+          </text>
+          <text id="meeting_did_not_happen/question2-transport_difficulty-label">
+            <value>Transport difficulty</value>
+          </text>
+          <text id="meeting_did_not_happen/question2-community_delayed-label">
+            <value>Community delayed</value>
+          </text>
+          <text id="meeting_did_not_happen/question2-other-label">
+            <value>Other</value>
+          </text>
+          <text id="meeting_did_not_happen/other_reason-label">
+            <value>If the meeeting reason is "Other" please specify it here</value>
+          </text>
+          <text id="meeting_did_not_happen/expected_meeting_date-label">
+            <value>State the date when this postponed/cancelled meeting was supposed to happen</value>
+          </text>
+          <text id="meeting_did_not_happen/expected_meeting_date-constraintMsg">
+            <value>This date can't be in the future</value>
+          </text>
+          <text id="meeting_did_not_happen/reschedule_date-label">
+            <value>When will this postponed/cancelled meeting happen?</value>
+          </text>
+          <text id="meeting_did_not_happen/reschedule_date-constraintMsg">
+            <value>Itariki y'inama igomba kuba ejo hazaza</value>
+          </text>
+          <text id="independent_projects-label">
+            <value>Independent Projects</value>
+          </text>
+          <text id="independent_projects/ind_projects-label">
+            <value>Independent Projects</value>
+          </text>
+          <text id="independent_projects/implementing_ind_project-label">
+            <value>Is the village currently implementing any independent projects?</value>
+          </text>
+          <text id="independent_projects/ind_project_number-label">
+            <value>How many independent projects are currently running?</value>
+          </text>
+          <text id="independent_projects/project_details-label">
+            <value>Project details</value>
+          </text>
+          <text id="independent_projects/project_details/project_details_repeat-label">
+            <value>Project details</value>
+          </text>
+          <text id="independent_projects/project_details/project_details_repeat/when_did_the_independent_project_start-label">
+            <value>When did the independent project start?</value>
+          </text>
+          <text id="independent_projects/project_details/project_details_repeat/what_is_the_nature_of_the_project-label">
+            <value>What is the nature of the project?</value>
+          </text>
+          <text id="independent_projects/project_details/project_details_repeat/what_is_the_nature_of_the_project-1-label">
+            <value>Animal rearing</value>
+          </text>
+          <text id="independent_projects/project_details/project_details_repeat/what_is_the_nature_of_the_project-2-label">
+            <value>Crop husbandry</value>
+          </text>
+          <text id="independent_projects/project_details/project_details_repeat/what_is_the_nature_of_the_project-3-label">
+            <value>Insurance</value>
+          </text>
+          <text id="independent_projects/project_details/project_details_repeat/what_is_the_nature_of_the_project-4-label">
+            <value>Business</value>
+          </text>
+          <text id="independent_projects/project_details/project_details_repeat/what_is_the_nature_of_the_project-5-label">
+            <value>Construction</value>
+          </text>
+          <text id="independent_projects/project_details/project_details_repeat/what_is_the_nature_of_the_project-6-label">
+            <value>VSLA</value>
+          </text>
+          <text id="independent_projects/project_details/project_details_repeat/what_is_the_nature_of_the_project-7-label">
+            <value>Buying household items</value>
+          </text>
+          <text id="independent_projects/project_details/project_details_repeat/what_is_the_nature_of_the_project-98-label">
+            <value>Others</value>
+          </text>
+          <text id="independent_projects/project_details/project_details_repeat/if_others_please_specify-label">
+            <value>If Others, please specify</value>
+          </text>
+          <text id="independent_projects/project_details/project_details_repeat/what_type_of_business_is_the_community_implementing-label">
+            <value>What type of business is the community implementing?</value>
+          </text>
+          <text id="independent_projects/project_details/project_details_repeat/what_type_of_business_is_the_community_implementing-1-label">
+            <value>Transport</value>
+          </text>
+          <text id="independent_projects/project_details/project_details_repeat/what_type_of_business_is_the_community_implementing-2-label">
+            <value>Produce</value>
+          </text>
+          <text id="independent_projects/project_details/project_details_repeat/what_type_of_business_is_the_community_implementing-3-label">
+            <value>Processing</value>
+          </text>
+          <text id="independent_projects/project_details/project_details_repeat/what_type_of_business_is_the_community_implementing-4-label">
+            <value>Wholesale/Retail shop</value>
+          </text>
+          <text id="independent_projects/project_details/project_details_repeat/what_type_of_business_is_the_community_implementing-5-label">
+            <value>Mobile money</value>
+          </text>
+          <text id="independent_projects/project_details/project_details_repeat/copy-1-of-what_type_of_construction_is_the_community_implementing-label">
+            <value>What type of construction is the community implementing?</value>
+          </text>
+          <text id="independent_projects/project_details/project_details_repeat/copy-1-of-what_type_of_construction_is_the_community_implementing-1-label">
+            <value>Schools</value>
+          </text>
+          <text id="independent_projects/project_details/project_details_repeat/copy-1-of-what_type_of_construction_is_the_community_implementing-3-label">
+            <value>Water facility</value>
+          </text>
+          <text id="independent_projects/project_details/project_details_repeat/copy-1-of-what_type_of_construction_is_the_community_implementing-4-label">
+            <value>Road</value>
+          </text>
+          <text id="independent_projects/project_details/project_details_repeat/copy-1-of-what_type_of_construction_is_the_community_implementing-5-label">
+            <value>Bridge</value>
+          </text>
+          <text id="independent_projects/project_details/project_details_repeat/copy-1-of-what_type_of_construction_is_the_community_implementing-6-label">
+            <value>Rental</value>
+          </text>
+          <text id="independent_projects/project_details/ind_project_description-label">
+            <value>Provide a detailed description of the project</value>
+          </text>
+          <text id="independent_projects/project_details/total_community_investment-label">
+            <value>How much money has the community invested in this independent project to-date?</value>
+          </text>
+          <text id="independent_projects/project_details/funding_source-label">
+            <value>Where does the community obtain money to implement this project?</value>
+          </text>
+          <text id="independent_projects/project_details/funding_source-1-label">
+            <value>Community savings</value>
+          </text>
+          <text id="independent_projects/project_details/funding_source-2-label">
+            <value>Other funders (not Spark)</value>
+          </text>
+          <text id="independent_projects/project_details/other_source-label">
+            <value>Please state the funding source for this project</value>
+          </text>
+          <text id="independent_projects/project_details/project_beneficiaries-label">
+            <value>How many households within the community are currently benefiting from this project?</value>
+          </text>
+          <text id="/Untitled_20260316111746/project_monitoring:label">
+            <value>Project Monitoring</value>
+          </text>
+          <text id="/Untitled_20260316111746/project_monitoring/microgrant_rounds:label">
+            <value>How many Microgrant rounds has this community received?</value>
+          </text>
+          <text id="/Untitled_20260316111746/project_monitoring/microgrant_rounds/1:label">
+            <value>1 round</value>
+          </text>
+          <text id="/Untitled_20260316111746/project_monitoring/microgrant_rounds/2:label">
+            <value>2 rounds</value>
+          </text>
+          <text id="/Untitled_20260316111746/project_monitoring/project_monitoring_repeat:label">
+            <value>Project Monitoring Repeat</value>
+          </text>
+          <text id="/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/project_nature:label">
+            <value>Which Microgrant project round are you reporting on?</value>
+          </text>
+          <text id="/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/project_nature/1:label">
+            <value>Microgrant project one</value>
+          </text>
+          <text id="/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/project_nature/2:label">
+            <value>Microgrant project two</value>
+          </text>
+          <text id="/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/project_type:label">
+            <value>What type of microgrant project is the community implementing?</value>
+          </text>
+          <text id="/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/project_type/animal_rearing:label">
+            <value>Animal Rearing</value>
+          </text>
+          <text id="/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/project_type/crop_husbandry:label">
+            <value>Crop husbandry</value>
+          </text>
+          <text id="/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/project_type/construction:label">
+            <value>Construction</value>
+          </text>
+          <text id="/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/project_type/vsla:label">
+            <value>Community Savings and Loan Association (VSLA)</value>
+          </text>
+          <text id="/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/project_type/business:label">
+            <value>Business</value>
+          </text>
+          <text id="/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/animal_type:label">
+            <value>Which animals is the community currently rearing?</value>
+          </text>
+          <text id="/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/animal_type/dairy_cattle:label">
+            <value>Dairy cattle</value>
+          </text>
+          <text id="/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/animal_type/beef_cattle:label">
+            <value>Beef cattle</value>
+          </text>
+          <text id="/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/animal_type/ploughing_oxen:label">
+            <value>Ploughing Oxen</value>
+          </text>
+          <text id="/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/animal_type/goats:label">
+            <value>Goats</value>
+          </text>
+          <text id="/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/animal_type/pigs:label">
+            <value>Pigs</value>
+          </text>
+          <text id="/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/animal_type/sheep:label">
+            <value>Sheep</value>
+          </text>
+          <text id="/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/animal_type/chicken:label">
+            <value>Chicken</value>
+          </text>
+          <text id="/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/animal_type/turkeys:label">
+            <value>Turkeys</value>
+          </text>
+          <text id="/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/animal_type/ducks:label">
+            <value>Ducks</value>
+          </text>
+          <text id="/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/total_animals:label">
+            <value>How many animals does the community currently own in total (including young ones)?</value>
+          </text>
+          <text id="/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/crop_type:label">
+            <value>What type of crops is the community currently growing?</value>
+          </text>
+          <text id="/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/crop_type/tea:label">
+            <value>Tea</value>
+          </text>
+          <text id="/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/crop_type/coffee:label">
+            <value>Coffee</value>
+          </text>
+          <text id="/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/crop_type/cotton:label">
+            <value>Cotton</value>
+          </text>
+          <text id="/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/crop_type/plantains:label">
+            <value>Plantains</value>
+          </text>
+          <text id="/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/crop_type/sugar_cane:label">
+            <value>Sugar cane</value>
+          </text>
+          <text id="/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/crop_type/cocoa:label">
+            <value>Cocoa</value>
+          </text>
+          <text id="/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/crop_type/vanilla:label">
+            <value>Vanilla</value>
+          </text>
+          <text id="/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/crop_type/maize:label">
+            <value>Maize</value>
+          </text>
+          <text id="/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/crop_type/beans:label">
+            <value>Beans</value>
+          </text>
+          <text id="/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/crop_type/g_nuts:label">
+            <value>Ground nuts (Gnuts)</value>
+          </text>
+          <text id="/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/crop_type/potatoes:label">
+            <value>Potatoes</value>
+          </text>
+          <text id="/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/crop_type/peas:label">
+            <value>Peas</value>
+          </text>
+          <text id="/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/crop_type/tomatoes:label">
+            <value>Tomatoes</value>
+          </text>
+          <text id="/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/community_project_type_construction:label">
+            <value>What type of construction is the community implementing?</value>
+          </text>
+          <text id="/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/community_project_type_construction/schools:label">
+            <value>Schools</value>
+          </text>
+          <text id="/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/community_project_type_construction/health_facility:label">
+            <value>Health facility</value>
+          </text>
+          <text id="/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/community_project_type_construction/water_facility:label">
+            <value>Water facility</value>
+          </text>
+          <text id="/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/community_project_type_construction/road_bridge:label">
+            <value>Road/ Bridge</value>
+          </text>
+          <text id="/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/community_project_type_construction/rental_warehouses_sf:label">
+            <value>Rental/Warehouses/Storage Facilities</value>
+          </text>
+          <text id="/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/community_project_type_construction/market:label">
+            <value>Market</value>
+          </text>
+          <text id="/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/community_project_type_construction/town_hall:label">
+            <value>Town Hall</value>
+          </text>
+          <text id="/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/community_project_type_construction/electricity:label">
+            <value>Electricity</value>
+          </text>
+          <text id="/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/construction_project_state:label">
+            <value>What is the current state of the construction project that the community implemented?</value>
+          </text>
+          <text id="/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/construction_project_state/1:label">
+            <value>Very good condition</value>
+          </text>
+          <text id="/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/construction_project_state/2:label">
+            <value>Moderately good condition but requires some work</value>
+          </text>
+          <text id="/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/construction_project_state/3:label">
+            <value>Bad condition</value>
+          </text>
+          <text id="/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/community_project_type_business:label">
+            <value>What is the nature of the business operated by the community?</value>
+          </text>
+          <text id="/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/community_project_type_business/transport:label">
+            <value>Transport</value>
+          </text>
+          <text id="/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/community_project_type_business/produce:label">
+            <value>Produce</value>
+          </text>
+          <text id="/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/community_project_type_business/processing:label">
+            <value>Processing</value>
+          </text>
+          <text id="/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/community_project_type_business/wholesale_retail_shop:label">
+            <value>Wholesale/Retail shop</value>
+          </text>
+          <text id="/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/community_project_type_business/mobile_money:label">
+            <value>Mobile money</value>
+          </text>
+          <text id="/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/community_project_type_business/bee_keeping:label">
+            <value>Bee Keeping</value>
+          </text>
+          <text id="/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/beneficiaries_hhds:label">
+            <value>How many households in the community are directly benefiting from this Microgrant project?</value>
+          </text>
+          <text id="/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/nps:label">
+            <value>On a scale from 0 to 10, how likely are you to recommend FCAP to another community?</value>
+          </text>
+          <text id="/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/nps:hint">
+            <value>0 = Not at all likely
+10 = Extremely likely</value>
+          </text>
+          <text id="project_monitoring/project_monitoring_repeat/nps-constraintMsg">
+            <value>Please enter a number between 0 and 10.</value>
+          </text>
+          <text id="/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/nps_probe:label">
+            <value>What is the main reason for the score you gave?</value>
+          </text>
+          <text id="/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/external_financing:label">
+            <value>Has the community obtained any external financing for this Microgrant project?</value>
+          </text>
+          <text id="/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/external_financing_value:label">
+            <value>How much external financing has the community received for this Microgrant project in local currency?</value>
+          </text>
+          <text id="/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/external_financing_no:label">
+            <value>Why has the community not sought external financing for this project?</value>
+          </text>
+          <text id="/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/mg_challenges:label">
+            <value>What challenges is this community facing in implementing this Microgrant project?</value>
+          </text>
+          <text id="note-label">
+            <value>Savings</value>
+          </text>
+          <text id="note/this_section_captures_the_progress_of_savings_within_your_community-label">
+            <value>This section captures the progress of savings within your community</value>
+          </text>
+          <text id="note/currently_saving-label">
+            <value>Is the community currently saving?</value>
+          </text>
+          <text id="note/currently_saving-1-label">
+            <value>Yes</value>
+          </text>
+          <text id="note/currently_saving-2-label">
+            <value>No</value>
+          </text>
+          <text id="/Untitled_20260316111746/Savings/savings_use:label">
+            <value>Why is the community saving?</value>
+          </text>
+          <text id="/Untitled_20260316111746/Savings/savings_use/independent_project:label">
+            <value>Independent Project</value>
+          </text>
+          <text id="/Untitled_20260316111746/Savings/savings_use/vsla:label">
+            <value>Community Savings and Loan Association (VSLA)</value>
+          </text>
+          <text id="note/savings_use-mg_project-label">
+            <value>To supplement the MG project</value>
+          </text>
+          <text id="note/currently_not-saving-label">
+            <value>Capture the reason why the community is not saving?</value>
+          </text>
+          <text id="note/currently_not-saving-1-label">
+            <value>The community has not started a savings group</value>
+          </text>
+          <text id="note/currently_not-saving-2-label">
+            <value>They have ended their savings cycle</value>
+          </text>
+          <text id="note/currently_not-saving-others_96-label">
+            <value>Others</value>
+          </text>
+          <text id="note/if_other_please_specify-label">
+            <value>If Others, please specify</value>
+          </text>
+          <text id="note/hh_saving-label">
+            <value>How many households are currently saving with the FCAP savings group?</value>
+          </text>
+          <text id="note/males_saving-label">
+            <value>How many males are currently saving with the FCAP group as of Today?</value>
+          </text>
+          <text id="note/females_saving-label">
+            <value>How many females are currently saving with the FCAP group as of Today?</value>
+          </text>
+          <text id="note/amt_savings-label">
+            <value>How much money does the community have in Savings as of Today?</value>
+          </text>
+          <text id="note/amt_savings-hint">
+            <value>
+Malawian Kwacha</value>
+          </text>
+          <text id="note/savings_for_the_independent_project-label">
+            <value>How much of these savings are for the independent project?</value>
+          </text>
+          <text id="note/savings_for_the_vslaloaning-label">
+            <value>How much of these savings are for the VSLA/Loaning?</value>
+          </text>
+          <text id="note/savings_for_the_mg_project-label">
+            <value>How much of these savings are for supplementing the MG project?</value>
+          </text>
+          <text id="note/next_meeting_date-label">
+            <value>What is the date for the next meeting?</value>
+          </text>
+          <text id="/Untitled_20260316111746/advocacy:label">
+            <value>Advocacy</value>
+          </text>
+          <text id="/Untitled_20260316111746/advocacy/advocacy_attempts:label">
+            <value>Has this community engaged in any advocacy efforts toward other organisations or the government to seek support?</value>
+          </text>
+          <text id="/Untitled_20260316111746/advocacy/advocacy_attempts/yes:label">
+            <value>Yes</value>
+          </text>
+          <text id="/Untitled_20260316111746/advocacy/advocacy_attempts/no:label">
+            <value>No</value>
+          </text>
+          <text id="/Untitled_20260316111746/advocacy/advocacy_attempts_yes:label">
+            <value>Which organisations did the community reach out to?</value>
+          </text>
+          <text id="/Untitled_20260316111746/advocacy/advocacy_attempts_yes/ngos:label">
+            <value>NGOs</value>
+          </text>
+          <text id="/Untitled_20260316111746/advocacy/advocacy_attempts_yes/lg:label">
+            <value>Local Government/Subcounty</value>
+          </text>
+          <text id="/Untitled_20260316111746/advocacy/advocacy_attempts_yes/others:label">
+            <value>Others</value>
+          </text>
+          <text id="/Untitled_20260316111746/advocacy/advocacy_attempts_no:label">
+            <value>Why has the community not made any advocacy attempts?</value>
+          </text>
+          <text id="/Untitled_20260316111746/advocacy/advocacy_received:label">
+            <value>Did the community receive the requested support?</value>
+          </text>
+          <text id="/Untitled_20260316111746/advocacy/advocacy_received_type:label">
+            <value>What type of support did the community receive?</value>
+          </text>
+          <text id="/Untitled_20260316111746/advocacy/advocacy_received_type/monetary:label">
+            <value>Monetary support</value>
+          </text>
+          <text id="/Untitled_20260316111746/advocacy/advocacy_received_type/in_kind:label">
+            <value>In-Kind support</value>
+          </text>
+          <text id="/Untitled_20260316111746/advocacy/advocacy_received_type/both_monetary_inkind:label">
+            <value>Both Monetary and In-Kind support</value>
+          </text>
+          <text id="next_meeting_date-label">
+            <value>What is the date for the next meeting?</value>
+          </text>
+          <text id="next_meeting_date-constraintMsg">
+            <value>Next meeting date should be in the future</value>
+          </text>
+        </translation>
+        <translation lang="nya">
+          <text id="lang-code-label">
+            <value>nya</value>
+          </text>
+          <text id="date_of_meeting-label">
+            <value>Tsiku la msonkhano</value>
+          </text>
+          <text id="date_of_meeting-constraintMsg">
+            <value>Tsiku la msonkhano silingakhale lamtsogolo</value>
+          </text>
+          <text id="meeting_conducted-label">
+            <value>Kodi msonkhano wa mudzi/komiti unachitika?</value>
+          </text>
+          <text id="community_meeting-label">
+            <value>Msonkhano wanmudzi</value>
+          </text>
+          <text id="community_meeting/step-label">
+            <value>Mudzi uli gawo liti la FCAP</value>
+          </text>
+          <text id="community_meeting/attach_a_photo_for_the_meeting-label">
+            <value>Attach a photo for the meeting</value>
+          </text>
+          <text id="community_meeting/meeting_type-label">
+            <value>Mtundu wankumano</value>
+          </text>
+          <text id="community_meeting/meeting_type-community_meeting-label">
+            <value>Msonkhano wanmudzi</value>
+          </text>
+          <text id="community_meeting/meeting_type-committee_meeting-label">
+            <value>Msonkhano wa komiti</value>
+          </text>
+          <text id="community_meeting/activity_number-label">
+            <value>Panali mitu/ntchito zingati pankumano walero?</value>
+          </text>
+          <text id="community_meeting/community_meeting_activities-label">
+            <value>Mitu yazombilana pankumano/ntchito</value>
+          </text>
+          <text id="community_meeting/community_meeting_activities/activity-label">
+            <value>Chonde sankhani mutu/ntchito <output value="/data/community_meeting/community_meeting_activities/activity_position"/> wansonkhano walero?</value>
+          </text>
+          <text id="community_meeting/community_meeting_activities/activity_completed-label">
+            <value>Kodi ntchito/zokambilana <output value="/data/community_meeting/community_meeting_activities/activity_position"/> zinamalizidwa?</value>
+          </text>
+          <text id="community_meeting/community_meeting_activities/activity_completed-yes-label">
+            <value>eya</value>
+          </text>
+          <text id="community_meeting/community_meeting_activities/activity_completed-no-label">
+            <value>ayi</value>
+          </text>
+          <text id="community_meeting/question5-label">
+            <value>Anthu omwe anabwela ndi otenga mbali pansonkhano</value>
+          </text>
+          <text id="community_meeting/question5/hh_represented_at_the_meeting-label">
+            <value>Kunabwela mabanja angati kumsonkhano umenewu?</value>
+          </text>
+          <text id="community_meeting/question5/male_attendance-label">
+            <value>Kunabwela amuna angati pamsonkhanowu?</value>
+          </text>
+          <text id="community_meeting/question5/female_attendance-label">
+            <value>Kunabwela akazi angati pamsonkhanowu?</value>
+          </text>
+          <text id="community_meeting/question5/members_with_disability-label">
+            <value>Kunabwela a ulumali angati pamsonkhanowu?</value>
+          </text>
+          <text id="community_meeting/question5/male_participants-label">
+            <value>Amuna angati anayankhula pamsonkhanowu?</value>
+          </text>
+          <text id="community_meeting/question5/male_participants-constraintMsg">
+            <value>Male participants cant exceed male attendees</value>
+          </text>
+          <text id="community_meeting/question5/female_participants-label">
+            <value>Akazi angati anayankhula pamsonkhanowu?</value>
+          </text>
+          <text id="community_meeting/question5/female_participants-constraintMsg">
+            <value>Female participants cant exceed female attendees</value>
+          </text>
+          <text id="community_meeting/meeting_details-label">
+            <value>Additional community meeting details</value>
+          </text>
+          <text id="community_meeting/meeting_details/male_leader_attendence-label">
+            <value>Kodi atsogoleri a amuna a komiti ya FCAP anabwela angati  pamsonkhanowu?</value>
+          </text>
+          <text id="community_meeting/meeting_details/female_leader_attendence-label">
+            <value>Kodi atsogoleri a akazi a komiti ya FCAP anabwela angati pamsonkhanowu?</value>
+          </text>
+          <text id="community_meeting/meeting_details/female_leader_attendence-hint">
+            <value>only when the fcap leaders are elected</value>
+          </text>
+          <text id="community_meeting/meeting_details/SparkTrainer_attendance-label">
+            <value>Kodi mlangizi wa Spark analipo pamsonkhano umene?</value>
+          </text>
+          <text id="community_meeting/meeting_details/SEDO_attendance-label">
+            <value>Was the meeting attended by a AFES/SPRODETA/Njira/Soff Staff/trainer?</value>
+          </text>
+          <text id="community_meeting/meeting_details/meeting_on_time-label">
+            <value>Kodi msonkhanowo unayamba munthawi yake?</value>
+          </text>
+          <text id="community_meeting/meeting_details/why_did_the_meeting_start_late-label">
+            <value>Kodi nchifukwa chiyani msonkhanowu unayamba mochedwa?</value>
+          </text>
+          <text id="community_meeting/meeting_details/financial_update-label">
+            <value>Kodi atsogoleri a FCAP anafotokoza uthenga okhuza ndalama pamsonkhanowu?</value>
+          </text>
+          <text id="community_meeting/meeting_details/updated_cash_book-label">
+            <value>Kodi atsogoleri a FCAP anafotokoza zomwe zili nmabuku akayendesedwe ka ndalama  pamsonkhanowu?</value>
+          </text>
+          <text id="community_meeting/meeting_details/accurate_cash_book-label">
+            <value>Kodi zomwe zinalembedwa nmabuku akayendesedwe ka ndalamawa zinali zolondola?</value>
+          </text>
+          <text id="community_meeting/meeting_details/meeting_conflict-label">
+            <value>Kodi padakhala kusamvana kapena mpungwepungwe pamsonkhano umenewu?</value>
+          </text>
+          <text id="community_meeting/meeting_details/conflict_details-label">
+            <value>Kodi kusamvanako kunali kokhudza chiyani?</value>
+          </text>
+          <text id="community_meeting/meeting_details/conflict_resolved-label">
+            <value>Kodi kusamvanaku kunathetsedwa?</value>
+          </text>
+          <text id="meeting_did_not_happen-label">
+            <value>Msokhano sunachitike</value>
+          </text>
+          <text id="meeting_did_not_happen/question2-label">
+            <value>Kodi chifukwa chiyani msonkhanowo sunachitike?</value>
+          </text>
+          <text id="meeting_did_not_happen/question2-bad_weather-label">
+            <value>Kunali nyengo yoipa</value>
+          </text>
+          <text id="meeting_did_not_happen/question2-poor_mobilization-label">
+            <value>Anthu sanaziwisidwe mokwanila</value>
+          </text>
+          <text id="meeting_did_not_happen/question2-transport_difficulty-label">
+            <value>Kuvuta kwamayendedwe</value>
+          </text>
+          <text id="meeting_did_not_happen/question2-community_delayed-label">
+            <value>Anthu anmudzi anachedwa</value>
+          </text>
+          <text id="meeting_did_not_happen/question2-other-label">
+            <value>Zina</value>
+          </text>
+          <text id="meeting_did_not_happen/other_reason-label">
+            <value>Ngati panali zifukwa zina, chonde fotokozani</value>
+          </text>
+          <text id="meeting_did_not_happen/expected_meeting_date-label">
+            <value>Kodi msokhano omwe sunachitikewu umayenela kukhalako tsiku lake liti?</value>
+          </text>
+          <text id="meeting_did_not_happen/expected_meeting_date-constraintMsg">
+            <value>This date can't be in the future</value>
+          </text>
+          <text id="meeting_did_not_happen/reschedule_date-label">
+            <value>When will this postponed/cancelled meeting happen?</value>
+          </text>
+          <text id="meeting_did_not_happen/reschedule_date-constraintMsg">
+            <value>Tsiku ili silingakhale la mtsogolo</value>
+          </text>
+          <text id="independent_projects-label">
+            <value>Gawo la pulojekiti yoziimila payokha</value>
+          </text>
+          <text id="independent_projects/ind_projects-label">
+            <value>Pulojekiti yoziimila payokha</value>
+          </text>
+          <text id="independent_projects/implementing_ind_project-label">
+            <value>Kodi mudzi wanu ukupanga ma pulojekiti yoziimila payokha?</value>
+          </text>
+          <text id="independent_projects/ind_project_number-label">
+            <value>Mukupanga ma pulojekiti anagti oziimila pawokha?</value>
+          </text>
+          <text id="independent_projects/project_details-label">
+            <value>Zambili za pulojekitiyi</value>
+          </text>
+          <text id="independent_projects/project_details/project_details_repeat-label">
+            <value>Pulojekiti yoziimila payokha</value>
+          </text>
+          <text id="independent_projects/project_details/project_details_repeat/when_did_the_independent_project_start-label">
+            <value>Kodi pulojekitiyi inayamba liti?</value>
+          </text>
+          <text id="independent_projects/project_details/project_details_repeat/what_is_the_nature_of_the_project-label">
+            <value>Kodi pulojekitiyi ili mugulu lanji?</value>
+          </text>
+          <text id="independent_projects/project_details/project_details_repeat/what_is_the_nature_of_the_project-1-label">
+            <value>Ulimi waziweto</value>
+          </text>
+          <text id="independent_projects/project_details/project_details_repeat/what_is_the_nature_of_the_project-2-label">
+            <value>Ulimi wambewu</value>
+          </text>
+          <text id="independent_projects/project_details/project_details_repeat/what_is_the_nature_of_the_project-3-label">
+            <value>Za ishuwalansi</value>
+          </text>
+          <text id="independent_projects/project_details/project_details_repeat/what_is_the_nature_of_the_project-4-label">
+            <value>Za malonda</value>
+          </text>
+          <text id="independent_projects/project_details/project_details_repeat/what_is_the_nature_of_the_project-5-label">
+            <value>Zomanga manga</value>
+          </text>
+          <text id="independent_projects/project_details/project_details_repeat/what_is_the_nature_of_the_project-6-label">
+            <value>Yosunga ndikubwelekesa ndalama</value>
+          </text>
+          <text id="independent_projects/project_details/project_details_repeat/what_is_the_nature_of_the_project-7-label">
+            <value>Kugula zipangizo zapakhomo</value>
+          </text>
+          <text id="independent_projects/project_details/project_details_repeat/what_is_the_nature_of_the_project-98-label">
+            <value>Zina</value>
+          </text>
+          <text id="independent_projects/project_details/project_details_repeat/if_others_please_specify-label">
+            <value>Zina</value>
+          </text>
+          <text id="independent_projects/project_details/project_details_repeat/what_type_of_business_is_the_community_implementing-label">
+            <value>Kodi anthu ammudzi akuchita bizinesi yamtundu wanji</value>
+          </text>
+          <text id="independent_projects/project_details/project_details_repeat/what_type_of_business_is_the_community_implementing-1-label">
+            <value>Bizinesi ya zamayendedwe</value>
+          </text>
+          <text id="independent_projects/project_details/project_details_repeat/what_type_of_business_is_the_community_implementing-2-label">
+            <value>Zogulitsa</value>
+          </text>
+          <text id="independent_projects/project_details/project_details_repeat/what_type_of_business_is_the_community_implementing-3-label">
+            <value>Kupanga katundu</value>
+          </text>
+          <text id="independent_projects/project_details/project_details_repeat/what_type_of_business_is_the_community_implementing-4-label">
+            <value>Sitolo yogulitsa/hoselo</value>
+          </text>
+          <text id="independent_projects/project_details/project_details_repeat/what_type_of_business_is_the_community_implementing-5-label">
+            <value>Kutumiza ndikulandila ndalama pafoni</value>
+          </text>
+          <text id="independent_projects/project_details/project_details_repeat/copy-1-of-what_type_of_construction_is_the_community_implementing-label">
+            <value>Kodi mudzi wanu ukupanga ma pulojekiti anji omanga?</value>
+          </text>
+          <text id="independent_projects/project_details/project_details_repeat/copy-1-of-what_type_of_construction_is_the_community_implementing-1-label">
+            <value>Sukulu</value>
+          </text>
+          <text id="independent_projects/project_details/project_details_repeat/copy-1-of-what_type_of_construction_is_the_community_implementing-3-label">
+            <value>Chitukuko cha madzi</value>
+          </text>
+          <text id="independent_projects/project_details/project_details_repeat/copy-1-of-what_type_of_construction_is_the_community_implementing-4-label">
+            <value>Misewu</value>
+          </text>
+          <text id="independent_projects/project_details/project_details_repeat/copy-1-of-what_type_of_construction_is_the_community_implementing-5-label">
+            <value>Mlatho/biliji</value>
+          </text>
+          <text id="independent_projects/project_details/project_details_repeat/copy-1-of-what_type_of_construction_is_the_community_implementing-6-label">
+            <value>Malo obwereketsa</value>
+          </text>
+          <text id="independent_projects/project_details/ind_project_description-label">
+            <value>Mafotokozedwe atsatanetsatane a polojekiti</value>
+          </text>
+          <text id="independent_projects/project_details/total_community_investment-label">
+            <value>Kodi anthu ammudzi ayika ndalama zingati pa polojekiti iyi pofika lero?</value>
+          </text>
+          <text id="independent_projects/project_details/funding_source-label">
+            <value>Kodi anthu ammudzi apeza bwanji ndalama zochitira polojekiti iyi?</value>
+          </text>
+          <text id="independent_projects/project_details/funding_source-1-label">
+            <value>Zosonkha zanmudzi</value>
+          </text>
+          <text id="independent_projects/project_details/funding_source-2-label">
+            <value>Zina (osati kuchokela ku Spark)</value>
+          </text>
+          <text id="independent_projects/project_details/other_source-label">
+            <value>Chonde tchulani komwe kukuchokela thandizoli</value>
+          </text>
+          <text id="independent_projects/project_details/project_beneficiaries-label">
+            <value>Ndi mabanja angati omwe akupindula kuchokela ku pulojekitiyi?</value>
+          </text>
+          <text id="/Untitled_20260316111746/project_monitoring:label">
+            <value>-</value>
+          </text>
+          <text id="/Untitled_20260316111746/project_monitoring/microgrant_rounds:label">
+            <value>Kodi mudzi uno unalandila zigawo zingati za ndalama ya microgrnats?</value>
+          </text>
+          <text id="/Untitled_20260316111746/project_monitoring/microgrant_rounds/1:label">
+            <value>chigawo choyamba</value>
+          </text>
+          <text id="/Untitled_20260316111746/project_monitoring/microgrant_rounds/2:label">
+            <value>chigawo chachiwiri</value>
+          </text>
+          <text id="/Untitled_20260316111746/project_monitoring/project_monitoring_repeat:label">
+            <value>-</value>
+          </text>
+          <text id="/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/project_nature:label">
+            <value>Kodi panopa mudzi uno uli mu chigawo chiti cha ndalama ya microgrants?</value>
+          </text>
+          <text id="/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/project_nature/1:label">
+            <value>Pulojekiti ya microgrant yoyamba</value>
+          </text>
+          <text id="/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/project_nature/2:label">
+            <value>Pulojekiti ya microgrant yachiwiri</value>
+          </text>
+          <text id="/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/project_type:label">
+            <value>Kodi mudzi uno ukupanga pulojekiti ya microgrants yamtundu wanji?</value>
+          </text>
+          <text id="/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/project_type/animal_rearing:label">
+            <value>Kuweta ziweto</value>
+          </text>
+          <text id="/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/project_type/crop_husbandry:label">
+            <value>Kulima mbeu</value>
+          </text>
+          <text id="/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/project_type/construction:label">
+            <value>Zomangamanga</value>
+          </text>
+          <text id="/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/project_type/vsla:label">
+            <value>Gulu losonkha ndi kusunga ndalama</value>
+          </text>
+          <text id="/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/project_type/business:label">
+            <value>Zamalonda</value>
+          </text>
+          <text id="/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/animal_type:label">
+            <value>Kodi mudzi uno panopa ukuweta ziweto zanji?</value>
+          </text>
+          <text id="/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/animal_type/dairy_cattle:label">
+            <value>Ng'ombe za mkaka</value>
+          </text>
+          <text id="/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/animal_type/beef_cattle:label">
+            <value>Ng'ombe za mkaka</value>
+          </text>
+          <text id="/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/animal_type/ploughing_oxen:label">
+            <value>Ng'ombe za pangolo</value>
+          </text>
+          <text id="/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/animal_type/goats:label">
+            <value>Mbuzi</value>
+          </text>
+          <text id="/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/animal_type/pigs:label">
+            <value>Nkhumba</value>
+          </text>
+          <text id="/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/animal_type/sheep:label">
+            <value>Nkhosa</value>
+          </text>
+          <text id="/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/animal_type/chicken:label">
+            <value>Nkhuku</value>
+          </text>
+          <text id="/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/animal_type/turkeys:label">
+            <value>Nkhuku tembo</value>
+          </text>
+          <text id="/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/animal_type/ducks:label">
+            <value>Abakha</value>
+          </text>
+          <text id="/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/total_animals:label">
+            <value>Kodi ndi ziweto zingati (zonse pamodzi kuphatikizapo zazing'ono) zomwe mudzi uno ulinazo?</value>
+          </text>
+          <text id="/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/crop_type:label">
+            <value>Kodi mudzi uno panopa ukulima mbeu zanji?</value>
+          </text>
+          <text id="/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/crop_type/tea:label">
+            <value>Tiyi</value>
+          </text>
+          <text id="/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/crop_type/coffee:label">
+            <value>khofi</value>
+          </text>
+          <text id="/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/crop_type/cotton:label">
+            <value>Thonje</value>
+          </text>
+          <text id="/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/crop_type/plantains:label">
+            <value>Nthochi</value>
+          </text>
+          <text id="/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/crop_type/sugar_cane:label">
+            <value>Mzimbe</value>
+          </text>
+          <text id="/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/crop_type/cocoa:label">
+            <value>cocoa</value>
+          </text>
+          <text id="/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/crop_type/vanilla:label">
+            <value>Vanila</value>
+          </text>
+          <text id="/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/crop_type/maize:label">
+            <value>Chimanga</value>
+          </text>
+          <text id="/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/crop_type/beans:label">
+            <value>Nyemba</value>
+          </text>
+          <text id="/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/crop_type/g_nuts:label">
+            <value>Mtedza</value>
+          </text>
+          <text id="/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/crop_type/potatoes:label">
+            <value>Mbatata</value>
+          </text>
+          <text id="/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/crop_type/peas:label">
+            <value>Nandolo</value>
+          </text>
+          <text id="/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/crop_type/tomatoes:label">
+            <value>Tomato</value>
+          </text>
+          <text id="/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/community_project_type_construction:label">
+            <value>Kodi ndi zomangamanga ziti zomwe mudzi uno ukumanga</value>
+          </text>
+          <text id="/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/community_project_type_construction/schools:label">
+            <value>sukulu</value>
+          </text>
+          <text id="/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/community_project_type_construction/health_facility:label">
+            <value>Chipatala</value>
+          </text>
+          <text id="/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/community_project_type_construction/water_facility:label">
+            <value>pulojekiti ya madzi</value>
+          </text>
+          <text id="/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/community_project_type_construction/road_bridge:label">
+            <value>Mseu/Mlatho</value>
+          </text>
+          <text id="/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/community_project_type_construction/rental_warehouses_sf:label">
+            <value>Nyumba yosungilamo Katundu</value>
+          </text>
+          <text id="/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/community_project_type_construction/market:label">
+            <value>Msika</value>
+          </text>
+          <text id="/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/community_project_type_construction/town_hall:label">
+            <value>holo</value>
+          </text>
+          <text id="/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/community_project_type_construction/electricity:label">
+            <value>Magetsi</value>
+          </text>
+          <text id="/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/construction_project_state:label">
+            <value>Kodi zomangamanga zimene mudzi uno ukumanga zili pa mulingo wanji?</value>
+          </text>
+          <text id="/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/construction_project_state/1:label">
+            <value>Yabwinobwino</value>
+          </text>
+          <text id="/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/construction_project_state/2:label">
+            <value>yabwinoko pang'ono</value>
+          </text>
+          <text id="/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/construction_project_state/3:label">
+            <value>yowonongeka</value>
+          </text>
+          <text id="/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/community_project_type_business:label">
+            <value>Kodi ndi mtundu wanji wa malonda womwe mudzi uno ukupanga?</value>
+          </text>
+          <text id="/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/community_project_type_business/transport:label">
+            <value>Za ntengatenga ndi ntokoma</value>
+          </text>
+          <text id="/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/community_project_type_business/produce:label">
+            <value>-</value>
+          </text>
+          <text id="/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/community_project_type_business/processing:label">
+            <value>za mafakitole</value>
+          </text>
+          <text id="/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/community_project_type_business/wholesale_retail_shop:label">
+            <value>shopu yowodetsa/shopu yogulitsa</value>
+          </text>
+          <text id="/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/community_project_type_business/mobile_money:label">
+            <value>Ndalama za pafoni</value>
+          </text>
+          <text id="/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/community_project_type_business/bee_keeping:label">
+            <value>ulimi wa njuchi</value>
+          </text>
+          <text id="/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/beneficiaries_hhds:label">
+            <value>Kodi ndi mabanja angati womwe akuthandizika ndi pulojekekiti ya microgrants?</value>
+          </text>
+          <text id="/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/nps:label">
+            <value>Pamulingo wa 0 kufikila pa 10, FCAP mungayipatse mulingo wanji poyichemelera ku midzi ina.</value>
+          </text>
+          <text id="/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/nps:hint">
+            <value>-</value>
+          </text>
+          <text id="project_monitoring/project_monitoring_repeat/nps-constraintMsg">
+            <value>Please enter a number between 0 and 10.</value>
+          </text>
+          <text id="/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/nps_probe:label">
+            <value>Kodi ndichifukwa chani chenicheni chomwe mungapelekele mulingo umenewu?</value>
+          </text>
+          <text id="/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/external_financing:label">
+            <value>Kodi mudzi uno unalandilako chithandizo china chilichonse cha ndalama kuchokela ku bungwe lililonse kupatula spark chothandizila pulojekiti ya microgrants?</value>
+          </text>
+          <text id="/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/external_financing_value:label">
+            <value>Ndi ndalama zingati zomwe mudzi uno unalandila kuchokela ku mabungwe ena zothandizila microgrants pulojekiti in Malawi Kwacha?</value>
+          </text>
+          <text id="/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/external_financing_no:label">
+            <value>Ndi chifukwa chani mudzi uno sunapemphe chithandizo chothandizira pulojekiti ya microgrants kuchekela ku mabungwe ena?</value>
+          </text>
+          <text id="/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/mg_challenges:label">
+            <value>Kodi ndi mabvuto ati womwe mudzi uno ukukumana nawo pamene ukupanga pulojekiti ya microgrants.</value>
+          </text>
+          <text id="note-label">
+            <value>Savings</value>
+          </text>
+          <text id="note/this_section_captures_the_progress_of_savings_within_your_community-label">
+            <value>This section captures the progress of savings within your community</value>
+          </text>
+          <text id="note/currently_saving-label">
+            <value>Is the community currently saving?</value>
+          </text>
+          <text id="note/currently_saving-1-label">
+            <value>Yes</value>
+          </text>
+          <text id="note/currently_saving-2-label">
+            <value>No</value>
+          </text>
+          <text id="/Untitled_20260316111746/Savings/savings_use:label">
+            <value>Kodi ndi chifukwa chani mudzi uno umasunga ndalama?</value>
+          </text>
+          <text id="/Untitled_20260316111746/Savings/savings_use/independent_project:label">
+            <value>zosonkha za chitukuko choziimila pachokha</value>
+          </text>
+          <text id="/Untitled_20260316111746/Savings/savings_use/vsla:label">
+            <value>Ndindalama zingati mwazosonkha zanu zomwe zikuchokela kuthumba lobweleka ndikubwelekesa (banki nkhonde)?</value>
+          </text>
+          <text id="note/savings_use-mg_project-label">
+            <value>Ndi ndalama zingati mwa ndalama zosungazi zikugwiritsidwa ntchito pothandizira chitukoko cha FCAP?</value>
+          </text>
+          <text id="note/currently_not-saving-label">
+            <value>Lembani chifukwa chimene mudzi suukusokha</value>
+          </text>
+          <text id="note/currently_not-saving-1-label">
+            <value>Mudzi suunayambe kusonkha ndalama</value>
+          </text>
+          <text id="note/currently_not-saving-2-label">
+            <value>Mudzi wamaliza gawo losankha ndalama</value>
+          </text>
+          <text id="note/currently_not-saving-others_96-label">
+            <value>zina</value>
+          </text>
+          <text id="note/if_other_please_specify-label">
+            <value>Ngati pali zina, fotokozani</value>
+          </text>
+          <text id="note/hh_saving-label">
+            <value>Ndi mabanja angati omwe akusokha ndalama?</value>
+          </text>
+          <text id="note/males_saving-label">
+            <value>Ndi amuna angati omwe akusokha ndalama?</value>
+          </text>
+          <text id="note/females_saving-label">
+            <value>Ndi akazi angati omwe akusokha ndalama?</value>
+          </text>
+          <text id="note/amt_savings-label">
+            <value>Kuthumba lazosonkha lamudzi wanu kuli ndalama zingati?</value>
+          </text>
+          <text id="note/amt_savings-hint">
+            <value>
+Malawian Kwacha</value>
+          </text>
+          <text id="note/savings_for_the_independent_project-label">
+            <value>zosonkha za chitukuko choziimila pachokha</value>
+          </text>
+          <text id="note/savings_for_the_vslaloaning-label">
+            <value>Ndindalama zingati mwazosonkha zanu zomwe zikuchokela kuthumba lobweleka ndikubwelekesa (banki nkhonde)?</value>
+          </text>
+          <text id="note/savings_for_the_mg_project-label">
+            <value>Ndi ndalama zingati mwa ndalama zosungazi zikugwiritsidwa ntchito pothandizira chitukoko cha FCAP?</value>
+          </text>
+          <text id="note/next_meeting_date-label">
+            <value>Lembani siku lankumano osatila</value>
+          </text>
+          <text id="/Untitled_20260316111746/advocacy:label">
+            <value>-</value>
+          </text>
+          <text id="/Untitled_20260316111746/advocacy/advocacy_attempts:label">
+            <value>Kodi mudzi uno udafikilako mabungwe ena ngakhalenso a boma ndicholinga chopempha thandizo?</value>
+          </text>
+          <text id="/Untitled_20260316111746/advocacy/advocacy_attempts/yes:label">
+            <value>Eya</value>
+          </text>
+          <text id="/Untitled_20260316111746/advocacy/advocacy_attempts/no:label">
+            <value>Ayi</value>
+          </text>
+          <text id="/Untitled_20260316111746/advocacy/advocacy_attempts_yes:label">
+            <value>Kodi ndi mabungwe ati womwe mudzi uno udafikalako ndi cholinga chokapempha thandizo?</value>
+          </text>
+          <text id="/Untitled_20260316111746/advocacy/advocacy_attempts_yes/ngos:label">
+            <value>mabungwe omwe si a boma</value>
+          </text>
+          <text id="/Untitled_20260316111746/advocacy/advocacy_attempts_yes/lg:label">
+            <value>Mabungwe a boma</value>
+          </text>
+          <text id="/Untitled_20260316111746/advocacy/advocacy_attempts_yes/others:label">
+            <value>Ena</value>
+          </text>
+          <text id="/Untitled_20260316111746/advocacy/advocacy_attempts_no:label">
+            <value>Kodi ndifukwa chani chimene mudzi uno sunayeseleko kupempha chithandizo?</value>
+          </text>
+          <text id="/Untitled_20260316111746/advocacy/advocacy_received:label">
+            <value>Kodi mudzi uno udalandila chithandizo chomwe udapempha?</value>
+          </text>
+          <text id="/Untitled_20260316111746/advocacy/advocacy_received_type:label">
+            <value>Kodi ndi chithandizo chanji chomwe mudzi uno udalandila?</value>
+          </text>
+          <text id="/Untitled_20260316111746/advocacy/advocacy_received_type/monetary:label">
+            <value>Ndalama za tharansipoti</value>
+          </text>
+          <text id="/Untitled_20260316111746/advocacy/advocacy_received_type/in_kind:label">
+            <value>Katundu</value>
+          </text>
+          <text id="/Untitled_20260316111746/advocacy/advocacy_received_type/both_monetary_inkind:label">
+            <value>Ndalama ndi Katundu</value>
+          </text>
+          <text id="next_meeting_date-label">
+            <value>Nkumana wina uzachitika liti?</value>
+          </text>
+          <text id="next_meeting_date-constraintMsg">
+            <value>Sikuli lisakhale lamsogolo</value>
+          </text>
+        </translation>
+        <translation lang="tum">
+          <text id="lang-code-label">
+            <value>en</value>
+          </text>
+          <text id="date_of_meeting-label">
+            <value>Date of Meeting</value>
+          </text>
+          <text id="date_of_meeting-constraintMsg">
+            <value>This date should not be in the future</value>
+          </text>
+          <text id="meeting_conducted-label">
+            <value>Did the planned community/committee meeting happen</value>
+          </text>
+          <text id="community_meeting-label">
+            <value>Community Meeting</value>
+          </text>
+          <text id="community_meeting/step-label">
+            <value>Which FCAP step is the Village in?</value>
+          </text>
+          <text id="community_meeting/attach_a_photo_for_the_meeting-label">
+            <value>Attach a photo for the meeting</value>
+          </text>
+          <text id="community_meeting/meeting_type-label">
+            <value>Meeting type</value>
+          </text>
+          <text id="community_meeting/meeting_type-community_meeting-label">
+            <value>Community meeting</value>
+          </text>
+          <text id="community_meeting/meeting_type-committee_meeting-label">
+            <value>Committee meeting</value>
+          </text>
+          <text id="community_meeting/activity_number-label">
+            <value>How many activities were handled during the meeting?</value>
+          </text>
+          <text id="community_meeting/community_meeting_activities-label">
+            <value>Community meeting activities</value>
+          </text>
+          <text id="community_meeting/community_meeting_activities/activity-label">
+            <value>Please select activity <output value="/data/community_meeting/community_meeting_activities/activity_position"/> that was conducted during the meeting?</value>
+          </text>
+          <text id="community_meeting/community_meeting_activities/activity_completed-label">
+            <value>Was activity <output value="/data/community_meeting/community_meeting_activities/activity_position"/> completed?</value>
+          </text>
+          <text id="community_meeting/community_meeting_activities/activity_completed-yes-label">
+            <value>Yes</value>
+          </text>
+          <text id="community_meeting/community_meeting_activities/activity_completed-no-label">
+            <value>No</value>
+          </text>
+          <text id="community_meeting/question5-label">
+            <value>Community meeting attendance &amp; participation</value>
+          </text>
+          <text id="community_meeting/question5/hh_represented_at_the_meeting-label">
+            <value>How many households are represented at the meeting?</value>
+          </text>
+          <text id="community_meeting/question5/male_attendance-label">
+            <value>How many males attended the meeting?</value>
+          </text>
+          <text id="community_meeting/question5/female_attendance-label">
+            <value>How many females attended the meeting?</value>
+          </text>
+          <text id="community_meeting/question5/members_with_disability-label">
+            <value>How many people with disabilities attended the meeting?</value>
+          </text>
+          <text id="community_meeting/question5/male_participants-label">
+            <value>How many males spoke during the meeting?</value>
+          </text>
+          <text id="community_meeting/question5/male_participants-constraintMsg">
+            <value>Male participants cant exceed male attendees</value>
+          </text>
+          <text id="community_meeting/question5/female_participants-label">
+            <value>How many females spoke during the meeting?</value>
+          </text>
+          <text id="community_meeting/question5/female_participants-constraintMsg">
+            <value>Female participants cant exceed female attendees</value>
+          </text>
+          <text id="community_meeting/meeting_details-label">
+            <value>Additional community meeting details</value>
+          </text>
+          <text id="community_meeting/meeting_details/male_leader_attendence-label">
+            <value>How many male FCAP committee leaders attended the meeting?</value>
+          </text>
+          <text id="community_meeting/meeting_details/female_leader_attendence-label">
+            <value>How many female FCAP committee leaders attended the meeting?</value>
+          </text>
+          <text id="community_meeting/meeting_details/female_leader_attendence-hint">
+            <value>only when the fcap leaders are elected</value>
+          </text>
+          <text id="community_meeting/meeting_details/SparkTrainer_attendance-label">
+            <value>Was the meeting attended by a Spark trainer?</value>
+          </text>
+          <text id="community_meeting/meeting_details/SEDO_attendance-label">
+            <value>Was the meeting attended by a AFES/SPRODETA/Njira/Soff Staff/trainer?</value>
+          </text>
+          <text id="community_meeting/meeting_details/meeting_on_time-label">
+            <value>Did the meeting start on time?</value>
+          </text>
+          <text id="community_meeting/meeting_details/why_did_the_meeting_start_late-label">
+            <value>Why did the meeting start late?</value>
+          </text>
+          <text id="community_meeting/meeting_details/financial_update-label">
+            <value>Did the FCAP leaders provide an update on finances during the meeting?</value>
+          </text>
+          <text id="community_meeting/meeting_details/updated_cash_book-label">
+            <value>Did the FCAP leaders present an updated (current) cash book?</value>
+          </text>
+          <text id="community_meeting/meeting_details/accurate_cash_book-label">
+            <value>Was the cash book accurate?</value>
+          </text>
+          <text id="community_meeting/meeting_details/meeting_conflict-label">
+            <value>Were there any disagreements/conflicts during the meeting?</value>
+          </text>
+          <text id="community_meeting/meeting_details/conflict_details-label">
+            <value>What were the disagreements about?</value>
+          </text>
+          <text id="community_meeting/meeting_details/conflict_resolved-label">
+            <value>Were the disagreements resolved?</value>
+          </text>
+          <text id="meeting_did_not_happen-label">
+            <value>Meeting did not happen</value>
+          </text>
+          <text id="meeting_did_not_happen/question2-label">
+            <value>Why didn't the meeting happen?</value>
+          </text>
+          <text id="meeting_did_not_happen/question2-bad_weather-label">
+            <value>Bad weather</value>
+          </text>
+          <text id="meeting_did_not_happen/question2-poor_mobilization-label">
+            <value>Poor mobilization</value>
+          </text>
+          <text id="meeting_did_not_happen/question2-transport_difficulty-label">
+            <value>Transport difficulty</value>
+          </text>
+          <text id="meeting_did_not_happen/question2-community_delayed-label">
+            <value>Community delayed</value>
+          </text>
+          <text id="meeting_did_not_happen/question2-other-label">
+            <value>Other</value>
+          </text>
+          <text id="meeting_did_not_happen/other_reason-label">
+            <value>If the meeeting reason is "Other" please specify it here</value>
+          </text>
+          <text id="meeting_did_not_happen/expected_meeting_date-label">
+            <value>State the date when this postponed/cancelled meeting was supposed to happen</value>
+          </text>
+          <text id="meeting_did_not_happen/expected_meeting_date-constraintMsg">
+            <value>This date can't be in the future</value>
+          </text>
+          <text id="meeting_did_not_happen/reschedule_date-label">
+            <value>When will this postponed/cancelled meeting happen?</value>
+          </text>
+          <text id="meeting_did_not_happen/reschedule_date-constraintMsg">
+            <value>Itariki y'inama igomba kuba ejo hazaza</value>
+          </text>
+          <text id="independent_projects-label">
+            <value>Independent Projects</value>
+          </text>
+          <text id="independent_projects/ind_projects-label">
+            <value>Independent Projects</value>
+          </text>
+          <text id="independent_projects/implementing_ind_project-label">
+            <value>Is the village currently implementing any independent projects?</value>
+          </text>
+          <text id="independent_projects/ind_project_number-label">
+            <value>How many independent projects are currently running?</value>
+          </text>
+          <text id="independent_projects/project_details-label">
+            <value>Project details</value>
+          </text>
+          <text id="independent_projects/project_details/project_details_repeat-label">
+            <value>Project details</value>
+          </text>
+          <text id="independent_projects/project_details/project_details_repeat/when_did_the_independent_project_start-label">
+            <value>When did the independent project start?</value>
+          </text>
+          <text id="independent_projects/project_details/project_details_repeat/what_is_the_nature_of_the_project-label">
+            <value>What is the nature of the project?</value>
+          </text>
+          <text id="independent_projects/project_details/project_details_repeat/what_is_the_nature_of_the_project-1-label">
+            <value>Animal rearing</value>
+          </text>
+          <text id="independent_projects/project_details/project_details_repeat/what_is_the_nature_of_the_project-2-label">
+            <value>Crop husbandry</value>
+          </text>
+          <text id="independent_projects/project_details/project_details_repeat/what_is_the_nature_of_the_project-3-label">
+            <value>Insurance</value>
+          </text>
+          <text id="independent_projects/project_details/project_details_repeat/what_is_the_nature_of_the_project-4-label">
+            <value>Business</value>
+          </text>
+          <text id="independent_projects/project_details/project_details_repeat/what_is_the_nature_of_the_project-5-label">
+            <value>Construction</value>
+          </text>
+          <text id="independent_projects/project_details/project_details_repeat/what_is_the_nature_of_the_project-6-label">
+            <value>VSLA</value>
+          </text>
+          <text id="independent_projects/project_details/project_details_repeat/what_is_the_nature_of_the_project-7-label">
+            <value>Buying household items</value>
+          </text>
+          <text id="independent_projects/project_details/project_details_repeat/what_is_the_nature_of_the_project-98-label">
+            <value>Others</value>
+          </text>
+          <text id="independent_projects/project_details/project_details_repeat/if_others_please_specify-label">
+            <value>If Others, please specify</value>
+          </text>
+          <text id="independent_projects/project_details/project_details_repeat/what_type_of_business_is_the_community_implementing-label">
+            <value>What type of business is the community implementing?</value>
+          </text>
+          <text id="independent_projects/project_details/project_details_repeat/what_type_of_business_is_the_community_implementing-1-label">
+            <value>Transport</value>
+          </text>
+          <text id="independent_projects/project_details/project_details_repeat/what_type_of_business_is_the_community_implementing-2-label">
+            <value>Produce</value>
+          </text>
+          <text id="independent_projects/project_details/project_details_repeat/what_type_of_business_is_the_community_implementing-3-label">
+            <value>Processing</value>
+          </text>
+          <text id="independent_projects/project_details/project_details_repeat/what_type_of_business_is_the_community_implementing-4-label">
+            <value>Wholesale/Retail shop</value>
+          </text>
+          <text id="independent_projects/project_details/project_details_repeat/what_type_of_business_is_the_community_implementing-5-label">
+            <value>Mobile money</value>
+          </text>
+          <text id="independent_projects/project_details/project_details_repeat/copy-1-of-what_type_of_construction_is_the_community_implementing-label">
+            <value>What type of construction is the community implementing?</value>
+          </text>
+          <text id="independent_projects/project_details/project_details_repeat/copy-1-of-what_type_of_construction_is_the_community_implementing-1-label">
+            <value>Schools</value>
+          </text>
+          <text id="independent_projects/project_details/project_details_repeat/copy-1-of-what_type_of_construction_is_the_community_implementing-3-label">
+            <value>Water facility</value>
+          </text>
+          <text id="independent_projects/project_details/project_details_repeat/copy-1-of-what_type_of_construction_is_the_community_implementing-4-label">
+            <value>Road</value>
+          </text>
+          <text id="independent_projects/project_details/project_details_repeat/copy-1-of-what_type_of_construction_is_the_community_implementing-5-label">
+            <value>Bridge</value>
+          </text>
+          <text id="independent_projects/project_details/project_details_repeat/copy-1-of-what_type_of_construction_is_the_community_implementing-6-label">
+            <value>Rental</value>
+          </text>
+          <text id="independent_projects/project_details/ind_project_description-label">
+            <value>Provide a detailed description of the project</value>
+          </text>
+          <text id="independent_projects/project_details/total_community_investment-label">
+            <value>How much money has the community invested in this independent project to-date?</value>
+          </text>
+          <text id="independent_projects/project_details/funding_source-label">
+            <value>Where does the community obtain money to implement this project?</value>
+          </text>
+          <text id="independent_projects/project_details/funding_source-1-label">
+            <value>Community savings</value>
+          </text>
+          <text id="independent_projects/project_details/funding_source-2-label">
+            <value>Other funders (not Spark)</value>
+          </text>
+          <text id="independent_projects/project_details/other_source-label">
+            <value>Please state the funding source for this project</value>
+          </text>
+          <text id="independent_projects/project_details/project_beneficiaries-label">
+            <value>How many households within the community are currently benefiting from this project?</value>
+          </text>
+          <text id="/Untitled_20260316111746/project_monitoring:label">
+            <value>Project Monitoring</value>
+          </text>
+          <text id="/Untitled_20260316111746/project_monitoring/microgrant_rounds:label">
+            <value>How many Microgrant rounds has this community received?</value>
+          </text>
+          <text id="/Untitled_20260316111746/project_monitoring/microgrant_rounds/1:label">
+            <value>1 round</value>
+          </text>
+          <text id="/Untitled_20260316111746/project_monitoring/microgrant_rounds/2:label">
+            <value>2 rounds</value>
+          </text>
+          <text id="/Untitled_20260316111746/project_monitoring/project_monitoring_repeat:label">
+            <value>Project Monitoring Repeat</value>
+          </text>
+          <text id="/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/project_nature:label">
+            <value>Which Microgrant project round are you reporting on?</value>
+          </text>
+          <text id="/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/project_nature/1:label">
+            <value>Microgrant project one</value>
+          </text>
+          <text id="/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/project_nature/2:label">
+            <value>Microgrant project two</value>
+          </text>
+          <text id="/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/project_type:label">
+            <value>What type of microgrant project is the community implementing?</value>
+          </text>
+          <text id="/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/project_type/animal_rearing:label">
+            <value>Animal Rearing</value>
+          </text>
+          <text id="/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/project_type/crop_husbandry:label">
+            <value>Crop husbandry</value>
+          </text>
+          <text id="/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/project_type/construction:label">
+            <value>Construction</value>
+          </text>
+          <text id="/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/project_type/vsla:label">
+            <value>Community Savings and Loan Association (VSLA)</value>
+          </text>
+          <text id="/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/project_type/business:label">
+            <value>Business</value>
+          </text>
+          <text id="/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/animal_type:label">
+            <value>Which animals is the community currently rearing?</value>
+          </text>
+          <text id="/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/animal_type/dairy_cattle:label">
+            <value>Dairy cattle</value>
+          </text>
+          <text id="/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/animal_type/beef_cattle:label">
+            <value>Beef cattle</value>
+          </text>
+          <text id="/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/animal_type/ploughing_oxen:label">
+            <value>Ploughing Oxen</value>
+          </text>
+          <text id="/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/animal_type/goats:label">
+            <value>Goats</value>
+          </text>
+          <text id="/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/animal_type/pigs:label">
+            <value>Pigs</value>
+          </text>
+          <text id="/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/animal_type/sheep:label">
+            <value>Sheep</value>
+          </text>
+          <text id="/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/animal_type/chicken:label">
+            <value>Chicken</value>
+          </text>
+          <text id="/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/animal_type/turkeys:label">
+            <value>Turkeys</value>
+          </text>
+          <text id="/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/animal_type/ducks:label">
+            <value>Ducks</value>
+          </text>
+          <text id="/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/total_animals:label">
+            <value>How many animals does the community currently own in total (including young ones)?</value>
+          </text>
+          <text id="/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/crop_type:label">
+            <value>What type of crops is the community currently growing?</value>
+          </text>
+          <text id="/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/crop_type/tea:label">
+            <value>Tea</value>
+          </text>
+          <text id="/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/crop_type/coffee:label">
+            <value>Coffee</value>
+          </text>
+          <text id="/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/crop_type/cotton:label">
+            <value>Cotton</value>
+          </text>
+          <text id="/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/crop_type/plantains:label">
+            <value>Plantains</value>
+          </text>
+          <text id="/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/crop_type/sugar_cane:label">
+            <value>Sugar cane</value>
+          </text>
+          <text id="/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/crop_type/cocoa:label">
+            <value>Cocoa</value>
+          </text>
+          <text id="/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/crop_type/vanilla:label">
+            <value>Vanilla</value>
+          </text>
+          <text id="/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/crop_type/maize:label">
+            <value>Maize</value>
+          </text>
+          <text id="/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/crop_type/beans:label">
+            <value>Beans</value>
+          </text>
+          <text id="/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/crop_type/g_nuts:label">
+            <value>Ground nuts (Gnuts)</value>
+          </text>
+          <text id="/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/crop_type/potatoes:label">
+            <value>Potatoes</value>
+          </text>
+          <text id="/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/crop_type/peas:label">
+            <value>Peas</value>
+          </text>
+          <text id="/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/crop_type/tomatoes:label">
+            <value>Tomatoes</value>
+          </text>
+          <text id="/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/community_project_type_construction:label">
+            <value>What type of construction is the community implementing?</value>
+          </text>
+          <text id="/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/community_project_type_construction/schools:label">
+            <value>Schools</value>
+          </text>
+          <text id="/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/community_project_type_construction/health_facility:label">
+            <value>Health facility</value>
+          </text>
+          <text id="/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/community_project_type_construction/water_facility:label">
+            <value>Water facility</value>
+          </text>
+          <text id="/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/community_project_type_construction/road_bridge:label">
+            <value>Road/ Bridge</value>
+          </text>
+          <text id="/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/community_project_type_construction/rental_warehouses_sf:label">
+            <value>Rental/Warehouses/Storage Facilities</value>
+          </text>
+          <text id="/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/community_project_type_construction/market:label">
+            <value>Market</value>
+          </text>
+          <text id="/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/community_project_type_construction/town_hall:label">
+            <value>Town Hall</value>
+          </text>
+          <text id="/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/community_project_type_construction/electricity:label">
+            <value>Electricity</value>
+          </text>
+          <text id="/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/construction_project_state:label">
+            <value>What is the current state of the construction project that the community implemented?</value>
+          </text>
+          <text id="/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/construction_project_state/1:label">
+            <value>Very good condition</value>
+          </text>
+          <text id="/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/construction_project_state/2:label">
+            <value>Moderately good condition but requires some work</value>
+          </text>
+          <text id="/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/construction_project_state/3:label">
+            <value>Bad condition</value>
+          </text>
+          <text id="/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/community_project_type_business:label">
+            <value>What is the nature of the business operated by the community?</value>
+          </text>
+          <text id="/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/community_project_type_business/transport:label">
+            <value>Transport</value>
+          </text>
+          <text id="/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/community_project_type_business/produce:label">
+            <value>Produce</value>
+          </text>
+          <text id="/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/community_project_type_business/processing:label">
+            <value>Processing</value>
+          </text>
+          <text id="/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/community_project_type_business/wholesale_retail_shop:label">
+            <value>Wholesale/Retail shop</value>
+          </text>
+          <text id="/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/community_project_type_business/mobile_money:label">
+            <value>Mobile money</value>
+          </text>
+          <text id="/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/community_project_type_business/bee_keeping:label">
+            <value>Bee Keeping</value>
+          </text>
+          <text id="/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/beneficiaries_hhds:label">
+            <value>How many households in the community are directly benefiting from this Microgrant project?</value>
+          </text>
+          <text id="/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/nps:label">
+            <value>On a scale from 0 to 10, how likely are you to recommend FCAP to another community?</value>
+          </text>
+          <text id="/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/nps:hint">
+            <value>0 = Not at all likely
+10 = Extremely likely</value>
+          </text>
+          <text id="project_monitoring/project_monitoring_repeat/nps-constraintMsg">
+            <value>Please enter a number between 0 and 10.</value>
+          </text>
+          <text id="/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/nps_probe:label">
+            <value>What is the main reason for the score you gave?</value>
+          </text>
+          <text id="/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/external_financing:label">
+            <value>Has the community obtained any external financing for this Microgrant project?</value>
+          </text>
+          <text id="/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/external_financing_value:label">
+            <value>How much external financing has the community received for this Microgrant project in local currency?</value>
+          </text>
+          <text id="/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/external_financing_no:label">
+            <value>Why has the community not sought external financing for this project?</value>
+          </text>
+          <text id="/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/mg_challenges:label">
+            <value>What challenges is this community facing in implementing this Microgrant project?</value>
+          </text>
+          <text id="note-label">
+            <value>Savings</value>
+          </text>
+          <text id="note/this_section_captures_the_progress_of_savings_within_your_community-label">
+            <value>This section captures the progress of savings within your community</value>
+          </text>
+          <text id="note/currently_saving-label">
+            <value>Is the community currently saving?</value>
+          </text>
+          <text id="note/currently_saving-1-label">
+            <value>Yes</value>
+          </text>
+          <text id="note/currently_saving-2-label">
+            <value>No</value>
+          </text>
+          <text id="/Untitled_20260316111746/Savings/savings_use:label">
+            <value>Why is the community saving?</value>
+          </text>
+          <text id="/Untitled_20260316111746/Savings/savings_use/independent_project:label">
+            <value>Independent Project</value>
+          </text>
+          <text id="/Untitled_20260316111746/Savings/savings_use/vsla:label">
+            <value>Community Savings and Loan Association (VSLA)</value>
+          </text>
+          <text id="note/savings_use-mg_project-label">
+            <value>To supplement the MG project</value>
+          </text>
+          <text id="note/currently_not-saving-label">
+            <value>Capture the reason why the community is not saving?</value>
+          </text>
+          <text id="note/currently_not-saving-1-label">
+            <value>The community has not started a savings group</value>
+          </text>
+          <text id="note/currently_not-saving-2-label">
+            <value>They have ended their savings cycle</value>
+          </text>
+          <text id="note/currently_not-saving-others_96-label">
+            <value>Others</value>
+          </text>
+          <text id="note/if_other_please_specify-label">
+            <value>If Others, please specify</value>
+          </text>
+          <text id="note/hh_saving-label">
+            <value>How many households are currently saving with the FCAP savings group?</value>
+          </text>
+          <text id="note/males_saving-label">
+            <value>How many males are currently saving with the FCAP group as of Today?</value>
+          </text>
+          <text id="note/females_saving-label">
+            <value>How many females are currently saving with the FCAP group as of Today?</value>
+          </text>
+          <text id="note/amt_savings-label">
+            <value>How much money does the community have in Savings as of Today?</value>
+          </text>
+          <text id="note/amt_savings-hint">
+            <value>
+Malawian Kwacha</value>
+          </text>
+          <text id="note/savings_for_the_independent_project-label">
+            <value>How much of these savings are for the independent project?</value>
+          </text>
+          <text id="note/savings_for_the_vslaloaning-label">
+            <value>How much of these savings are for the VSLA/Loaning?</value>
+          </text>
+          <text id="note/savings_for_the_mg_project-label">
+            <value>How much of these savings are for supplementing the MG project?</value>
+          </text>
+          <text id="note/next_meeting_date-label">
+            <value>What is the date for the next meeting?</value>
+          </text>
+          <text id="/Untitled_20260316111746/advocacy:label">
+            <value>Advocacy</value>
+          </text>
+          <text id="/Untitled_20260316111746/advocacy/advocacy_attempts:label">
+            <value>Has this community engaged in any advocacy efforts toward other organisations or the government to seek support?</value>
+          </text>
+          <text id="/Untitled_20260316111746/advocacy/advocacy_attempts/yes:label">
+            <value>Yes</value>
+          </text>
+          <text id="/Untitled_20260316111746/advocacy/advocacy_attempts/no:label">
+            <value>No</value>
+          </text>
+          <text id="/Untitled_20260316111746/advocacy/advocacy_attempts_yes:label">
+            <value>Which organisations did the community reach out to?</value>
+          </text>
+          <text id="/Untitled_20260316111746/advocacy/advocacy_attempts_yes/ngos:label">
+            <value>NGOs</value>
+          </text>
+          <text id="/Untitled_20260316111746/advocacy/advocacy_attempts_yes/lg:label">
+            <value>Local Government/Subcounty</value>
+          </text>
+          <text id="/Untitled_20260316111746/advocacy/advocacy_attempts_yes/others:label">
+            <value>Others</value>
+          </text>
+          <text id="/Untitled_20260316111746/advocacy/advocacy_attempts_no:label">
+            <value>Why has the community not made any advocacy attempts?</value>
+          </text>
+          <text id="/Untitled_20260316111746/advocacy/advocacy_received:label">
+            <value>Did the community receive the requested support?</value>
+          </text>
+          <text id="/Untitled_20260316111746/advocacy/advocacy_received_type:label">
+            <value>What type of support did the community receive?</value>
+          </text>
+          <text id="/Untitled_20260316111746/advocacy/advocacy_received_type/monetary:label">
+            <value>Monetary support</value>
+          </text>
+          <text id="/Untitled_20260316111746/advocacy/advocacy_received_type/in_kind:label">
+            <value>In-Kind support</value>
+          </text>
+          <text id="/Untitled_20260316111746/advocacy/advocacy_received_type/both_monetary_inkind:label">
+            <value>Both Monetary and In-Kind support</value>
+          </text>
+          <text id="next_meeting_date-label">
+            <value>What is the date for the next meeting?</value>
+          </text>
+          <text id="next_meeting_date-constraintMsg">
+            <value>Next meeting date should be in the future</value>
+          </text>
+        </translation>
+      </itext>
+      <bind nodeset="/data/case/@date_modified" type="xsd:dateTime" calculate="/data/meta/timeEnd"/>
+      <bind nodeset="/data/case/@user_id" calculate="/data/meta/userID"/>
+      <bind nodeset="/data/case/@case_id" calculate="instance('commcaresession')/session/data/case_id"/>
+      <bind nodeset="/data/case/update/Total_Attendance" calculate="/data/community_meeting/question5/Total_Attendance" relevant="count(/data/community_meeting/question5/Total_Attendance) &gt; 0"/>
+      <bind nodeset="/data/case/update/Total_Participation" calculate="/data/community_meeting/question5/Total_participation" relevant="count(/data/community_meeting/question5/Total_participation) &gt; 0"/>
+      <bind nodeset="/data/case/update/date_of_meeting" calculate="/data/date_of_meeting" relevant="count(/data/date_of_meeting) &gt; 0"/>
+      <bind nodeset="/data/case/update/project_id" calculate="/data/project_id" relevant="count(/data/project_id) &gt; 0"/>
+      <bind nodeset="/data/case/update/village" calculate="/data/village" relevant="count(/data/village) &gt; 0"/>
+      <setvalue ref="/data/meta/deviceID" value="instance('commcaresession')/session/context/deviceid" event="xforms-ready"/>
+      <setvalue ref="/data/meta/timeStart" value="now()" event="xforms-ready"/>
+      <bind nodeset="/data/meta/timeStart" type="xsd:dateTime"/>
+      <setvalue ref="/data/meta/timeEnd" value="now()" event="xforms-revalidate"/>
+      <bind nodeset="/data/meta/timeEnd" type="xsd:dateTime"/>
+      <setvalue ref="/data/meta/username" value="instance('commcaresession')/session/context/username" event="xforms-ready"/>
+      <setvalue ref="/data/meta/userID" value="instance('commcaresession')/session/context/userid" event="xforms-ready"/>
+      <setvalue ref="/data/meta/instanceID" value="uuid()" event="xforms-ready"/>
+      <setvalue ref="/data/meta/appVersion" value="instance('commcaresession')/session/context/appversion" event="xforms-ready"/>
+      <setvalue ref="/data/meta/drift" value="if(count(instance('commcaresession')/session/context/drift) = 1, instance('commcaresession')/session/context/drift, '')" event="xforms-revalidate"/>
+    </model>
+    <vellum:hashtags>{"#case/phase":null,"#case/case_name":null,"#case/project_id":null,"#case/Year_of_Expansion":null}</vellum:hashtags>
+    <vellum:hashtagTransforms>{"prefixes":{"#case/":"instance('casedb')/casedb/case[@case_id = instance('commcaresession')/session/data/case_id]/","#user/":"instance('casedb')/casedb/case[@case_type = 'commcare-user'][hq_user_id = instance('commcaresession')/session/context/userid]/"}}</vellum:hashtagTransforms>
+  </h:head>
+  <h:body>
+    <trigger ref="/data/lang-code" appearance="minimal">
+      <label ref="jr:itext('lang-code-label')"/>
+    </trigger>
+    <input ref="/data/date_of_meeting">
+      <label ref="jr:itext('date_of_meeting-label')"/>
+      <alert ref="jr:itext('date_of_meeting-constraintMsg')"/>
+    </input>
+    <select1 ref="/data/meeting_conducted">
+      <label ref="jr:itext('meeting_conducted-label')"/>
+      <item>
+        <label ref="jr:itext('community_meeting/community_meeting_activities/activity_completed-yes-label')"/>
+        <value>yes</value>
+      </item>
+      <item>
+        <label ref="jr:itext('community_meeting/community_meeting_activities/activity_completed-no-label')"/>
+        <value>no</value>
+      </item>
+    </select1>
+    <group ref="/data/community_meeting">
+      <label ref="jr:itext('community_meeting-label')"/>
+      <select1 ref="/data/community_meeting/step">
+        <label ref="jr:itext('community_meeting/step-label')"/>
+        <itemset nodeset="instance('malawi_steps')/malawi_steps_list/malawi_steps[phase_id = instance('casedb')/casedb/case[@case_id = instance('commcaresession')/session/data/case_id]/phase and fcap_version = /data/year_of_expansion]">
+          <label ref="step[@lang = jr:itext('lang-code-label')]"/>
+          <value ref="step_id"/>
+          <sort ref="step_number"/>
+        </itemset>
+      </select1>
+      <upload mediatype="image/*" jr:imageDimensionScaledMax="1000px" ref="/data/community_meeting/attach_a_photo_for_the_meeting">
+        <label ref="jr:itext('community_meeting/attach_a_photo_for_the_meeting-label')"/>
+      </upload>
+      <select1 ref="/data/community_meeting/meeting_type">
+        <label ref="jr:itext('community_meeting/meeting_type-label')"/>
+        <item>
+          <label ref="jr:itext('community_meeting/meeting_type-community_meeting-label')"/>
+          <value>community_meeting</value>
+        </item>
+        <item>
+          <label ref="jr:itext('community_meeting/meeting_type-committee_meeting-label')"/>
+          <value>committee_meeting</value>
+        </item>
+      </select1>
+      <input ref="/data/community_meeting/activity_number">
+        <label ref="jr:itext('community_meeting/activity_number-label')"/>
+      </input>
+      <group>
+        <label ref="jr:itext('community_meeting/community_meeting_activities-label')"/>
+        <repeat jr:count="/data/community_meeting/activity_number" jr:noAddRemove="true()" nodeset="/data/community_meeting/community_meeting_activities">
+          <select ref="/data/community_meeting/community_meeting_activities/activity">
+            <label ref="jr:itext('community_meeting/community_meeting_activities/activity-label')"/>
+            <itemset nodeset="instance('malawi_activities')/malawi_activities_list/malawi_activities[step_id = /data/community_meeting/step]">
+              <label ref="activity[@lang = jr:itext('lang-code-label')]"/>
+              <value ref="activity_id"/>
+              <sort ref="activity_number"/>
+            </itemset>
+          </select>
+          <select1 ref="/data/community_meeting/community_meeting_activities/activity_completed">
+            <label ref="jr:itext('community_meeting/community_meeting_activities/activity_completed-label')"/>
+            <item>
+              <label ref="jr:itext('community_meeting/community_meeting_activities/activity_completed-yes-label')"/>
+              <value>yes</value>
+            </item>
+            <item>
+              <label ref="jr:itext('community_meeting/community_meeting_activities/activity_completed-no-label')"/>
+              <value>no</value>
+            </item>
+          </select1>
+        </repeat>
+      </group>
+      <group ref="/data/community_meeting/question5">
+        <label ref="jr:itext('community_meeting/question5-label')"/>
+        <input ref="/data/community_meeting/question5/hh_represented_at_the_meeting">
+          <label ref="jr:itext('community_meeting/question5/hh_represented_at_the_meeting-label')"/>
+        </input>
+        <input ref="/data/community_meeting/question5/male_attendance">
+          <label ref="jr:itext('community_meeting/question5/male_attendance-label')"/>
+        </input>
+        <input ref="/data/community_meeting/question5/female_attendance">
+          <label ref="jr:itext('community_meeting/question5/female_attendance-label')"/>
+        </input>
+        <input ref="/data/community_meeting/question5/members_with_disability">
+          <label ref="jr:itext('community_meeting/question5/members_with_disability-label')"/>
+        </input>
+        <input ref="/data/community_meeting/question5/male_participants">
+          <label ref="jr:itext('community_meeting/question5/male_participants-label')"/>
+          <alert ref="jr:itext('community_meeting/question5/male_participants-constraintMsg')"/>
+        </input>
+        <input ref="/data/community_meeting/question5/female_participants">
+          <label ref="jr:itext('community_meeting/question5/female_participants-label')"/>
+          <alert ref="jr:itext('community_meeting/question5/female_participants-constraintMsg')"/>
+        </input>
+      </group>
+      <group ref="/data/community_meeting/meeting_details">
+        <label ref="jr:itext('community_meeting/meeting_details-label')"/>
+        <input ref="/data/community_meeting/meeting_details/male_leader_attendence">
+          <label ref="jr:itext('community_meeting/meeting_details/male_leader_attendence-label')"/>
+          <hint ref="jr:itext('community_meeting/meeting_details/female_leader_attendence-hint')"/>
+        </input>
+        <input ref="/data/community_meeting/meeting_details/female_leader_attendence">
+          <label ref="jr:itext('community_meeting/meeting_details/female_leader_attendence-label')"/>
+          <hint ref="jr:itext('community_meeting/meeting_details/female_leader_attendence-hint')"/>
+        </input>
+        <select1 ref="/data/community_meeting/meeting_details/SparkTrainer_attendance">
+          <label ref="jr:itext('community_meeting/meeting_details/SparkTrainer_attendance-label')"/>
+          <item>
+            <label ref="jr:itext('community_meeting/community_meeting_activities/activity_completed-yes-label')"/>
+            <value>yes</value>
+          </item>
+          <item>
+            <label ref="jr:itext('community_meeting/community_meeting_activities/activity_completed-no-label')"/>
+            <value>no</value>
+          </item>
+        </select1>
+        <select1 ref="/data/community_meeting/meeting_details/SEDO_attendance">
+          <label ref="jr:itext('community_meeting/meeting_details/SEDO_attendance-label')"/>
+          <item>
+            <label ref="jr:itext('community_meeting/community_meeting_activities/activity_completed-yes-label')"/>
+            <value>yes</value>
+          </item>
+          <item>
+            <label ref="jr:itext('community_meeting/community_meeting_activities/activity_completed-no-label')"/>
+            <value>no</value>
+          </item>
+        </select1>
+        <select1 ref="/data/community_meeting/meeting_details/meeting_on_time">
+          <label ref="jr:itext('community_meeting/meeting_details/meeting_on_time-label')"/>
+          <item>
+            <label ref="jr:itext('community_meeting/community_meeting_activities/activity_completed-yes-label')"/>
+            <value>yes</value>
+          </item>
+          <item>
+            <label ref="jr:itext('community_meeting/community_meeting_activities/activity_completed-no-label')"/>
+            <value>no</value>
+          </item>
+        </select1>
+        <input ref="/data/community_meeting/meeting_details/why_did_the_meeting_start_late">
+          <label ref="jr:itext('community_meeting/meeting_details/why_did_the_meeting_start_late-label')"/>
+        </input>
+        <select1 ref="/data/community_meeting/meeting_details/financial_update">
+          <label ref="jr:itext('community_meeting/meeting_details/financial_update-label')"/>
+          <item>
+            <label ref="jr:itext('community_meeting/community_meeting_activities/activity_completed-yes-label')"/>
+            <value>yes</value>
+          </item>
+          <item>
+            <label ref="jr:itext('community_meeting/community_meeting_activities/activity_completed-no-label')"/>
+            <value>no</value>
+          </item>
+        </select1>
+        <select1 ref="/data/community_meeting/meeting_details/updated_cash_book">
+          <label ref="jr:itext('community_meeting/meeting_details/updated_cash_book-label')"/>
+          <item>
+            <label ref="jr:itext('community_meeting/community_meeting_activities/activity_completed-yes-label')"/>
+            <value>yes</value>
+          </item>
+          <item>
+            <label ref="jr:itext('community_meeting/community_meeting_activities/activity_completed-no-label')"/>
+            <value>no</value>
+          </item>
+        </select1>
+        <select1 ref="/data/community_meeting/meeting_details/accurate_cash_book">
+          <label ref="jr:itext('community_meeting/meeting_details/accurate_cash_book-label')"/>
+          <item>
+            <label ref="jr:itext('community_meeting/community_meeting_activities/activity_completed-yes-label')"/>
+            <value>yes</value>
+          </item>
+          <item>
+            <label ref="jr:itext('community_meeting/community_meeting_activities/activity_completed-no-label')"/>
+            <value>no</value>
+          </item>
+        </select1>
+        <select1 ref="/data/community_meeting/meeting_details/meeting_conflict">
+          <label ref="jr:itext('community_meeting/meeting_details/meeting_conflict-label')"/>
+          <item>
+            <label ref="jr:itext('community_meeting/community_meeting_activities/activity_completed-yes-label')"/>
+            <value>yes</value>
+          </item>
+          <item>
+            <label ref="jr:itext('community_meeting/community_meeting_activities/activity_completed-no-label')"/>
+            <value>no</value>
+          </item>
+        </select1>
+        <input ref="/data/community_meeting/meeting_details/conflict_details">
+          <label ref="jr:itext('community_meeting/meeting_details/conflict_details-label')"/>
+        </input>
+        <select1 ref="/data/community_meeting/meeting_details/conflict_resolved">
+          <label ref="jr:itext('community_meeting/meeting_details/conflict_resolved-label')"/>
+          <item>
+            <label ref="jr:itext('community_meeting/community_meeting_activities/activity_completed-yes-label')"/>
+            <value>yes</value>
+          </item>
+          <item>
+            <label ref="jr:itext('community_meeting/community_meeting_activities/activity_completed-no-label')"/>
+            <value>no</value>
+          </item>
+        </select1>
+      </group>
+    </group>
+    <group ref="/data/meeting_did_not_happen">
+      <label ref="jr:itext('meeting_did_not_happen-label')"/>
+      <select ref="/data/meeting_did_not_happen/question2">
+        <label ref="jr:itext('meeting_did_not_happen/question2-label')"/>
+        <item>
+          <label ref="jr:itext('meeting_did_not_happen/question2-bad_weather-label')"/>
+          <value>bad_weather</value>
+        </item>
+        <item>
+          <label ref="jr:itext('meeting_did_not_happen/question2-poor_mobilization-label')"/>
+          <value>poor_mobilization</value>
+        </item>
+        <item>
+          <label ref="jr:itext('meeting_did_not_happen/question2-transport_difficulty-label')"/>
+          <value>transport_difficulty</value>
+        </item>
+        <item>
+          <label ref="jr:itext('meeting_did_not_happen/question2-community_delayed-label')"/>
+          <value>community_delayed</value>
+        </item>
+        <item>
+          <label ref="jr:itext('meeting_did_not_happen/question2-other-label')"/>
+          <value>other</value>
+        </item>
+      </select>
+      <input ref="/data/meeting_did_not_happen/other_reason">
+        <label ref="jr:itext('meeting_did_not_happen/other_reason-label')"/>
+      </input>
+      <input ref="/data/meeting_did_not_happen/expected_meeting_date">
+        <label ref="jr:itext('meeting_did_not_happen/expected_meeting_date-label')"/>
+        <alert ref="jr:itext('meeting_did_not_happen/expected_meeting_date-constraintMsg')"/>
+      </input>
+      <input ref="/data/meeting_did_not_happen/reschedule_date">
+        <label ref="jr:itext('meeting_did_not_happen/reschedule_date-label')"/>
+        <alert ref="jr:itext('meeting_did_not_happen/reschedule_date-constraintMsg')"/>
+      </input>
+    </group>
+    <group ref="/data/independent_projects">
+      <label ref="jr:itext('independent_projects-label')"/>
+      <trigger ref="/data/independent_projects/ind_projects" appearance="minimal">
+        <label ref="jr:itext('independent_projects/ind_projects-label')"/>
+      </trigger>
+      <select1 ref="/data/independent_projects/implementing_ind_project">
+        <label ref="jr:itext('independent_projects/implementing_ind_project-label')"/>
+        <item>
+          <label ref="jr:itext('/Untitled_20260316111746/advocacy/advocacy_attempts/yes:label')"/>
+          <value>1</value>
+        </item>
+        <item>
+          <label ref="jr:itext('/Untitled_20260316111746/advocacy/advocacy_attempts/no:label')"/>
+          <value>2</value>
+        </item>
+      </select1>
+      <input ref="/data/independent_projects/ind_project_number">
+        <label ref="jr:itext('independent_projects/ind_project_number-label')"/>
+      </input>
+      <group ref="/data/independent_projects/project_details">
+        <label ref="jr:itext('independent_projects/project_details-label')"/>
+        <group>
+          <label ref="jr:itext('independent_projects/project_details/project_details_repeat-label')"/>
+          <repeat jr:count="/data/independent_projects/ind_project_number" jr:noAddRemove="true()" nodeset="/data/independent_projects/project_details/project_details_repeat">
+            <input ref="/data/independent_projects/project_details/project_details_repeat/when_did_the_independent_project_start">
+              <label ref="jr:itext('independent_projects/project_details/project_details_repeat/when_did_the_independent_project_start-label')"/>
+            </input>
+            <select1 ref="/data/independent_projects/project_details/project_details_repeat/what_is_the_nature_of_the_project">
+              <label ref="jr:itext('independent_projects/project_details/project_details_repeat/what_is_the_nature_of_the_project-label')"/>
+              <item>
+                <label ref="jr:itext('independent_projects/project_details/project_details_repeat/what_is_the_nature_of_the_project-1-label')"/>
+                <value>1</value>
+              </item>
+              <item>
+                <label ref="jr:itext('independent_projects/project_details/project_details_repeat/what_is_the_nature_of_the_project-2-label')"/>
+                <value>2</value>
+              </item>
+              <item>
+                <label ref="jr:itext('independent_projects/project_details/project_details_repeat/what_is_the_nature_of_the_project-3-label')"/>
+                <value>3</value>
+              </item>
+              <item>
+                <label ref="jr:itext('independent_projects/project_details/project_details_repeat/what_is_the_nature_of_the_project-4-label')"/>
+                <value>4</value>
+              </item>
+              <item>
+                <label ref="jr:itext('independent_projects/project_details/project_details_repeat/what_is_the_nature_of_the_project-5-label')"/>
+                <value>5</value>
+              </item>
+              <item>
+                <label ref="jr:itext('independent_projects/project_details/project_details_repeat/what_is_the_nature_of_the_project-6-label')"/>
+                <value>6</value>
+              </item>
+              <item>
+                <label ref="jr:itext('independent_projects/project_details/project_details_repeat/what_is_the_nature_of_the_project-7-label')"/>
+                <value>7</value>
+              </item>
+              <item>
+                <label ref="jr:itext('independent_projects/project_details/project_details_repeat/what_is_the_nature_of_the_project-98-label')"/>
+                <value>98</value>
+              </item>
+            </select1>
+            <input ref="/data/independent_projects/project_details/project_details_repeat/if_others_please_specify">
+              <label ref="jr:itext('independent_projects/project_details/project_details_repeat/if_others_please_specify-label')"/>
+            </input>
+            <select1 ref="/data/independent_projects/project_details/project_details_repeat/what_type_of_business_is_the_community_implementing">
+              <label ref="jr:itext('independent_projects/project_details/project_details_repeat/what_type_of_business_is_the_community_implementing-label')"/>
+              <item>
+                <label ref="jr:itext('independent_projects/project_details/project_details_repeat/what_type_of_business_is_the_community_implementing-1-label')"/>
+                <value>1</value>
+              </item>
+              <item>
+                <label ref="jr:itext('independent_projects/project_details/project_details_repeat/what_type_of_business_is_the_community_implementing-2-label')"/>
+                <value>2</value>
+              </item>
+              <item>
+                <label ref="jr:itext('independent_projects/project_details/project_details_repeat/what_type_of_business_is_the_community_implementing-3-label')"/>
+                <value>3</value>
+              </item>
+              <item>
+                <label ref="jr:itext('independent_projects/project_details/project_details_repeat/what_type_of_business_is_the_community_implementing-4-label')"/>
+                <value>4</value>
+              </item>
+              <item>
+                <label ref="jr:itext('independent_projects/project_details/project_details_repeat/what_type_of_business_is_the_community_implementing-5-label')"/>
+                <value>5</value>
+              </item>
+            </select1>
+            <select1 ref="/data/independent_projects/project_details/project_details_repeat/copy-1-of-what_type_of_construction_is_the_community_implementing">
+              <label ref="jr:itext('independent_projects/project_details/project_details_repeat/copy-1-of-what_type_of_construction_is_the_community_implementing-label')"/>
+              <item>
+                <label ref="jr:itext('independent_projects/project_details/project_details_repeat/copy-1-of-what_type_of_construction_is_the_community_implementing-1-label')"/>
+                <value>1</value>
+              </item>
+              <item>
+                <label ref="jr:itext('/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/community_project_type_construction/health_facility:label')"/>
+                <value>2</value>
+              </item>
+              <item>
+                <label ref="jr:itext('independent_projects/project_details/project_details_repeat/copy-1-of-what_type_of_construction_is_the_community_implementing-3-label')"/>
+                <value>3</value>
+              </item>
+              <item>
+                <label ref="jr:itext('independent_projects/project_details/project_details_repeat/copy-1-of-what_type_of_construction_is_the_community_implementing-4-label')"/>
+                <value>4</value>
+              </item>
+              <item>
+                <label ref="jr:itext('independent_projects/project_details/project_details_repeat/copy-1-of-what_type_of_construction_is_the_community_implementing-5-label')"/>
+                <value>5</value>
+              </item>
+              <item>
+                <label ref="jr:itext('independent_projects/project_details/project_details_repeat/copy-1-of-what_type_of_construction_is_the_community_implementing-6-label')"/>
+                <value>6</value>
+              </item>
+            </select1>
+          </repeat>
+        </group>
+        <input ref="/data/independent_projects/project_details/ind_project_description">
+          <label ref="jr:itext('independent_projects/project_details/ind_project_description-label')"/>
+        </input>
+        <input ref="/data/independent_projects/project_details/total_community_investment">
+          <label ref="jr:itext('independent_projects/project_details/total_community_investment-label')"/>
+        </input>
+        <select1 ref="/data/independent_projects/project_details/funding_source">
+          <label ref="jr:itext('independent_projects/project_details/funding_source-label')"/>
+          <item>
+            <label ref="jr:itext('independent_projects/project_details/funding_source-1-label')"/>
+            <value>1</value>
+          </item>
+          <item>
+            <label ref="jr:itext('independent_projects/project_details/funding_source-2-label')"/>
+            <value>2</value>
+          </item>
+        </select1>
+        <input ref="/data/independent_projects/project_details/other_source">
+          <label ref="jr:itext('independent_projects/project_details/other_source-label')"/>
+        </input>
+        <input ref="/data/independent_projects/project_details/project_beneficiaries">
+          <label ref="jr:itext('independent_projects/project_details/project_beneficiaries-label')"/>
+        </input>
+      </group>
+    </group>
+    <group ref="/data/project_monitoring">
+      <label ref="jr:itext('/Untitled_20260316111746/project_monitoring:label')"/>
+      <select1 ref="/data/project_monitoring/microgrant_rounds">
+        <label ref="jr:itext('/Untitled_20260316111746/project_monitoring/microgrant_rounds:label')"/>
+        <item>
+          <label ref="jr:itext('/Untitled_20260316111746/project_monitoring/microgrant_rounds/1:label')"/>
+          <value>1</value>
+        </item>
+        <item>
+          <label ref="jr:itext('/Untitled_20260316111746/project_monitoring/microgrant_rounds/2:label')"/>
+          <value>2</value>
+        </item>
+      </select1>
+      <group ref="/Untitled_20260316111746/project_monitoring/project_monitoring_repeat">
+        <label ref="jr:itext('/Untitled_20260316111746/project_monitoring/project_monitoring_repeat:label')"/>
+        <repeat jr:count="/data/project_monitoring/project_monitoring_repeat_count" jr:noAddRemove="true()" nodeset="/data/project_monitoring/project_monitoring_repeat">
+          <select1 ref="/data/project_monitoring/project_monitoring_repeat/project_nature">
+            <label ref="jr:itext('/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/project_nature:label')"/>
+            <item>
+              <label ref="jr:itext('/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/project_nature/1:label')"/>
+              <value>1</value>
+            </item>
+            <item>
+              <label ref="jr:itext('/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/project_nature/2:label')"/>
+              <value>2</value>
+            </item>
+          </select1>
+          <select1 ref="/data/project_monitoring/project_monitoring_repeat/project_type">
+            <label ref="jr:itext('/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/project_type:label')"/>
+            <item>
+              <label ref="jr:itext('/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/project_type/animal_rearing:label')"/>
+              <value>animal_rearing</value>
+            </item>
+            <item>
+              <label ref="jr:itext('/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/project_type/crop_husbandry:label')"/>
+              <value>crop_husbandry</value>
+            </item>
+            <item>
+              <label ref="jr:itext('/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/project_type/construction:label')"/>
+              <value>construction</value>
+            </item>
+            <item>
+              <label ref="jr:itext('/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/project_type/vsla:label')"/>
+              <value>vsla</value>
+            </item>
+            <item>
+              <label ref="jr:itext('/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/project_type/business:label')"/>
+              <value>business</value>
+            </item>
+          </select1>
+          <select1 ref="/data/project_monitoring/project_monitoring_repeat/animal_type">
+            <label ref="jr:itext('/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/animal_type:label')"/>
+            <item>
+              <label ref="jr:itext('/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/animal_type/dairy_cattle:label')"/>
+              <value>dairy_cattle</value>
+            </item>
+            <item>
+              <label ref="jr:itext('/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/animal_type/beef_cattle:label')"/>
+              <value>beef_cattle</value>
+            </item>
+            <item>
+              <label ref="jr:itext('/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/animal_type/ploughing_oxen:label')"/>
+              <value>ploughing_oxen</value>
+            </item>
+            <item>
+              <label ref="jr:itext('/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/animal_type/goats:label')"/>
+              <value>goats</value>
+            </item>
+            <item>
+              <label ref="jr:itext('/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/animal_type/pigs:label')"/>
+              <value>pigs</value>
+            </item>
+            <item>
+              <label ref="jr:itext('/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/animal_type/sheep:label')"/>
+              <value>sheep</value>
+            </item>
+            <item>
+              <label ref="jr:itext('/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/animal_type/chicken:label')"/>
+              <value>chicken</value>
+            </item>
+            <item>
+              <label ref="jr:itext('/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/animal_type/turkeys:label')"/>
+              <value>turkeys</value>
+            </item>
+            <item>
+              <label ref="jr:itext('/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/animal_type/ducks:label')"/>
+              <value>ducks</value>
+            </item>
+          </select1>
+          <input ref="/data/project_monitoring/project_monitoring_repeat/total_animals">
+            <label ref="jr:itext('/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/total_animals:label')"/>
+          </input>
+          <select ref="/data/project_monitoring/project_monitoring_repeat/crop_type">
+            <label ref="jr:itext('/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/crop_type:label')"/>
+            <item>
+              <label ref="jr:itext('/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/crop_type/tea:label')"/>
+              <value>tea</value>
+            </item>
+            <item>
+              <label ref="jr:itext('/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/crop_type/coffee:label')"/>
+              <value>coffee</value>
+            </item>
+            <item>
+              <label ref="jr:itext('/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/crop_type/cotton:label')"/>
+              <value>cotton</value>
+            </item>
+            <item>
+              <label ref="jr:itext('/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/crop_type/plantains:label')"/>
+              <value>plantains</value>
+            </item>
+            <item>
+              <label ref="jr:itext('/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/crop_type/sugar_cane:label')"/>
+              <value>sugar_cane</value>
+            </item>
+            <item>
+              <label ref="jr:itext('/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/crop_type/cocoa:label')"/>
+              <value>cocoa</value>
+            </item>
+            <item>
+              <label ref="jr:itext('/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/crop_type/vanilla:label')"/>
+              <value>vanilla</value>
+            </item>
+            <item>
+              <label ref="jr:itext('/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/crop_type/maize:label')"/>
+              <value>maize</value>
+            </item>
+            <item>
+              <label ref="jr:itext('/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/crop_type/beans:label')"/>
+              <value>beans</value>
+            </item>
+            <item>
+              <label ref="jr:itext('/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/crop_type/g_nuts:label')"/>
+              <value>g_nuts</value>
+            </item>
+            <item>
+              <label ref="jr:itext('/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/crop_type/potatoes:label')"/>
+              <value>potatoes</value>
+            </item>
+            <item>
+              <label ref="jr:itext('/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/crop_type/peas:label')"/>
+              <value>peas</value>
+            </item>
+            <item>
+              <label ref="jr:itext('/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/crop_type/tomatoes:label')"/>
+              <value>tomatoes</value>
+            </item>
+          </select>
+          <select1 ref="/data/project_monitoring/project_monitoring_repeat/community_project_type_construction">
+            <label ref="jr:itext('/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/community_project_type_construction:label')"/>
+            <item>
+              <label ref="jr:itext('/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/community_project_type_construction/schools:label')"/>
+              <value>schools</value>
+            </item>
+            <item>
+              <label ref="jr:itext('/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/community_project_type_construction/health_facility:label')"/>
+              <value>health_facility</value>
+            </item>
+            <item>
+              <label ref="jr:itext('/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/community_project_type_construction/water_facility:label')"/>
+              <value>water_facility</value>
+            </item>
+            <item>
+              <label ref="jr:itext('/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/community_project_type_construction/road_bridge:label')"/>
+              <value>road_bridge</value>
+            </item>
+            <item>
+              <label ref="jr:itext('/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/community_project_type_construction/rental_warehouses_sf:label')"/>
+              <value>rental_warehouses_sf</value>
+            </item>
+            <item>
+              <label ref="jr:itext('/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/community_project_type_construction/market:label')"/>
+              <value>market</value>
+            </item>
+            <item>
+              <label ref="jr:itext('/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/community_project_type_construction/town_hall:label')"/>
+              <value>town_hall</value>
+            </item>
+            <item>
+              <label ref="jr:itext('/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/community_project_type_construction/electricity:label')"/>
+              <value>electricity</value>
+            </item>
+          </select1>
+          <select1 ref="/data/project_monitoring/project_monitoring_repeat/construction_project_state">
+            <label ref="jr:itext('/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/construction_project_state:label')"/>
+            <item>
+              <label ref="jr:itext('/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/construction_project_state/1:label')"/>
+              <value>1</value>
+            </item>
+            <item>
+              <label ref="jr:itext('/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/construction_project_state/2:label')"/>
+              <value>2</value>
+            </item>
+            <item>
+              <label ref="jr:itext('/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/construction_project_state/3:label')"/>
+              <value>3</value>
+            </item>
+          </select1>
+          <select1 ref="/data/project_monitoring/project_monitoring_repeat/community_project_type_business">
+            <label ref="jr:itext('/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/community_project_type_business:label')"/>
+            <item>
+              <label ref="jr:itext('/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/community_project_type_business/transport:label')"/>
+              <value>transport</value>
+            </item>
+            <item>
+              <label ref="jr:itext('/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/community_project_type_business/produce:label')"/>
+              <value>produce</value>
+            </item>
+            <item>
+              <label ref="jr:itext('/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/community_project_type_business/processing:label')"/>
+              <value>processing</value>
+            </item>
+            <item>
+              <label ref="jr:itext('/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/community_project_type_business/wholesale_retail_shop:label')"/>
+              <value>wholesale_retail_shop</value>
+            </item>
+            <item>
+              <label ref="jr:itext('/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/community_project_type_business/mobile_money:label')"/>
+              <value>mobile_money</value>
+            </item>
+            <item>
+              <label ref="jr:itext('/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/community_project_type_business/bee_keeping:label')"/>
+              <value>bee_keeping</value>
+            </item>
+          </select1>
+          <input ref="/data/project_monitoring/project_monitoring_repeat/beneficiaries_hhds">
+            <label ref="jr:itext('/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/beneficiaries_hhds:label')"/>
+          </input>
+          <input ref="/data/project_monitoring/project_monitoring_repeat/nps">
+            <label ref="jr:itext('/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/nps:label')"/>
+            <hint ref="jr:itext('/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/nps:hint')"/>
+            <alert ref="jr:itext('project_monitoring/project_monitoring_repeat/nps-constraintMsg')"/>
+          </input>
+          <input ref="/data/project_monitoring/project_monitoring_repeat/nps_probe">
+            <label ref="jr:itext('/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/nps_probe:label')"/>
+          </input>
+          <select1 ref="/data/project_monitoring/project_monitoring_repeat/external_financing">
+            <label ref="jr:itext('/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/external_financing:label')"/>
+            <item>
+              <label ref="jr:itext('/Untitled_20260316111746/advocacy/advocacy_attempts/yes:label')"/>
+              <value>yes</value>
+            </item>
+            <item>
+              <label ref="jr:itext('/Untitled_20260316111746/advocacy/advocacy_attempts/no:label')"/>
+              <value>no</value>
+            </item>
+          </select1>
+          <input ref="/data/project_monitoring/project_monitoring_repeat/external_financing_value">
+            <label ref="jr:itext('/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/external_financing_value:label')"/>
+          </input>
+          <input ref="/data/project_monitoring/project_monitoring_repeat/external_financing_no">
+            <label ref="jr:itext('/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/external_financing_no:label')"/>
+          </input>
+          <input ref="/data/project_monitoring/project_monitoring_repeat/mg_challenges">
+            <label ref="jr:itext('/Untitled_20260316111746/project_monitoring/project_monitoring_repeat/mg_challenges:label')"/>
+          </input>
+        </repeat>
+      </group>
+    </group>
+    <group ref="/data/note">
+      <label ref="jr:itext('note-label')"/>
+      <trigger ref="/data/note/this_section_captures_the_progress_of_savings_within_your_community" appearance="minimal">
+        <label ref="jr:itext('note/this_section_captures_the_progress_of_savings_within_your_community-label')"/>
+      </trigger>
+      <select1 ref="/data/note/currently_saving">
+        <label ref="jr:itext('note/currently_saving-label')"/>
+        <item>
+          <label ref="jr:itext('note/currently_saving-1-label')"/>
+          <value>1</value>
+        </item>
+        <item>
+          <label ref="jr:itext('note/currently_saving-2-label')"/>
+          <value>2</value>
+        </item>
+      </select1>
+      <select ref="/data/note/savings_use">
+        <label ref="jr:itext('/Untitled_20260316111746/Savings/savings_use:label')"/>
+        <item>
+          <label ref="jr:itext('/Untitled_20260316111746/Savings/savings_use/independent_project:label')"/>
+          <value>independent_project</value>
+        </item>
+        <item>
+          <label ref="jr:itext('/Untitled_20260316111746/Savings/savings_use/vsla:label')"/>
+          <value>vsla</value>
+        </item>
+        <item>
+          <label ref="jr:itext('note/savings_use-mg_project-label')"/>
+          <value>mg_project</value>
+        </item>
+      </select>
+      <select1 ref="/data/note/currently_not-saving">
+        <label ref="jr:itext('note/currently_not-saving-label')"/>
+        <item>
+          <label ref="jr:itext('note/currently_not-saving-1-label')"/>
+          <value>1</value>
+        </item>
+        <item>
+          <label ref="jr:itext('note/currently_not-saving-2-label')"/>
+          <value>2</value>
+        </item>
+        <item>
+          <label ref="jr:itext('note/currently_not-saving-others_96-label')"/>
+          <value>others_96</value>
+        </item>
+      </select1>
+      <input ref="/data/note/if_other_please_specify">
+        <label ref="jr:itext('note/if_other_please_specify-label')"/>
+      </input>
+      <input ref="/data/note/hh_saving">
+        <label ref="jr:itext('note/hh_saving-label')"/>
+      </input>
+      <input ref="/data/note/males_saving">
+        <label ref="jr:itext('note/males_saving-label')"/>
+      </input>
+      <input ref="/data/note/females_saving">
+        <label ref="jr:itext('note/females_saving-label')"/>
+      </input>
+      <input ref="/data/note/amt_savings">
+        <label ref="jr:itext('note/amt_savings-label')"/>
+        <hint ref="jr:itext('note/amt_savings-hint')"/>
+      </input>
+      <input ref="/data/note/savings_for_the_independent_project">
+        <label ref="jr:itext('note/savings_for_the_independent_project-label')"/>
+      </input>
+      <input ref="/data/note/savings_for_the_vslaloaning">
+        <label ref="jr:itext('note/savings_for_the_vslaloaning-label')"/>
+      </input>
+      <input ref="/data/note/savings_for_the_mg_project">
+        <label ref="jr:itext('note/savings_for_the_mg_project-label')"/>
+      </input>
+      <input ref="/data/note/next_meeting_date">
+        <label ref="jr:itext('note/next_meeting_date-label')"/>
+      </input>
+    </group>
+    <group ref="/data/advocacy">
+      <label ref="jr:itext('/Untitled_20260316111746/advocacy:label')"/>
+      <select1 ref="/data/advocacy/advocacy_attempts">
+        <label ref="jr:itext('/Untitled_20260316111746/advocacy/advocacy_attempts:label')"/>
+        <item>
+          <label ref="jr:itext('/Untitled_20260316111746/advocacy/advocacy_attempts/yes:label')"/>
+          <value>yes</value>
+        </item>
+        <item>
+          <label ref="jr:itext('/Untitled_20260316111746/advocacy/advocacy_attempts/no:label')"/>
+          <value>no</value>
+        </item>
+      </select1>
+      <select ref="/data/advocacy/advocacy_attempts_yes">
+        <label ref="jr:itext('/Untitled_20260316111746/advocacy/advocacy_attempts_yes:label')"/>
+        <item>
+          <label ref="jr:itext('/Untitled_20260316111746/advocacy/advocacy_attempts_yes/ngos:label')"/>
+          <value>ngos</value>
+        </item>
+        <item>
+          <label ref="jr:itext('/Untitled_20260316111746/advocacy/advocacy_attempts_yes/lg:label')"/>
+          <value>lg</value>
+        </item>
+        <item>
+          <label ref="jr:itext('/Untitled_20260316111746/advocacy/advocacy_attempts_yes/others:label')"/>
+          <value>others</value>
+        </item>
+      </select>
+      <input ref="/data/advocacy/advocacy_attempts_no">
+        <label ref="jr:itext('/Untitled_20260316111746/advocacy/advocacy_attempts_no:label')"/>
+      </input>
+      <select1 ref="/data/advocacy/advocacy_received">
+        <label ref="jr:itext('/Untitled_20260316111746/advocacy/advocacy_received:label')"/>
+        <item>
+          <label ref="jr:itext('/Untitled_20260316111746/advocacy/advocacy_attempts/yes:label')"/>
+          <value>yes</value>
+        </item>
+        <item>
+          <label ref="jr:itext('/Untitled_20260316111746/advocacy/advocacy_attempts/no:label')"/>
+          <value>no</value>
+        </item>
+      </select1>
+      <select ref="/data/advocacy/advocacy_received_type">
+        <label ref="jr:itext('/Untitled_20260316111746/advocacy/advocacy_received_type:label')"/>
+        <item>
+          <label ref="jr:itext('/Untitled_20260316111746/advocacy/advocacy_received_type/monetary:label')"/>
+          <value>monetary</value>
+        </item>
+        <item>
+          <label ref="jr:itext('/Untitled_20260316111746/advocacy/advocacy_received_type/in_kind:label')"/>
+          <value>in_kind</value>
+        </item>
+        <item>
+          <label ref="jr:itext('/Untitled_20260316111746/advocacy/advocacy_received_type/both_monetary_inkind:label')"/>
+          <value>both_monetary_inkind</value>
+        </item>
+      </select>
+    </group>
+    <input ref="/data/next_meeting_date">
+      <label ref="jr:itext('next_meeting_date-label')"/>
+      <alert ref="jr:itext('next_meeting_date-constraintMsg')"/>
+    </input>
+  </h:body>
+</h:html>

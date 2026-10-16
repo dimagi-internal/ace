@@ -31,6 +31,7 @@ this catches, see reference.md.
 | Phase 3 § Step 2.7 | `3-commcare/app-release_summary.md` | Released build ids per app |
 | Phase 1 | `1-design/idea-to-pdd.md` | Payable-visit rules — whether the PDD demands camera-only photo capture (the `appearance="acquire"` check in Step 4) — and the stated per-module training durations (the `time_estimate` plausibility check in Step 4) |
 | Nova MCP | `get_app({app_id})` for each Nova app id | Blueprint structure (modules, forms, fields per form, Connect marker presence) — the canonical structural truth for cross-reference |
+| Phase 1 `inputs/` (via `inputs-manifest.yaml`) | the `[FIXED]` instrument markdown the PDD cites | Step 4.8 question-text + option-set diff (ace#2366) |
 | HQ `ACE_HQ_DOMAIN` env | — | `connect-ace-prod` (the project space the apps released to) |
 
 ## Products
@@ -1543,6 +1544,51 @@ v11 → v12 Learn re-release of `spark-facilitator/20261004-1706`
 negative controls are a renamed module `@id` and a removed assessment block
 (both BLOCK), plus a renamed assessment `@id` and a re-minted xmlns (WARN only).
 
+### Step 4.8: `[FIXED]` instrument verbatim fidelity (dimagi-internal/ace#2366)
+
+**Deliver app only, and only when the PDD marks an instrument `[FIXED]`.**
+`pdd-to-deliver-app § Step 4k` diffs the instrument's POINT VALUES against the
+source; it cannot see an option that scores 0. On
+`poverty-graduation/20260908-0510` the released Deliver app added
+"Declined or does not know" to one of the Nigeria PPI's ten questions — a
+verbatim-only instrument whose licence permits digitising it only unmodified —
+and this skill and `app-release-eval` both passed it. This step reads the
+RELEASED form, not the blueprint.
+
+1. Resolve the instrument file exactly as Step 4k did (its `## Build notes`
+   record the `file_id`); read it with `drive_read_file` (a markdown table) and
+   parse with `parseInstrumentMarkdown`. A published `.xlsx`/`.pdf` source has
+   no question-and-option table for this helper — use the `inputs/` markdown
+   instrument the PDD cites; if there is none, record `unable` with that reason.
+2. Run the check over every Deliver form XML Step 3 parsed:
+
+   ```ts
+   import {
+     parseInstrumentMarkdown,
+     checkFixedInstrumentVerbatim,
+   } from '../../lib/fixed-instrument-verbatim';
+   const res = checkFixedInstrumentVerbatim({
+     instrument: parseInstrumentMarkdown(instrumentMd),
+     forms: deliverFormXmls,
+     // ONLY where the instrument itself says the question is not asked as-is,
+     // quoting it — e.g. the PPI's household-size indicator, derived from a roster.
+     exempt,
+   });
+   ```
+
+| Outcome | Do |
+|---|---|
+| No `[FIXED]` instrument in the PDD | `fixed_instrument_verbatim: not-applicable` |
+| Instrument file unreadable / no question table | `[WARN]` `fixed-instrument-unable`, record the reason — never a pass |
+| `ok: true` | Record `matched` + `exempted` and continue |
+| any `option-added` / `option-dropped` / `option-order-changed` / `question-text-changed` / `question-not-found` | **Halt** `[BLOCKER]` `fixed-instrument-not-verbatim`, one entry per finding, `message` verbatim. Repair goes back through `pdd-to-deliver-app` (Nova edit → re-release), not a CCZ patch |
+
+Record under `per_app.deliver.fixed_instrument_verbatim`. *Enforced:*
+`test/lib/fixed-instrument-verbatim.test.ts` — the instrument fixture is the
+real `poverty-graduation` inputs file and the positive control is the released
+targeting survey of `poverty-graduation/20260915-1518`; the negative control
+re-adds the observed "Declined or does not know" fan option.
+
 ### Step 5: Write verdict
 
 Write `3-commcare/app-release-qa_result.yaml`. Shape:
@@ -1705,6 +1751,8 @@ per_app:
 #   grid_menu_display:     { use_grid_menus, grid_form_menus,
 #                            modules_checked, modules_gridded, non_grid: [...] }
 #                          # all three fields are BLOCKER-gated (ace#1082)
+#   fixed_instrument_verbatim: not-applicable | unable | { matched, exempted, findings: [...] }
+#                          # BLOCKER-gated (ace#2366); Deliver app, [FIXED] instrument only
 #   language_tables:       pass | unable | { present: [...], declared: [...],
 #                            orphans: [...], missing: [...], display_names: {...} }
 #                          # FINDING-gated, never a halt (ace#2292) — an orphan
