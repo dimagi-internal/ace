@@ -66,6 +66,66 @@ export interface CaptionBackingReport {
    * container the producer actually wrote to, by name.
    */
   manifest_readability?: ManifestReadabilityReport;
+  /**
+   * `shows:` entries from the shows addenda that matched no manifest frame
+   * (by step or file_id), so they backed nothing. Present only when non-empty.
+   * Informational: a typo here is not the published artifact's defect, but it
+   * IS why a frame the consumer did open can still come back `no-shows`.
+   */
+  addendum_unmatched?: Array<{ step?: string; file_id?: string }>;
+  /** Frames whose `shows:` came from an addendum rather than the manifest. */
+  backed_by_addendum?: number;
+}
+
+/**
+ * One `shows:` line a CONSUMER recorded after opening a frame (ace#2902).
+ *
+ * `app-screenshot-capture` may describe only a subset of the frames it
+ * uploads (its § Step 5.6 minimum), and the caption gate fails every cited
+ * frame nobody described. A consumer that opens the frame itself must not
+ * overwrite the producer's manifest, which is the producer's artifact, and a
+ * session write classifier correctly refuses that. So it writes a sibling
+ * `<N>-<phase>/app-screenshot-capture_shows-addendum.yaml` instead:
+ *
+ * ```yaml
+ * shows:
+ *   - step: journey-learn-m3-mtn-card-finished   # step and/or file_id
+ *     file_id: 1AbC...
+ *     shows: "single-tile module menu, not module content"
+ * ```
+ *
+ * A map form (`shows: { <step-or-file_id>: "<text>" }`) is accepted too.
+ */
+export interface ShowsAddendumEntry {
+  step?: string;
+  file_id?: string;
+  shows: string;
+}
+
+/** Read every `shows:` entry from one parsed addendum. Tolerates both shapes. */
+export function readShowsAddendum(addendum: unknown): ShowsAddendumEntry[] {
+  const root = (addendum && typeof addendum === 'object' ? addendum : {}) as Record<string, unknown>;
+  const container = Array.isArray(addendum) ? addendum : root.shows;
+  const out: ShowsAddendumEntry[] = [];
+  if (Array.isArray(container)) {
+    for (const raw of container) {
+      if (!raw || typeof raw !== 'object') continue;
+      const e = raw as Record<string, unknown>;
+      const shows = typeof e.shows === 'string' ? e.shows.trim() : '';
+      if (!shows) continue;
+      const step = typeof e.step === 'string' ? e.step : typeof e.step_name === 'string' ? e.step_name : undefined;
+      const fileId = typeof e.file_id === 'string' ? e.file_id : undefined;
+      if (!step && !fileId) continue;
+      out.push({ ...(step ? { step } : {}), ...(fileId ? { file_id: fileId } : {}), shows });
+    }
+  } else if (container && typeof container === 'object') {
+    for (const [key, value] of Object.entries(container as Record<string, unknown>)) {
+      if (typeof value !== 'string' || !value.trim()) continue;
+      // The key may be either; it is matched against both below.
+      out.push({ step: key, file_id: key, shows: value.trim() });
+    }
+  }
+  return out;
 }
 
 interface ManifestFrame {
@@ -270,6 +330,12 @@ export function classifyCaptionBacking(args: {
    * They are not this run's work product and have no `shows` to record.
    */
   poolFileIds?: readonly string[];
+  /**
+   * Parsed shows addenda (ace#2902) — `shows:` lines a consumer recorded after
+   * opening frames the capture producer did not describe. They fill a missing
+   * `shows:` only: a manifest `shows:` wins, and an alias stays an alias.
+   */
+  showsAddenda?: readonly unknown[];
 }): CaptionBackingReport {
   // A deck spec's citations are what its SLIDES place; every other artifact's
   // are what its text shows (ace#2238).
@@ -278,6 +344,26 @@ export function classifyCaptionBacking(args: {
   const byId = new Map<string, ManifestFrame>();
   for (const f of frames) if (!byId.has(f.file_id)) byId.set(f.file_id, f);
   const pool = new Set(args.poolFileIds ?? []);
+
+  // Addenda fill a MISSING `shows:` by file_id or step. Matching is against
+  // the manifest's frames only, so an addendum can never vouch for an id the
+  // manifest does not know (that stays `unknown-id`).
+  const addendumShows = new Map<string, string>(); // file_id -> shows
+  const addendumUnmatched: Array<{ step?: string; file_id?: string }> = [];
+  for (const addendum of args.showsAddenda ?? []) {
+    for (const e of readShowsAddendum(addendum)) {
+      const hits = frames.filter(
+        (f) => (e.file_id !== undefined && f.file_id === e.file_id) || (e.step !== undefined && f.step === e.step),
+      );
+      if (!hits.length) {
+        // A map-form key is recorded as both; report it once, as written.
+        addendumUnmatched.push(e.step === e.file_id ? { step: e.step } : { step: e.step, file_id: e.file_id });
+        continue;
+      }
+      for (const f of hits) if (!addendumShows.has(f.file_id)) addendumShows.set(f.file_id, e.shows);
+    }
+  }
+  let backedByAddendum = 0;
 
   const findings: CaptionBackingFinding[] = [];
   const seen = new Set<string>();
@@ -300,6 +386,11 @@ export function classifyCaptionBacking(args: {
       continue;
     }
     if (!f.shows || !f.shows.trim()) {
+      if (addendumShows.has(id)) {
+        backed++;
+        backedByAddendum++;
+        continue;
+      }
       findings.push({ file_id: id, step: f.step, reason: 'no-shows' });
       continue;
     }
@@ -316,5 +407,7 @@ export function classifyCaptionBacking(args: {
     findings,
     manifest_frames: frames.length,
     ...(readability.ok ? {} : { manifest_readability: readability }),
+    ...(args.showsAddenda?.length ? { backed_by_addendum: backedByAddendum } : {}),
+    ...(addendumUnmatched.length ? { addendum_unmatched: addendumUnmatched } : {}),
   };
 }
