@@ -17,6 +17,7 @@ import {
   assessPreviews,
   assessSurfaceAudit,
   buildReleaseVerdict,
+  CLEARED_BAND_PHRASE,
   decidedFromRunState,
   INVENTORY_TEXT_WANTED,
   releaseGate,
@@ -304,3 +305,23 @@ describe('assessApps reads the contracted release record (ace#2698)', () => {
   });
 });
 
+
+/**
+ * dimagi-internal/ace#2612 — no score → verdict band was defined anywhere, so
+ * training-llo-guide-eval wrote 7.6 / warn / threshold 7.5 / approve on
+ * spark-facilitator/20261001-2208. The template now defines the cascade, and it
+ * must agree with how this gate words a `warn` that cleared the band.
+ */
+describe('_eval-template suite verdict mapping agrees with the release gate (#2612)', () => {
+  const tpl = readFileSync(join(__dirname, '../../skills/_eval-template.md'), 'utf8');
+  const section = tpl.slice(tpl.indexOf('### Suite verdict from score'), tpl.indexOf('## Auto-surfaced severity rules'));
+  it('states fail / pass / warn as an ordered cascade on score, threshold and dimensions', () => {
+    expect(section).toMatch(/\*\*`fail`\*\* — any `BLOCKER` fired/);
+    expect(section).toMatch(/any dimension ≤ 3/);
+    expect(section).toMatch(/\*\*`pass`\*\* — `overall_score` ≥ `gate.threshold` \*\*and\*\* no dimension\s+< 7/);
+    expect(section).toMatch(/\*\*`warn`\*\* — otherwise/);
+  });
+  it('names the same cleared-band case the gate reports', () => {
+    expect(section.replace(/\s+/g, ' ')).toContain(CLEARED_BAND_PHRASE);
+  });
+});

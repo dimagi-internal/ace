@@ -399,3 +399,153 @@ describe('inequality fail branches (#1576)', () => {
     ).toBe('checked');
   });
 });
+
+/**
+ * dimagi-internal/ace#2208 — false positives on any multilingual app.
+ *
+ * Observed on spark-facilitator/20260907-1120 (`app-release-qa` Step 2.8):
+ * a BLOCKER `assessment-retry-answer-leak` on `modules-0/forms-0.xml`, node
+ * `/data/baseline_grow`, "leaks: Yayi.". `Yayi.` is Tumbuka "No." — one
+ * option label — but in the flagged encouragement text it is a clause-final
+ * negation particle ("…ivyo munthu wangaghanaghana yekha yayi." = "things a
+ * person could not work out on their own"). The form is the baseline
+ * pre-test: `<learn:module>` = 1, `<learn:assessment>` = 0 (ace#1131).
+ *
+ * The fixture reproduces that shape: Tumbuka + Chichewa option labels for a
+ * yes/no item, the verbatim Tumbuka encouragement string, a learn module
+ * marker and no assessment marker.
+ */
+describe('multilingual false positives (#2208)', () => {
+  const TUMBUKA_ENCOURAGEMENT =
+    'Ntchifukwa ichi masambiro ghalipo Agha ni malango agho pulojekiti iyi yasankha. ' +
+    'Ni vinthu ivyo munthu wangaghanaghana yekha yayi. Lutilirani na masambiro, ndipo pa ' +
+    'umaliro, para mwasambizgika kale, muchite chiyezgo cheneko.';
+
+  const baseline = (opts: { encouragement: string; assessment?: boolean; learnMarkers?: boolean }) => `<?xml version="1.0"?>
+<h:html xmlns:h="http://www.w3.org/1999/xhtml" xmlns="http://www.w3.org/2002/xforms" xmlns:jr="http://openrosa.org/javarosa">
+  <h:head>
+    <model>
+      <instance><data>
+        <q2/><q2_score/><baseline_score/><baseline_grow/>
+        ${opts.learnMarkers === false ? '' : '<module xmlns="http://commcareconnect.com/data/v1/learn" id="baseline"><name>Baseline</name></module>'}
+        ${opts.assessment ? '<assessment xmlns="http://commcareconnect.com/data/v1/learn" id="baseline_quiz"><user_score/></assessment>' : ''}
+      </data></instance>
+      <itext>
+        <translation lang="en" default="">
+          <text id="q2-label"><value>Is a committee meeting with no minutes payable?</value></text>
+          <text id="q2-opt1-label"><value>Yes, always.</value></text>
+          <text id="q2-opt3-label"><value>No.</value></text>
+          <text id="baseline_grow-label"><value>They are not things anyone could work out on their own.</value></text>
+        </translation>
+        <translation lang="tum">
+          <text id="q2-opt1-label"><value>Enya, nyengo zose.</value></text>
+          <text id="q2-opt3-label"><value>Yayi.</value></text>
+          <text id="baseline_grow-label"><value>${opts.encouragement}</value></text>
+        </translation>
+        <translation lang="ny">
+          <text id="q2-opt1-label"><value>Inde, nthawi zonse.</value></text>
+          <text id="q2-opt3-label"><value>Ayi.</value></text>
+        </translation>
+      </itext>
+      <bind nodeset="/data/q2_score" calculate="if(/data/q2 = 'opt3', 1, 0)"/>
+      <bind nodeset="/data/baseline_score" calculate="/data/q2_score * 100"/>
+      <bind nodeset="/data/baseline_grow" relevant="/data/baseline_score &lt; 100"/>
+    </model>
+  </h:head>
+  <h:body>
+    <select1 ref="/data/q2">
+      <label ref="jr:itext('q2-label')"/>
+      <item><label ref="jr:itext('q2-opt1-label')"/><value>opt1</value></item>
+      <item><label ref="jr:itext('q2-opt3-label')"/><value>opt3</value></item>
+    </select1>
+    <trigger ref="/data/baseline_grow"><label ref="jr:itext('baseline_grow-label')"/></trigger>
+  </h:body>
+</h:html>`;
+
+  it('does NOT block on a clause-final Tumbuka negator that equals the "No." option', () => {
+    const r = checkAssessmentRetryLeak(baseline({ encouragement: TUMBUKA_ENCOURAGEMENT }));
+    assertChecked(r);
+    expect(r.findings).toEqual([]);
+    expect(r.ok).toBe(true);
+    // Recorded, not silently dropped.
+    expect(r.info).toHaveLength(1);
+    expect(r.info[0].severity).toBe('info');
+    expect(r.info[0].label).toBe('/data/baseline_grow');
+    expect(formatRetryLeakReport(r)).toMatch(/\[INFO\].*baseline_grow/);
+  });
+
+  it('a short answer token stays INFO even on the gating assessment form', () => {
+    const r = checkAssessmentRetryLeak(
+      baseline({ encouragement: TUMBUKA_ENCOURAGEMENT, assessment: true }),
+    );
+    assertChecked(r);
+    expect(r.gating).toBe('assessment');
+    expect(r.findings).toEqual([]);
+    expect(r.info[0].downgraded).toMatch(/≤ 4 letters/);
+  });
+
+  it('never matches Chichewa "Ayi" inside Tumbuka "yayi" (word boundaries)', () => {
+    const r = checkAssessmentRetryLeak(baseline({ encouragement: TUMBUKA_ENCOURAGEMENT }));
+    assertChecked(r);
+    expect([...r.findings, ...r.info].map((l) => l.leaked)).not.toContain('Ayi.');
+  });
+
+  it('treats a non-ASCII letter (Tumbuka ŵ) as part of the word, not a boundary', () => {
+    // "yayiŵa" is not the token "yayi"; an ASCII [a-z] class read ŵ as a boundary.
+    const r = checkAssessmentRetryLeak(baseline({ encouragement: 'Mukhale ŵakunozgeka yayiŵa.' }));
+    assertChecked(r);
+    expect(r.findings).toEqual([]);
+    expect(r.info).toEqual([]);
+  });
+});
+
+describe('gating scope and per-item matching (#2208)', () => {
+  const form = (opts: { retry: string; markers: 'assessment' | 'module' | 'none' }) => `<?xml version="1.0"?>
+<h:html xmlns:h="http://www.w3.org/1999/xhtml" xmlns="http://www.w3.org/2002/xforms">
+  <h:head><model>
+    <instance><data>
+      ${opts.markers === 'none' ? '' : '<module xmlns="http://commcareconnect.com/data/v1/learn" id="m1"><name>M1</name></module>'}
+      ${opts.markers === 'assessment' ? '<assessment xmlns="http://commcareconnect.com/data/v1/learn" id="quiz"><user_score/></assessment>' : ''}
+    </data></instance>
+    <bind nodeset="/data/q1_score" calculate="if(/data/q1 = 'over the sleeping area', 100, 0)"/>
+    <bind nodeset="/data/q2_score" calculate="if(/data/q2 = 'wash it gently in cold water', 100, 0)"/>
+    <bind nodeset="/data/q1_retry" relevant="/data/q1_score &lt; 100"/>
+  </model></h:head>
+  <h:body>
+    <trigger ref="/data/q1_retry"><label>${opts.retry}</label></trigger>
+  </h:body>
+</h:html>`;
+
+  it('NEGATIVE CONTROL: a genuine restatement on the gating (<assessment>) form is a BLOCKER', () => {
+    const r = checkAssessmentRetryLeak(form({ retry: 'Hang it over the sleeping area.', markers: 'assessment' }));
+    assertChecked(r);
+    expect(r.gating).toBe('assessment');
+    expect(r.ok).toBe(false);
+    expect(r.findings).toHaveLength(1);
+    expect(r.findings[0].severity).toBe('blocker');
+  });
+
+  it('downgrades the same restatement to INFO on a non-gating (module, no <assessment>) form', () => {
+    const r = checkAssessmentRetryLeak(form({ retry: 'Hang it over the sleeping area.', markers: 'module' }));
+    assertChecked(r);
+    expect(r.gating).toBe('non-gating');
+    expect(r.findings).toEqual([]);
+    expect(r.info[0].downgraded).toMatch(/no <assessment> block/);
+  });
+
+  it('a form with no learn markers at all is treated as gating (conservative)', () => {
+    const r = checkAssessmentRetryLeak(form({ retry: 'Hang it over the sleeping area.', markers: 'none' }));
+    assertChecked(r);
+    expect(r.gating).toBe('unknown');
+    expect(r.findings).toHaveLength(1);
+  });
+
+  it("matches PER ITEM: a label gated on q1's score is not checked against q2's answer", () => {
+    const r = checkAssessmentRetryLeak(
+      form({ retry: 'Not quite. Next you will learn to wash it gently in cold water.', markers: 'assessment' }),
+    );
+    assertChecked(r);
+    expect(r.findings).toEqual([]);
+    expect(r.info).toEqual([]);
+  });
+});
