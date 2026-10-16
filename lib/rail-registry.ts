@@ -228,6 +228,8 @@ export const RAILS: Readonly<Record<string, RailProvenance>> = {
   'test/skills/eval-grades-published-revision.test.ts': { issues: ['ace#2592'], observed: 'spark-facilitator/20261001-2208' },
   'test/skills/eval-rubric-dimension-integrity.test.ts': { issues: ['ace#1559'] },
   'test/skills/eval-verdict-filename-prose.test.ts': { issues: ['ace#1815', 'ace#712', 'ace#619', 'ace#786'] },
+  'test/skills/gap-copy-check-placement.test.ts': { issues: ['ace#2244'], observed: 'spark-facilitator/20260907-1120' },
+  'test/skills/phase7-narrative-writeback.test.ts': { issues: ['ace#2254', 'ace#2347'], observed: 'spark-facilitator/20260907-1120' },
   'test/skills/gate-brief-removal-complete.test.ts': { issues: ['ace#1805', 'ace#1880', 'ace#1884'] },
   'test/skills/hq-settings-backstop.test.ts': { issues: ['ace#1009', 'ace#867', 'ace#971', 'ace#994'] },
   'test/skills/idea-to-pdd-input-doc-comments.test.ts': { issues: ['ace#2372'] },
