@@ -568,3 +568,74 @@ export function rewriteRunState(
   }
   return out;
 }
+
+// ---------------------------------------------------------------------------
+// Clone-native files — re-authored in the clone after it was made (ace#2730)
+// ---------------------------------------------------------------------------
+
+/** Slack for clock skew between a Drive write and the stage record that follows it. */
+export const CLONE_NATIVE_GRACE_MS = 2 * 60 * 1000;
+
+/**
+ * The moment the clone pipeline last wrote anything: the latest `at` across the
+ * TARGET run_state's root `clone:` stage records, or `clone.completed_at`.
+ * Every write the pipeline makes (the copy, the release-summary re-record, an
+ * applied rewrite plan) lands at or before a stage record. Null when the run
+ * records no clone timestamps (a legacy clone) — then nothing is clone-native.
+ */
+export function cloneWriteCutoff(clone: unknown): string | null {
+  if (!clone || typeof clone !== 'object') return null;
+  const stamps: number[] = [];
+  for (const [k, v] of Object.entries(clone as Record<string, unknown>)) {
+    const s = k === 'completed_at' ? v : v && typeof v === 'object' ? (v as Record<string, unknown>).at : undefined;
+    const t = typeof s === 'string' ? Date.parse(s) : NaN;
+    if (Number.isFinite(t)) stamps.push(t);
+  }
+  return stamps.length ? new Date(Math.max(...stamps)).toISOString() : null;
+}
+
+/**
+ * True when a copied file was RE-AUTHORED in the clone after the clone was made
+ * — e.g. a re-grade on the clone's own builds, or a release summary re-recorded
+ * from them (spark/spark-facilitator/20261004-1706: `app-release-eval_verdict.yaml`
+ * began "Independent re-grade on the CLONE's own live builds"). Its content is
+ * not the source's, so rewriting it from source content — or stamping it
+ * "produced on the SOURCE run's assets" — would revert or falsify clone-native
+ * work. Such a file is never planned; it is reported instead.
+ *
+ * Modified after the pipeline's last write AND carrying no provenance note:
+ * every file this rewrite writes carries one, so an applied plan (and its
+ * read-back) is never mistaken for native work. No cutoff or no modified time →
+ * false (the old behaviour).
+ */
+export function isCloneNative(
+  file: { modifiedTime?: string | null; text: string },
+  cutoff: string | null,
+  graceMs = CLONE_NATIVE_GRACE_MS,
+): boolean {
+  if (!cutoff || !file.modifiedTime) return false;
+  const m = Date.parse(file.modifiedTime);
+  const c = Date.parse(cutoff);
+  if (!Number.isFinite(m) || !Number.isFinite(c) || m <= c + graceMs) return false;
+  return stripProvenanceNote(file.text) === file.text;
+}
+
+/**
+ * Which markdown a styled Doc is re-rendered from. Its `.source.md` companion is
+ * the cleaner input — but only while it is as new as the Doc. A Doc edited after
+ * its companion (the clone-native release summary vs. the source's
+ * `.source.md`) must be rendered from its OWN export, or the render replaces the
+ * Doc with stale source content (ace#2730).
+ */
+export function pickRenderSource(
+  docModifiedTime: string | null | undefined,
+  sourceMdModifiedTime: string | null | undefined,
+  graceMs = CLONE_NATIVE_GRACE_MS,
+): 'source-md' | 'doc-export' {
+  if (!sourceMdModifiedTime) return 'doc-export';
+  if (!docModifiedTime) return 'source-md';
+  const d = Date.parse(docModifiedTime);
+  const s = Date.parse(sourceMdModifiedTime);
+  if (!Number.isFinite(d) || !Number.isFinite(s)) return 'doc-export';
+  return s + graceMs >= d ? 'source-md' : 'doc-export';
+}

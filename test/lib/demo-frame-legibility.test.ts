@@ -437,6 +437,14 @@ describe('remediation vocabulary is expressible in canopy (ace#1660)', () => {
     expect(pixel[0].detail).toContain('scroll_to');
   });
 
+  it('makes scroll_to conditional — centring clamps near a short page\'s ends (ace#2253)', () => {
+    const pixel = everyFinding().filter((f) => f.kind === 'pixel-scroll-framing');
+    expect(pixel[0].detail).not.toContain('so it holds at any page length');
+    expect(pixel[0].detail).toContain("centred position is reachable");
+    expect(pixel[0].detail).toContain('first or last viewport-height of a short page');
+    expect(pixel[0].detail).toContain('pixel scroll measured against the live page');
+  });
+
   it('offset is still absent from canopy on disk, when canopy is on disk', () => {
     const root = `${process.env.HOME}/.claude/plugins/cache/canopy/canopy`;
     if (!existsSync(root)) return; // CI has no plugin cache; the pin stands alone.

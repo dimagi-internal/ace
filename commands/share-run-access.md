@@ -8,9 +8,14 @@ allowed-tools: [Bash, Read, AskUserQuestion, Skill, mcp__plugin_ace_ace-gdrive__
 
 Give the people on a project thread the access they need to review an ACE run, across every
 surface the run-summary links (ace-web workbench, labs dashboards, the Connect opportunity, the
-CommCare HQ apps, the OCS chatbot). The public summary + all ACE-authored deliverable docs are
-already anyone-with-link; this grants the platform-gated surfaces. Repeatable, idempotent, and
-approval-gated on every outbound invite.
+CommCare HQ apps, the OCS chatbot). The public summary is public. The ACE-authored deliverable
+docs are **not** shared when they are created, so this shares them (Drive) and grants the
+platform-gated surfaces. Repeatable, idempotent, and approval-gated on every outbound invite.
+
+Most of these grants cover more than one run. The HQ `App Editor` role covers the whole shared
+domain. A viewer in the Connect holding org sees every run's opportunities. A `dimagi-team`
+invite on ace-web covers every run in the workspace. Labs synthetic dashboards are Dimagi-only.
+That suits Dimagi staff. For an external partner, use `clone-to-new-workspace` → `release`.
 
 ## Arguments
 

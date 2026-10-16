@@ -7,7 +7,9 @@
  * The decision rule and the reasoning behind it live in `lib/land-pr-classify.ts`.
  * This file is the IO half: it gathers the three inputs that rule needs.
  *
- *   1. `mergeStateStatus` and the status-check rollup, from `gh pr view`.
+ *   1. `mergeStateStatus` and the check runs + commit statuses, over REST
+ *      (`--merge-state` / `--head-sha` from `land-pr.sh` when it has them;
+ *      never GraphQL — ace#3106).
  *   2. This branch's VERSION against `origin/main`'s, read LIVE — the merge-base
  *      is exactly the wrong reference, since a concurrent merge is the only way
  *      it fails.
@@ -23,6 +25,7 @@
  * ## Usage
  *
  *   npx tsx scripts/land-pr-classify.ts --pr <n> [--repo owner/name]
+ *       [--merge-state <STATE>] [--head-sha <sha>]
  *   npx tsx scripts/land-pr-classify.ts --fixture <recorded.json>   # dry run
  *
  * `--fixture` is the classify-only mode: it takes recorded `gh` output plus
@@ -141,16 +144,48 @@ export function versionVerdict(
   return { verdict: 'unique', detail: unclaimed.message };
 }
 
-function gatherLive(pr: number, repo: string): Evidence {
-  let mergeStateStatus = 'UNKNOWN';
+/**
+ * The PR's check runs and commit statuses over REST (ace#3106) — the same two
+ * sources GraphQL's `statusCheckRollup` merges. Check runs carry
+ * `name`/`status`/`conclusion` and statuses `context`/`state`, so
+ * `normaliseRollup` reads both; REST's lowercase values are uppercased by the
+ * decision rule.
+ */
+export function restRollup(repo: string, sha: string): unknown[] {
+  const runs = JSON.parse(
+    run('gh', ['api', `repos/${repo}/commits/${sha}/check-runs?per_page=100`, '--jq', '.check_runs']),
+  ) as unknown[];
+  const statuses = JSON.parse(
+    run('gh', ['api', `repos/${repo}/commits/${sha}/status`, '--jq', '.statuses']),
+  ) as unknown[];
+  return [...(Array.isArray(runs) ? runs : []), ...(Array.isArray(statuses) ? statuses : [])];
+}
+
+/**
+ * Every read here is REST (ace#3106): ~20 concurrent shippers polling through
+ * `gh pr view` exhausted GitHub's GraphQL secondary rate limit on 2026-10-16.
+ * `land-pr.sh` passes the merge state and head sha it already read; without
+ * them, one `pulls/<n>` read supplies both.
+ */
+function gatherLive(
+  pr: number,
+  repo: string,
+  given: { mergeState?: string; headSha?: string } = {},
+): Evidence {
+  let mergeStateStatus = (given.mergeState || '').toUpperCase() || 'UNKNOWN';
   let checks: CheckRunSummary[] = [];
   try {
-    const view = JSON.parse(
-      run('gh', ['pr', 'view', String(pr), '--repo', repo,
-        '--json', 'mergeStateStatus,statusCheckRollup']),
-    ) as { mergeStateStatus?: string; statusCheckRollup?: unknown[] };
-    mergeStateStatus = view.mergeStateStatus ?? 'UNKNOWN';
-    checks = normaliseRollup(view.statusCheckRollup);
+    let sha = given.headSha || '';
+    if (!sha || !given.mergeState) {
+      const view = JSON.parse(run('gh', ['api', `repos/${repo}/pulls/${pr}`])) as {
+        mergeable_state?: string;
+        head?: { sha?: string };
+      };
+      if (!given.mergeState) mergeStateStatus = (view.mergeable_state ?? 'unknown').toUpperCase();
+      sha = sha || view.head?.sha || '';
+    }
+    if (!sha) throw new Error('no head sha');
+    checks = normaliseRollup(restRollup(repo, sha));
   } catch {
     return {
       mergeStateStatus,
@@ -193,9 +228,10 @@ function gatherLive(pr: number, repo: string): Evidence {
 function openPrClaims(repo: string, selfPr: number): OpenPrClaim[] | null {
   let listed: Array<{ number: number; headRefOid: string }>;
   try {
+    // REST, not `gh pr list` (GraphQL) — ace#3106.
     listed = JSON.parse(
-      run('gh', ['pr', 'list', '--repo', repo, '--state', 'open', '--limit', '100',
-        '--json', 'number,headRefOid']),
+      run('gh', ['api', `repos/${repo}/pulls?state=open&per_page=100`,
+        '--jq', '[.[] | {number: .number, headRefOid: .head.sha}]']),
     );
   } catch {
     return null;
@@ -253,7 +289,10 @@ function main(): void {
           console.error('usage: land-pr-classify.ts --pr <n> [--repo owner/name] | --fixture <file>');
           process.exit(64);
         }
-        return gatherLive(pr, opt('--repo') || process.env.ACE_REPO || 'dimagi-internal/ace');
+        return gatherLive(pr, opt('--repo') || process.env.ACE_REPO || 'dimagi-internal/ace', {
+          mergeState: opt('--merge-state'),
+          headSha: opt('--head-sha'),
+        });
       })();
 
   console.log(renderDecision(classifyLanding(evidence)));

@@ -1,0 +1,1060 @@
+Poverty Graduation on Connect — Programme Overview
+Archetype: longitudinal-visits Opportunity: poverty-graduation Run: 20260905-1345 Design mode: componentized — this document composes four authored component PDDs; it does not replace them Status: Draft for review. Not approved. The component selection is PROVISIONAL (see § 2.1) and every deployment parameter is undeclared (see § 19, OQ-4). Supersedes: run 20260905-0924, which halted at the Phase 1→2 boundary. Authored fresh, not carried forward. Sources: Graduation Framework; PDD Targeting Survey (C2); PDD Enrollment (C4); PDD Productive Asset Transfer In-Kind (C5); PDD Recurring Consumption Support (C6); PDD Learn (programme-level); INSTRUMENT — Nigeria 2018 PPI.
+
+
+How to read this document. This is a programme OVERVIEW, not a synthesized design. Four component PDDs and one programme-level Learn PDD are the authoritative specifications for their own forms, payment grain and training requirements, and they are maintained by their author. This document answers only what no single component PDD can: which components this programme turns on, the shared case and state they all key off, the order they run in and what each hands the next, what each component does without the components this programme does not carry, and what each downstream phase should read. Where this document and a component PDD disagree about that component's internals, the component PDD wins.
+
+
+Requirement or mechanism. Statements in §§ 8–9 and § 16 are marked. A requirement is a programme fact that must hold in the built app; it is binding, flows into the Work Order and the training materials, and a build that does not satisfy it has failed. A mechanism is how CommCare, Connect or Nova achieves it; it is advisory, and Phase 3 implementing it differently is a normal build choice, not a deviation.
+
+
+________________
+
+
+1. Archetype
+longitudinal-visits.
+
+
+The followed entity is the household. It is created once by the targeting survey, activated by enrollment, read by asset delivery, and returned to repeatedly by consumption support. The visits are ordered and are not interchangeable: an asset delivery before enrollment is not a delivery, and the third consumption transfer is not the first one repeated. Someone in this programme can ask "is this household on track?", which is the archetype's own test.
+
+
+multi-stage was considered and refused. It builds one Learn app, one Deliver app and one payment unit per stage, which contradicts PDD Learn § 1 [FIXED] — "One Learn app for the whole program" — directly. atomic-visit was refused because it has no entity to track and its duplicate-detection question is purely cross-sectional, so it cannot express duplicate within this household's own sequence.
+
+
+This declaration is contingent and could change. PDD Targeting Survey § 1 [FIXED] says "This program is targeting only: no asset transfer, no coaching, no enrollment happens in this app", and § 9 [FIXED] specifies targeting's own Learn app with its own pass mark. That reads as a separate stage with its own archetype. Which reading is correct is the targeting-to-programme seam (§ 19, OQ-1). If the seam resolves such that targeting is a separate Connect opportunity whose cases do not carry, this archetype declaration changes and Phase 2 onward must re-run.
+
+
+________________
+
+
+2. Programme Composition
+Overview obligation: declare-selection.
+
+
+This programme turns on four components, plus one programme-level specification.
+
+
+#
+	Component
+	Tag in framework
+	Authoritative PDD
+	2
+	Household Poverty Targeting Survey
+	[core]
+	PDD Targeting Survey
+	4
+	Enrollment
+	[core]
+	PDD Enrollment
+	5
+	Productive Asset Transfer (In-Kind)
+	[core]
+	PDD Productive Asset Transfer (In-Kind)
+	6
+	Recurring Consumption Support
+	[core]
+	PDD Recurring Consumption Support
+	—
+	Learn (Training and Certification)
+	programme-level
+	PDD Learn
+	
+
+The selection was derived by running ACE's component classifier over the seven source documents rather than by reading their filenames. It returned: mode componentized, four components, one programme-level document, two supporting documents (the Framework and the PPI instrument), zero undeclared PDDs and zero findings.
+2.1 What determined this selection — and why it is provisional
+The selection is derived from PDD availability, not from a model specification, and that is not what the framework says should happen.
+
+
+The Graduation Framework states in terms that components are a menu and a specific programme is a model — which components are on, plus the option chosen for each configurable one — and that "ACE is given that model specification alongside the component PDDs." No model specification is present in inputs/. So this four-component set is what has a PDD, which the framework and the Learn PDD both distinguish from what the programme turns on.
+
+
+PDD Learn § 2 [FIXED] draws the distinction explicitly: "A component with no PDD is a different case from a component switched off in a model." Under that rule ACE builds nothing for a component with no declared requirements and lists it as a gap — which is what § 2.2 does. It does not follow that the programme owner intends those components to be off.
+
+
+This is the headline finding of this run and it is unchanged from the superseded run, because the input gap is unchanged. It is carried as OQ-0 and it gates the meaning of everything below.
+2.2 Components this programme does not carry
+Nine of the framework's twelve components are not carried.[a] Three of them are tagged [core] in the framework, which makes their absence a design question rather than a scoping detail.
+
+
+#
+	Component
+	Framework tag
+	Why not carried
+	5b
+	Productive asset transfer (cash)
+	[core]
+	No PDD
+	7
+	Savings / VSLA
+	[core]
+	No PDD
+	8
+	Structured coaching
+	[core]
+	No PDD
+	1
+	Geographic (village) selection
+	[candidate]
+	No PDD
+	3
+	Targeting validation and grievance
+	[candidate]
+	No PDD
+	9
+	Client progress monitoring
+	[candidate]
+	No PDD
+	10
+	Graduation assessment / exit
+	[candidate]
+	No PDD
+	11
+	Business group formation
+	[candidate]
+	No PDD; framework records none exists
+	12
+	Community entry and market assessment
+	[candidate]
+	No PDD; framework records none exists
+	
+
+Two absences change what this programme is, not merely what it contains:
+
+
+* Component 8 (structured coaching) is the programme's only recurring, in-person, household-level touchpoint. The framework calls it "the natural host for progress monitoring (Component 9) and for over-time asset re-verification." Without it, and with Component 9 also absent, the programme has no host visit for post-distribution confirmation or for re-verifying that a transferred asset is still alive and productive. Note the framework itself flags that a no-coaching model is one the project wants to be able to configure — so this may be a deliberate model choice rather than a gap. Only OQ-0 can settle which.
+* Component 10 (graduation assessment / exit) is what would measure whether the programme worked. Its absence is why every primary success metric in § 15 is a delivery-integrity metric, and why this programme must not claim to measure graduation.
+
+
+Carried as OQ-8.
+
+
+________________
+
+
+3. Problem Statement
+Households in extreme poverty are frequently outside the reach of both markets and conventional social protection: too poor to absorb a productive asset without consuming it, too remote or undocumented to be reached by a national transfer scheme, and often invisible to the targeting instruments that decide who receives help. The poverty graduation model — a time-bound sequence of a productive asset, consumption support that protects it, coaching, and savings — is one of the better-evidenced interventions for this group.
+
+
+Delivering it well is an operational problem before it is a design problem, and three failures recur. Targeting fails when the household list is captured by local elites or when a scorecard is administered by someone who knows which answers qualify a household. Delivery fails silently when a transfer or an asset is recorded as delivered and was not, particularly where cash moves hand to hand and no transaction record exists. Measurement fails when a programme reports what it disbursed rather than what changed.
+
+
+What this programme addresses is the first two. It puts a canonical, unmodified poverty scorecard in the hands of frontline workers with the score hidden from both the worker and the household; it pays only for work that carries verifiable field evidence; and it holds one durable household record so that a delivery can be checked against the enrollment it belongs to rather than taken on its own word.
+
+
+What it does not address is the third, and § 15 states that limit rather than working around it. This build can demonstrate that a graduation programme is configurable and verifiable on Connect. It cannot demonstrate that the programme works, because the two components that would measure that have no specification.
+
+
+________________
+
+
+4. Intervention Design
+Overview obligation: declare-composition.
+4.1 How the four components compose
+Each component is a module over one shared household case, shown or hidden on that case's state — the framework's own pattern: "A component being off is a hidden module, not a separate build." The components are not four apps. They are four modules and one Learn curriculum over one case.
+
+
+The seams between them are declared by the component PDDs themselves, and this overview composes rather than re-derives them:
+
+
+* C2 → C4. Targeting produces a scored, GPS-located, de-duplicated household record. It explicitly does not decide eligibility: C2 § 8 [FIXED] has the app compute the score and never label a household eligible or ineligible, with the programme owner applying the threshold outside Connect. Enrollment consumes that decision and the targeting record. This is the programme's one hard seam and it is unresolved (OQ-1).
+* C4 → C5 and C6. Enrollment sets enrolled, which gates everything downstream: "nothing downstream runs until enrolled is set" (C4 § 6 [FIXED]). It also collects the operating data the other two need — transfer details for C6, asset choice for C5 where a menu applies.
+* C5 → C6. Asset delivery sets delivered-and-verified, which gates the recurring components where the model sequences consumption support behind asset delivery (C6 § 8 [FIXED]).[b]
+* Withdrawing my earlier comment on this bullet. "A simple recurrence with no conditional gates" is my own wording, in the framework under Component 6 and in the Consumption Support framing note, so the substance is mine and the bullet is accurate.
+* Two small things. §7.3 cites this to Consumption Support §1 when it sits in the framing note above §0, worth correcting. And "no conditional gates of its own" is ambiguous next to the two bullets above, which describe things that do gate C6. My framework means the recurrence itself is unconditional: transfer three doesn't depend on anything having happened, unlike 5b where each round is gated. Saying that explicitly would help.
+* 4.2 Lifecycle sequence
+1. Targeting. An FLW administers the PPI to every household in an assigned settlement area (census saturation). The score is computed in-app and shown to nobody.[c]
+2. External eligibility decision. The programme owner applies its threshold outside Connect. [d]How the result returns to the app is OQ-1 and is not decided here.
+3. Enrollment. For an included household, an FLW confirms identity against the targeting record, explains the programme, records participation consent (distinct from survey consent), collects operating data, and sets enrolled, starting the graduation clock. Usually this is the opening module of the first programme visit rather than a trip of its own.
+4. Asset delivery. A physical income-generating asset is handed over and verified in one visit, with a live photo and a paired asset-plus-recipient photograph. Sets delivered-and-verified. Whether the FLW performs the handover or verifies one made by LLO logistics is the author's own open question (C5 § 12 Q1) and changes what the paid unit is — carried as OQ-13, not resolved here.
+5. Recurring consumption support. A small transfer recurs across the programme window. Connect does not disburse it; it records that a transfer was due, captures the artifact confirming receipt, and reconciles the outcome back to the case.
+6. No terminal state. See § 6.3.
+
+
+Steps 4 and 5 are not sequential in the way 1–3 are. The asset is delivered once and then has a lifecycle; consumption support runs on its own clock. The household case holds both tracks at once.
+
+
+________________
+
+
+5. Case and State Model
+Overview obligation: declare-case-model.
+
+
+One case type: household. The framework is explicit — "One person participates per household, so the household and the participant are treated as the same case; there is no separate participant case beneath the household."
+
+
+No case level above the household exists in this programme. A VSLA group case would be created only by Component 7, which is not carried. PDD Enrollment § 8 [FIXED] confirms this is safe: enrollment records group membership as a plain value where a group component exists and "Nothing in this component depends on that being resolved." Here it records none.
+
+
+State on the household case, by the component that writes it:
+
+
+State[e]
+	Written by
+	Read by
+	Identifiers, GPS, PPI responses, computed score[f]
+	C2
+	C4 (identity confirmation)
+	enrolled, enrollment date, graduation-clock start
+	C4
+	C5, C6 (both gate on it)
+	Consent (participation), contact and re-find data[g]
+	C4
+	C5, C6
+	Transfer method and transfer details
+	C4
+	C6
+	Asset choice, where a menu applies
+	C4
+	C5 (delivery must match)
+	FLW assignment
+	C4
+	C5, C6 (visit ownership)
+	Delivered-and-verified, asset type and count, asset status = active
+	C5
+	C6, where sequenced behind delivery
+	Per-period transfer records; verified-transfer count; schedule position; failed-transfer flag[h]
+	C6
+	—
+	FLW cash float balance, float issues, reconciliations (worker-level, not case-level)[i]
+	C6
+	—
+	
+
+Two properties of this table are load-bearing:
+
+
+* Asset status can be set but never updated. C5 § 8 [FIXED] writes an initial status of active and states that later changes — dead, sold, reproduced — "are written by monitoring or coaching visits, not here." Both of those components are absent, so nothing in this programme ever moves it off active.
+* The worker-level cash float is the only non-case state in the programme and it exists only for a cash-in-hand deployment, which OQ-3 has not ruled in or out.
+
+
+________________
+
+
+6. Entity Lifecycle
+The followed entity is the household.
+6.1 States[j]
+Value
+	Label
+	Set by
+	Meaning
+	1
+	Surveyed
+	C2
+	A completed, verified PPI survey exists. Score computed, shown to nobody.
+	2
+	Selected
+	external
+	The programme owner's eligibility decision has included this household. How this state is represented in the app is OQ-1.
+	3
+	Enrolled
+	C4
+	Consent recorded, operating data collected, graduation clock started. Gates everything downstream.
+	4
+	Asset delivered and verified
+	C5
+	The physical asset was handed over and the delivery passed verification.
+	5
+	Consumption support active[k]
+	C6
+	The household is receiving scheduled transfers.
+	6.2 Expected sequence and cadence
+Surveyed → Selected → Enrolled → Asset delivered → Consumption support recurring. Enrollment and asset delivery normally occur in one sitting (C4 § 1 [FIXED]); enrollment becomes a standalone visit when the asset is not yet procured, the first transfer is remote, or enrollment includes assisted account opening.
+
+
+The consumption cadence is a shape, not a schedule. C6's Annex leaves frequency and number of transfers TBD, so no interval is declared here and none should be invented downstream.
+6.3 Completion — this programme has none
+A household in this programme has no terminal state. Enrollment starts the graduation clock, but Component 10 (graduation assessment and exit) has no PDD, so nothing measures graduation and nothing sets exit. Even a time-based close is unavailable, because the consumption window's length is itself undeclared.
+
+
+This is stated rather than papered over. The longitudinal-visits archetype asks what completion means for the followed entity, and the honest answer for this component selection is that there isn't one. Carried as OQ-2.[l]
+
+
+________________
+
+
+7. What Each Component Does Without the Components This Programme Lacks
+Overview obligation: resolve-absent-reference (three instances, derived from the components' own cross-references).
+7.1 Component 4 refers to Component 3 (targeting validation and grievance) — dependency dropped
+C4's seam discussion notes that the weakest of the three candidate mechanisms, implicit-by-visit, "leaves no draft list for validation and grievance (Component 3) to work against." Component 3 is not carried, so no draft selection list is published to the community and no grievance is recorded or resolved.
+
+
+Disposition: dropped, and the residual is real. Component 4 remains buildable — nothing in it requires a validation step. What is lost is a fairness control: the framework's stated purpose for Component 3 is that the community accepts the selection as fair. Without it, a household wrongly excluded by the external eligibility decision has no in-programme route to contest it. Note the framework's own caveat that validation meetings are themselves capturable by local elites and that the scorecard is the counterweight — so this is a weakened control, not an absent one.
+7.2 Component 5 refers to Component 9 (client progress monitoring) — dependency dropped, one capability lost outright
+C5 § 6 [FIXED] draws a scope boundary in terms: "Re-verifying the asset over time (still present, still alive) is monitoring (Component 9), not this component. This component verifies only the delivery event."
+
+
+Disposition: dropped, and it removes a capability rather than deferring one. Component 5 is fully buildable — delivery-point verification is self-contained. But the programme will know that an asset was handed over and will never know whether it survived, was sold, or reproduced. Combined with § 5's observation that asset status is written once as active and never updated, the case will report every delivered asset as active for the life of the programme regardless of what happened to it. Any downstream document must avoid reading that field as evidence the asset still exists.
+7.3 Component 6 refers to Component 5b (cash asset transfer) — no impact on C6
+C6 describes a shared seam: it owns the transfer method and its verification, and Component 5b would reuse that machinery to send asset-scale cash for a different reason on a different schedule.
+
+
+Disposition: no impact. This is the one absent reference that costs nothing. The dependency runs the other way — 5b would consume C6, not the reverse — so C6 is complete without it. This programme transfers the productive asset in kind (Component 5) and uses C6 only for recurring consumption support, which C6 § 1 [FIXED] describes as its own simple recurrence with no conditional gate[m]s. Nothing in C6 is stubbed or weakened.
+
+
+________________
+
+
+8. Learn App Specification
+One Learn app for the whole programme (PDD Learn § 1 [FIXED]) — a shared foundations module plus one training module per active component, with the modules for inactive components hidden rather than absent. Requirement.
+
+
+Working language: not declared. All five Annexes carry Languages: TBD, and ACE has deliberately not inferred one from the instrument's country (§ 19, OQ-5). The app is authored in English as its source language. Once a working language is declared, ACE authors the app's strings in it on top of the always-complete English source; those translations are ACE-authored and carry needs-review, and reviewing them is a normal downstream obligation exactly like reviewing the English copy — not a completed step. Instrument translations are a stricter case: C2 § 3 [FIXED] requires them to be human-verified before deployment.
+8.1 Modules
+Module
+	Source of requirements
+	Foundations
+	PDD Learn § 3 [FIXED] — stated there, not in a component PDD
+	C2 — Targeting survey
+	PDD Targeting Survey § 9 [FIXED]
+	C4 — Enrollment
+	PDD Enrollment § 7 [FIXED]
+	C5 — Asset delivery
+	PDD Productive Asset § 9 [FIXED]
+	C6 — Consumption support
+	PDD Consumption Support § 9 [FIXED]
+	
+
+No module is authored for any component in § 2.2. PDD Learn § 2 [FIXED] rules on this directly: where a component has no PDD and therefore no declared training requirements, ACE builds no module and no assessment items for it and lists it as a gap. ACE does not author training content for requirements nobody has declared. Requirement.
+
+
+Foundations covers programme orientation, GPS capture and what to do when accuracy is not reached, live-photo capture, and consent and refusal handling. PDD Learn § 3 [FIXED] fixes this set and states that ACE does not decide what counts as foundational or move skills into or out of it.
+8.2 Assessments
+Pre[n]-assessment (data collection only, not used to route or skip content) and post-assessment (the certification gate), both drawn from one shared bank scoped to foundations plus the active components, with different items. Pass mark 80%, which unlocks the Deliver app. Requirement.
+
+
+Both source documents agree on 80% — PDD Learn's Annex default and C2 § 9 [FIXED] — so nothing numeric is lost by folding C2's Learn requirements into the single app.
+
+
+Bank sizing is a floor, not an exact mandate: at least 30 post-assessment items and at least 20 pre-assessment items.[o] A floor is the correct form here — an exact count set below the coverage the curriculum needs would pre-commit Phase 3 to a failing grade for obeying its brief, and could not be repaired downstream. With foundations plus four component modules the floor is comfortably reachable, so no coverage deviation is declared.
+
+
+Item rotation is not specified, and it is not impossible. One fixed bank is specified. The reason is a Nova authoring gap plus the complexity of the fixture and relevance machinery — a fixed-size per-attempt draw is expressible in XForms and Connect scores one normally. This document must not be read as recording rotation as a platform limit.
+
+
+The residual that follows is real: unlimited re-attempts against one fixed bank let a worker pass by memorising the answers, which softens the Deliver-unlock gate on every retry. A re-attempt limit is the available lever. Raised as OQ-7 rather than decided here.[p][q]
+
+
+Any worked assessment item this design produces is illustrative of the required shape only — Phase 3 authors the bank and may harden or discard any example.
+8.3 The model-overview screen is deferred
+PDD Learn § 3 asks for a short opening screen describing what this particular model consists of, and flags it as an ACE-capability dependency to confirm rather than assume, because it must be generated from the model spec at build time rather than selected from pre-written content.
+
+
+Deferred, for a reason upstream of the capability question: there is no model specification to generate it from (OQ-0). PDD Learn § 6 [FIXED] provides for exactly this — "otherwise that screen is deferred."
+
+
+________________
+
+
+9. Deliver App Specification
+One Deliver app, four modules over one household case, each shown or hidden on case state. Per-form field content is specified by each component PDD and is not restated here. What follows is what the composition requires and no single component PDD can state.
+9.1 Module gating
+Module
+	Active when
+	C2 — Targeting survey
+	Household in an assigned area, not yet surveyed[r]
+	C4 — Enrollment
+	Household included by the eligibility decision, enrolled not set
+	C5 — Asset delivery
+	enrolled set, delivered-and-verified not set
+	C6 — Consumption distribution
+	enrolled set (and delivered-and-verified, where the model sequences it so), within the programme window[s]
+	
+
+Requirement: a household already at delivered-and-verified is never shown the delivery module again (C5 § 4 [FIXED]).
+9.2 The instrument is fixed and unmodifiable
+The Nigeria 2018 PPI is a [FIXED] element. Its ten questions, response options, order and point values are implemented verbatim — no paraphrasing, no added or dropped options, no reordering. Its licence permits digitising it unmodified, and the source workbook states that changing any question, option or point value invalidates the tool's results. Requirement.
+
+
+The score is computed in-app and shown to neither the FLW nor the household (C2 § 3 [FIXED]). This is a fraud control, not a UI preference: a worker who can see the score can coach a household across the eligibility threshold. Requirement.
+
+
+Household size must be derived from a roster, never asked directly. The instrument is explicit. The roster lists each member, the PPI Interview Guidance membership rules decide who counts, and the size band follows.
+
+
+Requirement, not mechanism. The membership confirmation asked on each roster row must actually determine the derived household size. Any aggregate computed over the roster must count only confirmed members. Mechanism (advisory): a filtered count over the roster nodeset — count(/data/roster[member_confirmed = 'yes']), not a bare count(/data/roster).
+
+
+This is worth stating because getting it wrong is both easy and expensive. Indicator 2 is the heaviest item in the instrument — 31 points at the 3 or less band against 10 at 4–6 — so one wrongly-retained member can move the score 21 points across a sharp band boundary. An unfiltered count asks the worker a required question and then discards the answer.
+
+
+One imprecision in the source, carried here so it is not silently inherited: the instrument's own note says "Sum all 10 → PPI score, 0-100", but summing the maximum points across the ten indicators (16 + 31 + 9 + 10 + 6 + 6 + 5 + 8 + 5 + 6) gives 102 attainable, not 100. This does not affect scoring or the lookup table, both of which are used as published; it affects only the description of the range. Flagged for the author.
+
+
+The zone question (Indicator 1, worth up to 16 points) may be pre-filled from deployment configuration only if the deployment sits entirely within one zone, and the build memo must flag which way it went. With geography undeclared (OQ-4) this cannot be settled now.
+9.3 Visit definitions and non-payable outcomes
+Each component PDD defines its own payable unit and its own recordable-but-unpaid outcomes; those definitions govern. What matters at the programme level:
+
+
+Requirement: every non-payable outcome must still be recordable and submittable. Refusals, vacant dwellings, absent respondents, non-delivery and non-receipt are all coverage and integrity data, and a design that only accepts successes produces a coverage denominator that cannot be trusted.
+
+
+Requirement: enrollment is not itself a paid deliver unit (C4 § 2 [FIXED]). Payment attaches to the delivery it opens. § 12.1 costs the consequence.
+9.4 Capture fidelity
+* Live photo capture only, never gallery selection — C2 § 5, C5 § 5 and C6 § 5 all state this [FIXED]. Requirement.
+* The paired asset-plus-recipient photograph at asset delivery is a distinct artifact from the asset photo. Requirement.
+* GPS is captured on every visit, and each fix's accuracy value is captured and submitted with it. Accuracy is advisory to the worker — the app tells them when a reading is poor and to move or retry — and poor readings are down-weighted in duplicate detection. Requirement, stated as capture and observability.
+
+
+What this does NOT say, deliberately. There is no enforced accuracy gate: no reading is rejected, and no submission is blocked for accuracy. ACE does not build that today — Nova rejects validation on a geopoint, and Connect's verification-flags form does not carry a GPS radius. Since this sentence flows verbatim into the Work Order, asserting a gate would put a promise into a contractual document that the built app would not keep. Nothing in the source requires the unbuildable form: C2 § 6 [FIXED] flags missing, spoofed, and implausible-travel-speed GPS, all of which are post-hoc flags rather than capture gates.
+
+
+________________
+
+
+10. Downstream Phase Guide
+Overview obligation: declare-downstream-use.
+
+
+Each downstream phase reads the component PDDs directly. This table says which document answers which question, so no phase has to guess and none re-derives a component's internals from this overview.
+
+
+Phase
+	Reads
+	For
+	2 — Scenarios and acceptance
+	This overview §§ 4, 6, 9; each component PDD's visit-definition section
+	Journeys must cross component boundaries — the enrollment-then-delivery sitting is one journey, not two
+	3 — Learn app
+	PDD Learn (all); each component PDD's training-requirements section (C2 § 9, C4 § 7, C5 § 9, C6 § 9)
+	One app, foundations + four modules, one shared bank, 80% gate
+	3 — Deliver app
+	Each component PDD's form and visit sections; this overview § 9.1 for gating and § 5 for case state
+	Four modules over one case; the PPI verbatim from the instrument document, not from any PDD's paraphrase
+	4 — Connect setup
+	This overview § 18 (entity_id_grain, caps, rate band); C2 § 7, C5 § 7, C6 § 7
+	Payment units are heterogeneous — see § 12.2. Enrollment is not separately payable
+	5 — OCS
+	This overview; all four component PDDs
+	The chatbot must answer across components, including "what do I do when a household says it never received a transfer the system shows as sent"
+	6 — QA and training
+	Each component PDD's training-requirements section; this overview § 7
+	Training must cover what the programme does NOT do — no coaching visit, no asset re-verification, no graduation assessment
+	8 — Solicitation
+	This overview §§ 2, 11, 14, 19
+	Respondents must propose the undeclared Annex parameters; the EOI form is chosen for that reason
+[t]	
+
+
+________________
+
+
+11. Target Population
+Unit: the household. The respondent must be the household head or an adult member aged 18 or over able to answer for the household (C2 § 4 [FIXED]).
+
+
+Coverage model: census-style saturation of assigned settlement areas — every household in the area, no sampling frame, no rooftop or satellite sampling, no microplanning (C2 § 4 [FIXED]). Each household is surveyed at most once. Consent is required; refusals are recorded and unpaid.
+
+
+Geography: NOT DECLARED. The only geographic signal in the source pack is that the fixed instrument is the Nigeria 2018 PPI, which fixes the country and nothing below it. Every Annex carries Geography (admin areas): TBD. ACE has not invented administrative areas (OQ-4). This has two consequences beyond scheduling: the PPI zone question cannot be resolved (§ 9.2), and there is no local market floor against which to judge the proposed rate band (§ 12.1).
+
+
+Expected reach (a planning estimate, not a commitment): 1,500–2,500 households surveyed, of whom 300–500 are enrolled[u][v] and carried through delivery and recurring transfers. The enrolled fraction is not derivable from the sources — the eligibility threshold belongs to the programme owner and is not stated — so this band expresses a pilot-scale intent and should be replaced by the awarded partner's own figure.
+
+
+Note on saturation[w]. C2 § 12 asks directly whether census saturation is realistic for the pilot areas or whether a listing or sampling step is needed first. Without a declared geography that question cannot be answered, and it materially affects the reach band above.
+
+
+________________
+
+
+12. FLW Requirements
+Headcount: 8–15 FLWs. A projection set at deployment, not by ACE. Derived from the reach band at 8–15 completed surveys per FLW-day across a 4–8 week targeting stage, then a smaller enrolled cohort carried forward. Sensitive to settlement density, which follows from a geography that is not declared.
+
+
+Skills. Administering a scorecard neutrally without leading or coaching the respondent; consent and refusal handling; household identification and duplicate avoidance; accurate capture of bank or mobile-money details, where an error blocks a household's payments; asset handover and the paired-photograph rule; and, for a cash-in-hand deployment, cash-float discipline and reconciliation. All are declared by the component PDDs' training-requirements sections and are taught in the one Learn app.
+
+
+Daily cap: 25 payable surveys per FLW per day (C2 § 7 [FIXED], an anti-skimming cap).
+12.1 Costing the labour
+The rate band is USD 1.50–3.50 per verified unit. It is a projection to price a solicitation against, not a price: every Annex carries Currency and rate: TBD, and the actual rate is proposed by the LLO in its solicitation response with justification.
+
+
+Gross earnings at the daily cap: 25 × USD 1.50–3.50 = USD 37.50–87.50 per working day.
+
+
+Effective earnings on a realistic day: a household survey that administers ten instrument questions plus a roster, captures GPS, a dwelling photograph and identifiers, and walks between dispersed households does not run at the cap. At 8–15 completed surveys per day, earnings are USD 12.00–52.50 per day of field time.
+
+
+Three categories of field time earn nothing, and all three are structural rather than incidental:
+
+
+1. Standalone enrollment visits. Enrollment is not a paid deliver unit (C4 § 2 [FIXED]), and C4 § 1 names three conditions that force it to stand alone — the asset is not yet procured, the first transfer is remote, or enrollment includes assisted account opening. On such a day an FLW can work a full day and earn nothing.
+2. Zero-paying outcomes under census saturation. Refusals, vacant dwellings and absent respondents are required submissions that pay zero (C2 § 5 [FIXED]). Under saturation these are not edge cases; they are a predictable share of every day's visits.
+3. Travel between dispersed households, throughout.
+
+
+Whether USD 12.00–52.50 per day clears a living floor cannot be assessed, because no geography is declared. This document states that rather than assuming the band is adequate. It is the second consequence of OQ-4 and is a reason to resolve it before the solicitation prices anything.
+12.2 The payment model is not uniform across components
+This is the composition fact most likely to be got wrong downstream, so it is stated plainly:
+
+
+* C2 (targeting survey) — one verified survey is one paid unit. Once per household.
+* C4 (enrollment) — not separately payable. Paid as part of the first programme visit it opens.
+* C5 (asset delivery) — one verified delivery is one paid unit. Once per household.
+* C6 (consumption support) — payable only for in-person methods. Where disbursement is fully remote there is no field activity to attach payment to, and C6 § 7 [FIXED] states the component still runs unpaid in that configuration, holding the schedule and maintaining case state. Which activities are payable is set per deployment.
+
+
+________________
+
+
+13. LLO Preference
+None. This is a public solicitation with no named candidates.
+
+
+No candidate LLO appears anywhere in the seven-document source pack. KADSIPA [x]appears in the framework's model-comparison table as a third-party programme whose workflow is being mapped for reference — the framework's own note calls it "a self-description of a running program" — and reading that as a candidate implementer would be exactly the kind of invented context that poisons every downstream phase. Phase 8 therefore publishes the solicitation and emails no candidates.
+
+
+The capability profile a respondent should demonstrate: frontline field teams operating in the deployment geography; experience administering standardised household surveys; capacity to handle procurement, quality control, quarantine and transport of livestock or inputs, all of which sit outside the app with the LLO (C5 § 2 [FIXED]); and, for a cash-in-hand deployment, the finance function to issue and reconcile FLW cash floats (C6 § 3a [FIXED]).
+
+
+________________
+
+
+14. Solicitation[y]
+Field
+	Value
+	Type
+	EOI
+	Deadline
+	14 days from publication
+	Response template
+	Default
+	
+
+An EOI rather than an RFP, and here the choice is substantive rather than a default. An RFP asks respondents to price a defined scope. This scope is not defined: geography, languages, transfer method, transfer amount and frequency, asset type and count, and every rate are undeclared, and the component selection itself is provisional pending a model specification. An EOI asks respondents to propose those parameters, which is precisely what the Annexes are waiting for.
+
+
+Respondents should be asked to propose: geography and settlement areas; working language(s); transfer method and whether a hybrid is needed; asset type or a value-equivalent menu; per-unit rate with justification against local labour markets; and their view on whether census saturation is realistic in their areas.
+
+
+________________
+
+
+15. Success Metrics[z]
+#
+	Metric
+	Target
+	Method
+	Layer
+	Primary / Secondary
+	M1
+	Households surveyed
+	1,500–2,500
+	Count of verified survey submissions
+	A
+	Primary
+	M2
+	Assigned-area coverage
+	≥ 95% of enumerated households in assigned areas[aa]
+	Verified surveys plus recorded non-response outcomes over the area denominator
+	A
+	Primary
+	M3
+	Households enrolled
+	300–500
+	Count of cases with enrolled set
+	A
+	Primary
+	M4
+	Enrollment identity-match rate
+	≥ 98% match to targeting record
+	Enrollment identity check against the targeting record[ab]
+	A
+	Primary
+	M5
+	Assets delivered and verified
+	100% of enrolled households[ac]
+	Count of deliveries passing verification
+	A
+	Primary
+	M6
+	Scheduled transfers confirmed received
+	≥ 95% of transfers due
+	Confirmation artifact per method, reconciled to the case
+	A + B
+	Primary
+	M7
+	Failed or reversed transfers resolved
+	100% resolved or escalated
+	Failed-transfer state cleared with a recorded outcome
+	B
+	Secondary
+	M8
+	Verification flag rate
+	< 10% of submissions flagged
+	Automated flags per C2 § 6, C5 § 6, C6 § 6
+	A
+	Secondary
+	M9
+	Flag resolution time
+	Median < 5 working days
+	Time from flag raised to resolution
+	A
+	Secondary
+	M10
+	Duplicate household rate
+	< 2% of surveys
+	Identifier and 15 m GPS duplicate detection
+	A
+	Secondary
+	M11
+	Cash float variance (cash-in-hand only)
+	Within deployment threshold
+	End-of-round reconciliation against expected balance
+	A
+	Primary, where applicable
+	M12
+	Learn certification rate
+	≥ 90% of FLWs pass at 80%
+	Post-assessment result
+	A
+	Secondary
+	What this programme cannot measure, and must not claim to
+Every primary metric above is a delivery-integrity metric. They measure what the programme did — surveys completed, households enrolled, assets handed over, transfers confirmed. Not one of them measures whether any household's poverty changed.
+
+
+That is not an oversight in the metric design; it is a direct consequence of the component selection (§ 2.2). Component 9 (client progress monitoring) and Component 10 (graduation assessment and exit) are the two components that would close the inferential chain from we delivered this to this worked, and neither has a PDD. Without them there is no midline, no endline, no graduation determination, and no re-measurement of the baseline the targeting survey captured.
+
+
+Two specific claims must not be made from this build:
+
+
+* Not "assets are still productive." § 7.2 explains why: asset status is written once as active and never updated, because over-time re-verification belongs to the absent Component 9.
+* Not "households graduated." Nothing measures it.
+
+
+What this programme can demonstrate is that a multi-component graduation programme is configurable, deliverable and verifiable on Connect, with a defensible audit trail per household. That is a real and sufficient objective for a pilot. It is simply a different claim from the one a funder reading "poverty graduation" may assume, and this document draws the line deliberately.
+
+
+________________
+
+
+16. Evidence Model
+Layer A — delivery proof
+Per-submission automated checks that gate payment. Every flag withholds payment pending review rather than auto-rejecting.
+
+
+Control
+	Source
+	Note
+	GPS present, not spoofed, plausible travel speed between consecutive visits[ad]
+	C2 § 6, C5 § 6, C6 § 6 [FIXED]
+	Post-hoc flags, not capture gates
+	Live photograph present, not perceptually duplicated across visits
+	C2 § 6, C5 § 6, C6 § 6 [FIXED]
+	
+
+	Paired asset-plus-recipient photograph at delivery
+	C5 § 5, § 6 [FIXED]
+	
+
+	All ten instrument questions answered — no partial survey is payable
+	C2 § 5 [FIXED]
+	
+
+	Duplicate detection: same household identifiers, or same GPS point within 15 m, across the programme
+	C2 § 6 [FIXED]
+	15 m is a v1 default, PM-tunable as a config change
+	Delivered asset matches the choice recorded at enrollment, where a menu applies
+	C5 § 3 [FIXED]
+	A case-read; unblocked upstream
+	Duplicate transfer against the same household for the same scheduled period
+	C6 § 6 [FIXED]
+	
+
+	Response-pattern outlier detection against peer FLWs
+	C2 § 6 [FIXED]
+	Flagged, never auto-rejected
+	Form-duration floor: total form time under 6 minutes flags the visit
+	C2 § 6 [FIXED]
+	See the mechanism note below
+	
+
+Longitudinal clause. Payment dedup keys on entity_id = concat(case_id, activity_code, period_key) — one payment per household per activity per scheduled occurrence. The third term is load-bearing and the archetype's own documented default would have been wrong here: concat(case_id, activity_code) pays once per activity per household for the life of the case, which is correct for targeting, enrollment and asset delivery but collapses every one of a household's recurring consumption transfers into a single payment. period_key is a constant for the once-only activities and the scheduled period for Component 6.
+
+
+A visit is payable only from the FLW assigned to that household from enrollment onward. Before enrollment there is no household-level owner to check against — targeting runs census saturation over areas assigned by the Network Manager — so ownership is not a Layer A control for Component 2.
+
+
+Mechanism note on the duration floor. The requirement is C2 § 6 [FIXED] and is binding. The obvious implementation is not: a bare difference of now() calls evaluates once at form load and is structurally unable to fire, and a control of exactly this shape has shipped inert in an ACE app before. Mechanism (advisory): capture section timestamps at form entry and exit and difference those. Phase 3 may implement it another way; it must not implement it as a bare now() difference.
+Layer B — content proof
+That what was recorded actually happened, evidenced by an artifact from outside the recording worker.
+
+
+* Per-method transfer confirmation (C6 § 3 [FIXED]): a transaction record for bank, mobile money and agent cash-out; a vendor record for vouchers; for cash-in-hand, a signed distribution list, a timestamped GPS-tagged photograph, and a short voice recording of the recipient stating the amount received in their own words.
+* Reconciliation (C6 § 6 [FIXED]): the external outcome — amount actually received, date, status, provider reference — is written back to the case. Instructing a transfer and the transfer arriving are separate events and are recorded separately. Any gate that depends on a household having money keys off the amount received, never off the instruction. A silently failed transfer that reads as successful produces a household assessed against a programme input it never got.
+* Cash float reconciliation (C6 § 3a [FIXED]): the float issued to an FLW, decremented per distribution, reconciled at end of round with any variance recorded. C6 calls this the load-bearing control for cash-in-hand: it constrains the total that can be distributed and catches short-changing and inflated totals.
+
+
+Open capability dependency. Reconciliation requires a route for an external transaction outcome to reach the case without a worker submission, which C6 § 10 [FIXED] flags as "the part that goes beyond normal Connect operation" and "a Connect-capability question for the platform team, not an ACE decision." Two candidates exist — a manual form recorded by finance staff, which is still a submission, or a batch import of the provider's transaction report joined on a shared reference, which is not. Metrics M6 and M7 depend on this route existing. ACE does not pick. Raised as OQ-11.
+Layer C — cross-delivery quality[ae]
+Layer C is specified by the sources and is largely inert in this component selection. That is stated rather than implied.
+
+
+C6 § 6 [FIXED] ranks four verification layers for cash-in-hand and is unusually candid about what the load-bearing one cannot do: float reconciliation "does not catch a fabricated distribution to a real household." The two layers designed to catch exactly that are the beneficiary-originated voice recording and an independent post-distribution confirmation.
+
+
+* Post-distribution confirmation has no host visit. It is designed to ride a coaching (C8) or monitoring (C9) visit, and neither component has a PDD. For remote transfer methods there is no in-person visit at all. Its sampling rate is undeclared.
+* The voice-recording review protocol is an open question (C6 § 12): captured-and-stored has deterrent value only if somebody listens, and whether review is sampled, AI-transcribed or triggered only by other flags is undecided. Automated speaker matching against the enrollment baseline is explicitly not assumed for v1.[af]
+* Survey back-check (an independent re-verification of a sample of surveys) is deferred to v2 by C2 § 12.
+* Over-time asset re-verification is unavailable — Component 9 is absent (§ 7.2).
+
+
+So a genuinely well-designed validation harness with independent ground truth exists on paper and cannot run as this programme is composed. This matters most for a cash-in-hand deployment, which OQ-3 has not ruled in or out. It is disclosed here rather than left for a downstream phase to discover.
+
+
+________________
+
+
+17. Timeline[ag]
+Indicative, for a pilot. Every duration below is contingent on a geography that is not declared, and the recurring stage has no declared length at all.
+
+
+Stage
+	Duration
+	Gate to proceed
+	Partner onboarding and FLW recruitment
+	2–3 weeks
+	Roster confirmed; Learn certification at 80%
+	Targeting survey (census saturation)
+	4–8 weeks
+	Coverage target met; flag backlog resolved[ah]
+	External eligibility decision
+	1–2 weeks
+	Inclusion list returned to the programme — OQ-1 gates the mechanism
+	Enrollment and asset delivery
+	3–5 weeks
+	All included households enrolled and delivered
+[ai]	
+Recurring consumption support
+	Not declared[aj]
+	—
+	
+
+The programme has no declared end. C6's Annex leaves the transfer frequency and count TBD, so the recurring stage has no length, and Component 10 is absent, so there is no terminal assessment to end on. This is the same finding as § 6.3 seen from the schedule side, and it is why the Work Order cannot state a period of performance without an input this pack does not contain.
+
+
+________________
+
+
+18. Program Parameters[ak]
+Key
+	Value
+	learn_passing_score
+	80
+	assessment_items
+	30
+[al]	
+pre_assessment_items
+	20
+[am]	
+payment_rate_min
+	1.50
+	payment_rate_max
+	3.50
+	payment_rate_currency
+	USD
+	payment_rate_unit
+	one verified deliver-unit submission for one activity occurrence against one household case
+	daily_cap_per_flw
+	25
+	total_cap_per_flw
+	300
+[an]	
+cap_rationale
+	The daily cap of 25 is C2 § 7 [FIXED] anti-skimming. The total cap of 300 is a per-FLW targeting-stage ceiling sized from 8-15 surveys/day over a 4-8 week stage; it is deliberately near-binding against the reach band so a single FLW cannot absorb the whole programme.
+	flw_count_min
+	8
+	flw_count_max
+	15
+	expected_reach_min
+	1500
+	expected_reach_max
+	2500
+	enrolled_cohort_min
+	300
+	enrolled_cohort_max
+	500
+	entity_id_grain
+	concat(case_id, activity_code, period_key)
+	entity_state_taxonomy
+	1=Surveyed; 2=Selected; 3=Enrolled; 4=Asset delivered and verified; 5=Consumption support active [source: Graduation Framework — Case and state model]
+	duplicate_gps_radius_m
+	15
+	form_duration_floor_minutes
+	6
+	working_language
+	NOT DECLARED — English source only, pending the Annexes (OQ-5)
+	geography
+	NOT DECLARED (OQ-4)
+	transfer_method
+	NOT DECLARED (OQ-3)
+	transfer_amount_and_frequency
+	NOT DECLARED (OQ-4)
+	asset_type_and_count
+	NOT DECLARED (OQ-6)
+	solicitation_type
+	EOI
+	solicitation_deadline_days
+	14
+	enrollment_separately_payable
+	false
+[ao]	
+
+
+________________
+
+
+19. Open Questions
+19.1 Read-back of questions raised by the superseded run
+Eleven questions were raised by run 20260905-0924 and none has a human answer. This run's disposition for each:
+
+
+id
+	Disposition
+	Note
+	model-specification-absent
+	Carries forward
+	Unchanged. No model specification is in inputs/. Now OQ-0.
+	targeting-to-program-seam
+	Carries forward
+	Unchanged, and this run adds a consequence the prior run did not record: under the implicit-by-visit mechanism the app holds no targeting record, so the enrollment identity-match verification criterion (§ 16 Layer A) is unverifiable. Now OQ-1.
+	programme-has-no-exit
+	Carries forward
+	Unchanged. Now OQ-2, and stated structurally in § 6.3.
+	deployment-parameters-all-tbd
+	Carries forward
+	Unchanged. Now OQ-4.
+	working-language
+	Carries forward
+	Unchanged. Now OQ-5.
+	asset-single-or-menu
+	Carries forward
+	Unchanged. Now OQ-6.
+	assessment-retake-policy
+	Carries forward
+	Unchanged, and this run agrees with its parenthetical: rotation is a Nova authoring gap, not a platform limit. Now OQ-7.
+	voice-sample-not-in-enrollment
+	Carries forward
+	Unchanged. Now OQ-9.
+	core-components-without-pdd
+	Carries forward
+	Unchanged. Now OQ-8.
+	targeting-learn-app-conflict
+	Carries forward
+	Unchanged. This run reaches the same reading (C2 § 9's requirements fold into the single app) and still asks for confirmation. Now OQ-10.
+	role-by-component-access-map
+	CONTRADICTED
+	See § 19.2.
+	19.2 Contradiction — surfaced loudly
+The prior run's role-by-component-access-map row states that the access-map question "matters less in this selection … since only the FLW role performs the four carried components — but it becomes live the moment monitoring or community entry is added."
+
+
+That premise is wrong, and the question is live in this selection today. Two [FIXED] passages in the carried components require a non-FLW role to enter records into the system:
+
+
+* PDD Consumption Support § 2 [FIXED] names four roles, one of which is "Finance or program staff (LLO or program owner): executes the disbursement and, for remote methods, records the outcome."
+* PDD Consumption Support § 3a [FIXED] is more explicit still: "The float issue and the end-of-round reconciliation are both recorded events, entered by the Network Manager or LLO finance staff, not by the FLW alone."
+
+
+So Component 6 alone requires the Network Manager and LLO finance staff to write worker-level cash-float state, and — for remote methods — to record transfer outcomes. Component 2 additionally gives the Network Manager flag review and roster management, and C2 § 8 [FIXED] restricts what the LLO may see: "LLO/NM gets coverage and verification views but not household scores." That is a role-by-component access rule inside a carried component.
+
+
+This matters because the framework names the constraint that makes it hard: "Connect does not support case sharing across workers; the current workaround is exporting cases and re-importing them with reassigned owners." A design that assumed a single FLW role would not discover this until Phase 4.
+
+
+The prior answer is not overwritten — it is contradicted, and the correction is recorded here and carried into the durable ledger. Now OQ-12, and it is re-tagged as live rather than deferred[ap].
+19.3 The full open set
+#
+	Question
+	Owner
+	Answered where
+	What it blocks
+	OQ-0
+	Where is the model specification? [aq]Which components does this programme actually turn on? The four-component set is derived from PDD availability, which the Learn PDD explicitly distinguishes from a component being switched off in a model.
+	Author / operator
+	A model specification in inputs/
+	The whole selection is provisional. The Learn model-overview screen has no source and is deferred.
+	OQ-1
+	How does the external eligibility decision get back into the app? External cut re-imported, in-app NM selection, or implicit by visit? Does the household case carry across from targeting, or does enrollment re-register and match by ID?
+	Platform team / author
+	C4 § 10 Q1; Framework § Case and state model Q1
+	One Connect opportunity or two; whether the declared archetype holds; and whether the identity-match verification criterion is verifiable at all
+	OQ-2
+	The programme has no exit. Component 10 is absent, so nothing measures graduation or sets a terminal state. In scope, or does the pilot deliberately end without one?
+	Author
+	A Component 10 PDD, or an explicit scope decision
+	The followed entity has no completion state, which the archetype requires
+	OQ-3
+	Which transfer method(s)? Bank, mobile money, agent cash-out, cash-in-hand, voucher, or a hybrid? And can one capture flow serve all of them, or is method a build variant rather than a setting?
+	Author / solicitation
+	C6 Annex; C6 § 12 Q1
+	For remote methods Component 6 produces no field visit and no payable unit, so the programme may have zero recurring FLW visits. Also decides whether the cash-float and voice-confirmation machinery is built at all.
+	OQ-4
+	Every deployment parameter is undeclared across all five Annexes — geography, currency, rate, transfer amount and frequency, asset type, verification thresholds.[ar]
+	Author / solicitation
+	The per-component Annexes
+	No local market floor to judge the rate band against (§ 12.1); the PPI zone question cannot be resolved (§ 9.2); the Work Order has no period of performance and no cap
+	OQ-5
+	What working language(s), and who reviews ACE-authored translations?
+	Author
+	The per-component Annexes
+	The app language layer, training materials, the OCS chatbot, and the solicitation's language requirement
+	OQ-6
+	Single asset type or a value-equivalent menu?
+	Author
+	C5 Annex; C5 § 12 Q3
+	Whether enrollment shows its asset-choice section, and whether delivery must match a recorded choice
+	OQ-7
+	Is a re-attempt limit wanted on the certification assessment? Unlimited retries against one fixed bank let a worker pass by memorising the answers.
+	Author
+	PDD Learn § 4
+	Nothing structurally; a real integrity residual on the Deliver-unlock gate
+	OQ-8
+	Three [core] components have no PDD — 5b, 7 and 8. Should this programme carry them? Component 8's absence removes the only recurring in-person household touchpoint.[as]
+	Author
+	Per-component PDDs, or an explicit scope decision
+	Whether this build is a partial instance of the model or the intended one; and, with C9, why no primary metric measures an outcome
+	OQ-9
+	The baseline voice sample and recording consent are consumed by C6 § 8 and specified by no component. C6 says openly that Enrollment does not specify them; confirmed against C4 § 3. Should Enrollment add them?
+	Author
+	PDD Enrollment § 3
+	Only for cash-in-hand deployments (OQ-3). This is a gap BETWEEN two carried components, not an absent-component residual.
+	OQ-10
+	C2 § 9 specifies targeting's own Learn app; PDD Learn § 1 specifies one app for the programme. ACE reads C2 § 9 as module requirements folded into the single app — both say 80%, so nothing numeric is lost. Confirm.
+	Author
+	PDD Learn § 2, or C2 § 9
+	A wrong read builds the wrong number of Learn apps
+	OQ-11
+[at]	
+How does an external transaction outcome reach the case without a worker submission? C6 § 10 flags the reconciliation ingestion route as beyond normal Connect operation and offers two candidates.
+	Platform team
+	C6 § 10
+	Success metrics M6 and M7 both depend on this route existing
+	OQ-12
+[au]	
+The role-by-component access map is unresolved and is LIVE in this selection — not deferred, as previously recorded. C6 § 2 and § 3a [FIXED] require the Network Manager and LLO finance staff to write cash-float and transfer-outcome records, and C2 § 8 restricts the LLO from seeing household scores. Connect does not support case sharing across workers.
+	Author / platform team
+	Framework § Case and state model Q3
+	Phase 4 role configuration, and whether the cash-float control is operable at all
+	OQ-13
+	Does the FLW deliver the asset, or does LLO logistics deliver and the FLW verify? C5 § 12 Q1 asks this directly and states it affects the § 5 wording and what the paid unit is. C5 § 2 [FIXED] admits both readings — the FLW "delivers the asset to the household and records it (or verifies a delivery made by LLO logistics)".
+	Author
+	PDD Productive Asset § 12 Q1
+	What the Component 5 payable unit actually is, and therefore the delivery leg of the rate band and the Work Order's verified-unit definition
+	
+
+________________
+
+
+Stress Test Results
+Five checks, graded pass / partial / fail. Two or more non-pass grades mean the PDD is not approved.
+1. Executability — partial
+Could an LLO read this and start work on day one without asking clarifying questions?
+
+
+Strong on process, blocked on parameters. Roles are enumerated per component; the coverage model is unambiguous (census saturation, household unit, adult respondent, consent required, refusals recorded); the instrument is fixed and its scoring specified; visit definitions and non-payable outcomes are stated per component; verification flags and their thresholds are given with the note that they are PM-tunable.
+
+
+Form-flow answerability was walked screen by screen, per the required check. No field is a function of a later screen's answer. The one construction that would fail it — asking a visit outcome early and recoding it after eligibility and consent — does not appear: outcomes are recorded at the point the flow reaches them. The roster/aggregate ordering is correct: membership is confirmed per row before household size is derived from it.
+
+
+Why not a pass. An LLO literally cannot start: it does not know where (OQ-4), in what language (OQ-5), what asset (OQ-6), by what transfer method (OQ-3), how often or how much, or at what rate. These are Annex parameters the source pack leaves TBD by design, awaiting the partner — but the check asks whether work could start, and it could not.
+2. Verifiability — pass
+Every claimed output has a concrete artifact. The targeting survey produces a household dataset with identifiers, GPS, verbatim instrument responses, a computed score and a verification status. Asset delivery produces a live asset photograph plus a paired asset-with-recipient photograph. Consumption support produces a per-method confirmation artifact and a reconciled per-period record.
+
+
+The evidence model is layered rather than asserted, and — the reason this is a pass rather than a partial — the layers' limits are stated with the same precision as their contents. § 16 Layer C says plainly that the control designed to catch a fabricated cash distribution has no host visit in this selection. A design that named its verification layers and stayed quiet about the inert one would be less verifiable while reading better.
+
+
+Photograph standardisation beyond live-capture and the paired shot is not specified by any source and is not invented here.
+3. Measurability — partial
+Twelve metrics carry units, targets, a collection method, an evidence layer, and a primary/secondary split. The arithmetic ties to § 11 and § 18.
+
+
+Partial, and this is the substantive one. Every primary metric measures delivery integrity; none measures the stated goal. § 15 says so explicitly and names the cause — Components 9 and 10 have no PDD — rather than letting a funder-facing document imply outcome measurement. Documenting a broken inferential chain is materially better than hiding it, but it is not the same as closing it. No re-drafting can fix this; it is a property of the component selection (OQ-8).
+
+
+Two further softness points, both disclosed: the enrolled-cohort band of 300–500 rests on an eligibility threshold that belongs to the programme owner and is not stated; and M6/M7 depend on a reconciliation ingestion route that is an open platform question (OQ-11).
+4. Stage-gate clarity — pass
+Not a multi-stage PDD, so no inter-stage gate is required. The gates that do exist are stated and are data-backed rather than managerial: Learn certification at 80% unlocks Deliver; enrolled gates every downstream component and nothing runs until it is set; delivered-and-verified gates the recurring components where the model sequences them so; and § 17 gives a per-stage progression gate. The one genuine handoff — the external eligibility decision — is identified as the programme's single hard seam and carried as OQ-1 rather than resolved by invention.
+5. Resource realism — partial
+The labour is costed, not asserted. § 12.1 computes gross at the cap (USD 37.50–87.50/day), computes a realistic day against 8–15 households rather than the cap (USD 12.00–52.50/day), states the gap, and enumerates three structural categories of unpaid field time — standalone enrollment visits, zero-paying outcomes under census saturation, and travel — each traced to [FIXED] text.
+
+
+The capability half is matched: the skills asked of an FLW are ordinary field skills, and the genuinely specialised work (procurement, quality control, quarantine, transport) is explicitly outside the app with the LLO.
+
+
+Why not a pass, and why not a fail. Not a pass because the band cannot be shown to clear anything: with no geography declared there is no local market floor to compare against, and the design ships with a material share of field time structurally unpaid. Not a fail because the PDD says exactly that instead of assuming the rate is adequate, and because a genuine below-floor finding is unavailable rather than suppressed.
+Verdict
+2 pass, 3 partial — the PDD is NOT APPROVED under this rubric's own threshold.
+
+
+This is the correct outcome, and iterating on the document will not change it. All three partials trace to inputs, not to drafting:
+
+
+* Executability is blocked by undeclared Annex parameters (OQ-3, OQ-4, OQ-5, OQ-6).
+* Measurability is blocked by the absence of Components 9 and 10 (OQ-8).
+* Resource realism is blocked by the absence of a geography (OQ-4).
+
+
+Rewriting this document cannot supply a geography, a transfer method, an asset type, or a decision about which components the programme turns on. The iteration target is the input pack — a model specification, a named eligibility owner, filled Annexes, and PDDs for the absent [core] components — not this artifact.
+
+
+One gap was found during this run's independent eval and closed before the grade was assigned, recorded here rather than fixed silently: C5 § 12 Q1 (does the FLW deliver the asset, or verify a delivery made by LLO logistics?) is an author-flagged open question that changes what the Component 5 paid unit is, and the first draft of § 4.2 resolved it by implication. It is now OQ-13 and § 4.2 is qualified.
+
+
+Three improvements over the superseded run are recorded for calibration: this run adds the reconciliation ingestion route (OQ-11) and the form-duration-floor mechanism as explicit items rather than silent assumptions, and it contradicts the prior run's finding that the role-by-component access map is dormant in this selection (§ 19.2).
+
+
+[a]The framework lists thirteen components, 1 through 12 plus 5b. You corrected this by email on 2 September but the document still says twelve. The table below this sentence has thirteen rows.
+[b]Two of my PDDs disagree here and the document picked one without flagging it. Asset Transfer §8 [FIXED] says the delivered flag gates the recurring components with no condition. Consumption Support §8 [FIXED] says only where a model sequences it that way. Please flag conflicts between [FIXED] sections rather than choosing between them.
+
+
+The conditional reading is my intent, and I will fix Asset Transfer §8. But I want to go further: the order components run in is a model choice, not a fixed property of the programme. A model using a cash business grant may need livelihood planning or training before the grant, and may want consumption support running from enrollment. The design should be able to express that.
+[c]Not nobody. Targeting §8 [FIXED] gives the Dimagi PM and the programme owner the full dataset including the score, which is necessary or no one could apply a threshold. §3 and §9.2 of this document put it correctly: hidden from the worker and the household. Same wording appears in §6.1.
+[d]I want to explore whether some of this can happen in Connect, for example a supervisor reviewing a ranked list and marking the final participants, rather than assuming it all happens outside. Also relevant: we will likely be able to fund fewer households than meet the poverty criteria, so selection is a quota against a budget rather than a threshold. Both feed OQ-1.
+[e]This is cosmetic but please add component names alongside the codes, for example "C4 (Enrollment)". The codes are defined in §2 and not repeated, and this table is what Phase 3 builds from.
+[f]Missing verification status. Targeting §8 [FIXED] lists it as part of the primary output alongside the identifiers, GPS, responses and score, and the Verifiability stress test in this document names it too. Enrollment needs it: if a survey was flagged as a possible duplicate or fabrication, that household should not be enrolled until the flag is resolved.
+[g]Enrollment also writes the non-enrollment outcomes required by Enrollment §4 [FIXED]: declined to participate, household not found or dwelling vacant, and household changed since selection. These are recorded with the household left not activated. They are missing from this table and from the states in §6.
+[h]Missing two things Consumption Support §8 [FIXED] stores on the household case: the per-distribution voice recording for cash-in-hand, and the marker recording that a household declined to be recorded.
+[i]This table is headed "state on the household case" and this row says it is not on the household case, without saying what holds it. Consumption Support §11 requires float issuing, decrementing, balance display, low-balance handling and reconciliation to be built. Where does that state live? Separate from OQ-12, which is about who may write it.
+[j]These are all forward states. Enrollment §4 [FIXED] requires three non-enrollment outcomes to be recordable with the household left not activated: declined to participate, household not found or dwelling vacant, and household changed since selection. A household that declines has a real status and this model cannot express it. Same gap as my comment on the §5 table.
+[k]The order here says a household reaches this only after asset delivery, but §4.2 says the asset track and the transfer track run at the same time on different clocks. If consumption support can start at enrollment in some models, this is a second track rather than a fifth stage.
+[l]Answering OQ-2: yes, a terminal state is in scope, and it is not only Component 10's. Graduation is one exit. Households also relocate, become unreachable, or stop participating, and in fragile settings that often means displacement rather than choice. Those exits are needed whether or not graduation assessment exists, and without them every count of active households overstates. Where these belong across components is open, but the pilot should not run with no exit at all.
+[m]Consumption Support §1 does not say this. It says an enrolled household receives a transfer on a recurring schedule, which is a gate, and §8 lists enrolled as consumed state. Same issue as my comment on §4.1's fourth bullet.
+[n]Your 8 September email says only the post-assessment carries Connect's assessment marker, because the Deliver gate opens as soon as any one marked assessment is passed. That constraint is not stated anywhere in this document. It should be, since it explains why the pre-test is unmarked and it limits what future models can do with per-component certification.
+[o]Where do "at least 30" and "at least 20" come from? My Learn annex has two parameters, languages and the pass mark. No item counts. Your 8 September email attributed 30 and 20 to my annex too.
+[p]Answering OQ-7: no retry limit. Locking a worker out of Deliver for failing repeatedly removes their ability to earn, and in this setting that penalizes literacy and language rather than competence. The certification test is a readiness check, not a rationing device. I accept the residual that a worker can pass by memorising the bank.
+[q]Since there is no limit, the fixed bank matters more. Worth revisiting whether item rotation can be built, given §8.2 says this is an ACE authoring gap rather than a platform limit.
+[r]This assumes a household record already exists before the survey. Targeting §4 [FIXED] specifies census saturation with no sampling frame and no microplanning, so the worker finds households by walking the area and creates the record at the visit. There is nothing to gate on. §16 of this document says the same thing from the other side: before enrollment there is no household-level owner. Either this row needs a create-new-household path or it assumes a list the coverage model rules out.
+[s]What does the app actually check here? §6.2 says the transfer cadence has no declared frequency or count, and §17 says the programme has no declared end. If the window is undeclared, is this condition doing anything, or is it a placeholder for a parameter that has to be set later?
+[t]This is the phase that produced the work order and the solicitation I didn't ask for. Your 10 September email says both are produced by default on every run. Producing a legal instrument with a named signatory, and publishing externally with a deadline, should be opt-in rather than opt-out, ahead of the per-phase controls you described. A document nobody acts on is not a control.
+[u]This is the arithmetic I flagged earlier from the money side. I'd assume the enrolled number will be set by budget, not by the threshold: we will likely be able to fund fewer households than meet the poverty criteria. So selection is a quota against available funding, and 300 to 500 is a funding capacity rather than an estimate derived from eligibility.
+[v]These bands are labelled planning estimates here, but they drive M1 and M3 in §15, the FLW headcount in §12, the parameters in §18, and the work order's pricing. When the real figures arrive, please make sure all four follow.
+[w]Related to the gating problem in §9.1. If a listing step is needed first, that changes the targeting module from discover-and-register to work-from-a-list, and the two need different apps. Worth resolving alongside the §9.1 gating question rather than separately.
+[x]The reasoning about not promoting KADSIPA to a candidate is right and I want it kept. It appears in my framework's model comparison table as a programme whose workflow we mapped for reference, alongside Raising the Village, Trickle Up and Village Enterprise, and inferring an implementing partner from that would have been wrong. For the record, Kaduna is a potential pilot site, which makes KADSIPA closer to a candidate than these inputs show. That is my decision and it is not in any document you read, so refusing to infer it was correct. If it firms up I will put it in the framework rather than leaving it in email.
+[y]Confirmed with Jon that producing these is intended, so no change to that. One thing to separate: publishing to a live page with a 14-day deadline running is different from producing the document. Your 8 September note says the current one reaches nobody only because it needs a labs login. Please make going live a separate step someone chooses.
+[z]What consumes this section? §10's routing table doesn;t list §15 for any downstream phase. If nothing reads it, say so, and share what it'll be used for, such as pricing the work order, a completeness check, or something else. A real measurement framework should come from the theory of change and be built separately with M&E input, and I don't want a generated metric list quietly becoming the program's M&E plan.
+[aa]Where does the denominator come from? The target is 95% of enumerated households in assigned areas, but §11 says census saturation with no sampling frame and no microplanning, so nothing enumerates the households in an area. Without a listing step there is no denominator and this metric can't be computed. This is the same gap as the §9.1 gating problem and the listing question at the end of §11.
+[ab]This depends on how the eligibility decision comes back into the app, which is still open. §19.1 points out that under one of the three options, where workers simply revisit the selected households and nothing is imported, the app never holds the targeting record at all. If there is no record to match against, this metric can't be measured. Worth saying that here rather than only in the open questions list.
+[ac]100% is only achievable if no enrolled household ever becomes unreachable. With no exit states (§6.3), a household that relocates or drops out after enrollment stays in the denominator permanently and this metric can never be met. Either the target needs a qualifier or the exit states need to exist.
+[ad]Targeting §6 [FIXED] specifies "location missing, spoofed, or more than 200m from the FLW's other visits in an implausible pattern." This row carries the first two and the implausible-travel-speed part, but the 200m distance threshold doesn't appear anywhere in this document. Was it folded into the travel-speed check deliberately, or dropped?
+[ae]§7.2, §6.3 and Layer C here are the same finding in three places: this build can record things going right and has almost no way to record things going wrong. No asset re-verification, no exit states, no post-distribution check, no back-check. Someone reading the pilot's data would see every asset as alive and every household as active, with nothing indicating that is unknown rather than true. Worth stating once, plainly, rather than leaving it to be assembled.
+[af]Related to OQ-9. Consumption Support expects a baseline voice sample from enrollment and Enrollment does not collect one. So the voice control currently has neither a baseline to compare against nor a review protocol. If cash-in-hand is in scope I need to fix both, and if it is out of scope both disappear. I'll plan to make that decision
+[ag]What consumes this section? If it exists to give the work order a period of performance, say so. With no geography and no transfer schedule, these durations are derived from assumptions rather than inputs, and I would rather see the section held than filled with numbers that read as planning.
+[ah]Same problem as M2 in §15. Coverage cannot be measured without a denominator, and census saturation with no listing step does not produce one. So this gate cannot be evaluated as written. Third place this has come up, with §9.1 and §11.
+[ai]This assumes enrollment and delivery happen together. If selection is quota-based and surveying has to finish before enrollment begins, these may separate more often, which changes both the duration and the number of unpaid worker days in §12.1.
+[aj]Working answer: the full programme is likely 12 to 18 months, and recurring support runs across it. That is not yet a decision, but it is the working assumption, and it fills the blank that §6.3, §9.1's programme window, and this row all depend on. I will settle it in the Consumption Support annex.
+[ak]This table strips the caveats. §11 labels the reach band a planning estimate to be replaced by the partner's own figure; here it is a bare parameter. §12 says the headcount is set at deployment, not by ACE; here it is a bare number. §17 says every duration is contingent on an undeclared geography. Later phases read this table rather than the prose, so please carry a provisional marker on any parameter ACE derived rather than read from a document.
+[al]Where do these come from? My Learn annex has two parameters, languages and the pass mark. No item counts. Your 8 September email also attributed 30 and 20 to my annex.
+[am]Where do these come from? My Learn annex has two parameters, languages and the pass mark. No item counts. Your 8 September email also attributed 30 and 20 to my annex.
+[an]This is derived from two other ACE-generated numbers, the reach band and the surveys-per-day assumption. Please mark it provisional. The reasoning for having a total cap is sound and I want it kept.
+[ao]Changing this. Enrollment involves an in-person visit and substantive data collection, and treating it as unpaid produces the zero-earning days computed in §12.1. I will update Enrollment §2 and the payment sections that follow from it.
+[ap]Agreed, and it gets harder rather than easier. Now that targeting sits inside the graduation programme as one opportunity, the same Network Manager needs to write cash-float records and must not see household scores, in one app over one record. Keeping this tagged live.
+[aq]Not yet decided. I am waiting on Trickle Up's feedback on the design concept, which proposes components we do not have yet, and then settling with Neal whether we build one model fully or something else. A model specification will follow from that. In the meantime, see my answer on OQ-8: everything in §2.2 is unwritten rather than switched off.
+[ar]Partial answer: the programme is likely 12 to 18 months, and recurring support runs across it. Not yet settled, but it is the working assumption and I will fix it in the Consumption Support annex. That fills the gap behind §6.3, §9.1's programme window and §17's recurring row. Geography, language, transfer method, rate and asset type remain undeclared.
+[as]Answering this: 5b, 7 and 8 are all planned, not deliberately excluded. Coaching, savings/VSLA and cash asset transfer all have PDDs coming, along with client progress monitoring, graduation assessment, and two Kaduna activities without a component home yet. This build is a partial instance of the model, not the intended one. Treat every component in §2.2 as not-yet-written rather than switched off, unless a model specification says otherwise.
+[at]Both are going to Sarvesh, along with two others: whether Connect gives a Network Manager a list-review-and-mark screen, which is one of the three OQ-1 mechanisms, and what object holds worker-level state given the case model declares one case type. Noting here so these do not read as stalled.
+[au]Both are going to Sarvesh, along with two others: whether Connect gives a Network Manager a list-review-and-mark screen, which is one of the three OQ-1 mechanisms, and what object holds worker-level state given the case model declares one case type. Noting here so these do not read as stalled.

@@ -92,6 +92,12 @@ describe('ACE-Test-001 fixture', () => {
       // (Phase 6 pre-flight hard-halts without it), so this partial
       // fixture correctly reports it missing.
       '3-commcare/recipes/journey-learn.yaml',
+      // ace#2183: app-release's own summary (the sole owner of released
+      // build state) is registered and required, and the Connect-marker
+      // coverage reports app-release halts without are required with it.
+      '3-commcare/app-release_summary.md',
+      '3-commcare/app-connect-coverage_learn.md',
+      '3-commcare/app-connect-coverage_deliver.md',
       // Phase 4 summary missing.
       '4-connect/connect-setup_summary.md',
       // PR-517: Phase 4 `-eval` verdict flipped to required:true.

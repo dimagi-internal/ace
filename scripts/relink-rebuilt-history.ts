@@ -14,9 +14,16 @@
  * (`run_id` / `source_run` param or field, `run_ids` list) — `leftovers`.
  * Old ids elsewhere (prose, or a program/opportunity/workflow id that shares
  * labs' one id sequence) are printed as `mentions` and do not fail (ace#3012).
+ *
+ * With --run-state RUN_STATE.yaml --out PATCH.json, relinks the WHOLE
+ * `phases.synthetic-data-and-workflows.products` block (every run_id param,
+ * field and run_ids list, wherever it sits) and writes it as an
+ * `update_yaml_file` patch — hand PATCH.json over as `localFilePath` with
+ * `merge: 'deep'`. Same leftovers exit code (ace#2739).
  */
 import fs from 'node:fs';
-import { buildRunIdMap, relinkText, type HistoryListing } from '../lib/history-relink';
+import { parse as parseYaml } from 'yaml';
+import { buildRunIdMap, relinkRunStateProducts, relinkText, type HistoryListing } from '../lib/history-relink';
 
 function arg(name: string): string | undefined {
   const i = process.argv.indexOf(`--${name}`);
@@ -37,6 +44,15 @@ const map = buildRunIdMap(before, after);
 const mapObj = Object.fromEntries([...map.entries()].map(([k, v]) => [String(k), v]));
 const mapOut = arg('map-out');
 if (mapOut) fs.writeFileSync(mapOut, JSON.stringify(mapObj, null, 2) + '\n');
+
+const runStatePath = arg('run-state');
+if (runStatePath) {
+  // The whole Phase 7 products block, walked — no hand list of fields (ace#2739).
+  const r = relinkRunStateProducts(parseYaml(fs.readFileSync(runStatePath, 'utf8')), map);
+  fs.writeFileSync(need('out'), JSON.stringify(r.patch, null, 2) + '\n');
+  console.log(JSON.stringify({ map: mapObj, run_state: runStatePath, changed: r.changed, leftovers: r.leftovers, mentions: r.mentions }));
+  process.exit(r.leftovers.length ? 1 : 0);
+}
 
 const input = arg('in');
 if (!input) {

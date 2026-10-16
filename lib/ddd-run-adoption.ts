@@ -206,14 +206,30 @@ export function resolveDddRunAdoption(input: DddRunAdoptionInput): DddRunAdoptio
 
   const roots = input.listRunsRoots();
 
-  const inPlace = roots.includes(currentRunsRootName)
-    ? candidatesUnder(currentRunsRootName)
-    : [];
-
   // Two exclusions, both about candidates that are not this run's work to
-  // resume (ace#2315). Neither touches `inPlace`: a run already under this
-  // root IS this run's, and re-reporting it is how a resume finds its own dir.
+  // resume (ace#2315). Only the second — liveness — applies to `inPlace`: a
+  // run already under this root IS this run's, but a re-run of Phase 7 inside
+  // the same ACE run finds the PREVIOUS attempt's ended run there, and resuming
+  // it inherits a finished score_history exactly as adopting one would
+  // (ace#2745, spark-facilitator/20261004-1706).
   const excluded: string[] = [];
+
+  /** (2) Drop a run canopy already TERMINATED, recording why. */
+  const isLive = (c: DddRunCandidate): boolean => {
+    const liveness = input.readRunLiveness?.(c.runDir);
+    if (isTerminatedRun(liveness)) {
+      excluded.push(
+        `${c.runsRootName}/${c.runId} (already ended: ` +
+          `terminal_status=${liveness?.terminal_status})`,
+      );
+      return false;
+    }
+    return true;
+  };
+
+  const inPlace = roots.includes(currentRunsRootName)
+    ? candidatesUnder(currentRunsRootName).filter(isLive)
+    : [];
 
   const elsewhere = roots
     .filter((rootName) => {
@@ -231,17 +247,7 @@ export function resolveDddRunAdoption(input: DddRunAdoptionInput): DddRunAdoptio
     // (2) A run canopy already TERMINATED. Adoption rescues interrupted work;
     // a finished run is not interrupted, and inheriting its score_history
     // pre-decides this run's terminal verdict.
-    .filter((c) => {
-      const liveness = input.readRunLiveness?.(c.runDir);
-      if (isTerminatedRun(liveness)) {
-        excluded.push(
-          `${c.runsRootName}/${c.runId} (already ended: ` +
-            `terminal_status=${liveness?.terminal_status})`,
-        );
-        return false;
-      }
-      return true;
-    });
+    .filter(isLive);
 
   const byRunIdDesc = (a: DddRunCandidate, b: DddRunCandidate): number =>
     a.runId < b.runId ? 1 : a.runId > b.runId ? -1 : 0;

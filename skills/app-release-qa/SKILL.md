@@ -31,6 +31,7 @@ this catches, see reference.md.
 | Phase 3 § Step 2.7 | `3-commcare/app-release_summary.md` | Released build ids per app |
 | Phase 1 | `1-design/idea-to-pdd.md` | Payable-visit rules — whether the PDD demands camera-only photo capture (the `appearance="acquire"` check in Step 4) — and the stated per-module training durations (the `time_estimate` plausibility check in Step 4) |
 | Nova MCP | `get_app({app_id})` for each Nova app id | Blueprint structure (modules, forms, fields per form, Connect marker presence) — the canonical structural truth for cross-reference |
+| Phase 1 `inputs/` (via `inputs-manifest.yaml`) | the `[FIXED]` instrument markdown the PDD cites | Step 4.8 question-text + option-set diff (ace#2366) |
 | HQ `ACE_HQ_DOMAIN` env | — | `connect-ace-prod` (the project space the apps released to) |
 
 ## Products
@@ -953,6 +954,17 @@ in `report.findings` is a `[BLOCKER]` `assessment-retry-answer-leak`: name the l
 nodeset and the leaked option, and route the fix to `pdd-to-learn-app` Step 4c
 (replace the retry text with a pointer to the module content).
 
+**`report.info` is `[INFO]`, never a BLOCKER** (ace#2208). It holds hits the
+check cannot stand behind as a leak: an answer token of ≤ 4 letters (`No.`,
+Tumbuka `Yayi.` — also an ordinary clause-final negator in Bantu-language
+layers), or any hit on a form with Connect learn markers but no `<assessment>`
+block (`report.gating === 'non-gating'`, a baseline/pre-test Connect never
+scores, ace#1131). Record each in the verdict so a reviewer can read it; a
+genuine restatement in a pre-test still teaches the answer the gate later
+asks, so say so when the text plainly restates one. Matching is per item (a
+label is compared only with the answers of the items its own score depends
+on) and on Unicode word boundaries.
+
 **`report.blind` is a `[BLOCKER]` too — a blind check is not a clean one.** It
 lists fail-branch labels whose text could not be resolved and answer literals
 with nothing to match against; `report.ok` is false whenever it is non-empty,
@@ -1246,6 +1258,8 @@ reproducer, see reference.md § Runtime install validation.
                  | 'cli-fixture-unseeded' | 'cli-user-data-unseeded',
      nav_unresolved?: <why entry_path landed on no command>,
      seeded_case_types?: [...],
+     seeded_case_properties?: [{caseType, properties: {prop: literal}}],  // from case-list filters (ace#2286)
+     unseeded_case_predicates?: [{datum_id, case_type, predicate, reason}], // with empty-case-list only (ace#2286)
      seeded_fixture_tags?: [...],     // item-list lookup tables seeded empty (ace#2860)
      seeded_user_data?: {key: value}, // custom user data in the restore (ace#2989)
      killed_reason?: 'restart-loop' | 'output-ceiling',  // helper killed a runaway JVM (ace#2988)
@@ -1270,7 +1284,7 @@ reproducer, see reference.md § Runtime install validation.
    - **`validate verdict: 'fail'`** → halt with `[BLOCKER]` `cli-validate-parser-error` naming `parser_message` + `failed_resource`. Don't bother running `play` — `validate` already proved the CCZ is structurally broken.
    - **`validate: pass` + `play: fail`** → halt with `[BLOCKER]` `cli-form-init-error` naming `failing_binding` + `unresolved_xpath` + `parser_message` (see § Failure modes for the bednet class + fix).
    - **`play verdict: 'skipped'`** → **do NOT halt**, and **never record it as a pass**: form-init was not observed, so the form is UNEVALUATED. Record `cli_validate.play: {verdict: skipped, skip_reason, command_id, seeded_case_types}` so the coverage gap is legible. The reasons are:
-     - `empty-case-list` → `[INFO]`. The module's case list rendered zero rows, so the walk died in case-list rendering before form entry. `play` seeds one open case per case type declared in the CCZ's `suite.xml`, so this now only fires when a case-list **filter** excludes the generic seed (the seed carries `case_type` / `case_name` / `owner_id` and no other properties).
+     - `empty-case-list` → `[INFO]`. The module's case list rendered zero rows, so the walk died in case-list rendering before form entry. `play` seeds one open case per case type declared in the CCZ's `suite.xml`, plus (ace#2286) one case per case list that filters on a conjunction of `<prop> = '<literal>'` equalities, carrying exactly those properties (echoed as `seeded_case_properties`). So this now only fires when a case-list filter is something else — `or`, `not()`, `!=`, a comparison, `selected()`, a date function, an `index/…` parent join. `unseeded_case_predicates` names each such predicate verbatim with its reason; copy it into the verdict.
      - `cli-case-index-unsupported` → `[INFO]` (ace#2784). Form entry WAS reached, but form-init ran a casedb index query (`case[index/parent = …]`, e.g. a `join()` over a group's member cases, or a `case-choice-attendance` checklist's `casedb` itemset and roster — `voidcraft-labs/commcare-nova#728`), and the CLI's in-memory sandbox has no `CaseIndexTable` (`"this.caseIndexTable" is null`). A device has one, so this is the harness's limit, not a defect. Observed on both group-payment-test session forms.
      - `cli-fixture-unseeded` → `[INFO]` (ace#2860). Form-init asked the synthetic restore for a fixture it does not carry (`FixtureInitializationException: Unable to find lookup table`). `play` seeds an empty `item-list:<tag>` fixture root for every `jr://fixture/item-list:<tag>` the CCZ's XML declares (echoed as `seeded_fixture_tags`), so this fires for a fixture kind that seed does not cover — and (ace#2941) when a binding or case-list column reads a ROW column of an empty-seeded table (`Logic references instance(<id>)/… which is not a valid question or value`, every unresolved ref an item-list instance; `unresolved_xpath` names the read). Do not reclassify such a `fail` by hand; the gate does it. A device receives the table on sync, so this is the harness's limit. Before ace#2860 the restore seeded no fixtures and every lookup-backed form graded `fail` → `cli-form-init-error` on a clean build. To check the device side, confirm the table exists on HQ with `commcare_get_lookup_table`.
      - `cli-user-data-unseeded` → `[INFO]` (ace#2989). Something read custom user data (`instance(commcaresession)/session/user/data/<key>`) the restore does not carry — typically a menu `relevant=` thrown from `MenuLoader.menuIsRelevant` while the root menu renders, before any form opens. `play` seeds every key the CCZ's XML names (echoed as `seeded_user_data`), so this fires for a key the scan cannot see. Fires only when EVERY unresolved ref is user data (or an empty-seeded fixture); a real XPath defect in the same stream still fails. HQ sends custom user data on sync, so this is the harness's limit; confirm the field exists on HQ with `commcare_list_user_fields`.
@@ -1298,8 +1312,14 @@ reproducer, see reference.md § Runtime install validation.
 
    **What seeding does not cover** — say so rather than implying the gate
    is now complete:
-   - Case lists whose `<filter>` keys on a case **property**. The seed
-     carries no properties, so such a list is still empty → `skipped`.
+   - Case lists that filter on a case **property** with anything other
+     than a conjunction of literal equalities. `[consent_given = 'yes' and
+     household_state = 'registered_awaiting_followup']` (the
+     `longitudinal-visits` payable list, bednet-check-2-visit/20260908-1544)
+     IS seeded — suite.xml states the values a row needs, so they are not
+     guessed (ace#2286). `or`, `not()`, `!=`, comparisons, `selected()`,
+     dates and `index/…` joins are not: such a list is still empty →
+     `skipped`, and `unseeded_case_predicates` names the predicate.
    - Case **search** / registry entries (`<query>` screens) and any datum
      screen other than a plain entity list.
    - Form-init that queries casedb by **index** (parent/child) →
@@ -1532,6 +1552,51 @@ v11 → v12 Learn re-release of `spark-facilitator/20261004-1706`
 negative controls are a renamed module `@id` and a removed assessment block
 (both BLOCK), plus a renamed assessment `@id` and a re-minted xmlns (WARN only).
 
+### Step 4.8: `[FIXED]` instrument verbatim fidelity (dimagi-internal/ace#2366)
+
+**Deliver app only, and only when the PDD marks an instrument `[FIXED]`.**
+`pdd-to-deliver-app § Step 4k` diffs the instrument's POINT VALUES against the
+source; it cannot see an option that scores 0. On
+`poverty-graduation/20260908-0510` the released Deliver app added
+"Declined or does not know" to one of the Nigeria PPI's ten questions — a
+verbatim-only instrument whose licence permits digitising it only unmodified —
+and this skill and `app-release-eval` both passed it. This step reads the
+RELEASED form, not the blueprint.
+
+1. Resolve the instrument file exactly as Step 4k did (its `## Build notes`
+   record the `file_id`); read it with `drive_read_file` (a markdown table) and
+   parse with `parseInstrumentMarkdown`. A published `.xlsx`/`.pdf` source has
+   no question-and-option table for this helper — use the `inputs/` markdown
+   instrument the PDD cites; if there is none, record `unable` with that reason.
+2. Run the check over every Deliver form XML Step 3 parsed:
+
+   ```ts
+   import {
+     parseInstrumentMarkdown,
+     checkFixedInstrumentVerbatim,
+   } from '../../lib/fixed-instrument-verbatim';
+   const res = checkFixedInstrumentVerbatim({
+     instrument: parseInstrumentMarkdown(instrumentMd),
+     forms: deliverFormXmls,
+     // ONLY where the instrument itself says the question is not asked as-is,
+     // quoting it — e.g. the PPI's household-size indicator, derived from a roster.
+     exempt,
+   });
+   ```
+
+| Outcome | Do |
+|---|---|
+| No `[FIXED]` instrument in the PDD | `fixed_instrument_verbatim: not-applicable` |
+| Instrument file unreadable / no question table | `[WARN]` `fixed-instrument-unable`, record the reason — never a pass |
+| `ok: true` | Record `matched` + `exempted` and continue |
+| any `option-added` / `option-dropped` / `option-order-changed` / `question-text-changed` / `question-not-found` | **Halt** `[BLOCKER]` `fixed-instrument-not-verbatim`, one entry per finding, `message` verbatim. Repair goes back through `pdd-to-deliver-app` (Nova edit → re-release), not a CCZ patch |
+
+Record under `per_app.deliver.fixed_instrument_verbatim`. *Enforced:*
+`test/lib/fixed-instrument-verbatim.test.ts` — the instrument fixture is the
+real `poverty-graduation` inputs file and the positive control is the released
+targeting survey of `poverty-graduation/20260915-1518`; the negative control
+re-adds the observed "Declined or does not know" fan option.
+
 ### Step 5: Write verdict
 
 Write `3-commcare/app-release-qa_result.yaml`. Shape:
@@ -1694,6 +1759,8 @@ per_app:
 #   grid_menu_display:     { use_grid_menus, grid_form_menus,
 #                            modules_checked, modules_gridded, non_grid: [...] }
 #                          # all three fields are BLOCKER-gated (ace#1082)
+#   fixed_instrument_verbatim: not-applicable | unable | { matched, exempted, findings: [...] }
+#                          # BLOCKER-gated (ace#2366); Deliver app, [FIXED] instrument only
 #   language_tables:       pass | unable | { present: [...], declared: [...],
 #                            orphans: [...], missing: [...], display_names: {...} }
 #                          # FINDING-gated, never a halt (ace#2292) — an orphan

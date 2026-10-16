@@ -1058,6 +1058,133 @@
                       }
                     },
                     "additionalProperties": true
+                  },
+                  "source": {
+                    "type": "object",
+                    "properties": {
+                      "provider": {
+                        "type": "string"
+                      },
+                      "record_counts": {
+                        "type": "object",
+                        "additionalProperties": {}
+                      },
+                      "data_shape": {
+                        "type": "object",
+                        "properties": {
+                          "rows": {
+                            "type": "integer",
+                            "minimum": 0
+                          },
+                          "periods": {
+                            "type": "integer",
+                            "minimum": 0
+                          },
+                          "groups": {
+                            "type": "integer",
+                            "minimum": 0
+                          }
+                        },
+                        "required": [
+                          "rows",
+                          "periods",
+                          "groups"
+                        ],
+                        "additionalProperties": true
+                      },
+                      "dashboards": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "key": {
+                              "type": "string",
+                              "minLength": 1
+                            },
+                            "template": {
+                              "type": "string",
+                              "minLength": 1
+                            },
+                            "role": {
+                              "type": "string",
+                              "minLength": 1
+                            },
+                            "shape": {
+                              "type": "string"
+                            },
+                            "interactive": {
+                              "type": "boolean"
+                            },
+                            "par_url": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "key",
+                            "template",
+                            "role"
+                          ],
+                          "additionalProperties": true
+                        }
+                      },
+                      "primary_dashboard": {
+                        "type": "string"
+                      },
+                      "render_reset": {
+                        "type": "object",
+                        "properties": {
+                          "required": {
+                            "type": "boolean"
+                          },
+                          "run_id": {
+                            "anyOf": [
+                              {
+                                "type": [
+                                  "number",
+                                  "string"
+                                ]
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "state_keys": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          },
+                          "command": {
+                            "type": "string"
+                          },
+                          "verified_at": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "required"
+                        ],
+                        "additionalProperties": true
+                      },
+                      "detectable_signal": {
+                        "anyOf": [
+                          {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          {
+                            "type": "object",
+                            "properties": {},
+                            "additionalProperties": true
+                          }
+                        ]
+                      }
+                    },
+                    "additionalProperties": true
                   }
                 },
                 "additionalProperties": true

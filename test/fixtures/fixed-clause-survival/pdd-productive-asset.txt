@@ -1,0 +1,95 @@
+Program Design Document (PDD): Productive Asset Transfer (In-Kind)
+Version: 0.1 (draft) · Status: Draft for discussion, not SME-approved · Author: drafted with Claude · Intended compiler: ACE · Component: 5 of the graduation component set
+Framing note. This PDD covers the in-kind form of the productive asset transfer: a physical asset, primarily livestock, delivered to an enrolled household. The asset-sized cash form is not built here; it reuses Component 6's money-transfer-and-verify machinery run once at asset scale, plus an optional follow-up visit (see the framework). This component builds on the shared case-and-state model; it reads and writes the household case but does not create or re-define it.
+0. How to read this document
+Every element is tagged one of two ways (the shared convention across all component PDDs):
+* [FIXED] — a hard constraint. ACE implements it exactly and does not modify, reorder, or omit it. If a FIXED element is ambiguous or infeasible, ACE flags it to a human rather than resolving it.
+* [ACE] — latitude. ACE designs, phrases, orders, and iterates using its own judgment and Connect best practices.
+1. Program summary
+[FIXED] An enrolled household receives one income-generating asset, delivered and verified in a single visit. Each completed, verified delivery is a paid deliver unit. The component does no targeting, enrollment, or coaching. It consumes the enrolled state and produces the delivered-and-verified state that gates the recurring components (see §8).
+[ACE] User-facing naming and copy.
+2. Roles and delivery model
+[FIXED]
+* FLW: delivers the asset to the household and records it (or verifies a delivery made by LLO logistics; see §12). Completes the Learn module, then the Deliver module.
+* Network Manager (LLO): monitors submissions, resolves flagged visits, manages the FLW roster and asset stock.
+* Program manager (Dimagi): sets payment terms, reviews verification flags, approves payment batches.
+* Procurement, quality control, quarantine, and transport of the asset are LLO logistics, outside the app (see §10).
+* One deliver unit = one verified asset delivery to one enrolled household.
+* Dimagi funds the assets. The LLO does not carry the cost: an advance is disbursed against an agreed asset cost and count before procurement begins, and the LLO reconciles actual spend against it, returning any unspent balance. Asset cost sits outside the per-unit delivery rate and is not part of the verified-unit payment. 
+[ACE] NM dashboards and any supervision workflow beyond flag review.
+3. The asset
+[FIXED]
+* The asset type(s) for the deployment are set in the Annex (e.g. goats, chickens, ducks, seeds/inputs).
+* If the model offers a menu, it is a set of roughly value-equivalent options (for example two cows, four goats, or non-farm microenterprise inventory), not an open-ended choice, with the options set per deployment (Annex). The household's choice, made with FLW guidance as in standard graduation practice, is recorded at enrollment and read here, and the delivered asset must match the recorded choice.
+* The delivered asset must be recorded: type, and count if more than one.
+[ACE] How the asset (and any menu) is presented in the delivery form.
+4. Target population and coverage
+[FIXED]
+* Recipients are households with enrolled set; this component does not select households.
+* Each enrolled household receives the asset once. A household already at delivered-and-verified is not shown the delivery module again.
+5. Deliver unit (the delivery visit)
+[FIXED] A payable delivery requires all of:
+* The FLW physically at the household (GPS auto-captured; see §6).
+* The asset handed over, matching the recorded choice if a menu applies.
+* A live photo of the asset (and the paired asset-plus-beneficiary photo required in §6). Live capture only, no gallery selection.
+* The delivery recorded against the household case.
+[FIXED] Non-delivery outcomes that must be recordable and submittable but pay 0: household not found, household refused, asset unavailable.
+[ACE] Visit flow, screen order, and how non-delivery outcomes are presented.
+6. Verification and fraud rules (delivery point)
+[FIXED] Automated flags (visit flagged for NM/PM review, payment withheld pending resolution):
+* GPS missing, spoofed, or implausibly far from the household's enrollment location.
+* Photo missing, or duplicated across deliveries (perceptual-hash match).
+* Paired photo (asset with beneficiary) fails a uniqueness check: the same animal or the same person reused across deliveries.
+* Duplicate delivery recorded against the same household.
+[FIXED] Threshold values are v1 defaults, tunable by the PM as a config change, not an ACE decision.
+[FIXED — scope boundary] Re-verifying the asset over time (still present, still alive) is monitoring (Component 9), not this component. This component verifies only the delivery event.
+[ACE] Flag-review UX; any additional fraud heuristics ACE proposes go in §12, not silently into the build.
+7. Payment terms
+[FIXED]
+* Rate: [local currency] [X] per verified delivery (set in the Annex).
+* Non-delivery outcomes pay 0.
+* No funds flow to the beneficiary in this component (in-kind). This is standard Connect FLW payment against verified delivery, so nothing new is needed on the payment side.
+[ACE] How accrued pay and delivery status are displayed to the FLW.
+8. Shared-case interface
+This is the section most sensitive to the stubs-vs-toggle build decision, so it is written as an explicit interface. If that decision changes, only the packaging of this interface changes (a stub's declared interface versus a module's relevance conditions), not the spec above.
+[FIXED] State consumed (from the shared household case; see the case-and-state model):
+* enrolled — gates this component; it does not run unless set.
+* Asset choice, if the model offers a menu (recorded at enrollment).
+[FIXED] State produced (written to the household case):
+* Delivered-and-verified flag — gates the recurring components (consumption support, coaching, savings, monitoring).
+* Asset type and count.
+* Initial asset status = active. Later status changes (dead, sold, reproduced) are written by monitoring or coaching visits, not here.
+[FIXED] This component does not create or re-register the household case; it reads and writes the case defined in the case-and-state model.
+9. Training requirements (input to the Learn PDD)
+This component does not author its own standalone course. It declares what an FLW must learn, and the Learn PDD folds that into the program's single consolidated curriculum and pre/post assessments.
+[FIXED] An FLW must be able to: handle and hand over the asset; meet the §5 delivery requirements; apply the §6 verification and photo rules (including the paired asset-plus-beneficiary photo); and record non-delivery outcomes correctly.
+[FIXED] Assessment objectives (for the pre/post assessments): distinguish a valid delivery from a flagged one; capture a compliant live and paired photo; handle a refusal or other non-delivery outcome correctly.
+[ACE] Phrasing and examples for these objectives. The Learn PDD deduplicates, sequences, and shortens them with the other on-components' requirements into one curriculum and one pair of assessments.
+10. Assumptions and known platform gaps
+[FIXED — for human confirmation, not ACE resolution]
+* Procurement, quality control, quarantine, and transport are handled by the LLO outside Connect. Open: whether lightweight in-app commodity/stock visibility (the RUTF low-stock pattern) is wanted (§12).
+* Standard Connect deliver-unit, GPS, photo, and payment primitives are assumed sufficient; no new platform features are expected for the in-kind form.
+11. What ACE should produce from this PDD
+[FIXED] (1) the Deliver module (delivery visit plus non-delivery outcomes); (2) the verification-flag configuration; (3) the Learn module; (4) the opportunity and payment configuration; (5) a build memo listing every place ACE exercised [ACE] latitude and every ambiguity it hit in [FIXED] material.
+12. Open questions (build-spec)
+1. Does the FLW deliver the asset, or does LLO logistics deliver and the FLW verify? This affects the §5 wording and what the paid unit is (payment framing deferred).
+2. GPS and paired photo only for v1 delivery-point verification, or more?
+3. Single asset or a menu for the pilot?
+4. Lightweight in-app commodity/stock visibility, or none?
+(Cross-component and strategic questions live in the framework, not here.)
+Annex — Deployment parameters
+Set per deployment; never hard-coded in the body.
+Parameter
+	Value
+	Asset type, or menu of roughly value-equivalent options
+	TBD
+	Count per household
+	TBD
+	Currency and rate per verified delivery
+	TBD
+	Geography (admin areas)
+	TBD
+	Languages
+	TBD
+	Verification thresholds (GPS distance, form duration)
+	v1 defaults, TBD

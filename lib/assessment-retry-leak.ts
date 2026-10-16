@@ -37,6 +37,16 @@ import { type CheckOutcome, checked, unable, formatUnable } from './check-outcom
 export interface RetryLeak {
   /** Nodeset of the fail-branch label that leaked, e.g. `/data/fail_msg`. */
   label: string;
+  /**
+   * `blocker` — a real restatement on a form that gates (or may gate) the
+   * Deliver unlock. `info` — a hit the check cannot stand behind as a leak:
+   * a short answer token (≤ 4 letters, e.g. `No.` / Tumbuka `Yayi.`, which is
+   * also an ordinary clause-final negator) or any hit on a form Connect
+   * provably does not score (learn markers, no `<assessment>`). ace#2208.
+   */
+  severity: 'blocker' | 'info';
+  /** Why a hit was downgraded to `info`; absent on a blocker. */
+  downgraded?: string;
   /** The correct-answer literal found inside it. */
   leaked: string;
   /** The label's full text, for the report. */
@@ -67,6 +77,20 @@ export type RetryLeakReport = CheckOutcome<
     answerNeedles: Record<string, string[]>;
     /** Reasons the check could not fully run, one line each. */
     blind: string[];
+    /**
+     * Hits recorded but NOT counted as leaks (`severity: 'info'`). They never
+     * affect `ok`; `findings` holds blockers only, so a consumer that treats
+     * every finding as a BLOCKER stays correct (ace#2208).
+     */
+    info: RetryLeak[];
+    /**
+     * `assessment` — the form carries Connect's `<assessment>` block, so it is
+     * the Deliver-unlock gate. `non-gating` — it carries Connect learn markers
+     * but no `<assessment>` (a baseline/pre-test, ace#1131): Connect never
+     * scores it, so a hit is INFO. `unknown` — no learn markers at all (an
+     * authoring-time blueprint); treated as gating, the conservative side.
+     */
+    gating: 'assessment' | 'non-gating' | 'unknown';
   }
 >;
 
@@ -87,20 +111,60 @@ function textOf(node: Element | null | undefined): string {
  * so those literals ARE the answer key — the only place it exists, since
  * CommCare has no correct-option primitive.
  */
-function extractCorrectAnswers(doc: Document): string[] {
-  const out = new Set<string>();
-  const binds = Array.from(doc.getElementsByTagName('bind'));
-  for (const bind of binds) {
+function extractAnswerKey(doc: Document): Map<string, Set<string>> {
+  // question nodeset → its correct-answer literal(s). Kept PER ITEM so a fail
+  // label is compared only against the items its own score depends on, not
+  // the union of every correct label in the form (ace#2208 recommendation 3).
+  const out = new Map<string, Set<string>>();
+  const add = (q: string, lit: string) => {
+    const v = lit.trim();
+    if (!v) return;
+    out.set(q, (out.get(q) ?? new Set<string>()).add(v));
+  };
+  for (const bind of Array.from(doc.getElementsByTagName('bind'))) {
     const calc = bind.getAttribute('calculate');
     if (!calc) continue;
-    for (const m of calc.matchAll(/\/data\/[\w./-]+\s*(?:=|eq)\s*'([^']+)'/g)) {
-      if (m[1].trim()) out.add(m[1].trim());
-    }
-    for (const m of calc.matchAll(/\/data\/[\w./-]+\s*(?:=|eq)\s*"([^"]+)"/g)) {
-      if (m[1].trim()) out.add(m[1].trim());
-    }
+    for (const m of calc.matchAll(/(\/data\/[\w./-]+)\s*(?:=|eq)\s*'([^']+)'/g)) add(m[1], m[2]);
+    for (const m of calc.matchAll(/(\/data\/[\w./-]+)\s*(?:=|eq)\s*"([^"]+)"/g)) add(m[1], m[2]);
   }
-  return [...out];
+  return out;
+}
+
+const DATA_REF = /\/data\/[\w./-]+/g;
+
+/**
+ * The question nodesets a fail label's `relevant` depends on, found by
+ * walking calculate binds from the score it tests down to the items that
+ * score. Empty when nothing resolves — the caller then falls back to every
+ * item, the conservative side.
+ */
+function itemsBehind(doc: Document, relevant: string, items: Set<string>): Set<string> {
+  const calcOf = new Map<string, string>();
+  for (const b of Array.from(doc.getElementsByTagName('bind'))) {
+    const n = b.getAttribute('nodeset');
+    const c = b.getAttribute('calculate');
+    if (n && c) calcOf.set(n, c);
+  }
+  const found = new Set<string>();
+  const seen = new Set<string>();
+  const stack = [...relevant.matchAll(DATA_REF)].map((m) => m[0]);
+  while (stack.length) {
+    const ref = stack.pop()!;
+    if (seen.has(ref)) continue;
+    seen.add(ref);
+    if (items.has(ref)) found.add(ref);
+    const calc = calcOf.get(ref);
+    if (calc) for (const m of calc.matchAll(DATA_REF)) stack.push(m[0]);
+  }
+  return found;
+}
+
+const CONNECT_LEARN_NS = 'http://commcareconnect.com/data/v1/learn';
+
+function gatingOf(doc: Document): 'assessment' | 'non-gating' | 'unknown' {
+  if (doc.getElementsByTagNameNS(CONNECT_LEARN_NS, 'assessment').length > 0) return 'assessment';
+  if (doc.getElementsByTagNameNS(CONNECT_LEARN_NS, '*').length > 0) return 'non-gating';
+  return 'unknown';
 }
 
 /**
@@ -141,8 +205,8 @@ function passThresholds(doc: Document): Set<number> {
  * restate what the worker got right. Only the retry path can be used to guess
  * the next attempt.
  */
-function failBranchNodesets(doc: Document): string[] {
-  const out: string[] = [];
+function failBranchNodesets(doc: Document): Array<{ nodeset: string; relevant: string }> {
+  const out: Array<{ nodeset: string; relevant: string }> = [];
   const thresholds = passThresholds(doc);
   for (const bind of Array.from(doc.getElementsByTagName('bind'))) {
     const rel = bind.getAttribute('relevant');
@@ -152,13 +216,13 @@ function failBranchNodesets(doc: Document): string[] {
     // `&lt;` / `&gt;` are already decoded by the parser.
     // Direct less-than, e.g. `/data/user_score < 80`.
     if (/<\s*=?\s*[\d.]/.test(rel)) {
-      out.push(nodeset);
+      out.push({ nodeset, relevant: rel });
       continue;
     }
     // Negated greater-than — semantically the same branch, and the shape
     // CommCare's own builder emits: `not(/data/user_score >= 100)` (#1332).
     if (/not\s*\([^)]*>\s*=?\s*[\d.][^)]*\)/.test(rel)) {
-      out.push(nodeset);
+      out.push({ nodeset, relevant: rel });
       continue;
     }
     // Inequality against the passing threshold: `!= 100`, or its `not(... = 100)`
@@ -172,7 +236,7 @@ function failBranchNodesets(doc: Document): string[] {
     const neq =
       /!=\s*([\d.]+)/.exec(rel) ??
       /not\s*\([^)]*?(?<![<>!=])=(?!=)\s*([\d.]+)[^)]*\)/.exec(rel);
-    if (neq && thresholds.has(Number(neq[1]))) out.push(nodeset);
+    if (neq && thresholds.has(Number(neq[1]))) out.push({ nodeset, relevant: rel });
   }
   return out;
 }
@@ -274,15 +338,35 @@ function escapeRe(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
+/** A needle's core: normalized, with edge punctuation stripped (`Yayi.` → `yayi`). */
+function needleCore(needle: string): string {
+  return norm(needle).replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, '');
+}
+
 /**
- * Substring for a phrase; word-boundary for a single word, so a 3-letter
- * needle does not match inside a longer word ("yes" in "eyes").
+ * Unicode word-boundary match, for a phrase and a single word alike, so a
+ * needle never matches inside a longer word — Chichewa `ayi` inside Tumbuka
+ * `yayi`, `yes` inside `eyes`. `\p{L}` rather than `[a-z]`: Tumbuka writes
+ * `ŵ` (U+0175), and an ASCII class reads it as a boundary (ace#2208).
  */
 function containsNeedle(haystack: string, needle: string): boolean {
-  const n = norm(needle);
+  const n = needleCore(needle);
   if (!n) return false;
-  if (/\s/.test(n)) return haystack.includes(n);
-  return new RegExp(`(^|[^a-z0-9])${escapeRe(n)}([^a-z0-9]|$)`).test(haystack);
+  return new RegExp(`(^|[^\\p{L}\\p{N}])${escapeRe(n)}([^\\p{L}\\p{N}]|$)`, 'u').test(haystack);
+}
+
+/**
+ * Longest answer token counted as a leak on its own. At or below it an option
+ * label is a yes/no particle (`No.`, Chichewa `Ayi.`, Tumbuka `Yayi.`), and in
+ * Bantu-language layers those are also productive clause-final negators — the
+ * label flagged on spark-facilitator/20260907-1120 ended "…yekha yayi." as
+ * plain grammar. A hit on one is recorded as INFO, never a BLOCKER (ace#2208).
+ */
+const SHORT_TOKEN_MAX = 4;
+
+function isShortToken(needle: string): boolean {
+  const n = needleCore(needle);
+  return !/\s/.test(n) && [...n].length <= SHORT_TOKEN_MAX;
 }
 
 /**
@@ -296,8 +380,10 @@ export function checkAssessmentRetryLeak(xml: string): RetryLeakReport {
   // Document is structurally narrower than the DOM lib's.
   const doc = new DOMParser().parseFromString(xml, 'text/xml') as unknown as Document;
   const itext = buildItextIndex(doc);
-  const correctAnswers = extractCorrectAnswers(doc);
+  const answerKey = extractAnswerKey(doc);
+  const correctAnswers = [...new Set([...answerKey.values()].flatMap((v) => [...v]))];
   const failNodesets = failBranchNodesets(doc);
+  const gating = gatingOf(doc);
   const ran = correctAnswers.length > 0 && failNodesets.length > 0;
 
   // What a worker actually reads is the option's PROSE, not the value the
@@ -328,8 +414,19 @@ export function checkAssessmentRetryLeak(xml: string): RetryLeakReport {
     );
   }
 
+  // Per item: an item's needles come from ITS OWN select's option prose, so
+  // option value 'c' of q1 is not matched with the prose of q2's 'c'.
+  const needlesFor = (item: string, answer: string): string[] => {
+    const control = controlFor(doc, item);
+    if (!control) return answerNeedles[answer] ?? [];
+    const own = optionProse(control as unknown as Document, itext).get(answer) ?? [];
+    return answer.length >= MIN_LITERAL_LEN ? [...own, answer] : own;
+  };
+
   const leaks: RetryLeak[] = [];
-  for (const nodeset of failNodesets) {
+  const info: RetryLeak[] = [];
+  const items = new Set(answerKey.keys());
+  for (const { nodeset, relevant } of failNodesets) {
     const control = controlFor(doc, nodeset);
     const text = control ? labelTextOf(control, itext) : null;
     if (text === null || text === '') {
@@ -342,30 +439,55 @@ export function checkAssessmentRetryLeak(xml: string): RetryLeakReport {
       );
       continue;
     }
+    // Only the items this label's score depends on; every item when the
+    // dependency walk resolves none (the conservative side).
+    const scoped = itemsBehind(doc, relevant, items);
+    const pairs = [...(scoped.size ? scoped : items)].flatMap((q) =>
+      [...(answerKey.get(q) ?? [])].map((answer) => ({ q, answer })),
+    );
     const haystack = norm(text);
-    let leaked = false;
-    for (const answer of correctAnswers) {
-      for (const needle of answerNeedles[answer]) {
-        if (containsNeedle(haystack, needle)) {
-          leaks.push({ label: nodeset, leaked: needle, text });
-          leaked = true;
+    let blocker: RetryLeak | undefined;
+    let soft: RetryLeak | undefined;
+    for (const { q, answer } of pairs) {
+      for (const needle of needlesFor(q, answer)) {
+        if (!containsNeedle(haystack, needle)) continue;
+        const why = isShortToken(needle)
+          ? `answer token "${needleCore(needle)}" is ≤ ${SHORT_TOKEN_MAX} letters — a yes/no ` +
+            'particle that ordinary prose (and clause-final negation) also contains'
+          : gating === 'non-gating'
+            ? 'the form carries Connect learn markers but no <assessment> block, so Connect never scores it'
+            : undefined;
+        if (!why) {
+          blocker = { label: nodeset, leaked: needle, text, severity: 'blocker' };
           break;
         }
+        soft ??= { label: nodeset, leaked: needle, text, severity: 'info', downgraded: why };
       }
-      if (leaked) break;
+      if (blocker) break;
     }
+    if (blocker) leaks.push(blocker);
+    else if (soft) info.push(soft);
   }
   return {
     ...checked(leaks.length === 0 && blind.length === 0, leaks),
     correctAnswers,
     answerNeedles,
     blind,
+    info,
+    gating,
   };
 }
 
 export function formatRetryLeakReport(report: RetryLeakReport): string {
   if (report.status === 'unable') return formatUnable('assessment-retry-leak', report.reason);
-  if (report.ok) return 'assessment-retry-leak: clean — no fail-branch label restates a correct answer';
+  const infoBlock = report.info.map(
+    (l) => `  [INFO] ${l.label}: matched "${l.leaked}" — not counted as a leak: ${l.downgraded}`,
+  );
+  if (report.ok) {
+    return ['assessment-retry-leak: clean — no fail-branch label restates a correct answer', ...infoBlock].join(
+      '\n',
+    );
+  }
   const blindBlock = report.blind.length
     ? [
         `assessment-retry-leak: BLIND on ${report.blind.length} item(s) — the check could not run to`,
@@ -374,9 +496,10 @@ export function formatRetryLeakReport(report: RetryLeakReport): string {
         ...report.blind.map((b) => `  ${b}`),
       ]
     : [];
-  if (report.findings.length === 0) return blindBlock.join('\n');
+  if (report.findings.length === 0) return [...blindBlock, ...infoBlock].join('\n');
   return [
     ...blindBlock,
+    ...infoBlock,
     `assessment-retry-leak: ${report.findings.length} fail-branch label(s) restate the correct answer —`,
     'a worker who fails once is shown the answer and passes on the next attempt,',
     'which makes the Connect Deliver-unlock gate decorative (dimagi-internal/ace#1041).',

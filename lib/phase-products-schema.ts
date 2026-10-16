@@ -475,6 +475,70 @@ const CascadeProducts = z
   })
   .passthrough();
 
+/**
+ * `products.synthetic.source` — `demo-data-setup`'s seam contract
+ * (`skills/demo-data-setup/SKILL.md § Products`), read by `demo-narrative`
+ * step 2b (cardinality), `demo-data-setup-qa` check 18 (render reset) and any
+ * fork of the run (ace#2318).
+ *
+ * Typed because a degraded write shipped silently: `spark-facilitator/
+ * 20260908-2215` wrote `dashboards` as BARE STRINGS and dropped `data_shape`,
+ * `render_reset` and `detectable_signal`, while the producer's own QA quoted
+ * them — so every consumer of the durable copy lost its input with no error.
+ * Now a bare-string dashboard (or a `data_shape` missing an axis) is rejected
+ * at the `update_yaml_file` write. Keys stay optional — writes are
+ * incremental — and the block stays `.passthrough()` for the many internal
+ * keys (`generation`, `measured_totals`, `dataset_constraints`, …) no
+ * consumer reads by schema.
+ */
+const SyntheticDashboard = z
+  .object({
+    key: z.string().min(1),
+    template: z.string().min(1),
+    role: z.string().min(1),
+    shape: z.string().optional(),
+    /** Set iff the role is review-action / review / decision — gates render_reset. */
+    interactive: z.boolean().optional(),
+    par_url: z.string().optional(),
+  })
+  .passthrough();
+
+const SyntheticSource = z
+  .object({
+    provider: z.string().optional(),
+    /**
+     * VERBATIM from `synthetic_generate_from_manifest`: flat
+     * `{opportunity, user_visits, …}` on the single-opp path, keyed per
+     * partner on the cascade path — so not typed deeper.
+     */
+    record_counts: z.record(z.string(), z.unknown()).optional(),
+    /** The three axes demo-narrative's cardinality check reads (ace#1670). */
+    data_shape: z
+      .object({
+        rows: z.number().int().nonnegative(),
+        periods: z.number().int().nonnegative(),
+        groups: z.number().int().nonnegative(),
+      })
+      .passthrough()
+      .optional(),
+    dashboards: z.array(SyntheticDashboard).optional(),
+    primary_dashboard: z.string().optional(),
+    /** Step 4b's per-render reset contract (ace#2297). `required: false` is a recorded result. */
+    render_reset: z
+      .object({
+        required: z.boolean(),
+        run_id: z.union([z.number(), z.string()]).nullable().optional(),
+        state_keys: z.array(z.string()).optional(),
+        command: z.string().optional(),
+        verified_at: z.string().nullable().optional(),
+      })
+      .passthrough()
+      .optional(),
+    /** The PDD control the demo instantiates — a structured block, or the documented `none (…)` string. */
+    detectable_signal: z.union([z.string().min(1), z.object({}).passthrough()]).optional(),
+  })
+  .passthrough();
+
 const SyntheticProducts = z
   .object({
     synthetic: z
@@ -483,6 +547,7 @@ const SyntheticProducts = z
         workflows: z.unknown().optional(),
         labs_opp_id: z.union([z.string(), z.number()]).optional(),
         cascade: CascadeProducts.optional(),
+        source: SyntheticSource.optional(),
       })
       .passthrough()
       .optional(),

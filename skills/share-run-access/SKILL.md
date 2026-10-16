@@ -98,8 +98,8 @@ links, each a separate membership system:
 
 | Surface | Summary link(s) | Auth | Grant mechanism |
 |---|---|---|---|
-| **ace-web workbench** | `/ace/w/<workspace>/opps/<opp>/runs/<run>` (the "how we got there" view) | Connect/CCHQ OAuth + `WorkspaceMembership` | **@dimagi.com/@dimagi-ai.com auto-join** on first sign-in (no grant). **Other domains cannot sign in at all** — see the allowlist box below; an invite to them is a no-op. |
-| **labs dashboards** | `/labs/workflow/<id>/run/?...` | labs (CCHQ OAuth) | Same CCHQ login; visibility follows the run's synthetic/opp. Sign-in via CCHQ. |
+| **ace-web workbench** | `/ace/w/<workspace>/opps/<opp>/runs/<run>` (the "how we got there" view) | Connect/CCHQ OAuth + ace-web's login gate + `WorkspaceMembership` | Allowlisted domains (`dimagi.com`, `dimagi-ai.com`, `dimagi-associate.com`) **auto-join** on first sign-in (no grant). Any other address signs in only through an invite or an existing membership — see the login-gate box below. |
+| **labs dashboards** | `/labs/workflow/<id>/run/?...` | labs (CCHQ OAuth) + the synthetic opportunity's `allowed_domains` | **Dimagi-only.** Phase 7 dashboards sit on labs-only synthetic opportunities that `demo-data-setup` creates with `allowed_domains: ['@dimagi.com', '@dimagi-associate.com', '@dimagi-ai.com']`; labs' `is_accessible_to` rejects any other email domain, and seeing the opp in the picker also needs the `view_synthetic_opps` toggle. Internal staff need no grant. An external reviewer who signs in successfully still opens **no** dashboard here — see step 4. |
 | **Connect opportunity** | `connect.dimagi.com/a/<org>/opportunity/<id>/` | Connect org membership | `connect_add_org_member` into the org that **HOLDS** the opportunity (`run_state` → `connect.products.connect.holding_org_slug`; legacy runs: `organization_slug`). Connect's `org_opportunity_access` gives the holding org's members access to its opportunity; on a PM→NM run that is the NM org, not the PM org (live 2026-09-26, `playbook/integrations/connect-api.md § PM→NM org-URL matrix`). |
 | **CommCare HQ apps** | `commcarehq.org/a/<domain>/apps/view/<id>/` | HQ web-user on the domain | `commcare_invite_web_user` (ships since ace#905; defaults to the **`App Editor`** role — load-bearing, see below; reconciles an existing member's role rather than skipping). |
 | **OCS chatbot admin** | `openchatstudio.com/a/<team>/chatbots/<id>/` | OCS team membership | `ocs_add_team_member` ("Chatbot Admin" group). **Internal (Dimagi) only.** OCS has NO per-chatbot permissions: every group is team-wide, and Chatbot Admin (the only group that opens a chatbot's config page) grants view + edit + delete on **every chatbot on ACE's team**; Chat Viewer (transcripts only) still reads every bot's transcripts. **External reviewers get no OCS account** (Jon, 2026-09-28) — they chat through the public link, which needs no login and exposes nothing else: `products.ocs_chatbot.public_url`. |
@@ -110,17 +110,20 @@ account and have signed in once. `@dimagi.com` staff generally do; an **external
 (e.g. `@dimagi-associate.com`) must create one first. This skill never provisions accounts — it
 grants membership and tells the person the one sign-in they must do themselves.
 
-> ⛔ **ace-web workbench is CLOSED to external domains in production — an invite to one is a
-> no-op.** ace-web's OAuth callback enforces an allowlist, `ACE_ALLOWED_EMAIL_DOMAINS=dimagi.com,
-> dimagi-ai.com` (`deploy/aws/task-definition.json`, registered on every deploy). A non-matching
-> address is rejected **before** a `User` row is created, with "Access is restricted to
-> @dimagi.com, @dimagi-ai.com accounts." You *can* create a `WorkspaceInvite` for any email — the
-> endpoint never touches the User table — but the recipient can never redeem it, because accepting
-> requires a signed-in session that the allowlist prevents them from ever having. **So for an
-> external collaborator, do NOT send a workspace invite and do NOT tell them to "accept a pending
-> invite."** Widening access is a deploy-config change plus a redeploy, and it's a human decision —
-> escalate it, don't work around it. (Origin: 2026-07-23 — an external reviewer was told to accept a
-> pending invite that both did not exist and could not have been redeemed; dimagi-internal/ace#913.)
+> ⛔ **ace-web admits an outside address by invite, and a workspace invite grants the WHOLE
+> workspace.** ace-web's login gate (`apps/auth/login_gate.py` `admission_rule` in the ace-web
+> repo) checks four rules in order: `open` (the domain list is empty) → `domain`
+> (`ACE_ALLOWED_EMAIL_DOMAINS`, currently `dimagi.com,dimagi-ai.com,dimagi-associate.com`, set in
+> ace-web's `deploy/aws/ace-web.cfn.yaml`) → `invite` (a pending, unexpired, unrevoked
+> `WorkspaceInvite`) → `membership` (an existing `WorkspaceMembership`). So an invite to an
+> outside address does work: they sign in through it, and after they accept it the membership
+> keeps them in. Removing their last membership is how they are cut off. What that invite opens is
+> every run in the workspace, not one. **For an external reviewer, never invite them into
+> `dimagi-team`.** That would show them every opp's runs. The path for an external reviewer is
+> `clone-to-new-workspace` → `validate-release-readiness` → `release`, which copies the run into a
+> workspace of its own and invites them there. (History: before the invite rule, 2026-07-23, an
+> external reviewer was told to accept a pending invite that could not be redeemed —
+> dimagi-internal/ace#913. ace#2525 corrected the domain list and the admission rules.)
 
 ## Inputs
 
@@ -165,23 +168,26 @@ grants membership and tells the person the one sign-in they must do themselves.
    step 5/6, through the gated email path.
 
 3. **Classify each email once** (per-person isolation — one person, one decision, like inbox-triage):
-   - `@dimagi.com` / `@dimagi-ai.com` → **internal**: ace-web auto-joins on sign-in (no invite needed);
-     Connect/HQ/OCS grants apply normally.
+   - `@dimagi.com` / `@dimagi-ai.com` / `@dimagi-associate.com` → **internal**: ace-web auto-joins on
+     sign-in (no invite needed) and labs' synthetic allowlist admits them; Connect/HQ/OCS grants apply
+     normally.
    - **OCS is internal-only.** An external collaborator is NEVER invited to the OCS team — every OCS
      group is team-wide, so any invite exposes (and, as Chatbot Admin, lets them edit or delete)
      every chatbot on ACE's team. Give them the public chat link
      (`products.ocs_chatbot.public_url`) instead and report OCS as `public link (no account)`.
-   - anything else → **external collaborator**: **ace-web is blocked for them outright** (allowlist
-     box above — report it, don't invite); for Connect, a deliberate external add —
+   - anything else → **external collaborator**: **not into `dimagi-team` on ace-web** (login-gate box
+     above — an invite would admit them to every run in the workspace; route them to
+     `clone-to-new-workspace` → `release`); for Connect, a deliberate external add —
      `add-org-member`'s @dimagi.com guard is intentional, so external Connect adds go through THIS
      skill's explicit external path (below), not that skill.
 
 4. **Grant per surface** (idempotent — re-running skips people already granted):
 
    - **ace-web workbench.** Internal → nothing to grant; tell them to open the workbench URL and sign
-     in (they auto-join). **External → STOP: report `blocked: ace-web domain allowlist` and escalate.**
-     Do not send the invite below (see the allowlist box above — they can't redeem it). The invite
-     endpoint is for internal addresses that somehow missed auto-join:
+     in (they auto-join). **External → STOP: report `NOT DONE — dimagi-team spans every run; release a
+     clone instead — owner: operator (clone-to-new-workspace → release)`.** Do not send the invite below into `dimagi-team`. It would
+     work (login-gate box above), and that is the problem: it opens every opp's runs. The invite
+     endpoint here is for internal addresses that somehow missed auto-join:
      ```bash
      curl -sS -X POST -H "Authorization: Bearer $ACE_WEB_PAT_TOKEN" \
        -H "Content-Type: application/json" \
@@ -204,7 +210,15 @@ grants membership and tells the person the one sign-in they must do themselves.
      **Never use `connect_add_org_member` as a check** — for an absent person it creates an invite
      and Connect emails them. Any later "is X still a viewer?" verification is `connect_list_org_members`.
      The holding org, not the program org: a viewer there gets VIEW on exactly the org's own
-     opportunities, where a PM-org viewer would see every program the PM org runs. (Upstream
+     opportunities, where a PM-org viewer would see every program the PM org runs. **Blast radius:**
+     with `nm_org` configured, EVERY run's build/QA opportunity is held by the same NM org
+     (`lib/connect-orgs.ts` `phase4Orgs()`), so a viewer there sees every ACE run's opportunities,
+     not one. That is fine for staff and an over-grant for an external reviewer; say so in the
+     step 5 plan. **Connect SSO order for a first-time external user:** they must **sign in to
+     Connect with "Log in with CommCare HQ" FIRST, then open the invite link while signed in.**
+     Accepting the invite while logged out creates a *password* account for that email, after
+     which Connect's `_reject_if_email_already_registered` blocks their first CommCare HQ sign-in
+     (commcare-connect `users/adapters.py`). Put that order in the message that tells them. (Upstream
      `org_opportunity_access` grants the holding org ADMIN on the opp, capped by the member's own
      role — so a `viewer` member reads it.) Not yet exercised with a real reviewer on a PM→NM run;
      the claim rests on that upstream source.
@@ -218,11 +232,20 @@ grants membership and tells the person the one sign-in they must do themselves.
      first". **External emails:** allowed here (this is the deliberate external path
      `add-org-member` points to).
 
-   - **labs dashboards.** No separate grant — labs authenticates via the same CCHQ OAuth. Once the
-     person can sign in to labs (CCHQ account) they reach the run's dashboards. Just include the
-     dashboard URLs and "sign in with your CommCare account" in the report.
+   - **labs dashboards.** Internal → no separate grant: labs authenticates via the same CCHQ OAuth,
+     and an internal domain is on the synthetic opp's `allowed_domains`. Include the dashboard URLs
+     and "sign in with your CommCare account" in the report. **External → report `NOT DONE —
+     synthetic opp is Dimagi-only — owner: operator`.** Signing in will not get them in: `is_accessible_to` rejects
+     their domain. Adding their domain with `synthetic_set_allowed_domains` (it REPLACES the list)
+     opens that opp to everyone at that domain, not only this person, so it is a human decision.
+     The partner path (`clone-to-new-workspace` → `release`) sets a partner workspace's own labs
+     scope instead.
 
    - **CommCare HQ apps.** Call `commcare_invite_web_user({domain, email})` (ships since ace#905).
+     **Blast radius:** an HQ role is a role on the whole DOMAIN. `App Editor` on ACE's shared domain
+     gives view **and edit** on every run's apps there, not just this run's. That is fine for
+     Dimagi staff and an over-grant for an external reviewer. Name it in the step 5 plan, and for a
+     partner prefer the release path, which rebuilds the apps in the partner's own HQ space.
      **Do NOT pass `role: "Read Only"`.** The default is `App Editor` and that is load-bearing: HQ's
      stock Read Only preset grants `view_reports` + `download_reports` and **not** `view_apps`, so a
      Read Only member gets a bare 403 on every app link this skill shares — while the *releases* page
@@ -231,7 +254,7 @@ grants membership and tells the person the one sign-in they must do themselves.
      a real reviewer, not a judge — Sophie Feintuch, 2026-07-23.)
 
      The atom handles every state itself with read-back proof: fresh invite, pending-invite
-     idempotent skip, already-a-member no-op, and — the one that matters — **role reconciliation for
+     idempotent skip, already-a-member (nothing to change), and — the one that matters — **role reconciliation for
      a member sitting on the wrong role**, which membership-shaped checks report as success. Statuses
      `invited` / `invite-pending` / `already-member` / `role-reconciled` are all grants; a throw is a
      **NOT DONE** with the read-back evidence. Do not defer to "an HQ admin will do it" unless ACE

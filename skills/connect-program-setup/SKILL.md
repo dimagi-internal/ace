@@ -290,8 +290,26 @@ alone makes the artifact land outside `4-connect` and fail
         summarize_by_program: program.name,
         duplicate_program_name: <true iff the Step 2 program list shows
                                  two or more programs by this name>,
+        program_created_this_invocation: <true iff Step 4 created the
+                                 program in THIS invocation — never on
+                                 the reuse path>,
       })
       ```
+
+      **On the create path, pass `program_created_this_invocation: true`
+      (ace#2083).** A program Step 4 minted moments ago, before any
+      opportunity was created against it, is newer than every row in the
+      org — so a row whose `program_name` could not be read cannot be in
+      it. The atom then rules the unreadable rows out (`unreadable_rows_ruled_out:
+      true`, `sigma_known: true`, Σ = 0) instead of charging each one
+      `EXPECTED_OPP_BUDGET`, but only while the listing agrees
+      (`matched_rows == 0`); a readable row already naming the program
+      contradicts the claim and Σ stays unknown with a reason. Measured on
+      `poverty-graduation/20260905-1345`: a 40-second-old program with
+      `matched_rows: 0` and 11 org-wide `setup_incomplete` rows was raised
+      126,000 → 176,400 for a consumption that was provably 0. On the reuse
+      path the tax is genuinely warranted — those rows may be prior runs of
+      this very program — so never pass it there.
 
       which implies `hydrate`, does the whole classification server-side,
       and returns `{listing, summary}` with **no rows** — `sigma_total_budget`,
@@ -384,8 +402,15 @@ alone makes the artifact land outside `4-connect` and fail
 
       The residual this leaves is a COST, not a mystery: each
       `setup_incomplete` row adds `EXPECTED_OPP_BUDGET` to the target
-      below on every program sized against that org, and finishing or
-      deleting the opportunity is the only thing that removes it.
+      below on every REUSED program sized against that org (the create
+      path rules them out, above), and finishing or deleting the
+      opportunity is the only thing that removes it. ACE cannot delete
+      one: Connect exposes no opportunity-delete route
+      (`commcare_connect/opportunity/urls.py`), and its only deletion path
+      is the `delete_stale_opportunities` task scheduled weekly by
+      migration 0105 (`opportunity/tasks.py`), which removes opportunities created more
+      than 6 months ago with no visits — so a `setup_incomplete` row ages
+      out on its own after six months (ace#2083).
       (`active` being correlated-but-not-causal — 5 inactive rows DO
       carry the fields — is explained by the same finding: an
       opportunity can be deactivated after a complete setup.)
@@ -591,6 +616,7 @@ Rows this skill writes use `phase: "4-connect"` and `skill: "connect-program-set
 
 | Date | Change | Author |
 |------|--------|--------|
+| 2026-10-16 | **Step 4a: the create path rules org-wide unreadable rows OUT of a program it just minted (ace#2083).** A `setup_incomplete` opportunity is permanently unreadable, so each one forced Σ unknown and added `EXPECTED_OPP_BUDGET` to the target of every program sized against the org — including a brand-new one that provably contained nothing (`poverty-graduation/20260905-1345`: 0 matched rows, 11 unreadable, raised 126,000 → 176,400). `connect_list_opportunities` gains `program_created_this_invocation`; with it, and with `matched_rows == 0`, `summarizeOpportunitiesByProgram` reports `sigma_known: true` and `unreadable_rows_ruled_out: true`. The reuse path is unchanged. The sweep half stays upstream-bound: Connect has no opportunity-delete route; its own weekly `delete_stale_opportunities` removes no-visit opportunities older than 6 months. *Enforced:* `test/lib/connect-list-projection.test.ts` § create-path narrowing. | ACE team |
 | 2026-10-15 | **Step 3a no longer proposes NARROWING a reused program's window below opportunities already on it (ace#2985).** `reconcileProgramWithPdd` compared `start_date`/`end_date` by string equality and put any difference in `updateArgs`, so on `smallholder-seasonal/20261015-1402` (program `09b74c39-…`) it proposed `end_date: 2030-01-31` while both existing opportunities end `2030-02-28`. Dates now have containment semantics like `budget`: `start_date` diverges only when live starts later than the PDD, `end_date` only when live ends earlier; a wider live window is no diff, no `updateArgs`, no `[WARN]`. *Enforced:* `test/lib/program-reconcile.test.ts` § date containment, incl. the live repro. | ACE team |
 | 2026-09-17 | **The reuse-path description refresh no longer round-trips ~21 KB of prose through the model (ace#2291).** `connect_update_program` gained `description_path`, the same `<param>_path` handle this server already offers on `new_xform_xml_path` / `file_bytes_path` / `ccz_path`: the server reads the bytes off disk verbatim. Step 3a refreshes `description` on EVERY reuse and reuse is the normal path after an opp's first run, so the inline-only shape cost ~5.8k output tokens per run forever (measured live 2026-09-17 on program `efb8af66`, `ai-demo-space`: 21,012 chars). It also removes a correctness gap — the description the reconciler judged and the description sent were two separate generations, with nothing making them match (the ace#1737 class). Step 3a now authors the description to a file first and points BOTH consumers at it. A relative, unreadable or empty file is a typed refusal naming the path with nothing sent, never a silently blanked LLO-facing description. *Enforced:* `test/mcp/connect/unit/update-program-description-path.test.ts`. | ACE team |
 | 2026-09-06 | **The name is made NON-AUTHORITATIVE in code, not in prose (ace#1966, cause #2).** `reconcileProgramWithPdd` now takes the live `name` and the PDD `archetype` and returns `nameArchetype`, a `CheckOutcome` (`lib/check-outcome.ts`): a name whose archetype token contradicts this run's PDD produces a `[WARN]` in `warnings[]`, and a caller that passes neither gets a loud `UNABLE TO CHECK` rather than silence. Step 3a now emits `warnings[]` **unconditionally**, before branching — `inSync` covers only the four refreshable fields, so the live case (`Bednet Check Multi-Stage Study — 2026`, content fully refreshed, `inSync: true`) was dropped by every branch that existed. `name` still never enters `updateArgs`: the reconciler reports, it does not rename. Also corrects the module's own false rationale — `name` was documented as durable "because it is the cross-run reuse-lookup key", which Step 2 has contradicted since ace#1252 (no `name` filter; match on delivery type + archetype). | ACE team |

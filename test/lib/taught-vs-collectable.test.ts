@@ -29,6 +29,7 @@ import { describe, it, expect } from 'vitest';
 
 import {
   checkTaughtStepsCollectable,
+  evidenceActionsIn,
   formatTaughtVsCollectableReport,
 } from '../../lib/taught-vs-collectable.js';
 
@@ -240,5 +241,39 @@ describe('checkTaughtStepsCollectable (#1259)', () => {
     expect(text).toMatch(/Photo and GPS Evidence/);
     expect(text).toMatch(/dwelling_photo/);
     expect(text).toMatch(/which artifact is wrong is a judgement/i);
+  });
+});
+
+/**
+ * dimagi-internal/ace#2873 — `photograph` as a bare verb. The matcher needed a
+ * helper verb (`take … photograph`) or a following `of`, so the plain
+ * imperative missed. The first two rows are the Learn labels ace#2856 quotes
+ * from turmeric-market-study-ghana/20261012-1749; the table is the issue's
+ * probe, which failed 2 of 5 before the fix.
+ */
+describe('EVIDENCE_ACTIONS matches the bare forms a curriculum writes (#2873)', () => {
+  const PROBE: Array<[string, string]> = [
+    ['If she agrees, photograph the turmeric she has for sale.', 'photograph'],
+    ['Which photographs you are asked for depends on what you ticked.', 'photograph'],
+    ['If she agrees, take a photograph of the turmeric she has for sale.', 'photograph'],
+    ['Take a photograph in all cases.', 'photograph'],
+    ['Take a photograph without exception.', 'photograph'],
+  ];
+  it.each(PROBE)('%s → %s', (label, action) => {
+    expect(evidenceActionsIn(label)).toContain(action);
+  });
+
+  it('GPS and audio match their noun-phrase spellings too', () => {
+    expect(evidenceActionsIn('Geotag the stall before you leave.')).toContain('GPS fix');
+    expect(evidenceActionsIn('The GPS coordinates are saved with every visit.')).toContain('GPS fix');
+    expect(evidenceActionsIn('Log the location at the stall.')).toContain('GPS fix');
+    expect(evidenceActionsIn('Leave a voice note describing the stall.')).toContain('audio recording');
+    expect(evidenceActionsIn('Every visit needs an audio recording.')).toContain('audio recording');
+  });
+
+  it('NEGATIVE CONTROL: prose with no evidence step matches nothing', () => {
+    expect(evidenceActionsIn('Record the outcome as vacant, then submit.')).toEqual([]);
+    expect(evidenceActionsIn('A photographer visited the market last year.')).toEqual([]);
+    expect(evidenceActionsIn('Show the seller a photo of the logo.')).toEqual([]);
   });
 });

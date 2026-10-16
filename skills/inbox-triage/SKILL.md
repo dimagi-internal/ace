@@ -196,7 +196,7 @@ against `date: 2026-09-14 12:26`; message 0 was Neal's, on 21 July, and the 14 S
        The brief carries: the command `/ace:run <ws>/<opp>`; the routing thread id; the sender's
        asks **verbatim** (quoted, not paraphrased) plus the source doc(s) they named; this turn's
        mode (`canopy agent mode --slug ace --caller <path>`); and the instruction *"reply on thread
-       `<id>` with `bin/ace-email --reply-all --reply-to-message-id <last message id>`, leading with
+       `<id>` with `bin/ace-email --reply-all --thread-id <id>`, leading with
        the run's ace-web page"*. Dispatch reports
        LAUNCHED (unverified) — confirm the turn was queued with `canopy agent turns --slug ace`
        before marking the thread read. **Send no handoff ack** ("a run session was started"): the

@@ -28,6 +28,25 @@ so. Do not invent real place names — use labelled test places (`Area 1`, `FLW 
 
 ## Procedure
 
+0. **Prove Nova can upload to the chosen space — before any Nova authoring (ace#3043).** Nova's
+   `upload_app_to_hq` (step 5) refuses a space missing from its stored list (`domain_not_authorized`), and a
+   fresh scratch space is missing from it by construction: Nova stores the key's reachable spaces when the key
+   is saved. Find that out now, not after a build. Same gate as `agents/commcare-setup.md` § Step 0:
+   - Call Nova's `get_hq_connection`. `configured: true` with the space in `available_domains[].name` →
+     proceed to step 1.
+   - `configured: true`, space NOT listed → refresh Nova's stored list yourself, **once**:
+     `node "$ACE_ROOT/node_modules/tsx/dist/cli.mjs" "$ACE_ROOT/scripts/nova-refresh-hq-domains.ts" --domain <space>`
+     (`ACE_ROOT` resolved as in `agents/commcare-setup.md` § Nova contract probe), then re-call `get_hq_connection`.
+     - exit 0 and the space is now listed → proceed.
+     - exit 3 (`still-missing`) → **halt**: the HQ key's user is not a member of the space. Tell the requester
+       to add that user (ace@) to the space, or name a space it already reaches (list `available_domains`).
+     - exit 2 (`refresh-blocked`, the JSON names the Google challenge, e.g. `google-2fa` — seen from a cloud
+       runner on `20261016-0618`) → **halt**: the operator presses **Refresh** on the CommCare HQ card at
+       `https://commcare.app/settings` as the ACE identity, then re-runs. Do not build first and work around
+       the upload with `compile_app` + an HQ import: that skips Nova's place push, which is the half of this
+       skill that puts the places on HQ.
+   - `configured: false` → **halt**: Nova has no HQ key; the operator saves one in Nova's settings.
+   Never loop the script — a second refresh of unchanged membership answers the same.
 1. **Design the levels from the visibility rules, one rule per level.**
    - The level whose places OWN records → `caseFlow.ownsCases: true`, `workers: assigned`, `descendantCases: none`.
    - A supervising level → `ownsCases: false` (or true if it also owns), `workers: assigned`,

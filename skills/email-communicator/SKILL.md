@@ -78,13 +78,18 @@ interactive browser OAuth that a headless turn cannot run (jjackson/ace#1147).
    - Capture `message_id` and `thread_id` from the JSON result.
 
 4. **For reply operations:**
-   - Read the original message first (step 6) to get the thread context and the message id.
-   - **Prefer `--reply-all`:** `bin/ace-email --reply-all --reply-to-message-id <message_id> --subject "Re: <original>" --body-file <path>`
-     — the engine derives To (original sender) + Cc (everyone else on the original To+Cc) from the
-     message's structured headers, so cc'd people are never silently dropped (§1b rule 3, now
-     tool-backed). Explicit `--cc` merges in. Only pass `--to` yourself when deliberately narrowing
-     the recipient set — and say so in the approval step.
-   - Replies maintain the Gmail thread via the message id.
+   - Read the original thread first (step 6) to get the thread context and the thread id.
+   - **Prefer `--reply-all`:** `bin/ace-email --reply-all --thread-id <thread_id> --subject "Re: <original>" --body-file <path>`
+     — with `--thread-id` the engine derives To + Cc from the thread's **LATEST non-self** message's
+     structured headers, so cc'd people are never silently dropped (§1b rule 3, now tool-backed).
+     Explicit `--cc` merges in. Only pass `--to` yourself when deliberately narrowing the recipient
+     set — and say so in the approval step.
+   - **Never `--reply-all --reply-to-message-id <thread id>`** (ace#2391). A Gmail thread id IS the
+     id of the thread's FIRST message, so that pair takes the engine's *message* mode and replies to
+     the thread head: on a thread ACE opened it addresses `To: ace@dimagi-ai.com` and demotes the
+     counterpart to Cc; on any long thread it targets whoever started it. *Enforced:*
+     `test/skills/reply-all-thread-id.test.ts`.
+   - Replies maintain the Gmail thread via the thread id.
 
 5. **For search operations:**
    - Use: `bin/ace-env gog gmail search "<query>" -a ace@dimagi-ai.com --client "$(canopy email client --repo .)" --json`

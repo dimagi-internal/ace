@@ -1,0 +1,146 @@
+Program Design Document (PDD): Recurring Consumption Support
+Version: 0.1 (draft) · Status: Draft for discussion, not SME-approved · Author: drafted with Claude · Intended compiler: ACE · Component: 6 of the graduation component set
+Framing note. Consumption support is the small recurring transfer that stabilizes household consumption so the household does not have to liquidate the productive asset to meet immediate needs. Connect does not disburse: every method is an external disbursement that Connect confirms through a captured artifact and reconciles back into the case.
+This component owns the transfer method and its verification, and that ownership is shared. Component 5b (cash asset transfer) sends money for a different reason, on a different schedule, with conditional gates, but through the same methods and the same confirmation machinery. The seam: this PDD specifies how money is confirmed to have arrived; the sending component specifies why, when, how often, and to whom. Consumption support's own schedule is a simple recurrence with no conditional gates. It builds on the shared case-and-state model; it reads and writes the household case but does not create it.
+0. How to read this document
+* [FIXED] — a hard constraint. ACE implements it exactly and does not modify, reorder, or omit it. If a FIXED element is ambiguous or infeasible, ACE flags it to a human rather than resolving it.
+* [ACE] — latitude. ACE designs, phrases, orders, and iterates using its own judgment and Connect best practices.
+1. Program summary
+[FIXED] An enrolled household receives a small transfer on a recurring schedule across the program window. The transfer itself is executed outside Connect by the LLO, the program owner, or a payment provider. This component records that a transfer was due, captures the artifact confirming it was received, and writes the outcome to the household case. It does no targeting, enrollment, or coaching, and it does not move money.
+[ACE] User-facing naming and copy.
+2. Roles and delivery model
+[FIXED]
+* FLW: for in-person methods, distributes or witnesses the transfer and captures the confirmation artifact. For remote methods, the FLW may have no role in the transfer at all.
+* Network Manager (LLO): monitors submissions, resolves flagged transfers, handles non-receipt cases.
+* Finance or program staff (LLO or program owner): executes the disbursement and, for remote methods, records the outcome (see §5b).
+* Program manager (Dimagi): sets payment terms, reviews verification flags, approves payment batches.
+[FIXED] Who is paid, and for what, differs by method. In-person distribution is FLW work and is a candidate deliver unit. Remote disbursement is not field work and produces no FLW-payable unit; see §7 and §12.
+[ACE] NM dashboards and any supervision workflow beyond flag review.
+3. Transfer methods
+[FIXED] The method is set per deployment (Annex) by what is locally available. Each method has its own confirmation artifact, and therefore its own capture flow:
+* Bank transfer. Confirmation from the transaction record, reconciled into the case (§6). Optional beneficiary confirmation at the next in-person visit.
+* Mobile money. As bank transfer, against the registered wallet.
+* Agent-assisted cash-out. Digital transfer with physical cash-out at an agent. Confirmation from the transaction record, plus optionally the agent or beneficiary attesting to the cash-out.
+* Cash-in-hand. No transaction record exists, so confirmation is entirely field-captured: a signed distribution list, a timestamped GPS-tagged photo of the recipient at the distribution point, and a short voice recording of the recipient stating the amount they received (§3b). Cash custody is tracked as worker-level stock (§3a), and post-distribution confirmation is the compensating control (§6).
+* Voucher. Issuance recorded against the case; redemption confirmed by vendor record or beneficiary confirmation if available.
+[FIXED] A hybrid deployment is permitted: a default method for most households and a fallback (usually cash-in-hand) for households without a phone, ID, or reachable agent. The method in use is recorded per household at enrollment, and the household's method determines which capture flow it follows.
+[ACE] How each capture flow is presented; screen order and copy within it.
+3a. Cash custody (cash-in-hand only)
+[FIXED] Where distribution is cash-in-hand, the cash an FLW holds is tracked as worker-level stock, following the RUTF commodity pattern: the LLO issues a float to the FLW and records the amount; each recorded distribution decrements the balance; the balance is visible to the FLW and to the Network Manager; and the FLW reconciles the remaining cash back to the LLO at the end of the round.
+[FIXED] The float issue and the end-of-round reconciliation are both recorded events, entered by the Network Manager or LLO finance staff, not by the FLW alone. A reconciliation records the cash returned and any variance against the expected balance.
+[FIXED] This is the primary control for cash-in-hand. It does not verify any single distribution, but it closes the accounting loop: recorded distributions cannot exceed the float issued, and the FLW must account for the remainder. It surfaces short-changing (giving less than recorded) as a surplus at reconciliation.
+[ACE] How the balance and low-balance state are displayed; whether the distribution module is hidden or an alert raised when the balance is insufficient for the next distribution (the RUTF low-stock pattern).
+3b. Voice confirmation (cash-in-hand only in v1)
+[FIXED] Two recordings are captured:
+* Baseline, at enrollment: a short voice sample of the participant. This is captured by the enrollment component, not here; this PDD consumes it. See §8 and §10.
+* At each cash handover: a short recording of the recipient stating the amount they received.
+[FIXED] In v1 the recordings are captured, stored against the household case, and available for review and for M&E. Automated speaker matching against the baseline is not assumed and is not a v1 requirement; see §10. The recording's v1 value is that it is a beneficiary-originated artifact reviewable after the fact, which a signature is not.
+[FIXED] Consent to record must be taken at enrollment and the participant must be able to decline. A declined recording is not a non-receipt outcome: the distribution still proceeds and is recorded, with the recording marked declined.
+[ACE] Recording length, prompt wording, and how the capture is presented. The prompt must elicit the amount in the participant's own words rather than asking them to confirm a figure read to them.
+4. Target population and coverage
+[FIXED]
+* Recipients are households with enrolled set; this component does not select households.
+* Transfers recur on the deployment's schedule (amount, frequency, and number of transfers in the Annex) across the program window, and stop at the window's end or at exit.
+* The transfer details used (bank, wallet, or none for cash-in-hand) are those recorded at enrollment. A household whose details are missing or invalid cannot be paid by a remote method and must be flagged for correction or fallback, not silently skipped.
+5. Deliver unit and recording
+[FIXED — in-person methods] A payable distribution requires all of:
+* The FLW physically at the distribution point or household (GPS auto-captured).
+* The recipient identified against the household case.
+* The confirmation artifact for the method (§3) captured, live only, no gallery selection. For cash-in-hand this includes the voice recording (§3b) unless the participant has declined.
+* For cash-in-hand, sufficient balance on the FLW's cash float (§3a); the distribution decrements it.
+* The transfer recorded against the household case: scheduled period, amount, date.
+[FIXED] Non-receipt outcomes that must be recordable and submittable, paying 0: recipient not present; recipient refused; household not found; transfer failed or was not available.
+[FIXED — remote methods] Where no FLW is present, there is no visit and no field-captured artifact at the moment of transfer. The transfer is recorded by reconciliation (§6) rather than by a worker submission. The component is unpaid in this configuration and that is expected; see §7.
+[ACE] Visit flow, screen order, and how non-receipt outcomes are presented.
+6. Verification and reconciliation
+[FIXED] Automated flags (transfer flagged for NM/PM review, payment withheld pending resolution):
+* GPS missing, spoofed, or implausibly far from the recorded distribution point or household.
+* Confirmation photo missing, or duplicated across transfers (perceptual-hash match).
+* Duplicate transfer recorded against the same household for the same scheduled period.
+* A household recorded as paid whose transfer details were flagged invalid.
+[FIXED — reconciliation] For every method with an external transaction record, the outcome is written back to the household case: amount actually received, date, status (sent, failed, reversed), and the provider's reference. Reconciliation joins on a shared reference key generated by Connect and carried in the payment instruction. A failed or reversed transfer sets a distinct state and routes for follow-up; it must not be indistinguishable from a transfer that was never due.
+[FIXED] Instructing a transfer and the transfer arriving are separate events and are recorded separately. Any component or gate that depends on a household having money must key off the amount actually received, never off the instruction. A silently failed transfer that reads as successful produces a household assessed against a program input it never got.
+[FIXED — cash-in-hand] Cash-in-hand has no transaction record, so verification is layered, and the layers do different jobs:
+1. Cash float reconciliation (§3a). The load-bearing control. Constrains the total that can be distributed and forces the FLW to account for the remainder. Catches short-changing and inflated totals. Does not catch a fabricated distribution to a real household.
+2. Beneficiary-originated artifact (§3b). The voice recording, reviewable after the fact and harder to fabricate than a signature. Catches distributions recorded against households that did not receive money, to the extent recordings are reviewed.
+3. Post-distribution confirmation. A call-back or a confirmation question at the next in-person visit, on a sampled basis, independent of the distributing FLW.
+4. Signed distribution list. Retained as an operational and audit artifact. It is the weakest of the four and is not treated as verification on its own.
+[FIXED] Automated flags specific to cash-in-hand: a distribution recorded with insufficient float; a float reconciliation with a variance beyond the deployment threshold; a voice recording missing where consent was given; and a voice recording duplicated across distributions (identical audio hash).
+[FIXED] Threshold values are v1 defaults, tunable by the PM as a config change, not an ACE decision.
+[ACE] Flag-review UX; any additional fraud heuristics ACE proposes go in §12, not silently into the build.
+7. Payment terms
+[FIXED]
+* No funds flow to the beneficiary through Connect in this component. Connect confirms and reconciles; the LLO or program owner disburses.
+* Not every recorded activity is payable. A distribution or confirmation visit can be recorded, verified, and written to the case without being a paid deliver unit, following the KMC pattern where an FLW makes several visits and payment attaches to a designated visit (the fourth, or an earlier one where the case closes) rather than to each one.
+* Which activities in this component are payable, and on what basis, is set per deployment (Annex) rather than fixed here. Non-receipt outcomes pay 0 in all cases.
+* Where disbursement is fully remote, there is no field activity to attach payment to. The component still runs: it holds the schedule, receives reconciliation, and maintains the case state other components read.
+[ACE] How accrued pay and transfer status are displayed to the FLW.
+8. Shared-case interface
+[FIXED] State consumed (from the shared household case):
+* enrolled — gates this component; it does not run unless set.
+* The household's transfer method and transfer details, recorded at enrollment.
+* The baseline voice sample and recording consent, captured at enrollment (cash-in-hand deployments).
+* The delivered-and-verified state from asset transfer, where the model sequences consumption support behind asset delivery.
+[FIXED] State produced (written to the household case):
+* Per-period transfer records: scheduled period, amount due, amount received, date, method, status, provider reference.
+* A verified-transfer count and the current schedule position.
+* A non-receipt or failed-transfer flag where applicable.
+* Per-distribution voice recordings (cash-in-hand), stored against the household case.
+[FIXED] Worker-level state produced (cash-in-hand only): the FLW's current cash float balance, the float issue records, and the reconciliation records with any variance.
+[FIXED] This component does not create or re-register the household case.
+9. Training requirements (input to the Learn PDD)
+[FIXED] An FLW must be able to: run a distribution for the method in use, including identifying the recipient against the household record; capture the method's confirmation artifact correctly (signed list, live GPS-tagged photo); record non-receipt outcomes correctly; and explain the transfer schedule and amount to the household without promising what the program has not committed to.
+[FIXED] For cash-in-hand deployments, an FLW must additionally be able to: understand that the cash they hold is tracked and must be reconciled; read their float balance and know what to do when it is insufficient; capture the voice confirmation, including taking a decline correctly; and complete an end-of-round reconciliation.
+[FIXED] Assessment objectives: identify the correct confirmation artifact for the method in use; capture a compliant photo and distribution record; handle a recipient-not-present or refused outcome correctly; state what to do when a household reports not receiving a transfer that the system shows as sent; and (cash-in-hand) explain how the cash float is reconciled and what a variance means.
+[ACE] Phrasing and examples for these objectives.
+10. Assumptions and known platform gaps
+[FIXED — for human confirmation, not ACE resolution]
+* Disbursement is external. Connect does not hold funds, initiate transfers, or integrate with a payment provider's disbursement API in v1.
+* Reconciliation requires a route for external transaction outcomes to reach the case without a worker submission, which is the part that goes beyond normal Connect operation. Two candidate mechanisms (a manual form recorded by finance staff, which is still a submission, or a batch import of the provider's transaction report joined on the shared reference, which is not) are a Connect-capability question for the platform team, not an ACE decision.
+* Validating transfer details at enrollment (an account-name lookup against the account number) would prevent a class of failed transfers. Offline-first collection means this would run asynchronously after submission, writing the result back to the case, rather than as a live in-form check. Flagged for the team; not specified here.
+* Voice recording is assumed to be capturable and storable against a case on Connect at the sizes involved (a few seconds per distribution, plus one baseline per participant). Storage, sync over poor connectivity, and retention are platform questions, not ACE decisions.
+* Automated speaker matching between the baseline sample and handover recordings is not assumed for v1. If it becomes available it strengthens layer 2 of §6 considerably; the PDD is written so that adding it does not change what is captured.
+* The baseline voice sample and recording consent are captured by the enrollment component. This is a dependency on the Enrollment PDD, which does not currently specify them.
+* Transfer details and voice recordings are sensitive data. Data-protection handling sits at the platform and policy level, and voice raises consent and retention questions beyond those for structured data.
+11. What ACE should produce from this PDD
+[FIXED] (1) the Deliver module for in-person distribution, with the per-method capture flows and non-receipt outcomes; (2) the verification-flag configuration; (3) the reconciliation fields on the household case and the failed-transfer state; (4) the Learn module; (5) the opportunity and payment configuration for in-person methods; (5a) for cash-in-hand deployments, the worker-level cash float: issue, decrement, balance display, low-balance handling, and reconciliation with variance; (6) a build memo listing every place ACE exercised [ACE] latitude and every ambiguity it hit in [FIXED] material, and in particular how much of the per-method capture flow is genuinely shared versus separate.
+12. Open questions (build-spec)
+1. Can one capture flow handle every transfer method with per-method relevance conditions, or does each method need its own flow? If each needs its own, method is a build variant rather than a setting, and a hybrid deployment is two builds.
+2. For cash-in-hand, are we comfortable relying on layered field verification alone for auditability, given no transaction record exists?
+3. Should payment attach to each verified distribution, or to a milestone across the recurring series (the KMC pattern)? Paying per distribution rewards maximizing distribution events; paying at a milestone does not. This is part of the deferred payment-framing discussion across all components, not a decision for this PDD alone.
+4. Is post-distribution confirmation sampled or universal, and does it ride on an existing visit (coaching, monitoring) or stand alone?
+5. Does a household that misses a scheduled transfer receive it later (arrears) or is it forfeited? This changes whether the schedule is a fixed calendar or a count of transfers owed.
+6. What is the review protocol for voice recordings? Captured-and-stored has deterrent value only if someone listens. Sampled human review, full AI transcription checked against the recorded amount, or review only on other flags?
+7. Should voice confirmation extend beyond cash-in-hand? A digital transfer already has a transaction record, but a recording would confirm the household actually received and controls the money, which a transaction record does not.
+8. What variance threshold on a float reconciliation is a flag rather than rounding, and what happens on repeated variances?
+(Cross-component and strategic questions live in the framework, not here.)
+Annex — Deployment parameters
+Set per deployment; never hard-coded in the body.
+Parameter
+	Value
+	Transfer method(s) in use, and fallback if hybrid
+	Digital for deployment one, bank transfer or mobile money to individual participant accounts, disbursed centrally. Cash-in-hand is not in scope, so §3a, §3b and their annex rows below do not apply. Fallback for households without usable account details is undecided; see §5. 
+	Amount per transfer
+	TBD
+	Frequency and number of transfers
+	TBD
+	Currency and rate per verified distribution (in-person methods)
+	TBD
+	Post-distribution confirmation rate
+	TBD
+	Cash float per FLW per round (cash-in-hand)
+	TBD
+	Float reconciliation variance threshold
+	TBD
+	Voice recording length and prompt language
+	TBD
+	Voice recording review protocol and sampling rate
+	TBD
+	Geography (admin areas)
+	TBD
+	Languages
+	TBD
+	Verification thresholds (GPS distance)
+	v1 defaults, TBD
+	Transfers
+	10 monthly, provisional. Taken from the Kaduna model pending a real deployment decision.

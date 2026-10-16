@@ -75,6 +75,7 @@ import {
   type Shot,
 } from '../lib/preview-capture.js';
 import { loadPluginEnv } from '../lib/load-plugin-env.js';
+import { runConnectOrgs } from '../lib/connect-orgs.js';
 
 // Before any credential read: a Bash-launched script inherits none of ACE's .env (ace#1957).
 loadPluginEnv(import.meta.url);
@@ -448,7 +449,11 @@ async function runCapture(): Promise<void> {
   const results: GapOut[] = [];
   try {
     for (const gap of capture) {
-      const plan = planCapture(gap, { product: productNodeAt(runState, gap.phase, gap.output_key), chatQuestion });
+      const plan = planCapture(gap, {
+        product: productNodeAt(runState, gap.phase, gap.output_key),
+        chatQuestion,
+        connectOrgs: runConnectOrgs(productNodeAt(runState, gap.phase, 'connect')),
+      });
       const slug = outputSlug(gap.output_key);
       const dir = path.join(out, slug);
       fs.rmSync(dir, { recursive: true, force: true });

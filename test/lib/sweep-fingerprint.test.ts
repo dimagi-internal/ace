@@ -5,6 +5,7 @@ import {
   scoreOcsItem,
   scoreHqApp,
   scoreLabsItem,
+  sweepHandleField,
 } from '../../lib/sweep-fingerprint';
 import type { LiveSet, DriveFolderInfo } from '../../lib/sweep-types';
 
@@ -201,6 +202,34 @@ describe('scoreLabsItem', () => {
     );
     expect(r.confidence).toBe('low');
     expect(r.signals.some((s) => s.includes('active opportunity'))).toBe(true);
+  });
+});
+
+describe('sweepHandleField (ace#2733)', () => {
+  // A rendered object carries the handle off its name: workflow 7410 was renamed
+  // to a clean title with the handle moved to its description
+  // (spark-facilitator/20261004-1706, v3→v4).
+  it('finds the handle in description or notes, not only the name', () => {
+    expect(
+      sweepHandleField({ name: 'Spark facilitator pilot programme report (synthetic)', description: '(synthetic, ace spark-facilitator/20261004-1706 v2)' }),
+    ).toEqual({ field: 'description', opp: 'spark-facilitator', runId: '20261004-1706' });
+    expect(sweepHandleField({ name: 'Rayuwa Caregivers Alliance (example) - newborn care classes', notes: '(synthetic, ace noora-health/20261015-1129)' }))
+      .toMatchObject({ field: 'notes', opp: 'noora-health' });
+    expect(sweepHandleField({ name: 'KMC indicators (synthetic, ace kmc/20261001-0900)' })).toMatchObject({ field: 'name' });
+  });
+
+  it('returns null for an object with no handle anywhere', () => {
+    expect(sweepHandleField({ name: 'Spark facilitator pilot programme report (synthetic)', description: 'weekly report' })).toBeNull();
+    expect(sweepHandleField({})).toBeNull();
+  });
+
+  it('scoreLabsItem names the field that carried the handle', () => {
+    const r = scoreLabsItem(
+      { id: '7410', type: 'workflow', name: 'Programme report (synthetic)', description: '(synthetic, ace spark-facilitator/20261004-1706)' },
+      LIVE_SET,
+    );
+    expect(r.confidence).toBe('high');
+    expect(r.signals.join(' ')).toMatch(/description carries ACE sweep handle for spark-facilitator\/20261004-1706/);
   });
 });
 
