@@ -59,7 +59,10 @@ When the turn's task says `Run ddd-feedback-round for storyboard <slug> round <n
 `ddd-feedback-round` skill rather than the review-response path above. Both of its scripts run through
 the pinned wrapper (`playbook/integrations/canopy-web.md`):
 
-```
+```bash
+ACE_ROOT="${CLAUDE_PLUGIN_ROOT:-$(python3 -c "import json,os; d=json.load(open(os.path.expanduser('~/.claude/plugins/installed_plugins.json'))); print(d['plugins']['ace@ace'][0]['installPath'])")}"
+_CANOPY_PLUGIN="$(python3 -c "import json,os; d=json.load(open(os.path.expanduser('~/.claude/plugins/installed_plugins.json'))); print(d['plugins']['canopy@canopy'][0]['installPath'])")"
+CANOPY_RT="$(bash "$_CANOPY_PLUGIN/scripts/canopy-runtime.sh")" || { echo "ERROR: canopy runtime not found - run /canopy:update"; exit 1; }
 (cd "$CANOPY_RT" && "$ACE_ROOT/bin/ace-canopy-web" --workspace <ws> -- uv run python -m scripts.ddd.feedback_round read  <slug> <n> --out <file>)
 (cd "$CANOPY_RT" && "$ACE_ROOT/bin/ace-canopy-web" --workspace <ws> -- uv run python -m scripts.ddd.feedback_round apply <slug> <n> --dispositions <f.json> --version <N> --run-id <R>)
 ```

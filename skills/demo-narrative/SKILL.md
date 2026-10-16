@@ -625,9 +625,12 @@ paraphrase the schema here — read the model / schema and validate.
        resolution in `reasoning`.
    - Publish through the pinned wrapper (never a bare canopy call):
      ```bash
-     (cd "$CANOPY_RT" && $ACE_ROOT/bin/ace-canopy-web --workspace <ws> -- uv run python -m scripts.ddd.demo_set publish <path>/board.json)
+     ACE_ROOT="${CLAUDE_PLUGIN_ROOT:-$(python3 -c "import json,os; d=json.load(open(os.path.expanduser('~/.claude/plugins/installed_plugins.json'))); print(d['plugins']['ace@ace'][0]['installPath'])")}"
+     _CANOPY_PLUGIN="$(python3 -c "import json,os; d=json.load(open(os.path.expanduser('~/.claude/plugins/installed_plugins.json'))); print(d['plugins']['canopy@canopy'][0]['installPath'])")"
+     CANOPY_RT="$(bash "$_CANOPY_PLUGIN/scripts/canopy-runtime.sh")" || { echo "ERROR: canopy runtime not found - run /canopy:update"; exit 1; }
+     (cd "$CANOPY_RT" && "$ACE_ROOT/bin/ace-canopy-web" --workspace <ws> -- uv run python -m scripts.ddd.demo_set publish <path>/board.json)
      ```
-     (`CANOPY_RT` as in step 4; `ACE_ROOT` is the ACE checkout/plugin root; the
+     (Each Bash call is a fresh shell, so the resolvers are restated here; the
      form is `bin/ace-canopy-web --workspace <ws> -- <command>`.)
      `demo_set` POSTs the board and PATCHes on a 409, so re-running updates it.
    - **Verify before citing the link:**

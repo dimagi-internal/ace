@@ -22,6 +22,14 @@ describe("demo sets publish decision rows and read feedback rounds", () => {
     expect(demo).not.toMatch(/brief\.(assumptions|divergences|open_questions)/);
   });
 
+  it("both skills define ACE_ROOT and CANOPY_RT before using them", () => {
+    for (const body of [demo, iterate]) {
+      expect(body).toMatch(/^\s*ACE_ROOT="\$\{CLAUDE_PLUGIN_ROOT:-/m);
+      expect(body).toMatch(/^\s*CANOPY_RT="\$\(bash /m);
+    }
+    expect(demo).toMatch(/"\$ACE_ROOT\/bin\/ace-canopy-web" --workspace <ws> -- uv run python -m scripts\.ddd\.demo_set publish/);
+  });
+
   it("narrative-iteration-review reads feedback rounds as well as review responses", () => {
     expect(iterate).toMatch(/ddd-feedback-round/);
     expect(iterate).toMatch(/scripts\.ddd\.feedback_round/);
