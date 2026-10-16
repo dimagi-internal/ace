@@ -1535,7 +1535,19 @@ written, not profiled. Mechanics that bite (all observed, ace#2510):
   visits (`_series_constants`) — omit branch-only answers that never vary;
 - a labs-only opp has no form schema, so a numeric-looking code comes back
   `"1.0"` — the registry reads it with a cast (`semantic-registry-author` step 1);
-- `kpi_config` needs one entry even though the cascade does not read it.
+- `kpi_config` needs one entry even though the cascade does not read it;
+- the labs MCP endpoint refuses a large request body before any tool code
+  runs: HTTP 413 on a 3.9 MB manifest, while 2.44 MB was accepted
+  (`smallholder-seasonal/20261015-1402`, ace#3007). A programme-length pool
+  must be slimmed. Write a per-series constant once (`_series_constants`
+  re-stamps it on every visit of the series), but ONLY for a path whose
+  absence reads the same as its value: a path the cohort shows to be
+  time-varying is not re-stamped (`_time_varying_paths`) and reads NULL on
+  the other visits. That run lost its harvest units this way and under-counted
+  kg until those paths were exempted. Every registry and dashboard reader
+  should filter per-form values by form name. Send a multi-MB manifest over a
+  direct JSON-RPC call to the endpoint, not as an inline tool argument
+  through the model.
 
 **Put the display roster on screen** (connect-labs #2251, deployed 2026-10-06).
 The reports show a worker's display name and a case's name only when the
@@ -2091,6 +2103,7 @@ nobody has enumerated yet. Run both — neither is a substitute for the other.
 
 | Date | Change | Author |
 |------|--------|--------|
+| 2026-10-15 | **§ C3 names the labs request-size ceiling (ace#3007).** HTTP 413 at a 3.9 MB manifest (2.44 MB accepted) on `smallholder-seasonal/20261015-1402`; the mechanics now say how to slim a programme-length pool safely (dedupe only paths whose absence reads as their value; `_time_varying_paths` are not re-stamped), filter per-form values by form name, and send multi-MB manifests over direct JSON-RPC. | ACE team |
 | 2026-10-06 | **§ C3 `review_routing` names the write path (ace#2740).** Each flagged pool visit carries `review: {flagged: true, status, review_status, flag_reason}` (connect-labs #2264 — before it, a mirror pool had no way to file a record as sent to review; status/flagged were always drawn from the persona's `flag_rate`), and every persona sets `flag_rate: 0` so nothing un-flagged is sent to review. Found on `spark-facilitator/20261004-1706` Phase 7 attempt 3. | ACE team |
 | 2026-10-06 | **Build QA before the hand-off, so the demo judges stop finding build output (ace#2735).** Operator: *"is the demo catching bad output from the program build? ... how can we be better at the program build level in terms of QA or other so DDD isn't the one catching it?"* § C3 adds `review_routing` (what the PDD does with each flagged record — and the pool writes it), `checkPlannedWorkerRates` (a worker-level rate over ≤ 1 entity is binary) and `single_child_levels`; § C6 adds `cascadeBuildOutcomes` — review routing, binary worker rates, constant displayed columns, one-child drill levels — judged against the saved run and the visit rows. Each was a DDD finding on `spark-facilitator/20261004-1706`; each now fails there, in `test/lib/cascade-build-qa.test.ts`, on that run's real output. | ACE team |
 | 2026-10-06 | **Invented names a viewer can read, five partners, a headline that differs (ace#2727).** § C0: invented partners are realistic organisation names with a trailing `(example)` marker (`Tiyende Community Trust (example)`), not `Example partner A` — be59309d's honesty fix satisfied ACE's rail with a placeholder canopy's DDD judge scores at clarity 2, and `spark-facilitator/20261004-1706` stalled at 2.0 across 15 judged passes on it. The story plan now carries a display roster (`workers[{username, display_name, partner}]`, `entities[{id, name, worker}]`; no codes, no placeholders, no real person's name from the inputs), `headline_indicators` + `headline_spread` (a headline flat across all partners fails), and five partners by default and floor. § C3 carries a TODO where the labs half (snapshot display names, registry `display.entity.label_field`) will be wired; § C7 adds `*_worker_name`. *Enforced:* `checkCascadeStoryPlan` / `verifyCascadeStoryLanded`, `test/lib/cascade-story.test.ts`. | ACE team |

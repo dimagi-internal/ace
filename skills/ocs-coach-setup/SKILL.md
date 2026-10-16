@@ -73,8 +73,12 @@ residual to record — we know the Coach builds (Spark Coach 13972).
 
    ```bash
    node "$ACE_ROOT/node_modules/tsx/dist/cli.mjs" "$ACE_ROOT/scripts/ocs-coach-build.ts" --team <team> --experiment <id> \
-     --prompt <prompt.md> --collections <opp collection id> --connect-bot-name "<Programme> Coach"
+     --prompt <prompt.md> --collections <opp collection id> --connect-bot-name "<Programme> Coach (<run-id>)"
    ```
+
+   The bot name is run-scoped because OCS refuses a Connect bot name already used on
+   the same team, so a bare `<Programme> Coach` collides on the second run of every
+   opp (ace#3006, observed on `smallholder-seasonal/20261015-1402`).
 
    Splices `templates/ocs-coach/status_node.py` between the LLM and End nodes,
    sets prompt + collection, and creates the `commcare_connect` channel. A clone
