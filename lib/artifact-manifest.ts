@@ -800,13 +800,35 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     required: true,
     description: 'Per-skill -eval verdict for app-release: every uploaded build successfully released, CCZ-marker checks passed, no draft-only apps remain.',
   },
+  // ace#2183: the SOLE owner of released build state (ace#1636 retired the
+  // `releases:` cross-reference in app-deploy_summary.md). Unregistered, the
+  // Phase 3 fence could not see it while app-release-eval rests 55% of its
+  // weight on it and llo-launch's freshness gate BLOCKERs without it.
+  {
+    path: '3-commcare/app-release_summary.md',
+    producedBy: 'app-release',
+    role: 'summary',
+    consumedBy: [
+      'app-release-eval', 'app-release-qa', 'llo-launch', 'app-ux-eval',
+      'semantic-registry-author', 'semantic-registry-author-qa',
+      // validate-release-readiness reads it too, but its own products are
+      // run-level (filed under `phase: 'design'` for sort order), so naming it
+      // here would draw a false commcare<->design cycle (artifact-cycles test).
+    ],
+    phase: 'commcare',
+    required: true,
+    description: 'Released build record per app, written by app-release. Frontmatter `apps.{learn_app,deliver_app}.{hq_app_id, build_id, version, is_released, released_at}` plus the per-app pre-build `drift_check` decision — the only place released build state lives.',
+  },
   {
     path: '3-commcare/app-connect-coverage_learn.md',
     producedBy: 'app-connect-coverage',
     role: 'learn',
     consumedBy: ['app-release'],
     phase: 'commcare',
-    required: false,
+    // ace#2183: app-release § Step 3 halts when this report is missing or not
+    // `status: clean`, and app-release now has a registered required product —
+    // so this is a required input, not an optional one (ace#1865 lint).
+    required: true,
     description: 'Per-form Connect-marker coverage report for the Learn app. Frontmatter carries `status: clean | blocked | partial`; `app-release` gates on `status: clean` before build+release.',
   },
   {
@@ -815,7 +837,10 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     role: 'deliver',
     consumedBy: ['app-release'],
     phase: 'commcare',
-    required: false,
+    // ace#2183: app-release § Step 3 halts when this report is missing or not
+    // `status: clean`, and app-release now has a registered required product —
+    // so this is a required input, not an optional one (ace#1865 lint).
+    required: true,
     description: 'Per-form Connect-marker coverage report for the Deliver app. Frontmatter carries `status: clean | blocked | partial`; `app-release` gates on `status: clean` before build+release.',
   },
   {
@@ -1369,6 +1394,63 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     phase: 'qa-and-training',
     required: false,
     description: 'Self-emitted verdict from training-deck-render — slide count, image resolution, API success.',
+  },
+  // Self-emitted structural verdicts the training producers declare under
+  // their own `## Products` (ace#2183 — every product path a skill lists is
+  // registered). Optional: the graded verdict is the `-eval` sibling.
+  {
+    path: '6-qa-and-training/training-deck-generate_verdict.yaml',
+    producedBy: 'training-deck-generate',
+    role: 'verdict',
+    consumedBy: [],
+    phase: 'qa-and-training',
+    required: false,
+    description: 'Self-emitted structural verdict from training-deck-generate (its own pre-handoff checks). Optional; the graded verdict is training-deck-generate-eval_verdict.yaml.',
+  },
+  {
+    path: '6-qa-and-training/training-faq_verdict.yaml',
+    producedBy: 'training-faq',
+    role: 'verdict',
+    consumedBy: [],
+    phase: 'qa-and-training',
+    required: false,
+    description: 'Self-emitted structural verdict from training-faq (its own pre-handoff checks). Optional; the graded verdict is training-faq-eval_verdict.yaml.',
+  },
+  {
+    path: '6-qa-and-training/training-flw-guide_verdict.yaml',
+    producedBy: 'training-flw-guide',
+    role: 'verdict',
+    consumedBy: [],
+    phase: 'qa-and-training',
+    required: false,
+    description: 'Self-emitted structural verdict from training-flw-guide (its own pre-handoff checks). Optional; the graded verdict is training-flw-guide-eval_verdict.yaml.',
+  },
+  {
+    path: '6-qa-and-training/training-llo-guide_verdict.yaml',
+    producedBy: 'training-llo-guide',
+    role: 'verdict',
+    consumedBy: [],
+    phase: 'qa-and-training',
+    required: false,
+    description: 'Self-emitted structural verdict from training-llo-guide (its own pre-handoff checks). Optional; the graded verdict is training-llo-guide-eval_verdict.yaml.',
+  },
+  {
+    path: '6-qa-and-training/training-onboarding-email_verdict.yaml',
+    producedBy: 'training-onboarding-email',
+    role: 'verdict',
+    consumedBy: [],
+    phase: 'qa-and-training',
+    required: false,
+    description: 'Self-emitted structural verdict from training-onboarding-email (its own pre-handoff checks). Optional; the graded verdict is training-onboarding-email-eval_verdict.yaml.',
+  },
+  {
+    path: '6-qa-and-training/training-quick-reference_verdict.yaml',
+    producedBy: 'training-quick-reference',
+    role: 'verdict',
+    consumedBy: [],
+    phase: 'qa-and-training',
+    required: false,
+    description: 'Self-emitted structural verdict from training-quick-reference (its own pre-handoff checks). Optional; the graded verdict is training-quick-reference-eval_verdict.yaml.',
   },
   {
     path: '6-qa-and-training/training-deck-generate-eval_verdict.yaml',
