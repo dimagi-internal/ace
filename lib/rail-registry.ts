@@ -308,6 +308,7 @@ export const RAILS: Readonly<Record<string, RailProvenance>> = {
   'test/skills/solicitation-end-date-addend.test.ts': { issues: ['ace#1858'], observed: 'bednet-check-2-visit/20260828-0629' },
   'test/skills/solicitation-labs-owner.test.ts': { issues: ['ace#3049'], observed: 'noora-health/20261015-1129' },
   'test/skills/solicitation-zero-responses-doctrine.test.ts': { issues: ['ace#2171'] },
+  'test/skills/nova-upload-hq-refresh-before-authoring.test.ts': { issues: ['ace#3043'] },
   'test/skills/nova-private-work.test.ts': { issues: ['ace#2526', 'voidcraft-labs/commcare-nova#693'], note: 'observed live 2026-09-28 against a throwaway Nova app, not a run' },
   'test/skills/starter-module-removal.test.ts': { issues: ['ace#1787'], observed: 'bednet-check-2-visit/20260828-0629' },
   'test/skills/threshold-coherence-conditioned-radius.test.ts': { issues: ['ace#2373', 'ace#984'] },
