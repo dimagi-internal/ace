@@ -356,6 +356,18 @@ paraphrase the schema here — read the model / schema and validate.
      anti-pattern); follow-on scenes on the same dashboard omit `url` and just
      act/capture. Crossing to a different dashboard = a new scene WITH its
      `${<key>_par_url}`.
+   - **The `role: overview` opener — author it HERE, before 3c (ace#2747).**
+     canopy's `ddd-spec-qa` refuses a spec of ≥4 scenes (not `style: recorded`)
+     without one, so if you leave it out the DDD loop adds it later and 3c will
+     have judged a different spec from the one canopy renders. Make it scene 1:
+     `role: overview`, the first dashboard's `url`, a `narrative` that is the
+     goal-setting opening voiceover (the holistic "why"), no `features`, no
+     data-demonstrating actions. canopy's renderer absorbs it into the narrated
+     intro title card rather than playing it as a body scene, so 3c drops it
+     from the sequence it judges (`bodyScenes` in `lib/demo-arc-precheck.ts`)
+     and tells the text judge it is the title card — a data-less roadmap is
+     not an escalation dead slot. Its `url` still carries forward, so the
+     first body scene on that dashboard omits its own.
 
 3b. **Check every scene's ACTIONS before validating (ace#1379, #1380, #1660, #2219).**
    Run `checkSceneActions` from `lib/ddd-scene-actions.ts` over `scenes[]`,

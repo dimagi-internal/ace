@@ -58,11 +58,15 @@ export interface PrecheckScene {
   persona?: string;
   concept_claim?: string;
   narrative?: string;
+  /** canopy scene role. `overview` is the goal-setting opener canopy absorbs into the intro title card. */
+  role?: string;
   actions?: PrecheckAction[];
 }
 
 export interface PrecheckSpec {
   name?: string;
+  /** `recorded` = N standalone cuts: no title card, so an overview plays as an ordinary beat. */
+  style?: string;
   personas?: Record<string, { name?: string } | undefined>;
   scenes?: PrecheckScene[];
 }
@@ -159,21 +163,54 @@ function personaWords(spec: PrecheckSpec): Set<string> {
 
 const sceneText = (s: PrecheckScene) => `${s.concept_claim ?? ''} ${s.narrative ?? ''}`;
 
+// ── The body sequence canopy actually plays ───────────────────────────────
+
+/**
+ * The scenes the arc is judged on, each with its spec position and resolved surface (ace#2747).
+ *
+ * canopy's `ddd-spec-qa` REQUIRES a `role: overview` scene on any full demo of
+ * ≥4 scenes, and its video renderer ABSORBS that scene into the narrated intro
+ * title card — "the scene is absorbed into the title beat rather than replayed as
+ * a body scene" (canopy `scripts/ddd/snippets.py`). Counting it as body scene 1
+ * made the text judge score a data-less roadmap as an escalation dead slot
+ * ("Scene 1 is a roadmap with no data … would hardly be noticed if removed") and
+ * block every spec that obeys canopy's rule (spark-facilitator/20261004-1706,
+ * Phase 7 attempt 3). So the overview is dropped from the sequence — but its
+ * `url` still carries forward, because the first body scene on that surface
+ * legitimately omits its own. A `style: recorded` spec has no title card, so
+ * there nothing is absorbed.
+ */
+export function bodyScenes(spec: PrecheckSpec | undefined, realized: Record<string, unknown> = {}): { scene: PrecheckScene; n: number; surface: string }[] {
+  const absorbs = spec?.style !== 'recorded';
+  const out: { scene: PrecheckScene; n: number; surface: string }[] = [];
+  let current = '';
+  (spec?.scenes ?? []).forEach((scene, i) => {
+    if (scene.url?.trim()) current = resolveSurface(scene.url.trim(), realized);
+    if (absorbs && scene.role === 'overview') return;
+    out.push({ scene, n: i + 1, surface: current });
+  });
+  return out;
+}
+
+/** The overview scenes canopy turns into the intro title card (1-based spec positions). */
+export function overviewScenes(spec: PrecheckSpec | undefined): number[] {
+  if (spec?.style === 'recorded') return [];
+  return (spec?.scenes ?? []).flatMap((s, i) => (s.role === 'overview' ? [i + 1] : []));
+}
+
 // ── The check ─────────────────────────────────────────────────────────────
 
 export function checkArcPrecheck(spec: PrecheckSpec | undefined, realized: Record<string, unknown> = {}): PrecheckReport {
-  const scenes = spec?.scenes ?? [];
+  // The body sequence only: an overview is canopy's intro card (ace#2747). Scene
+  // numbers in findings stay SPEC positions, so a finding names the scene the
+  // author will edit.
+  const body = bodyScenes(spec, realized);
+  const scenes = body.map((b) => b.scene);
+  const surfaces = body.map((b) => b.surface);
+  const num = (i: number) => body[i].n;
   const findings: PrecheckFinding[] = [];
   if (scenes.length < 2) return finish(findings, scenes.length);
   const exclude = personaWords(spec ?? {});
-
-  // Surfaces carry forward, as the renderer does.
-  const surfaces: string[] = [];
-  let current = '';
-  for (const s of scenes) {
-    if (s.url?.trim()) current = resolveSurface(s.url.trim(), realized);
-    surfaces.push(current);
-  }
 
   // 1 — consecutive scenes settle on the same component of the same surface.
   for (let i = 1; i < scenes.length; i++) {
@@ -182,11 +219,11 @@ export function checkArcPrecheck(spec: PrecheckSpec | undefined, realized: Recor
     if (!a || a !== b || surfaces[i] !== surfaces[i - 1] || !surfaces[i]) continue;
     findings.push({
       kind: 'same-surface-component',
-      scenes: [i, i + 1],
+      scenes: [num(i - 1), num(i)],
       blocking: true,
       dimension: 'visual_variety',
       detail:
-        `scenes ${i} and ${i + 1} both settle on ${a} of ${surfaces[i]} — the same component in the same composition, ` +
+        `scenes ${num(i - 1)} and ${num(i)} both settle on ${a} of ${surfaces[i]} — the same component in the same composition, ` +
         `which the arc judge reads as one picture twice (spark-facilitator 2026-10-06: "Scenes 4 and 5 both end on the ` +
         `same community visit-list component"). Frame one of them on a different component the page has (an indicator ` +
         `row, a chart, a flag column), or merge the two beats`,
@@ -200,11 +237,11 @@ export function checkArcPrecheck(spec: PrecheckSpec | undefined, realized: Recor
   if (finaleClaim.length && finaleClaim.every((f) => openingClaim.has(f))) {
     findings.push({
       kind: 'finale-restates-opening',
-      scenes: [1, last + 1],
+      scenes: [num(0), num(last)],
       blocking: true,
       dimension: 'arc_shape',
       detail:
-        `the finale's concept_claim states only facts scene 1's claim already stated (${finaleClaim.join(', ')}) — ` +
+        `the finale's concept_claim states only facts scene ${num(0)}'s claim already stated (${finaleClaim.join(', ')}) — ` +
         `the close adds nothing the opening had not, and the arc judge caps arc_shape at 3 when the final scene is ` +
         `not the strongest moment. End on what only the last surface can show`,
     });
@@ -216,11 +253,11 @@ export function checkArcPrecheck(spec: PrecheckSpec | undefined, realized: Recor
     if (restated.length) {
       findings.push({
         kind: 'finale-restates-opening',
-        scenes: [1, last + 1],
+        scenes: [num(0), num(last)],
         blocking: false,
         dimension: 'arc_shape',
         detail:
-          `the finale repeats a fact the opening (scenes 1–${openingN}) already gave: ${restated.map((r) => r.split('|').join(' ')).join(', ')}. ` +
+          `the finale repeats a fact the opening (scenes ${num(0)}–${num(openingN - 1)}) already gave: ${restated.map((r) => r.split('|').join(' ')).join(', ')}. ` +
           `Reported, not failed — a payoff may revisit a baseline — but it is exactly what the arc judge read as "the finale ` +
           `restates scene 1/2's headline fact" on spark-facilitator 2026-10-06. The judge pass decides whether the finale ` +
           `adds something only its surface shows`,
@@ -239,12 +276,12 @@ export function checkArcPrecheck(spec: PrecheckSpec | undefined, realized: Recor
     if (!shares(names[i + 1], before)) continue;
     findings.push({
       kind: 'side-branch-scene',
-      scenes: [i + 1],
+      scenes: [num(i)],
       blocking: false,
       dimension: 'escalation',
       detail:
-        `scene ${i + 1} opens a new surface about ${[...names[i]].slice(0, 4).join(', ') || 'nothing named'}, names nothing ` +
-        `scenes ${i} or ${i + 2} name, and scene ${i + 2} picks the earlier thread back up — a side-branch whose slot is ` +
+        `scene ${num(i)} opens a new surface about ${[...names[i]].slice(0, 4).join(', ') || 'nothing named'}, names nothing ` +
+        `scenes ${num(i - 1)} or ${num(i + 1)} name, and scene ${num(i + 1)} picks the earlier thread back up — a side-branch whose slot is ` +
         `not load-bearing (the arc judge's words on spark-facilitator 2026-10-06). Reported: move it where it escalates, ` +
         `or tie it to its neighbours; the judge pass decides`,
     });
@@ -287,13 +324,12 @@ export const ARC_PRECHECK_RUBRIC = {
 
 /** The prompt for the single text-only pass. Self-contained: the judge sees nothing else. */
 export function buildArcPrecheckPrompt(spec: PrecheckSpec, report: PrecheckReport, realized: Record<string, unknown> = {}): string {
-  const scenes = spec.scenes ?? [];
-  let current = '';
-  const rows = scenes.map((s, i) => {
-    if (s.url?.trim()) current = resolveSurface(s.url.trim(), realized);
+  const body = bodyScenes(spec, realized);
+  const overviews = overviewScenes(spec);
+  const rows = body.map(({ scene: s, n, surface }) => {
     return [
-      `## Scene ${i + 1}: ${s.title ?? s.id ?? ''}`,
-      `persona: ${s.persona ?? '(unset)'}  surface: ${current || '(unset)'}  settles on: ${settledComponent(s) ?? '(no component wait)'}`,
+      `## Scene ${n}: ${s.title ?? s.id ?? ''}`,
+      `persona: ${s.persona ?? '(unset)'}  surface: ${surface || '(unset)'}  settles on: ${settledComponent(s) ?? '(no component wait)'}`,
       `actions: ${(s.actions ?? []).map((a) => a.kind).join(', ') || '(none)'}`,
       `concept_claim: ${s.concept_claim ?? ''}`,
       `narration: ${s.narrative ?? ''}`,
@@ -309,6 +345,11 @@ export function buildArcPrecheckPrompt(spec: PrecheckSpec, report: PrecheckRepor
     `You are judging a demo narrative AS A SEQUENCE, from its text only, before it is rendered.`,
     `This mirrors canopy's ddd-arc-eval, which will judge the rendered frames later; you are the cheap early read, not the verdict.`,
     `Judge the sequence, not any one scene. Start every dimension at 3 and move only with a named scene as evidence.`,
+    ...(overviews.length
+      ? [
+          `Scene${overviews.length > 1 ? 's' : ''} ${overviews.join(', ')} (role: overview) ${overviews.length > 1 ? 'are' : 'is'} not listed below: the renderer absorbs the overview into the narrated intro title card, so it is the video's title, not a body scene. Do not score it, and do not count it as a scene whose removal would go unnoticed — canopy requires it.`,
+        ]
+      : []),
     ``,
     `# Rubric (overall = lowest)`,
     rubric,
@@ -316,7 +357,7 @@ export function buildArcPrecheckPrompt(spec: PrecheckSpec, report: PrecheckRepor
     `# Deterministic pre-check findings — answer each one`,
     questions,
     ``,
-    `# Scenes (${scenes.length}) — ${spec.name ?? ''}`,
+    `# Scenes (${body.length}) — ${spec.name ?? ''}`,
     rows.join('\n\n'),
     ``,
     `# Answer with YAML only`,
