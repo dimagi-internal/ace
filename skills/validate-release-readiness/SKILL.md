@@ -164,12 +164,17 @@ release_plan:              # null unless READY
   it is listed in `not_granted`. Dimagi staff (`@dimagi.com`) are not outside
   reviewers. The one escape hatch is `--allow-shared connect` (a clone made
   with `--keep-shared connect`): both shared orgs, every grant marked
-  `shared: true` for later revocation. Labs needs no call. The clone already
-  WIDENED each synthetic opp's allowlist to the partner's domain, keeping ACE's
-  own domain on it (`clone-to-new-workspace` § 4c). The clone records
-  `clone.labs.status: done` only after its `labs_context` read-back showed ACE
-  still sees every opp (ace#2713). **OCS is always the public chat link**, never
-  an account.
+  `shared: true` for later revocation. **Labs is REBUILT, never widened**
+  (ace#3020): `clone-to-new-workspace` § 4c regenerates the source's Phase 7
+  data and reports in a NEW labs program and makes it a labs workspace whose
+  LLOs are the clone's own Connect orgs, recording `clone.labs.status: done`
+  only after its `labs_context` and workspace-page read-backs. So Labs needs no
+  call: a reviewer opens the dashboards through their Connect org membership.
+  The plan grants Labs exactly when `clone.labs.status` AND
+  `clone.connect.status` are `done`, and blocks (`plan-labs-workspace-llo-missing`)
+  when `clone.labs.workspace.llos` lacks a Connect org it grants. No
+  synthetic opp's allowlist is ever opened to a partner domain. **OCS is always
+  the public chat link**, never an account.
 - **Connect is BOTH orgs, the holding org and the PM org** (when they differ):
   the holding org holds the opportunity, the PM org holds the program and the
   verification-rules page, and the run links to both. A viewer of the holding
@@ -390,3 +395,4 @@ prints why and the release stops — it never adapts.
 | 2026-10-08 | Existing ace-web members (ace#2770): `assess` reads the workspace's members + pending invites. A reviewer already a member at editor or above gets no invite (`ace_web` status `already-member`, role read back) and the existing-member email (no accept link; "sign in at" the run's workbench page); a viewer member gets an `ace_web_role` raise to editor (PATCH — an invite 409s); a pending invite is re-invited (fresh token). Unread membership is a blocker. Plan hash changes — re-validate before releasing. | ACE team |
 | 2026-10-05 | `--waive <blocker-id>=<reason>` (ace#2707, operator decision: release the work order as a DRAFT past a non-converging `pdd-to-work-order-eval`): eval-area blockers only; the blocker stays in the verdict marked `waived: {by, at, reason}`, is excluded from READY, shown in the report and approval prompt, on the plan (hashed) and compared exactly by the gate. | ACE team |
 | 2026-10-03 | Became `validate-release-readiness` (owner decision): absorbs the HQ plan check, the review-page audit (per reviewer), the repairs `/ace:release` used to make, Drive sharing; requires reviewers; on READY writes the hashed release plan + every email, and a run_state hash. Verdict file renamed `release-readiness_verdict.yaml` (v2). | ACE team |
+| 2026-10-16 | Labs is REBUILT by the clone, never widened (ace#3020): the plan grants Labs only on `clone.labs.status: done` + `clone.connect.status: done`, rides on the Connect grant (no Labs action), and blocks with `plan-labs-workspace-llo-missing` when the rebuilt labs workspace lacks a granted Connect org. | ACE team |

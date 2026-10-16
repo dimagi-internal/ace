@@ -367,6 +367,6 @@ describe('rewrites', () => {
 describe('rebuildLabs (ace#3020)', () => {
   it('is an explicit not-done until ace#3020 lands — never a silent skip', async () => {
     const r = await rebuildLabs({ source: cloneSourceFromRunState(source, null), sourceRunState: source, targetRunState: partial, to: 'noora-health', tenancy: TENANCY });
-    expect(r).toEqual({ status: 'not-done', reason: expect.stringMatching(/awaiting ace#3020/) });
+    expect(r).toEqual({ status: 'not-done', reason: expect.stringMatching(/labs atom gap.*connect-labs#2571.*never regenerated/) });
   });
 });
