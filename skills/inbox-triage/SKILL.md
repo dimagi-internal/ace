@@ -88,7 +88,7 @@ of which ~97% were notifications — and the noise buried a real LLO counterpart
 | `connect-devops@dimagi.com` | `New Opportunity Created: …`, `Reminder: … opportunities ending …`, `Invitation to Program: …` | Auto-dismiss — side effects of ACE's own runs. **Guard:** if the opportunity name is NOT recognizable from ACE's opps/runs, surface it — that's an orphan/drift signal (pairs with `/ace:sweep`), not noise |
 | Google Workspace share/comment bots — `*-noreply@google.com` (`drive-shares-dm-noreply@`, `comments-noreply@`, `docs`/`sheets`/`slides` notifications) | `… shared with you`, `… mentioned you`, `New comment on …` | Auto-dismiss — a bare share/comment alert is a notification, not an ask. **Guard:** attribute it to the human who triggered it; if that person *also* sent a direct message asking ACE to act on the file, that separate thread is direct communication and gets handled. The share alert itself never triggers action. **Exception — a comment that ASKS ACE something on a doc ACE wrote is direct communication**, and it is answered **on the comment thread, never by email**: `gog drive comments list <fileId> -a ace@dimagi-ai.com --client "$(canopy email client --repo .)" -j` to read it, then `gog drive comments reply` (ace@-owned docs), or `drive_reply_to_comment` for service-account-owned run artifacts. These notifications carry **no `Reply-To`**, so an email reply goes to `comments-noreply@` and bounces — and the thread then reads HANDLED forever (ace#2846). |
 | `mailer-daemon@googlemail.com` / `Mail Delivery Subsystem` | `Delivery Status Notification (Failure)` | **Never dismiss, never reply.** A bounce on a thread ACE sent on means ACE's reply did NOT arrive: find the intended recipient and re-deliver through the right channel, or surface it. Replying to it sends mail to the daemon (ace#2846). |
-| `no-reply-claude@mail.anthropic.com` | `You've been invited to view an Artifact` | **Never dismiss — it GATES work.** A claude.ai share to ace@ is an invitation, and the Claude Docs connector refuses every read (`deny` / `access`, "not shared with you") until someone signed in to claude.ai as ace@ accepts it in a browser. A headless turn cannot click "View invitation", so surface each one to the operator by doc title + inviter. A Gmail filter labels these `ignored/no-reply-sender` and keeps them OUT of the inbox, so `in:inbox` never shows them: whenever a counterpart says they shared a Claude Doc, search `from:no-reply-claude@mail.anthropic.com newer_than:14d` (no `in:inbox`) before reporting the share missing (ace#2925, 2026-10-16) |
+| `no-reply-claude@mail.anthropic.com` | `You've been invited to view an Artifact` | **Never dismiss — it GATES work.** A claude.ai share to ace@ is an invitation, and a headless turn cannot click "View invitation". **Accepting it does NOT make the doc readable:** after the invites were accepted, the Claude Docs connector still answered every read with `deny` / `access` (a cross-org share is suspected, untested — ace#2925, 17:20Z comment). So never assume a shared Claude Doc is readable: escalate the thread to the operator with the doc title, inviter and doc link, and ask for the content another way (Google Doc, attachment). A Gmail filter labels these `ignored/no-reply-sender` and keeps them OUT of the inbox, so `in:inbox` never shows them: whenever a counterpart says they shared a Claude Doc, search `from:no-reply-claude@mail.anthropic.com newer_than:14d` (no `in:inbox`) before reporting the share missing (ace#2925, 2026-10-16) |
 | `no-reply@accounts.google.com` | `Security alert` (new sign-in) | Auto-dismiss when the timestamp matches ACE's own gog/session activity; surface otherwise |
 | Vendor/broadcast (Anthropic notices & receipts, `info@dimagi.com` newsletter blasts, Gmail tips) | any | Auto-dismiss |
 
@@ -189,6 +189,19 @@ against `date: 2026-09-14 12:26`; message 0 was Neal's, on 21 July, and the 14 S
        relevant Phase 9 skill. Correspond-tier content that *should* advance a run (an LLO's UAT
        feedback, a solicitation question) becomes a **drafted reply + an escalation note** to the
        act-tier operator on the run (`initiated_by` / `last_actor` in `run_state.yaml`).
+     - **Start a run** *(act tier only)* — e.g. "please build v0.1" of an opp. Never run `/ace:run`
+       inline inside the turn (it outlives the turn by hours); hand it to a dedicated session:
+       write a brief file, then
+       `canopy agent dispatch --slug ace --title "<opp>: /ace:run for <sender>" --prompt-file <brief>`.
+       The brief carries: the command `/ace:run <ws>/<opp>`; the routing thread id; the sender's
+       asks **verbatim** (quoted, not paraphrased) plus the source doc(s) they named; this turn's
+       mode (`canopy agent mode --slug ace --caller <path>`); and the instruction *"reply on thread
+       `<id>` with `bin/ace-email --reply-all --reply-to-message-id <last message id>`, leading with
+       the run's ace-web page"*. Dispatch reports
+       LAUNCHED (unverified) — confirm the turn was queued with `canopy agent turns --slug ace`
+       before marking the thread read. **Send no handoff ack** ("a run session was started"): the
+       run session's own reply, with the run page, is the answer. (Origin: ace#2961 — turn d45e2ac0
+       had to reverse-engineer this from an earlier ACE email.)
      - **File** — save an attachment/asset to the run's Drive folder. Intake recipe (use the
        shared canopy engine, not raw `gog` — canopy ≥ 0.2.344): `bin/ace-env canopy email read
        <threadId> --repo .` returns each message's `attachments[]` with the `attachment_id`; then
