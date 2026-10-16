@@ -38,8 +38,21 @@
 # Parameters — BOTH ARE REQUIRED AT EVERY CALL SITE:
 #   ${SCREENSHOT_NAME_PRE_SUBMIT} — screenshot before tapping Submit
 #                                   (e.g. "deliver-final-review")
-#   ${SCREENSHOT_NAME_POST_SUBMIT} — screenshot after submit confirmation
-#                                    (e.g. "deliver-submitted-confirmation")
+#   ${SCREENSHOT_NAME_POST_SUBMIT} — the screen AFTER finalize, whatever it
+#                                    is (e.g. "deliver-finalized"). NOT a
+#                                    confirmation on the plain path: a plain
+#                                    Deliver form returns to the FORM LIST with
+#                                    no toast (ace#1066, header above), and
+#                                    this frame is shot ~16s after the tap, so
+#                                    it is the form list. Only the score-gated
+#                                    branch waits for "form sent to server" —
+#                                    and that toast must NOT be awaited on the
+#                                    plain path, where it never renders.
+#                                    Never name it "*-confirmation": captions
+#                                    trust the name (ace#2894). The evidence a
+#                                    Deliver visit was submitted is
+#                                    `deliver-sync.yaml`'s post-sync
+#                                    `Daily Visits N/M` counter, not this frame.
 #
 # There is deliberately NO `env:` default block here. A Maestro flow's own
 # top-level `env:` does NOT act as a default — it OVERRIDES whatever the
