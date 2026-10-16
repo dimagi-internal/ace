@@ -21,6 +21,7 @@
 // Pure. `scripts/release-readiness.ts` gathers the evidence (Drive inventory via
 // the service account, live probes) and writes the files.
 
+import { createHash } from 'node:crypto';
 import { parse as parseYaml } from 'yaml';
 import { validateQAResult } from './qa-types.js';
 import { checkOppPostcondition, type OppDecided, type OppReadback } from './connect-opp-postcondition.js';
@@ -170,8 +171,245 @@ function parse(text: string | undefined): Record<string, unknown> | null {
  */
 export const STALE_TOLERANCE_MS = 10 * 60_000;
 
-function isStale(artifact: RunFile, gate: RunFile): boolean {
-  return t(artifact.modifiedTime) - t(gate.modifiedTime) > STALE_TOLERANCE_MS;
+// ---------------------------------------------------------------------------
+// Staleness by CONTENT, not timestamp — the content ledger
+// ---------------------------------------------------------------------------
+//
+// A modifiedTime says WHEN a file was written, not WHETHER what it says changed.
+// A clone rewrites its copied prose and run_state to name its own assets
+// (drive_ids: source Drive ids → copy ids; asset_refs: HQ space, app/build ids,
+// Connect program/opportunity/org slugs, re-pointed frames), and every rewrite
+// bumps the file's modifiedTime past the verdict graded on it. Judged by
+// timestamp alone, every eval of a cloned run read `eval-stale` — which cost a
+// re-grade per artifact, or a waiver, and an extra readiness pass — for an
+// artifact whose content is exactly what was graded, with ids substituted.
+//
+// So the writers of PURE MAPPED REWRITES (scripts/clone-run.ts's drive_ids and
+// asset_refs stages) record each rewrite here: the id/URL pairs they applied,
+// and per file "after my write the file's modifiedTime was M; its content is
+// what it was at C, with those pairs substituted". `effectiveContentTime` then
+// reads such a file as last changed at C. Any later write that is NOT recorded
+// (a real regeneration) leaves the modifiedTime ≠ M, and — unless the text
+// still canonicalises to the recorded hash through the map — the file is
+// judged by its own timestamp again. Conservative by construction: anything
+// the ledger cannot vouch for falls back to the timestamp rule.
+//
+// The ledger is a `release-readiness_*` file, so its own writes never count as
+// "the run's last write" (VERDICT_FILE).
+
+export const CONTENT_LEDGER_NAME = 'release-readiness_content-ledger.yaml';
+export const CONTENT_LEDGER_SCHEMA = 1 as const;
+
+/** One substitution a rewrite applied: every `from` became `to`. */
+export interface RewritePair {
+  from: string;
+  to: string;
+  kind?: string;
+}
+
+export interface ContentLedgerEntry {
+  /** The file's Drive modifiedTime right after the recorded rewrite. */
+  modified_after: string;
+  /** When the file's CONTENT (modulo the map) last really changed. */
+  content_as_of: string;
+  /** Hash of the content as of `content_as_of` (runStateHash form for run_state.yaml, else `contentSha`). */
+  origin_hash?: string;
+  /** The hash of every state in the chain of pure rewrites (each `before`), origin first. */
+  chain_hashes?: string[];
+  /** `canonicalHash` of the text written, over the first `pairs` pairs of `id_map`. */
+  sha256?: string;
+  pairs: number;
+  /** Who recorded it (e.g. `clone-run:asset_refs`). */
+  by?: string;
+}
+
+export interface ContentLedger {
+  schema_version: typeof CONTENT_LEDGER_SCHEMA;
+  /** `<workspace>/<opp>/<run>` — a ledger carried in by a copy is for another run and is ignored. */
+  run: string;
+  /** Every pair ever applied, append-only (entries name a prefix length). */
+  id_map: RewritePair[];
+  files: Record<string, ContentLedgerEntry>;
+}
+
+export function emptyContentLedger(run: string): ContentLedger {
+  return { schema_version: CONTENT_LEDGER_SCHEMA, run, id_map: [], files: {} };
+}
+
+/** BOM, CRLF and the blank-line runs a Doc export adds are not content. */
+export function normalizeText(text: string): string {
+  return text.replace(/^﻿/, '').replace(/\r\n/g, '\n').replace(/\n{3,}/g, '\n\n').trimEnd();
+}
+
+const sha256 = (s: string) => `sha256:${createHash('sha256').update(s).digest('hex')}`;
+
+/** Hash of a file's content as written (normalised). What a grade's `artifact_sha256` holds. */
+export function contentSha(text: string): string {
+  return sha256(normalizeText(text));
+}
+
+const ID_EDGE = 'A-Za-z0-9_-';
+const reEscape = (x: string) => x.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+/**
+ * The text with every occurrence of either side of each pair replaced by that
+ * pair's placeholder — so a text and its pure mapped rewrite canonicalise to
+ * the same string, and any other change does not. Symmetric on purpose: the
+ * rewrite target may already occur in the original (a target HQ space named
+ * in prose), which a one-way reverse substitution would corrupt. Tokens match
+ * whole (no id-character on either side), longest first, so an id's 8-char
+ * prefix never matches inside the full id.
+ */
+export function canonicalText(text: string, pairs: readonly RewritePair[]): string {
+  const norm = normalizeText(text);
+  const token = new Map<string, number>();
+  pairs.forEach((p, i) => {
+    for (const s of [p.from, p.to]) if (s && !token.has(s)) token.set(s, i);
+  });
+  if (!token.size) return norm;
+  const alts = [...token.keys()].sort((a, b) => b.length - a.length).map(reEscape);
+  // Chunked: a regex of ~1k alternatives is fine; of 100k it is not.
+  let out = norm;
+  for (let i = 0; i < alts.length; i += 500) {
+    const re = new RegExp(`(?<![${ID_EDGE}])(?:${alts.slice(i, i + 500).join('|')})(?![${ID_EDGE}])`, 'g');
+    out = out.replace(re, (m) => `\u0001${token.get(m)}\u0001`);
+  }
+  return out;
+}
+
+export function canonicalHash(text: string, pairs: readonly RewritePair[]): string {
+  return sha256(canonicalText(text, pairs));
+}
+
+/** True when `after` is `before` with only `pairs` substituted (in either direction). */
+export function isPureMappedRewrite(before: string, after: string, pairs: readonly RewritePair[]): boolean {
+  return canonicalText(before, pairs) === canonicalText(after, pairs);
+}
+
+/** Append pairs not already in the map (same from → to); returns the new map. */
+export function extendIdMap(map: readonly RewritePair[], add: readonly RewritePair[]): RewritePair[] {
+  const out = [...map];
+  const seen = new Set(map.map((p) => `${p.from}\u0000${p.to}`));
+  for (const p of add) {
+    if (!p.from || !p.to || p.from === p.to) continue;
+    const k = `${p.from}\u0000${p.to}`;
+    if (seen.has(k)) continue;
+    seen.add(k);
+    out.push({ from: p.from, to: p.to, ...(p.kind ? { kind: p.kind } : {}) });
+  }
+  return out;
+}
+
+/**
+ * Record one pure mapped rewrite of `path` (pure: the writer applied only the
+ * ledger's pairs). `before` is the file as the writer read it; `afterModified`
+ * its modifiedTime after the write. Chains: when `before` is itself a recorded
+ * rewrite (its modifiedTime is the previous entry's `modified_after`), the
+ * content date and origin hash carry over, so drive_ids → asset_refs → a
+ * readiness repair all still date the content to the copy that was graded.
+ * Returns the ledger unchanged when `afterText` is given and is NOT a pure
+ * rewrite of `before.text` — the writer then simply has no claim to make.
+ */
+export function recordMappedRewrite(
+  ledger: ContentLedger,
+  path: string,
+  before: { modifiedTime: string; text?: string; originHash?: string },
+  after: { modifiedTime: string; text?: string },
+  by?: string,
+): ContentLedger {
+  const pairs = ledger.id_map;
+  if (before.text !== undefined && after.text !== undefined && !isPureMappedRewrite(before.text, after.text, pairs)) return ledger;
+  const prev = ledger.files[path];
+  const chained = prev && t(prev.modified_after) === t(before.modifiedTime) && t(before.modifiedTime) > 0;
+  const entry: ContentLedgerEntry = {
+    modified_after: after.modifiedTime,
+    content_as_of: chained ? prev!.content_as_of : before.modifiedTime,
+    pairs: pairs.length,
+    ...(by ? { by } : {}),
+  };
+  const beforeHash = before.originHash ?? (before.text !== undefined ? contentSha(before.text) : undefined);
+  const origin = chained ? prev!.origin_hash : beforeHash;
+  if (origin) entry.origin_hash = origin;
+  // Every state in a chain of pure rewrites is the same content modulo the map.
+  const chain = [...(chained ? prev!.chain_hashes ?? (prev!.origin_hash ? [prev!.origin_hash] : []) : []), ...(beforeHash ? [beforeHash] : [])];
+  if (chain.length) entry.chain_hashes = [...new Set(chain)];
+  if (after.text !== undefined) entry.sha256 = canonicalHash(after.text, pairs);
+  return { ...ledger, files: { ...ledger.files, [path]: entry } };
+}
+
+/** The ledger in the inventory (its text was read), or null. A malformed one is ignored, never trusted. */
+export function contentLedgerFrom(files: readonly RunFile[]): ContentLedger | null {
+  const f = files.find((x) => x.path === CONTENT_LEDGER_NAME);
+  if (!f?.text) return null;
+  return parseContentLedger(f.text);
+}
+
+export function parseContentLedger(text: string): ContentLedger | null {
+  const d = parse(text) as Partial<ContentLedger> | null;
+  if (!d || d.schema_version !== CONTENT_LEDGER_SCHEMA || !Array.isArray(d.id_map) || !d.files || typeof d.files !== 'object') return null;
+  return { schema_version: CONTENT_LEDGER_SCHEMA, run: String(d.run ?? ''), id_map: d.id_map as RewritePair[], files: d.files as Record<string, ContentLedgerEntry> };
+}
+
+/**
+ * When `file`'s content last really changed: its modifiedTime, unless the
+ * ledger vouches that its current bytes are a recorded pure mapped rewrite —
+ * by modifiedTime match, or (text in hand) by canonical hash through the map.
+ */
+export function effectiveContentTime(file: RunFile, ledger: ContentLedger | null): { time: string; by: 'timestamp' | 'ledger-mtime' | 'ledger-content'; entry?: ContentLedgerEntry } {
+  const e = ledger?.files[file.path];
+  if (!e) return { time: file.modifiedTime, by: 'timestamp' };
+  if (t(e.modified_after) > 0 && t(e.modified_after) === t(file.modifiedTime)) return { time: e.content_as_of, by: 'ledger-mtime', entry: e };
+  if (file.text !== undefined && e.sha256 && canonicalHash(file.text, ledger!.id_map.slice(0, e.pairs)) === e.sha256) {
+    return { time: e.content_as_of, by: 'ledger-content', entry: e };
+  }
+  return { time: file.modifiedTime, by: 'timestamp' };
+}
+
+/**
+ * Stale = the artifact's CONTENT changed after its gate was written (by more
+ * than a copy window). A grade may also carry `artifact_sha256` (the
+ * `contentSha` of what it graded): equal to the artifact now — directly, or as
+ * the ledger's origin hash — is fresh whatever the timestamps say.
+ */
+function isStale(artifact: RunFile, gate: RunFile, ledger: ContentLedger | null = null, gateData: Record<string, unknown> | null = null): boolean {
+  const eff = effectiveContentTime(artifact, ledger);
+  if (t(eff.time) - t(gate.modifiedTime) <= STALE_TOLERANCE_MS) return false;
+  const graded = typeof gateData?.artifact_sha256 === 'string' ? gateData.artifact_sha256 : null;
+  if (graded) {
+    if (artifact.text !== undefined && contentSha(artifact.text) === graded) return false;
+    if (eff.entry && chainOf(eff.entry).includes(graded)) return false;
+  }
+  return true;
+}
+
+/**
+ * Paths whose TEXT the inventory must read so content can overrule a
+ * timestamp: files the ledger has an entry for that were touched since (their
+ * canonical hash decides), and the artifacts of grades that carry
+ * `artifact_sha256` but read stale by timestamp. Everything else is decided by
+ * modifiedTime alone, so a normal inventory reads no extra files.
+ */
+export function stalenessTextWanted(files: readonly RunFile[]): string[] {
+  const ledger = contentLedgerFrom(files);
+  const want = new Set<string>();
+  for (const f of files) {
+    const e = ledger?.files[f.path];
+    if (e?.sha256 && f.text === undefined && t(e.modified_after) !== t(f.modifiedTime)) want.add(f.path);
+  }
+  for (const f of files) {
+    if (isArchived(f.path)) continue;
+    const m = QA_RESULT.exec(f.path) ?? EVAL_VERDICT.exec(f.path);
+    if (!m) continue;
+    const data = parse(f.text);
+    if (!data || typeof data.artifact_sha256 !== 'string') continue;
+    const artifact = capturedArtifact(files, data.capture_path) ?? producerLatest(files, m[2], ledger);
+    if (artifact && artifact.text === undefined && t(effectiveContentTime(artifact, ledger).time) - t(f.modifiedTime) > STALE_TOLERANCE_MS) want.add(artifact.path);
+  }
+  return [...want].sort();
+}
+
+function chainOf(e: ContentLedgerEntry): string[] {
+  return e.chain_hashes ?? (e.origin_hash ? [e.origin_hash] : []);
 }
 
 /**
@@ -185,7 +423,8 @@ export function isArchived(path: string): boolean {
 }
 
 /** Newest write among a producer's own files (verdicts and results excluded). */
-function producerLatest(files: readonly RunFile[], producer: string): RunFile | null {
+function producerLatest(files: readonly RunFile[], producer: string, ledger: ContentLedger | null = null): RunFile | null {
+  const when = (f: RunFile) => t(effectiveContentTime(f, ledger).time);
   let best: RunFile | null = null;
   for (const f of files) {
     if (isArchived(f.path)) continue;
@@ -193,7 +432,7 @@ function producerLatest(files: readonly RunFile[], producer: string): RunFile | 
     // `<producer>.md`, `<producer>_<role>.yaml`, `<producer>.source.md` — not another skill sharing the prefix.
     if (!(base.startsWith(`${producer}.`) || base.startsWith(`${producer}_`))) continue;
     if (/_verdict|qa_result|release-readiness_/.test(base)) continue;
-    if (!best || t(f.modifiedTime) > t(best.modifiedTime)) best = f;
+    if (!best || when(f) > when(best)) best = f;
   }
   return best;
 }
@@ -244,6 +483,7 @@ export function dimensionsBelow(dimensions: unknown, floor: number): Array<{ nam
 
 export function assessGates(files: readonly RunFile[], runState: unknown, catalog: GateCatalog): ReleaseFinding[] {
   const findings: ReleaseFinding[] = [];
+  const ledger = contentLedgerFrom(files);
   const qaFiles = files.filter((f) => QA_RESULT.test(f.path) && !isArchived(f.path));
   const evalFiles = files.filter((f) => EVAL_VERDICT.test(f.path) && !isArchived(f.path));
 
@@ -275,8 +515,8 @@ export function assessGates(files: readonly RunFile[], runState: unknown, catalo
         fix: `apply each failure's auto_fix_hint in ${producer}, then re-run ${skill}`,
       });
     }
-    const artifact = capturedArtifact(files, data!.capture_path) ?? producerLatest(files, producer);
-    if (artifact && isStale(artifact, f)) {
+    const artifact = capturedArtifact(files, data!.capture_path) ?? producerLatest(files, producer, ledger);
+    if (artifact && isStale(artifact, f, ledger, data)) {
       findings.push({
         id: `qa-stale:${skill}`, area: 'qa', severity: 'blocker', owner: skill,
         detail: `${artifact.path} changed after ${f.path} was written — the result no longer describes the artifact`,
@@ -319,8 +559,8 @@ export function assessGates(files: readonly RunFile[], runState: unknown, catalo
           : `fix ${producer}'s output per the verdict, then re-run ${skill}`,
       });
     }
-    const artifact = capturedArtifact(files, data.capture_path) ?? producerLatest(files, producer);
-    if (artifact && isStale(artifact, f)) {
+    const artifact = capturedArtifact(files, data.capture_path) ?? producerLatest(files, producer, ledger);
+    if (artifact && isStale(artifact, f, ledger, data)) {
       findings.push({
         id: `eval-stale:${skill}`, area: 'eval', severity: 'blocker', owner: skill,
         detail: `${artifact.path} changed after ${f.path} was graded`,
@@ -565,7 +805,7 @@ export function assessChatbot(transcript: RunFile | null, now: string, maxAgeDay
  * only). Every gate that reads a file's text needs its file here — ace#2698's
  * app-release_summary.md was missing, so the apps gate could never see it.
  */
-export const INVENTORY_TEXT_WANTED = /-qa_result(?:-[a-z0-9]+)?\.ya?ml$|-eval_verdict(?:-[a-z]+)?\.ya?ml$|ocs-chatbot-qa_transcript[^/]*\.md$|release-readiness_verdict\.yaml$|(^|\/)decisions\.ya?ml$|(^|\/)app-release_summary\.md$|(^|\/)previews\/[^/]+\/_previews\.ya?ml$/;
+export const INVENTORY_TEXT_WANTED = /-qa_result(?:-[a-z0-9]+)?\.ya?ml$|-eval_verdict(?:-[a-z]+)?\.ya?ml$|ocs-chatbot-qa_transcript[^/]*\.md$|release-readiness_verdict\.yaml$|(^|\/)release-readiness_content-ledger\.yaml$|(^|\/)decisions\.ya?ml$|(^|\/)app-release_summary\.md$|(^|\/)previews\/[^/]+\/_previews\.ya?ml$/;
 
 /** app-release's summary — the SOLE owner of released build state. Re-exported from lib/app-release-record.ts. */
 export { APP_RELEASE_SUMMARY };
@@ -739,6 +979,44 @@ export function assessHqPlan(hqDomain: string | null, plan: HqPlanLite | null): 
 // The verdict
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// One readiness pass — what is left for the agent (`release-readiness.ts run`)
+// ---------------------------------------------------------------------------
+//
+// Everything a validation needs is deterministic EXCEPT two judgements: a gate
+// whose artifact really changed (or that never ran) must be re-graded by its
+// own skill, and preview frames must be LOOKED at. `run` does the rest itself;
+// this says, from the inventory, exactly which of those two remain — so the
+// agent does repairs first and the validation runs once.
+
+export interface ReadinessAgentWork {
+  /** Gate skills to re-run, each with the finding that asked for it. */
+  regrade: Array<{ skill: string; finding: string; detail: string }>;
+  /** Preview frames to look at: one per phase that has previews, plus every frame written today. */
+  look: string[];
+}
+
+const REGRADE_FINDING = /^(qa-stale|qa-missing|qa-malformed|eval-stale|eval-missing|eval-unreadable):/;
+
+export function readinessAgentWork(files: readonly RunFile[], runState: unknown, catalog: GateCatalog, now: string): ReadinessAgentWork {
+  const regrade = assessGates(files, runState, catalog)
+    .filter((f) => REGRADE_FINDING.test(f.id))
+    // Every one of these ids is `<kind>:<gate skill>` (e.g. `eval-stale:build-memo-eval`).
+    .map((f) => ({ skill: f.id.slice(f.id.indexOf(':') + 1), finding: f.id, detail: f.detail }));
+  const today = now.slice(0, 10);
+  const frames = files.filter((f) => /(^|\/)previews\/[^/]+\/[^/]+\.(png|jpe?g|webp)$/i.test(f.path) && !isArchived(f.path));
+  const look = new Set<string>();
+  const byPhase = new Map<string, RunFile>();
+  for (const f of frames) {
+    const phase = f.path.split('/')[0];
+    const cur = byPhase.get(phase);
+    if (!cur || t(f.modifiedTime) > t(cur.modifiedTime)) byPhase.set(phase, f);
+    if (f.modifiedTime.slice(0, 10) === today) look.add(f.path);
+  }
+  for (const f of byPhase.values()) look.add(f.path);
+  return { regrade, look: [...look].sort() };
+}
+
 /** The release plan's problems (lib/release-plan.ts) as findings. */
 export function assessPlan(problems: readonly PlanProblem[]): ReleaseFinding[] {
   return problems.map((p) => ({
@@ -785,15 +1063,23 @@ export interface ReleaseVerdict {
   release_plan: ReleasePlan | null;
 }
 
+/**
+ * Newest CONTENT change in the run folder (the verdict's own files excluded).
+ * A recorded pure mapped rewrite (the content ledger) dates to the content it
+ * rewrote, so an id/URL substitution after validation — a clone stage re-run,
+ * a readiness repair through the same map — is not "the run changed".
+ */
 export function runLastWrite(files: readonly RunFile[]): string {
+  const ledger = contentLedgerFrom(files);
   let max = 0;
   let iso = '';
   for (const f of files) {
     if (VERDICT_FILE.test(f.path)) continue;
-    const v = t(f.modifiedTime);
+    const when = effectiveContentTime(f, ledger).time;
+    const v = t(when);
     if (v > max) {
       max = v;
-      iso = f.modifiedTime;
+      iso = when;
     }
   }
   return iso;
@@ -963,7 +1249,7 @@ export function releaseGate(verdict: Partial<ReleaseVerdict> | null, current: Re
       return { ok: false, reason: `${k.replace(/_/g, '-')} is ${current.options[k] ? 'on' : 'off'} now but was ${plan.options?.[k] ? 'on' : 'off'} when validated — ${again}` };
     }
   }
-  if (!verdict.run_state_hash || verdict.run_state_hash !== current.runStateHash) {
+  if (!verdict.run_state_hash || (verdict.run_state_hash !== current.runStateHash && !runStateIsMappedRewriteOf(verdict.run_state_hash, current))) {
     return { ok: false, reason: `run_state.yaml changed after validation (hash ${verdict.run_state_hash || 'none'} → ${current.runStateHash}) — ${again}` };
   }
   const last = runLastWrite(current.files);
@@ -971,6 +1257,19 @@ export function releaseGate(verdict: Partial<ReleaseVerdict> | null, current: Re
     return { ok: false, reason: `the run changed after the validation (last write ${last}, validated ${verdict.checked_at}) — ${again}` };
   }
   return { ok: true, reason: `READY, validated ${verdict.checked_at}, nothing written since; plan ${verdict.plan_hash} (${plan.actions.length} share actions)` };
+}
+
+/**
+ * run_state.yaml's hash moved, but only by recorded pure mapped rewrites: the
+ * content ledger's entry for it is current (its modifiedTime is the rewrite's)
+ * and its origin — the content before the first rewrite in the chain — is
+ * exactly what was validated. Anything else is a real change and refuses.
+ */
+function runStateIsMappedRewriteOf(validatedHash: string, current: ReleaseRequest): boolean {
+  const rs = current.files.find((f) => f.path === 'run_state.yaml');
+  if (!rs) return false;
+  const eff = effectiveContentTime(rs, contentLedgerFrom(current.files));
+  return eff.by !== 'timestamp' && !!eff.entry && chainOf(eff.entry).includes(validatedHash);
 }
 
 /** The human report — plain markdown (rendered as a Google Doc by the skill). */

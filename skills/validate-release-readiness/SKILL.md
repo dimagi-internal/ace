@@ -241,6 +241,30 @@ and `$FLAGS` is `--reviewers "<list>"` plus `--cc "<list>"` when given, plus eac
 were given — the SAME `$FLAGS` on every command below and later on
 `/ace:release`.
 
+**Default: one readiness pass (`$RC run`).** Steps 1–10 below are what it
+does; do not walk them by hand. Repairs first, then ONE validation:
+
+```bash
+$RC run --workspace <ws> --opp <opp> --run <run-id> $FLAGS --out-dir <scratch>     # pass 1 → exit 10
+#   do agent_work: re-run each `regrade[].skill` (Skill(<gate>)), LOOK at each
+#   `look[]` frame → <scratch>/looks.json [{frame, ok, detail}], and the step-6
+#   repairs the surface audit asks for
+$RC run --workspace <ws> --opp <opp> --run <run-id> $FLAGS --out-dir <scratch> \
+  --looks <scratch>/looks.json                                                        # pass 2 → 0 READY / 1 NOT READY
+```
+
+Pass 1 inventories the run and prints `agent_work`: only the gates whose
+artifact REALLY changed or that never ran (staleness is by content — a
+clone's own id/URL rewrite, recorded in `release-readiness_content-ledger.yaml`,
+does not make an eval stale) and the preview frames to look at. Pass 2 does,
+in parallel, the Connect post-condition and HQ plan (the atoms' own backends,
+read-only), preview gaps, link probes, memberships → the per-reviewer surface
+audit → Drive sharing, then `assess`; the verdict and report land in
+`<scratch>/out` for step 10's upload. `evidence_errors` lists any evidence it
+could not gather — `assess` already blocks on it ("not checked"); fix the
+cause and rerun pass 2. An HQ `hq-plan-free` blocker still needs the operator
+(step 5). The numbered steps remain the reference and the manual fallback.
+
 1. **Inventory.** `$RC inventory --run-folder <id> --out inventory.json`.
 
 2. **Gates — every QA result and eval verdict of every step.** These come from
@@ -396,3 +420,4 @@ prints why and the release stops — it never adapts.
 | 2026-10-05 | `--waive <blocker-id>=<reason>` (ace#2707, operator decision: release the work order as a DRAFT past a non-converging `pdd-to-work-order-eval`): eval-area blockers only; the blocker stays in the verdict marked `waived: {by, at, reason}`, is excluded from READY, shown in the report and approval prompt, on the plan (hashed) and compared exactly by the gate. | ACE team |
 | 2026-10-03 | Became `validate-release-readiness` (owner decision): absorbs the HQ plan check, the review-page audit (per reviewer), the repairs `/ace:release` used to make, Drive sharing; requires reviewers; on READY writes the hashed release plan + every email, and a run_state hash. Verdict file renamed `release-readiness_verdict.yaml` (v2). | ACE team |
 | 2026-10-16 | Labs is REBUILT by the clone, never widened (ace#3020): the plan grants Labs only on `clone.labs.status: done` + `clone.connect.status: done`, rides on the Connect grant (no Labs action), and blocks with `plan-labs-workspace-llo-missing` when the rebuilt labs workspace lacks a granted Connect org. | ACE team |
+| 2026-10-16 | One readiness pass + staleness by content: `$RC run` does every deterministic step (inventory, Connect post-condition, HQ plan, gaps, links, memberships, surface audit, Drive sharing, assess) in parallel and leaves the agent only `agent_work` (gates to re-grade, frames to look at) — repairs first, then one validation. A gate is stale only when its artifact CONTENT changed: pure id/URL rewrites recorded in `release-readiness_content-ledger.yaml` (clone drive_ids / asset_refs / labs) date the file to the content they rewrote, a grade may carry `artifact_sha256`, and the release gate tolerates such writes after validation. | ACE team |

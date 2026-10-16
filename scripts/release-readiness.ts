@@ -4,6 +4,15 @@
  * `skills/validate-release-readiness`, and
  * the gate + plan reader `skills/release-run` (`/ace:release`) uses.
  *
+ *   run --workspace W --opp O --run R $FLAGS --out-dir <dir> [--run-folder <id>]
+ *       [--looks <looks.json>] [--decision-overrides <yaml>] [--read-only]
+ *       ONE readiness pass: every deterministic step below, in parallel where
+ *       independent. Without --looks it stops after the inventory and prints
+ *       `agent_work` — the gates to re-grade (content really changed, or never
+ *       ran) and the preview frames to LOOK at — exit 10. With --looks it runs
+ *       the single validation and writes the verdict + report under
+ *       <dir>/out — exit 0 READY, 1 NOT READY.
+ *
  * Reviewer/flag arguments shared by `memberships`, `assess` and `gate`:
  *   --reviewers "a@x.org[:viewer|editor],…"   (required for READY)
  *   [--cc "staff@dimagi.com,…"]   Dimagi staff copied on every release email,
@@ -116,6 +125,8 @@ import {
   RELEASE_VERDICT_NAME,
   assessPlan,
   parseWaivers,
+  stalenessTextWanted,
+  readinessAgentWork,
   type LinkProbe,
   type ReleaseFinding,
   type ReleaseVerdict,
@@ -141,7 +152,8 @@ import { parseDecisionOverridesYaml } from '../lib/decision-overrides.js';
 import { DELIVERABLE_HOSTS } from '../lib/run-surface-audit.js';
 import { hqDomainFromRunState, hqEnterpriseFlipSteps } from '../lib/hq-enterprise-flip.js';
 import { Sessions } from './browser-sessions.js';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawn } from 'node:child_process';
+import { runConnectOrgs } from '../lib/connect-orgs.js';
 
 // Before any credential read (ACE_WEB_*, ACE_HQ_*, GOOGLE_APPLICATION_CREDENTIALS) — ace#1957.
 loadPluginEnv(import.meta.url);
@@ -226,9 +238,30 @@ async function aceWebMembershipFor(ws: string): Promise<AceWebMembership | null>
 }
 
 async function inventory(): Promise<void> {
+  const files = await readInventory(need('run-folder'));
+  fs.writeFileSync(need('out'), JSON.stringify(files, null, 1));
+  process.stdout.write(JSON.stringify({ files: files.length, with_text: files.filter((f) => f.text).length }) + '\n');
+}
+
+/**
+ * Every file's path + modifiedTime, the text of the files the verdict reads,
+ * and — second pass — the text of the files whose CONTENT must overrule their
+ * timestamp (`stalenessTextWanted`: touched since a recorded pure rewrite, or
+ * graded with `artifact_sha256`). The second pass is empty on a run with no
+ * content ledger, so a normal inventory costs what it always did.
+ */
+async function readInventory(runFolderId: string): Promise<RunFile[]> {
   const auth = new google.auth.GoogleAuth({ keyFile: keyFile(), scopes: ['https://www.googleapis.com/auth/drive.readonly'] });
   const drive = google.drive({ version: 'v3', auth });
   const files: RunFile[] = [];
+  const ids = new Map<string, { id: string; mimeType?: string }>();
+  const readText = async (id: string, mimeType: string | undefined): Promise<string> => {
+    const res =
+      mimeType === 'application/vnd.google-apps.document'
+        ? await drive.files.export({ fileId: id, mimeType: 'text/plain' }, { responseType: 'text' })
+        : await drive.files.get({ fileId: id, alt: 'media', supportsAllDrives: true }, { responseType: 'text' });
+    return String(res.data).replace(/^﻿/, '');
+  };
   async function walk(folder: string, prefix: string): Promise<void> {
     let pageToken: string | undefined;
     do {
@@ -247,13 +280,10 @@ async function inventory(): Promise<void> {
           continue;
         }
         const rf: RunFile = { path: p, modifiedTime: f.modifiedTime ?? '', mimeType: f.mimeType ?? undefined };
+        ids.set(p, { id: f.id as string, mimeType: f.mimeType ?? undefined });
         if (TEXT_WANTED.test(p)) {
           try {
-            const res =
-              f.mimeType === 'application/vnd.google-apps.document'
-                ? await drive.files.export({ fileId: f.id as string, mimeType: 'text/plain' }, { responseType: 'text' })
-                : await drive.files.get({ fileId: f.id as string, alt: 'media', supportsAllDrives: true }, { responseType: 'text' });
-            rf.text = String(res.data).replace(/^﻿/, '');
+            rf.text = await readText(f.id as string, f.mimeType ?? undefined);
           } catch (e) {
             process.stderr.write(`inventory: could not read ${p}: ${(e as Error).message}\n`);
           }
@@ -263,9 +293,18 @@ async function inventory(): Promise<void> {
       pageToken = r.data.nextPageToken ?? undefined;
     } while (pageToken);
   }
-  await walk(need('run-folder'), '');
-  fs.writeFileSync(need('out'), JSON.stringify(files, null, 1));
-  process.stdout.write(JSON.stringify({ files: files.length, with_text: files.filter((f) => f.text).length }) + '\n');
+  await walk(runFolderId, '');
+  for (const p of stalenessTextWanted(files)) {
+    const meta = ids.get(p);
+    const rf = files.find((f) => f.path === p);
+    if (!meta || !rf || /^(image|video|audio)\//.test(meta.mimeType ?? '')) continue;
+    try {
+      rf.text = await readText(meta.id, meta.mimeType);
+    } catch (e) {
+      process.stderr.write(`inventory: could not read ${p} for its content check: ${(e as Error).message}\n`);
+    }
+  }
+  return files;
 }
 
 interface Product {
@@ -513,6 +552,237 @@ function gate(): void {
   if (!r.ok) process.exit(1);
 }
 
+// ── run: one readiness pass ──────────────────────────────────────────
+//
+// The skill used to walk eleven steps by hand, re-inventorying after each and
+// often validating twice (once to find the stale gates, again after
+// re-grading them). `run` does every deterministic step itself — inventory,
+// run_state, the Connect post-condition, the HQ plan, preview gaps, link
+// probes, memberships, the per-reviewer surface audit, Drive sharing, the
+// verdict — and leaves the agent only what needs judgement: re-grading gates
+// whose content REALLY changed (staleness is by content now, so a clone's id
+// rewrite is not one) and looking at preview frames. Repairs first, then ONE
+// validation:
+//
+//   pass 1  `run …`                       → agent_work {regrade, look}; exit 10
+//   (agent re-grades the listed gates, looks at the listed frames → looks.json)
+//   pass 2  `run … --looks looks.json`    → the verdict; exit 0 READY / 1 NOT READY
+
+const SELF = fileURLToPath(import.meta.url);
+const TSX = path.join(ROOT, 'node_modules', 'tsx', 'dist', 'cli.mjs');
+
+function sub(script: string, argv: string[]): Promise<{ code: number; stdout: string; stderr: string }> {
+  return new Promise((resolve) => {
+    const p = spawn(process.execPath, [TSX, script, ...argv], { stdio: ['ignore', 'pipe', 'pipe'] });
+    let stdout = '';
+    let stderr = '';
+    p.stdout.on('data', (d) => (stdout += d));
+    p.stderr.on('data', (d) => (stderr += d));
+    p.on('close', (code) => resolve({ code: code ?? 2, stdout, stderr }));
+  });
+}
+
+/** The reviewer / cc / waiver / option flags, passed through to every sub-step unchanged. */
+function sharedFlags(): string[] {
+  const out: string[] = [];
+  for (const k of ['reviewers', 'cc', 'allow-shared']) if (arg(k) !== undefined) out.push(`--${k}`, arg(k)!);
+  for (const w of argAll('waive')) out.push('--waive', w);
+  for (const k of ['forward-source', 'allow-cross-workspace-forward']) if (flag(k)) out.push(`--${k}`);
+  return out;
+}
+
+async function resolveRunFolder(ws: string, opp: string, runId: string): Promise<{ run: string; runState: string }> {
+  const base = (process.env.ACE_WEB_BASE_URL ?? '').replace(/\/+$/, '');
+  const token = process.env.ACE_WEB_PAT_TOKEN;
+  if (!base || !token) throw new Error('ACE_WEB_BASE_URL and ACE_WEB_PAT_TOKEN are required (or pass --run-folder)');
+  const auth = new google.auth.GoogleAuth({ keyFile: keyFile(), scopes: ['https://www.googleapis.com/auth/drive.readonly'] });
+  const drive = google.drive({ version: 'v3', auth });
+  const child = async (parent: string, name: string, folder: boolean): Promise<string | null> => {
+    const r = await drive.files.list({
+      q: `'${parent}' in parents and name='${name.replace(/'/g, "\\'")}' and trashed=false and mimeType${folder ? '=' : '!='}'application/vnd.google-apps.folder'`,
+      fields: 'files(id)', supportsAllDrives: true, includeItemsFromAllDrives: true, pageSize: 5,
+    });
+    return r.data.files?.[0]?.id ?? null;
+  };
+  let run = arg('run-folder') ?? null;
+  if (!run) {
+    const w = await fetch(`${base}/api/workspaces/${ws}`, { headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' } });
+    if (!w.ok) throw new Error(`ace-web: workspace ${ws} → ${w.status}`);
+    const root = ((await w.json()) as { drive_root_folder_id?: string }).drive_root_folder_id;
+    const o = root ? await child(root, opp, true) : null;
+    const runs = o ? await child(o, 'runs', true) : null;
+    run = runs ? await child(runs, runId, true) : null;
+    if (!run) throw new Error(`no run folder ${ws}/${opp}/runs/${runId} in Drive`);
+  }
+  const rs = await child(run, 'run_state.yaml', false);
+  if (!rs) throw new Error('the run folder has no run_state.yaml');
+  return { run, runState: rs };
+}
+
+async function downloadText(fileId: string): Promise<string> {
+  const auth = new google.auth.GoogleAuth({ keyFile: keyFile(), scopes: ['https://www.googleapis.com/auth/drive.readonly'] });
+  const drive = google.drive({ version: 'v3', auth });
+  const meta = await drive.files.get({ fileId, fields: 'mimeType', supportsAllDrives: true });
+  const res = meta.data.mimeType === 'application/vnd.google-apps.document'
+    ? await drive.files.export({ fileId, mimeType: 'text/plain' }, { responseType: 'text' })
+    : await drive.files.get({ fileId, alt: 'media', supportsAllDrives: true }, { responseType: 'text' });
+  return String(res.data).replace(/^﻿/, '');
+}
+
+/** Connect post-condition + HQ plan, read with the backends the MCP atoms use (read-only). */
+async function liveReads(runState: Record<string, unknown>, dir: string): Promise<{ postcondition: string | null; hqPlan: string | null; errors: string[] }> {
+  const errors: string[] = [];
+  const CONNECT_BASE = process.env.CONNECT_BASE_URL ?? 'https://connect.dimagi.com';
+  const HQ_BASE = process.env.ACE_HQ_BASE_URL ?? 'https://www.commcarehq.org';
+  const { PlaywrightSession } = await import('../mcp/connect/auth/playwright-session.js');
+  const { RestBackend } = await import('../mcp/connect/backends/rest.js');
+  const { PlaywrightBackend } = await import('../mcp/connect/backends/playwright.js');
+  const { CompositeBackend } = await import('../mcp/connect/backends/composite.js');
+  const { CommCareBackend } = await import('../mcp/connect/backends/commcare.js');
+  const session = new PlaywrightSession({ baseUrl: CONNECT_BASE, cchqBaseUrl: HQ_BASE, hqUsername: process.env.ACE_HQ_USERNAME, hqPassword: process.env.ACE_HQ_PASSWORD });
+  let postcondition: string | null = null;
+  let hqPlan: string | null = null;
+  try {
+    const ctx = await session.getContext();
+    const csrfToken = session.getCsrfToken();
+    const connect: any = new CompositeBackend({
+      rest: new RestBackend({ baseUrl: CONNECT_BASE, csrfToken, request: ctx.request, session } as any),
+      playwright: new PlaywrightBackend({ baseUrl: CONNECT_BASE, csrfToken, request: ctx.request, session } as any),
+    } as any);
+    const c = ((runState.phases as any)?.['connect-setup']?.products?.connect ?? {}) as Record<string, any>;
+    const org = runConnectOrgs(c).holding_org_slug;
+    const oppId = c.opportunity?.id ? String(c.opportunity.id) : null;
+    if (org && oppId) {
+      try {
+        const [opportunity, pus, invites] = await Promise.all([
+          connect.getOpportunity({ organization_slug: org, opportunity_id: oppId }),
+          connect.listPaymentUnits({ organization_slug: org, opportunity_id: oppId }),
+          connect.listFlwInvites({ organization_slug: org, opportunity_id: oppId, ...(process.env.ACE_E2E_PHONE ? { phone: process.env.ACE_E2E_PHONE } : {}) }),
+        ]);
+        const read = {
+          opportunity,
+          paymentUnits: Array.isArray(pus) ? pus : ((pus as any)?.payment_units ?? null),
+          testUserInvite: { match: (invites as any)?.match ?? null },
+        };
+        postcondition = path.join(dir, 'postcondition.json');
+        fs.writeFileSync(postcondition, JSON.stringify({ read, decided: decidedFromRunState(runState) }, null, 1));
+      } catch (e) {
+        errors.push(`connect post-condition: ${(e as Error).message.split('\n')[0]}`);
+      }
+    } else errors.push('connect post-condition: run_state records no holding org / opportunity id');
+    const domain = hqDomainFromRunState(runState);
+    if (domain) {
+      try {
+        const hq: any = new CommCareBackend({ baseUrl: HQ_BASE, session, hqUsername: process.env.ACE_HQ_USERNAME, hqApiKey: process.env.ACE_HQ_API_KEY } as any);
+        hqPlan = path.join(dir, 'hq-plan.json');
+        fs.writeFileSync(hqPlan, JSON.stringify(await hq.getSubscription({ domain }), null, 1));
+      } catch (e) {
+        hqPlan = null;
+        errors.push(`hq plan: ${(e as Error).message.split('\n')[0]}`);
+      }
+    }
+  } catch (e) {
+    errors.push(`connect/HQ session: ${(e as Error).message.split('\n')[0]}`);
+  } finally {
+    await (session as any).close?.().catch(() => {});
+  }
+  return { postcondition, hqPlan, errors };
+}
+
+async function runPass(): Promise<void> {
+  const ws = need('workspace');
+  const opp = need('opp');
+  const runId = need('run');
+  const dir = need('out-dir');
+  fs.mkdirSync(dir, { recursive: true });
+  const t0 = Date.now();
+  const timings: Record<string, number> = {};
+  const timed = async <T>(k: string, fn: () => Promise<T>): Promise<T> => {
+    const t = Date.now();
+    try {
+      return await fn();
+    } finally {
+      timings[k] = Math.round((Date.now() - t) / 1000);
+    }
+  };
+  const ids = await timed('resolve', () => resolveRunFolder(ws, opp, runId));
+  const rsPath = path.join(dir, 'run_state.yaml');
+  const invPath = path.join(dir, 'inventory.json');
+  const [files, rsText] = await timed('inventory', () => Promise.all([readInventory(ids.run), downloadText(ids.runState)]));
+  fs.writeFileSync(invPath, JSON.stringify(files, null, 1));
+  fs.writeFileSync(rsPath, rsText);
+  const runState = parseYaml(rsText) as Record<string, unknown>;
+  const work = readinessAgentWork(files, runState, catalog(), new Date().toISOString());
+  fs.writeFileSync(path.join(dir, 'agent-work.json'), JSON.stringify(work, null, 1));
+  const looks = arg('looks');
+  if (!looks) {
+    process.stdout.write(JSON.stringify({
+      phase: 'prepare', run_folder: ids.run, agent_work: work, timings,
+      next: `re-run each regrade gate's skill (writes to Drive), LOOK at each frame → looks.json [{frame, ok, detail}], then: release-readiness.ts run … --looks looks.json`,
+    }, null, 1) + '\n');
+    process.exit(10);
+  }
+
+  // Pass 2 — the single validation. Independent evidence in parallel.
+  const flags = sharedFlags();
+  const reviewers = parseReviewers(arg('reviewers')).map((r) => r.email);
+  const runFilesPath = path.join(dir, 'run-files.json');
+  fs.writeFileSync(runFilesPath, JSON.stringify(files.map((f) => f.path)));
+  const [live, gaps, linkRes, surfaceChain] = await Promise.all([
+    timed('connect+hq', () => liveReads(runState, dir)),
+    timed('gaps', () => sub(path.join(ROOT, 'scripts', 'output-preview-capture.ts'), ['gaps', '--opp', opp, '--run', runId, '--workspace', ws, '--refresh'])),
+    timed('links', () => sub(SELF, ['links', '--workspace', ws, '--opp', opp, '--run', runId, '--run-state', rsPath, '--out', path.join(dir, 'links.json')])),
+    timed('surface', async () => {
+      const m = await sub(SELF, ['memberships', '--run-state', rsPath, ...flags, '--out', path.join(dir, 'memberships.json')]);
+      const a = await sub(path.join(ROOT, 'scripts', 'audit-run-surface.ts'), [
+        opp, runId, '--workspace', ws, '--json', '--render', '--run-state', rsPath, '--run-files', runFilesPath,
+        ...reviewers.flatMap((r) => ['--reviewer', r]), ...(m.code === 0 ? ['--memberships', path.join(dir, 'memberships.json')] : []),
+      ]);
+      const surfacePath = path.join(dir, 'surface.json');
+      const json = a.stdout.slice(a.stdout.indexOf('{'));
+      let ok = false;
+      try {
+        JSON.parse(json);
+        fs.writeFileSync(surfacePath, json);
+        ok = true;
+      } catch {
+        /* no audit JSON → assess blocks "not checked" */
+      }
+      const d = ok ? await sub(SELF, ['drive-access', '--surface', surfacePath, '--out', path.join(dir, 'drive-access.json')]) : null;
+      return { surface: ok ? surfacePath : null, driveAccess: d?.code === 0 ? path.join(dir, 'drive-access.json') : null, stderr: a.stderr.slice(-300) };
+    }),
+  ]);
+  const gapsPath = path.join(dir, 'gaps.json');
+  if (gaps.code === 0) fs.writeFileSync(gapsPath, gaps.stdout.slice(gaps.stdout.indexOf('{')));
+  const assessArgs = [
+    'assess', '--workspace', ws, '--opp', opp, '--run', runId, '--inventory', invPath, '--run-state', rsPath, ...flags,
+    '--looks', looks, '--out-dir', path.join(dir, 'out'),
+    ...(live.postcondition ? ['--postcondition', live.postcondition] : []),
+    ...(live.hqPlan ? ['--hq-plan', live.hqPlan] : []),
+    ...(gaps.code === 0 ? ['--gaps', gapsPath] : []),
+    ...(linkRes.code === 0 ? ['--links', path.join(dir, 'links.json')] : []),
+    ...(surfaceChain.surface ? ['--surface', surfaceChain.surface] : []),
+    ...(surfaceChain.driveAccess ? ['--drive-access', surfaceChain.driveAccess] : []),
+    ...(arg('decision-overrides') ? ['--decision-overrides', arg('decision-overrides')!] : []),
+    ...(flag('read-only') ? ['--read-only'] : []),
+  ];
+  const a = await timed('assess', () => sub(SELF, assessArgs));
+  const result = (() => { try { return JSON.parse(a.stdout.slice(a.stdout.indexOf('{'))); } catch { return null; } })();
+  const errors = [
+    ...live.errors,
+    ...(gaps.code === 0 ? [] : [`gaps: exit ${gaps.code} ${gaps.stderr.slice(-200)}`]),
+    ...(linkRes.code === 0 ? [] : [`links: exit ${linkRes.code} ${linkRes.stderr.slice(-200)}`]),
+    ...(surfaceChain.surface ? [] : [`surface audit: no JSON (${surfaceChain.stderr})`]),
+    ...(a.code === 0 ? [] : [`assess: exit ${a.code} ${a.stderr.slice(-300)}`]),
+  ];
+  process.stdout.write(JSON.stringify({
+    phase: 'validate', verdict: result?.verdict ?? null, counts: result?.counts ?? null,
+    out_dir: path.join(dir, 'out'), still_to_regrade: work.regrade.map((r) => r.skill),
+    evidence_errors: errors, timings, seconds: Math.round((Date.now() - t0) / 1000),
+  }, null, 1) + '\n');
+  process.exit(result?.verdict === 'READY' ? 0 : 1);
+}
+
 async function threadRecipients(): Promise<void> {
   const parts = need('participants').split(',').map((s) => s.trim()).filter(Boolean);
   const p = partitionThreadParticipants(parts);
@@ -520,6 +790,7 @@ async function threadRecipients(): Promise<void> {
 }
 
 async function main(): Promise<void> {
+  if (cmd === 'run') return runPass();
   if (cmd === 'inventory') return inventory();
   if (cmd === 'links') return links();
   if (cmd === 'assess') return assess();
@@ -552,7 +823,7 @@ async function main(): Promise<void> {
     process.stdout.write(hqEnterpriseFlipSteps(domain) + '\n');
     return;
   }
-  process.stderr.write('usage: release-readiness.ts inventory|links|memberships|drive-access|thread-recipients|assess|postcondition|gate|plan-show|plan-actions|email-body|hq-flip-steps … (see the header)\n');
+  process.stderr.write('usage: release-readiness.ts run|inventory|links|memberships|drive-access|thread-recipients|assess|postcondition|gate|plan-show|plan-actions|email-body|hq-flip-steps … (see the header)\n');
   process.exit(2);
 }
 

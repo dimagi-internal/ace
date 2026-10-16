@@ -28,7 +28,12 @@
  * run_state (+ the PDD numbers it recorded, + read-only reads of the source's
  * own Connect objects) — nothing is re-derived (`connectBuildSpec`).
  *
- * Exit 0 = every stage final; 3 = finished with stages not done (listed);
+ * Budget: config/clone-budget.json caps each stage that ran and the whole run
+ * (ace_web 5 min, connect 3 min, total 15 min, …); a breach is recorded as
+ * `clone.budget_breaches` and exits 4.
+ *
+ * Exit 0 = every stage final, within budget; 4 = every stage final but over
+ * budget (`budget_breaches`); 3 = finished with stages not done (listed);
  * 2 = usage / configuration / precondition error.
  */
 
@@ -61,15 +66,31 @@ import {
   planStages,
   productsPointAtTarget,
   rebuildLabs,
+  rewritePairsFromAssetPlan,
+  rewritePairsFromDriveIdPlan,
   rewriteReleaseSummary,
   summaryUrl,
+  budgetBreaches,
+  parseCloneBudget,
+  type AppliedPair,
   type Binding,
+  type LabsCopyDeps,
+  type LabsCopyState,
   type CloneBlock,
   type ClonedApp,
   type CreateRecord,
   type Stage,
   type StageRecord,
 } from '../lib/clone-run.js';
+import { remapLabsText } from '../lib/clone-labs-rebuild.js';
+import {
+  CONTENT_LEDGER_NAME,
+  emptyContentLedger,
+  extendIdMap,
+  parseContentLedger,
+  recordMappedRewrite,
+  type ContentLedger,
+} from '../lib/release-readiness.js';
 
 loadPluginEnv(import.meta.url);
 
@@ -197,6 +218,88 @@ async function writeText(fileId: string, text: string, mimeType: string): Promis
   });
 }
 
+// ── Readiness content ledger ─────────────────────────────────────────
+//
+// drive_ids and asset_refs rewrite copied files ONLY by substituting ids and
+// URLs, but each write bumps the file's modifiedTime past the eval graded on
+// it — and validate-release-readiness used to read every such eval as stale
+// (re-grades, waivers, extra passes). Each pure rewrite is recorded here
+// (lib/release-readiness.ts `recordMappedRewrite`, which re-checks purity on
+// the before/after text and records nothing otherwise), so readiness dates the
+// file to the content it rewrote.
+
+let ledger: ContentLedger | null = null;
+let ledgerDirty = false;
+
+async function loadLedger(ctx: Ctx): Promise<ContentLedger> {
+  if (ledger) return ledger;
+  const run = `${TO}/${OPP}/${RUN}`;
+  const f = await child(ctx.tgt!.run, CONTENT_LEDGER_NAME, false);
+  const parsed = f ? parseContentLedger(await readText(f.id, f.mimeType)) : null;
+  // A ledger the ace-web copy carried in from the source belongs to the source.
+  ledger = parsed && parsed.run === run ? parsed : emptyContentLedger(run);
+  return ledger;
+}
+
+async function saveLedger(ctx: Ctx): Promise<void> {
+  if (!ledger || !ledgerDirty) return;
+  const body = YAML.stringify(ledger, { lineWidth: 0 });
+  const f = await child(ctx.tgt!.run, CONTENT_LEDGER_NAME, false);
+  if (f) {
+    await guardDrive('drive_update_file', { fileId: f.id });
+    await drive.files.update({ fileId: f.id, media: { mimeType: 'text/yaml', body }, fields: 'id', supportsAllDrives: true });
+  } else {
+    await guardDrive('drive_create_file', { parentFolderId: ctx.tgt!.run });
+    await drive.files.create({ requestBody: { name: CONTENT_LEDGER_NAME, mimeType: 'text/yaml', parents: [ctx.tgt!.run] }, media: { mimeType: 'text/yaml', body }, fields: 'id', supportsAllDrives: true });
+  }
+  ledgerDirty = false;
+}
+
+async function fileMeta(fileId: string): Promise<{ modifiedTime: string; mimeType: string }> {
+  const r = await drive.files.get({ fileId, fields: 'modifiedTime,mimeType', supportsAllDrives: true });
+  return { modifiedTime: String(r.data.modifiedTime ?? ''), mimeType: String(r.data.mimeType ?? '') };
+}
+
+/**
+ * Wrap one rewrite of a run file: read it before, write, read it after, and
+ * record the pair of states in the ledger when the change is a pure mapped
+ * rewrite. Recording is best-effort — a failed read only means readiness falls
+ * back to the timestamp rule for that file, never that the write is lost.
+ */
+async function rewriteRecorded(ctx: Ctx, path: string | undefined, fileId: string, by: string, write: () => Promise<void>): Promise<void> {
+  let before: { modifiedTime: string; text: string } | null = null;
+  try {
+    const m = await fileMeta(fileId);
+    before = { modifiedTime: m.modifiedTime, text: await readText(fileId, m.mimeType) };
+  } catch (e) {
+    log(`ledger: could not read ${path ?? fileId} before its rewrite (${(e as Error).message}) — not recorded`);
+  }
+  await write();
+  if (!before || !path) return;
+  try {
+    const m = await fileMeta(fileId);
+    const l = await loadLedger(ctx);
+    const next = recordMappedRewrite(l, path, before, { modifiedTime: m.modifiedTime, text: await readText(fileId, m.mimeType) }, by);
+    if (next !== l) {
+      ledger = next;
+      ledgerDirty = true;
+    } else {
+      log(`ledger: ${path} changed by more than the id map — not recorded (readiness judges it by timestamp)`);
+    }
+  } catch (e) {
+    log(`ledger: could not read ${path} after its rewrite (${(e as Error).message}) — not recorded`);
+  }
+}
+
+async function extendLedgerMap(ctx: Ctx, pairs: AppliedPair[]): Promise<void> {
+  const l = await loadLedger(ctx);
+  const next = extendIdMap(l.id_map, pairs);
+  if (next.length !== l.id_map.length) {
+    ledger = { ...l, id_map: next };
+    ledgerDirty = true;
+  }
+}
+
 // ── Run folders + run_state ──────────────────────────────────────────
 
 async function runFolder(ws: string): Promise<{ root: string; opp: string; run: string } | null> {
@@ -294,16 +397,27 @@ async function stageAceWeb(ctx: Ctx): Promise<StageRecord> {
       if (![200, 201, 202, 409, 504].includes(r.status)) return { status: 'not-done', reason: `ace-web clone POST returned ${r.status}: ${JSON.stringify(r.json).slice(0, 200)}` };
     }
     const deadline = Date.now() + COPY_TIMEOUT_MS;
+    // ace-web#864: a re-POST over a failed copy RESUMES it (keeps the partial
+    // target, skips what was copied), so one transient Drive error costs one
+    // re-POST, not the whole copy again. Twice per invocation at most.
+    let resumes = 0;
     while (Date.now() < deadline) {
       await new Promise((r) => setTimeout(r, 15_000));
       ({ done, latest } = await doneRec());
       if (done) break;
+      if (latest?.status === 'error' && resumes < 2) {
+        resumes++;
+        const r = await aceWeb('POST', `/api/w/${FROM}/opps/${OPP}/runs/${RUN}/clone`, { to_workspace: TO });
+        log(`ace-web copy error (${String(latest.error).slice(0, 160)}) — resuming (re-POST ${resumes}) → ${r.status}`);
+        continue;
+      }
       if (latest?.status === 'error') return { status: 'not-done', reason: `ace-web copy error: ${latest.error}` };
       log(`ace-web copy ${latest?.status ?? '?'}: ${latest?.files_copied ?? 0} files`);
     }
     if (!done) return { status: 'not-done', reason: 'ace-web copy still running at the timeout — rerun to resume' };
   }
-  return { status: 'done', clone_id: done.id, files_copied: done.files_copied };
+  // `files_resumed` (ace-web#864): files a re-POST adopted from the failed attempt instead of re-copying.
+  return { status: 'done', clone_id: done.id, files_copied: done.files_copied, files_resumed: done.files_resumed ?? 0 };
 }
 
 async function stageSummaryUrl(): Promise<StageRecord> {
@@ -329,14 +443,18 @@ async function stageDriveIds(ctx: Ctx): Promise<StageRecord> {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'clone-readback-'));
     r = runScript('clone-drive-readback.ts', [...base, '--plan', dir]);
     const plan = JSON.parse(fs.readFileSync(path.join(dir, 'plan.json'), 'utf8'));
+    await extendLedgerMap(ctx, rewritePairsFromDriveIdPlan(plan));
     for (const f of plan.files ?? []) {
       if (f.action === 'update') {
-        await writeText(f.fileId, fs.readFileSync(f.localFilePath, 'utf8'), f.mimeType);
+        await rewriteRecorded(ctx, f.path, f.fileId, 'clone-run:drive_ids', () => writeText(f.fileId, fs.readFileSync(f.localFilePath, 'utf8'), f.mimeType));
       } else if (f.action === 'docs') {
-        await guardDrive('docs_batch_update', { documentId: f.fileId });
-        await docsApi.documents.batchUpdate({ documentId: f.fileId, requestBody: { requests: JSON.parse(fs.readFileSync(f.requestsPath, 'utf8')) } });
+        await rewriteRecorded(ctx, f.path, f.fileId, 'clone-run:drive_ids', async () => {
+          await guardDrive('docs_batch_update', { documentId: f.fileId });
+          await docsApi.documents.batchUpdate({ documentId: f.fileId, requestBody: { requests: JSON.parse(fs.readFileSync(f.requestsPath, 'utf8')) } });
+        });
       }
     }
+    await saveLedger(ctx);
     log(`drive_ids: applied ${plan.files?.length ?? 0} rewrite(s)`);
     r = runScript('clone-drive-readback.ts', base);
   }
@@ -725,31 +843,118 @@ async function stageConnect(ctx: Ctx): Promise<StageRecord> {
   };
 }
 
+// ── Labs (§ 4c, scripted) ────────────────────────────────────────────
+
+const LABS_MCP_URL = process.env.LABS_MCP_URL ?? 'https://labs.connect.dimagi.com/mcp/';
+
+/** One labs MCP `tools/call` over HTTP JSON-RPC — the same endpoint the MCP atoms use. */
+async function labsCall(tool: string, args: Record<string, unknown>): Promise<any> {
+  const token = process.env.LABS_MCP_TOKEN;
+  if (!token) throw new Error('LABS_MCP_TOKEN is not set (/ace:labs-token-mint)');
+  const res = await fetch(LABS_MCP_URL, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', Accept: 'application/json, text/event-stream' },
+    body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: tool, arguments: args } }),
+  });
+  const body = await res.text();
+  if (!res.ok) throw new Error(`${tool}: labs HTTP ${res.status}: ${body.slice(0, 200)}`);
+  const rpc = parseLabsRpc(body);
+  if (rpc.error) throw new Error(`${tool}: ${JSON.stringify(rpc.error).slice(0, 300)}`);
+  const text = rpc.result?.content?.[0]?.text ?? '';
+  if (rpc.result?.isError) throw new Error(`${tool}: ${String(text).slice(0, 400)}`);
+  try {
+    return text ? JSON.parse(text) : {};
+  } catch {
+    throw new Error(`${tool}: non-JSON result: ${String(text).slice(0, 200)}`);
+  }
+}
+
+function parseLabsRpc(body: string): any {
+  const trimmed = body.trim();
+  if (trimmed.startsWith('{')) return JSON.parse(trimmed);
+  const data = trimmed.split('\n').filter((l) => l.startsWith('data:')).map((l) => l.slice(5).trim());
+  if (!data.length) throw new Error(`unrecognised labs response: ${trimmed.slice(0, 200)}`);
+  return JSON.parse(data[data.length - 1]);
+}
+
+async function stageLabs(ctx: Ctx): Promise<StageRecord> {
+  const deps: LabsCopyDeps | undefined = process.env.LABS_MCP_TOKEN
+    ? {
+        call: labsCall,
+        log,
+        save: (state) => saveStage('labs', { status: 'in-progress', copy: state }),
+        workspace: async (programId, llos) => {
+          const r = runScript('labs-workspace-setup.ts', ['--program-id', String(programId), ...llos.flatMap((l) => ['--llo', l])]);
+          const out = lastJson(r.stdout);
+          return { ok: r.code === 0, llos: Array.isArray(out?.llos) ? out.llos : [], detail: r.code === 0 ? 'listed' : (r.stderr || r.stdout).trim().slice(-300) };
+        },
+      }
+    : undefined;
+  const rec = await rebuildLabs({
+    source: ctx.source, sourceRunState: ctx.sourceRunState, targetRunState: await readTargetRunState(),
+    to: TO!, opp: OPP, run: RUN, tenancy: ctx.tenancy, keepSharedConnect: KEEP_SHARED_CONNECT, deps,
+  });
+  const { synthetic, ...record } = rec as StageRecord & { synthetic?: unknown };
+  if (record.status !== 'done' || !synthetic) return record;
+  // The target's products name the copy — and so does its copied prose (ace#3038).
+  await mutateTargetRunState((rs) => {
+    rs.phases ??= {};
+    rs.phases['synthetic-data-and-workflows'] ??= {};
+    rs.phases['synthetic-data-and-workflows'].products ??= {};
+    rs.phases['synthetic-data-and-workflows'].products.synthetic = synthetic;
+  });
+  const idMap = Object.fromEntries(Object.entries((record.copy as LabsCopyState).id_map).map(([k, v]) => [Number(k), v]));
+  await extendLedgerMap(ctx, Object.entries(idMap).map(([from, to]) => ({ from: String(from), to: String(to), kind: 'labs_id' })));
+  const phase7 = await child(ctx.tgt!.run, '7-synthetic', true);
+  const prose: Array<{ path: string; bare: number[] }> = [];
+  if (phase7) {
+    const r = await drive.files.list({ q: `'${phase7.id}' in parents and trashed=false`, fields: 'files(id,name,mimeType)', supportsAllDrives: true, includeItemsFromAllDrives: true, pageSize: 200 });
+    for (const f of r.data.files ?? []) {
+      if (!/\.(md|ya?ml|json|txt)$/i.test(f.name) && f.mimeType !== GOOGLE_DOC) continue;
+      if (/-qa_result|-eval_verdict/.test(f.name)) continue; // grades judged the source; left as they are
+      const text = await readText(f.id, f.mimeType);
+      const rw = remapLabsText(text, idMap);
+      if (!rw.changes) continue;
+      const mime = f.mimeType === GOOGLE_DOC ? GOOGLE_DOC : f.mimeType;
+      await rewriteRecorded(ctx, `7-synthetic/${f.name}`, f.id, 'clone-run:labs', () => writeText(f.id, rw.text, mime));
+      prose.push({ path: `7-synthetic/${f.name}`, bare: rw.bare });
+    }
+  }
+  await saveLedger(ctx);
+  return { ...record, prose_rewritten: prose.map((p) => p.path), prose_bare_ids: prose.filter((p) => p.bare.length) };
+}
+
 async function stageAssetRefs(ctx: Ctx): Promise<StageRecord> {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'clone-assets-'));
   const args = ['--source', ctx.src.run, '--target', ctx.tgt!.run, '--out', dir, '--to', TO!];
   let r = runScript('clone-asset-rewrite.ts', args);
   if (r.code === 2) return { status: 'not-done', reason: `clone-asset-rewrite failed: ${r.stderr.slice(-300)}` };
   const plan = JSON.parse(fs.readFileSync(path.join(dir, 'plan.json'), 'utf8'));
+  // The map this stage applies, recorded BEFORE the writes so each one is
+  // checked against it (asset_refs writes the id/URL map it applied).
+  await extendLedgerMap(ctx, rewritePairsFromAssetPlan(plan));
   let applied = 0;
   for (const f of plan.files ?? []) {
     if (f.action === 'update') {
-      await writeText(f.fileId, fs.readFileSync(f.localFilePath, 'utf8'), f.mimeType);
+      await rewriteRecorded(ctx, f.path, f.fileId, 'clone-run:asset_refs', () => writeText(f.fileId, fs.readFileSync(f.localFilePath, 'utf8'), f.mimeType));
     } else if (f.action === 'render') {
       // A styled Doc is re-imported from markdown, never written back as text (ace#2606).
-      await guardDrive('drive_update_file', { fileId: f.fileId });
-      await drive.files.update({ fileId: f.fileId, media: { mimeType: 'text/markdown', body: fs.readFileSync(f.localFilePath, 'utf8') }, fields: 'id', supportsAllDrives: true });
-      if (f.reembed_screenshots) {
-        const folders = (plan.frames?.preview_folders ?? []).flatMap((p: any) => ['--screenshots', p.id]);
-        if (folders.length) {
-          await guardDrive('docs_batch_update', { documentId: f.fileId });
-          const e = runScript('embed-doc-screenshots.ts', [f.fileId, ...folders]);
-          if (e.code !== 0) log(`embed-doc-screenshots ${f.path}: exit ${e.code} ${e.stderr.slice(-200)}`);
+      await rewriteRecorded(ctx, f.path, f.fileId, 'clone-run:asset_refs', async () => {
+        await guardDrive('drive_update_file', { fileId: f.fileId });
+        await drive.files.update({ fileId: f.fileId, media: { mimeType: 'text/markdown', body: fs.readFileSync(f.localFilePath, 'utf8') }, fields: 'id', supportsAllDrives: true });
+        if (f.reembed_screenshots) {
+          const folders = (plan.frames?.preview_folders ?? []).flatMap((p: any) => ['--screenshots', p.id]);
+          if (folders.length) {
+            await guardDrive('docs_batch_update', { documentId: f.fileId });
+            const e = runScript('embed-doc-screenshots.ts', [f.fileId, ...folders]);
+            if (e.code !== 0) log(`embed-doc-screenshots ${f.path}: exit ${e.code} ${e.stderr.slice(-200)}`);
+          }
         }
-      }
+      });
     }
     applied++;
   }
+  await saveLedger(ctx);
   if (plan.run_state) {
     const patch = JSON.parse(fs.readFileSync(plan.run_state.localFilePath, 'utf8'));
     await mutateTargetRunState((rs) => deepMergeInto(rs, patch));
@@ -786,6 +991,11 @@ async function stageReadme(ctx: Ctx): Promise<StageRecord> {
 }
 
 // ── Main ─────────────────────────────────────────────────────────────
+
+function loadBudget() {
+  const p = path.join(ROOT, 'config', 'clone-budget.json');
+  return parseCloneBudget(fs.existsSync(p) ? JSON.parse(fs.readFileSync(p, 'utf8')) : {});
+}
 
 async function bindSession(tenancy: Record<string, unknown>, driveRoot: string): Promise<void> {
   const sessionBind = readBinding();
@@ -861,7 +1071,7 @@ async function main(): Promise<number> {
         case 'hq': rec = await stageHq(ctx); break;
         case 'release_summary': rec = await stageReleaseSummary(ctx); break;
         case 'connect': rec = await stageConnect(ctx); break;
-        case 'labs': rec = await rebuildLabs({ source, sourceRunState, targetRunState: await readTargetRunState(), to: TO!, tenancy }); break;
+        case 'labs': rec = await stageLabs(ctx); break;
         case 'ocs': rec = { status: 'kept', reason: 'public-link', public_url: source.ocs_public_url }; break;
         case 'asset_refs': rec = await stageAssetRefs(ctx); break;
         case 'readme': rec = await stageReadme(ctx); break;
@@ -898,10 +1108,23 @@ async function main(): Promise<number> {
   report.ocs_public_url = source.ocs_public_url;
   report.summary_url = summaryUrl(ACE_WEB, TO!, OPP, RUN);
   report.seconds = Math.round((Date.now() - t0) / 1000);
+  // The guard (config/clone-budget.json): a stage or the run over budget is
+  // recorded on the clone and fails the invocation — a slow release path is a
+  // defect to look at, not a cost to absorb silently.
+  const breaches = budgetBreaches(results, report.seconds as number, loadBudget());
+  report.budget_breaches = breaches;
+  if (targetRunStateId) {
+    await mutateTargetRunState((rs) => {
+      rs.clone = rs.clone ?? {};
+      rs.clone.budget_breaches = breaches.length ? breaches.map((b) => ({ ...b, at: new Date().toISOString() })) : [];
+    }).catch((e) => log(`could not record budget_breaches: ${(e as Error).message}`));
+  }
+  for (const b of breaches) log(`OVER BUDGET: ${b.stage} took ${b.seconds}s (budget ${b.budget_seconds}s)`);
   console.log(JSON.stringify(report, null, 2));
   const { session } = backends ? await backends : { session: null };
   await session?.close?.().catch(() => {});
-  return (report.not_done as string[] | undefined)?.length || (report.products_check as string[] | undefined)?.length ? 3 : 0;
+  if ((report.not_done as string[] | undefined)?.length || (report.products_check as string[] | undefined)?.length) return 3;
+  return breaches.length ? 4 : 0;
 }
 
 main().then(

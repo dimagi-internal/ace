@@ -233,7 +233,7 @@ Skip any part that already holds.
    already names a different HQ space or org, stop and report both. Read it
    back and print it.
 
-## Steps 1–4 — run the clone script (one command, ~10 minutes)
+## Steps 1–4 — run the clone script (one command, ≤ 15 minutes, budgeted)
 
 Everything after Step 0 is ONE deterministic, idempotent, resumable script
 (ace#3021). Do not drive these steps by hand, and do not dispatch the Phase 4
@@ -248,8 +248,22 @@ node "$ACE_ROOT/node_modules/tsx/dist/cli.mjs" "$ACE_ROOT/scripts/clone-run.ts" 
 (`$ACE_ROOT` = `$CLAUDE_PLUGIN_ROOT`, the installed plugin.) Add `--plan` first
 to print which stages will run without touching anything. It prints one JSON
 report on stdout (progress on stderr) and exits **0** when every stage is
-final, **3** when it finished with stages not done (`not_done[]`, each with its
-`reason`), **2** on a usage or precondition error (nothing written).
+final within budget, **4** when every stage is final but the run went over
+budget (`budget_breaches[]`), **3** when it finished with stages not done
+(`not_done[]`, each with its `reason`), **2** on a usage or precondition error
+(nothing written).
+
+**The budget is the release path's speed guard** (`config/clone-budget.json`,
+defaults in `lib/clone-run.ts` `DEFAULT_CLONE_BUDGET`): per stage that RAN —
+ace_web 5 min, summary_url 30 s, drive ids 3 min, hq 4 min,
+release_summary 1 min, connect 3 min, labs 6 min, ocs 10 s,
+asset_refs 4 min, readme 1 min — and **15 min for the whole run**. Each
+stage's `seconds` is in the report; a stage or the run over its budget is
+recorded as `clone.budget_breaches` on the target run_state and exits 4. A
+breach is a defect to report (and file, with the stage's `seconds`), not a
+reason to rerun: the clone itself is complete. No stage is handed to an agent
+(`STAGE_EXECUTOR`; `test/lib/clone-run.test.ts` fails if one ever is) — that
+hand-off is how a 10-minute copy used to take hours.
 
 **Resume = run the same command again.** Every stage records its result in the
 TARGET run_state's root `clone:` block (`clone.<stage>.status`), and a stage
@@ -268,8 +282,11 @@ What it does, stage by stage — the rules each one keeps:
    (the Connect pair excepted under `--keep-shared connect`). Any gap exits 2.
 2. **`ace_web`** — `POST …/runs/<run-id>/clone {to_workspace}`, then poll
    `…/clones` until `done`. An existing `done` record into `<to>` is reused, a
-   record still `copying` is never re-POSTed, and `error` is reported (a rerun
-   re-POSTs, which replaces the partial run). Comms-logs are not copied.
+   record still `copying` is never re-POSTed. ace-web copies with an 8-way
+   pool, looks-then-retries one file on a Drive 5xx, and a re-POST over an
+   `error` record RESUMES (keeps the partial target, skips what was copied —
+   ace-web#864), so the script re-POSTs an `error` up to twice by itself;
+   `files_resumed` says how many were adopted. Comms-logs are not copied.
 3. **Bind.** Once the copy exists the script binds THIS session to `<to>/<opp>`
    (`bin/ace-bind`, enforce) and stops if the session is already bound to any
    other opp — never clear or rebind to get a write through. Every write the
@@ -341,12 +358,20 @@ What it does, stage by stage — the rules each one keeps:
    ask): records `clone.connect: kept-shared`; the copied products keep naming
    the source program/opportunity in the shared orgs (which read the SOURCE HQ
    apps) and `release` needs `--allow-shared connect` — report that loudly.
-9. **`labs`** (§ 4c below) — `rebuildLabs` in `lib/clone-run.ts`. Labs is
-   REBUILT as a COPY in the clone's own labs program (ace#3020), never widened
-   in place. The copy goes through labs MCP atoms the script cannot call, so
-   the script's stage records `not-done: labs copy is agent-run …` until YOU run
-   § 4c and record `clone.labs.status: done` (a re-run then treats the stage as
-   final). It never regenerates data instead. Do NOT call
+9. **`labs`** (§ 4c below) — `rebuildLabs` in `lib/clone-run.ts`, SCRIPTED:
+   Labs is REBUILT as a COPY in the clone's own labs program (ace#3020), never
+   widened in place, never regenerated. The script calls the labs MCP's HTTP
+   endpoint itself (`LABS_MCP_TOKEN`) and does § 4c steps 2–8 in order —
+   records, registry, programme report (+ worker review), visits pipeline
+   schema, cohort + opp reports, history over the source's weeks, benchmark
+   publishes oldest-first, a figure-by-figure check that every saved period
+   equals the source's, workspace roles, then the products remap and the
+   `7-synthetic/` prose. Each step is recorded in `clone.labs.copy` and
+   skipped on a rerun; a failure leaves `not-done` with `step: <name>`.
+   **Only workspace roles have no MCP atom (connect-labs#2572)**: that step
+   runs `scripts/labs-workspace-setup.ts` on the `/ace:labs-login` session, and
+   without one it alone is left not-done (`step: workspace`, with the exact
+   command) — run `/ace:labs-login` and rerun. Do NOT call
    `synthetic_set_allowed_domains` by hand (it REPLACES the list, ace#2713).
 10. **`ocs`** (§ 4d) — kept on ACE's team; reviewers use its `public_url`
     (no OCS accounts — team-wide permissions). Recorded `kept`.
@@ -389,7 +414,10 @@ opp and generate new records), not a re-authored story. A copy that cannot be
 made with a copying atom is `NOT DONE` naming the gap — never a regeneration
 standing in for it.
 
-Run it after the script's `connect` stage: the program's labs workspace is
+**The script's `labs` stage does every step below** (stage 9 above); this
+section is what it does and the manual fallback for a step it reports
+not-done — resume by rerunning the script, not by redoing steps by hand. It
+runs after the script's `connect` stage: the program's labs workspace is
 linked to the Connect orgs that stage rebuilt. `$CL` is `npx tsx "$CLAUDE_PLUGIN_ROOT/scripts/clone-labs-rebuild.ts"`.
 
 1. **What to copy.** `$CL inspect --run-state <source run_state.yaml>` → the
@@ -532,7 +560,7 @@ From the script's JSON report (re-read the TARGET run_state's `clone:` block
 rather than trusting memory): one line per stage — `done` with the ids / URLs
 it read back (HQ apps + builds and the space's edition; Connect program,
 opportunity and holding org), `kept` / `kept-shared`, or `NOT DONE` + its
-`reason` (the script's Labs stage reads `not-done: labs copy is agent-run …` until § 4c is done and recorded); the
+`reason` and `step` (a Labs `step: workspace` needs `/ace:labs-login`, then a rerun); every `budget_breaches` entry with its `seconds`; the
 Drive-link read-back (`source_ids_remaining`, expected 0 outside comms-logs);
 § 4e's rewrite (files changed, and every place left on the source on purpose —
 e.g. the Phase 8 solicitation); `products_check` (expected empty); the run's
