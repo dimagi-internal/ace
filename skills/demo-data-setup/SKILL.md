@@ -881,8 +881,8 @@ front half (how the labs-only opp + its data come to exist) differs.
    utility at labs' `render_code` write boundary). This gate earns its keep
    regardless: the available set drifts whenever labs changes its own UI.
 
-3c. **Check every authored string — dashboard copy AND the narrative
-   artifacts — against the why-brief's declared gaps (ace#1750, ace#1759).** A
+3c. **Author dashboard copy for the gap-copy check, and record the render
+   sources it will scan (ace#1750, ace#1759, ace#2244).** A
    `why_brief.yaml` declares typed `gaps[]` — what the build cannot support.
    `demo-narrative` gates the NARRATIVE against them and nothing gated the
    dashboard's own on-screen prose, so a demo can render a page asserting
@@ -891,22 +891,24 @@ front half (how the labs-only opp + its data come to exist) differs.
    item asserted the disposition is recorded *"with its reason"* while the gap
    two screens down declared there is no durable register and no reason field.
 
-   Run `checkGapCopy(gaps, sources)` from `lib/gap-copy-check.ts` before
-   uploading anything, where `sources` is:
-   - `{name, code}` per dashboard — the `render_code` as it will be uploaded.
-     Prose is extracted from the JSX.
-   - `...narrativeSources(whyBrief, unifiedSpec)` — the already-prose fields,
-     each labelled by where it came from
-     (`why_brief:spine[decisions-are-recorded].claim`,
-     `unified_spec:scenes[<id>].concept_claim`). It reads
-     `why_brief.spine[].{claim, rationale}` and
-     `unified_spec.scenes[].{concept_claim, show, narrative}`. **`gaps[]` is
-     deliberately not a source** — it is the one section whose job is to discuss
-     unsupported things, and a `proposed_action` routinely names another gap's
-     subject while proposing the fix, so scanning it makes the honest gap list
-     the report's own worst source of findings (ace#1762).
+   **This step does NOT run the check — it cannot (ace#2244).** The gaps are
+   declared in `why_brief.yaml`, which `demo-narrative` authors one step LATER
+   (Phase 7 Step 2, after this skill's Step 1; `/ace:demo` orders them the same
+   way), so here there is no gap list to check against. The check runs in
+   `demo-narrative` § Step 3d, after the brief and spec exist and before
+   anything renders — still cheap to fix, because a dashboard finding is a
+   `workflow_patch_render_code` on a page nobody has filmed. What THIS step
+   owes it:
+   - **Record each dashboard's labs `workflow_id` + owning scope** so 3d can read
+     the render back. The id is in its `par_url`
+     (`/labs/workflow/<workflow_id>/run/?run_id=…`); the scope is
+     `labs_synthetic_opp_id` for a per-opp workflow, `program_id` for a
+     program-owned one. 3d reads the UPLOADED render_code with
+     `workflow_get`, so a later patch is scanned too — never a local copy.
+   - **Write gap-safe copy from the start** using the rules below and the PDD's
+     own limits; 3d will flag what still repeats a declared gap's subject.
 
-   It derives each **CAPABILITY** gap's subject terms (the words the author used
+   The rules the check applies (so you author to them): it derives each **CAPABILITY** gap's subject terms (the words the author used
    in BOTH the gap `id` and its `detail`, minus generic product vocabulary) and
    reports every prose line that repeats one. **RESEARCH and DECISION gaps do not
    constrain what a surface may name** — they forbid a *qualified* claim, not the
@@ -2108,6 +2110,7 @@ nobody has enumerated yet. Run both — neither is a substitute for the other.
 
 | Date | Change | Author |
 |------|--------|--------|
+| 2026-10-16 | **Step 3c no longer runs `checkGapCopy`; `demo-narrative` § 3d does (ace#2244).** The check needs the why-brief's `gaps[]`, which `demo-narrative` authors one step later, so at this position it could never run. 3c now records each dashboard's `workflow_id` + scope for 3d to read the uploaded render back, and keeps the authoring rules. | ACE team |
 | 2026-10-15 | **§ C3 names the labs request-size ceiling (ace#3007).** HTTP 413 at a 3.9 MB manifest (2.44 MB accepted) on `smallholder-seasonal/20261015-1402`; the mechanics now say how to slim a programme-length pool safely (dedupe only paths whose absence reads as their value; `_time_varying_paths` are not re-stamped), filter per-form values by form name, and send multi-MB manifests over direct JSON-RPC. | ACE team |
 | 2026-10-06 | **§ C3 `review_routing` names the write path (ace#2740).** Each flagged pool visit carries `review: {flagged: true, status, review_status, flag_reason}` (connect-labs #2264 — before it, a mirror pool had no way to file a record as sent to review; status/flagged were always drawn from the persona's `flag_rate`), and every persona sets `flag_rate: 0` so nothing un-flagged is sent to review. Found on `spark-facilitator/20261004-1706` Phase 7 attempt 3. | ACE team |
 | 2026-10-06 | **Build QA before the hand-off, so the demo judges stop finding build output (ace#2735).** Operator: *"is the demo catching bad output from the program build? ... how can we be better at the program build level in terms of QA or other so DDD isn't the one catching it?"* § C3 adds `review_routing` (what the PDD does with each flagged record — and the pool writes it), `checkPlannedWorkerRates` (a worker-level rate over ≤ 1 entity is binary) and `single_child_levels`; § C6 adds `cascadeBuildOutcomes` — review routing, binary worker rates, constant displayed columns, one-child drill levels — judged against the saved run and the visit rows. Each was a DDD finding on `spark-facilitator/20261004-1706`; each now fails there, in `test/lib/cascade-build-qa.test.ts`, on that run's real output. | ACE team |

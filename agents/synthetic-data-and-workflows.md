@@ -196,6 +196,12 @@ It authors a DDD `WhyBrief` + `UnifiedSpec` (scenes on `${…_par_url}`, honest 
 and **validates both via canopy `scripts.ddd.validate`** — do not proceed until both
 validate. Writes `7-synthetic/why_brief.yaml` + `<slug>.yaml`.
 
+**The gap-copy check runs here, not in Step 1** (`demo-narrative` step 3d,
+ace#2244): it needs the brief's `gaps[]`, which do not exist until this step, so
+`demo-narrative` reads each Step 1 dashboard's uploaded render_code back with
+`workflow_get` and scans it with the narrative. Its result is
+`steps.demo-narrative.gap_copy_check`.
+
 **Before the DDD dispatch, the pre-render arc check must pass** (`demo-narrative`
 step 3c, ace#2735): `scripts/demo-arc-precheck.ts` over the spec + `realized.json`
 (blocks same surface + component in consecutive scenes and a finale claim that
@@ -409,6 +415,46 @@ an outside reader gets, since `ddd_terminal_status` renders to members only. A
 did not pass", which is true (ace#2995). `passed-with-deferred-evals` stays
 reserved for evals that genuinely did not run.
 
+### Step 3.5: Carry the converged narrative back to the artifacts of record (EVERY terminal status)
+
+**Runs after `Agent(canopy:ddd)` returns, whatever its `terminal_status` —
+`converged_clean`, `stopped_not_converged`, `stop_concept_change`, anything.**
+The loop edits ITS OWN copies — `$REPO_ROOT/docs/walkthroughs/<slug>.yaml` and
+`$CANOPY_DDD_RUNS_DIR/<ddd_run_id>/why_brief.yaml` (+ the run dir's
+`unified_spec.yaml`) — and nothing in canopy writes them back: its DDD runtime
+has no Drive write path, and `narrative post` runs only at the narrative-review
+gate, BEFORE the loop iterates; later revisions are recorded under
+`<run_dir>/narrative-versions/` and never posted (ace#2254). On
+`spark-facilitator/20260907-1120` the loop withdrew an honesty claim (*"who
+decided it"*, over a build that captures no actor) and both stores a human opens
+kept it — Drive rev 10 byte-identical to rev 7, canopy-web still at v1 — until an
+operator pushed by hand. Check 14 then passed the stale Drive spec over zero
+evaluations while the corrected spec fails it. So, in order:
+
+1. **Drive — overwrite both artifacts of record from the loop's final copies.**
+   `mcp__plugin_ace_ace-gdrive__drive_update_file({fileId, localFilePath})` for
+   the spec (`fileId` = `products.synthetic.narrative.unified_spec_ref`,
+   `localFilePath` = the loop's `docs/walkthroughs/<slug>.yaml`) and for the
+   why-brief (`why_brief_ref` ← the run dir's `why_brief.yaml`). `localFilePath`,
+   never inline `content` — the spec is large and must arrive byte-identical.
+   Skip a file only when it is byte-identical to Drive (`drive_read_file` with
+   `writeToPath`, then `cmp`), and say so.
+2. **canopy-web — post the converged story** through the Step 3 wrapper:
+   `bin/ace-canopy-web --workspace "$WS" -- uv run python -m scripts.ddd.narrative post "$REPO_ROOT/docs/walkthroughs/<slug>.yaml" "<ddd_run_id>"`
+   (run from `$CANOPY_RT`). Exit 3 = this run's narrative review is still
+   pending: do NOT `--force`; record the revision instead with
+   `scripts.ddd.narrative_guard check <spec> --run <ddd_run_id> --reason "post-loop write-back (ace#2254)"`
+   and name the pending review in the phase summary. Never `narrative pull` here
+   — `pull` is web → local, and would overwrite the loop's corrections with the
+   pre-loop text. Then `verify narrative <slug>` (Step 3).
+3. **Re-run check 14 on the PUSHED spec.** `demo-data-setup-qa` check 14
+   (`checkScrollFraming`, `lib/demo-frame-legibility.ts`) over the spec read
+   back from Drive by `unified_spec_ref`, not the local copy — the point is that
+   the artifact of record now reproduces the video. Record its `judged` count
+   with the result (a `judged: 0` pass is not an approval).
+4. Record `steps.ddd-run.writeback: {drive_spec_rev, drive_why_brief_rev, narrative_version | pending_review, check14: {pass, judged}}`
+   in the phase write-back. A run that skips this step has not finished Phase 7.
+
 ### Step 3.9: Promote a dashboard that EARNED it (the learning loop)
 
 **Not for the cascade.** The indicator trio FOLLOWS the deployed labs
@@ -594,7 +640,7 @@ phases:
       demo-data-setup: { status: done }
       demo-narrative:   { status: done }
       ocs-coach-setup:  { status: done }   # required — no partial (Step 1.9)
-      ddd-run:          { status: done }
+      ddd-run:          { status: done, writeback: { drive_spec_rev: <rev>, drive_why_brief_rev: <rev>, narrative_version: <n>, check14: { pass: <bool>, judged: <n> } } }   # Step 3.5
 ```
 
 ### Step 4.5: Output previews for everything Step 3.95 did not cover (best effort)

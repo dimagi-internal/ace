@@ -345,6 +345,36 @@ paraphrase the schema here — read the model / schema and validate.
    author, and the evidence that authoring guidance works here is the +1.0 the
    ladder itself produced.
 
+   **Rules 2 and 3 are PAGE requirements — meet them on the page, not in the
+   narration (ace#2347).** Rule 1 is satisfiable by authoring alone (pick the
+   record the machine marked `Paid` and act on the control that exists). Rules 2
+   and 3 are not: a coverage measure ("8 of the 35 reviews this window are
+   done") and a visible downstream consequence (a payment released, a record
+   queued) must be ON the dashboard, and on `spark-facilitator/20260910-0541`
+   neither was — the page had no coverage figure and the review chip changed
+   nothing. This skill does not render, but it MAY patch the page it narrates
+   over. When the finale's page lacks the rate or the consequence:
+   - **Patch the dashboard first.** `workflow_get` the finale's workflow (id from
+     its `par_url`, `/labs/workflow/<workflow_id>/run/`), add the coverage
+     figure beside the act and the consequence the act produces (computed from
+     the run's own state — never a hard-coded number), lint the whole source
+     with `scripts/check-render-code-utilities.ts` (`demo-data-setup` step 3b),
+     then upload with `workflow_update_render_code` (or
+     `workflow_patch_render_code` for a small hunk), passing the
+     `render_code_version` you read as `expected_version`. Style it with
+     `window.LabsReport` per `playbook/integrations/connect-labs.md` § "Style
+     `render_code` with `window.LabsReport`". It is the same move
+     `checkEscapedPayoffIsHonoured` (`lib/ddd-scene-actions.ts`) already
+     demands of a missing payoff control: the control "has to be authored onto
+     the page rather than borrowed from the template".
+   - **Then narrate what the page now shows**, and nothing beyond it. Re-run
+     3d's gap-copy check, since the patch added copy.
+   - **Never narrate a rate or a consequence the page does not show.** That is
+     a `claim_reality_coherence` defect, not a fix for `use_case_soundness`: it
+     trades a capped gating dimension for a dishonest finale, on the dimension
+     that was already this opp's weakest. If the page cannot be made to show
+     it, cut the claim and let the finale be judged on what is there.
+
    - `scenes[]` — each scene: `persona` (must exist in `personas`), `title`,
      `show`, `concept_claim` (≥5 words, falsifiable, NO banned marketing
      phrases), `provenance` (= a spine `id`), `role: demo`, ≥1 `feature` with
@@ -596,6 +626,38 @@ paraphrase the schema here — read the model / schema and validate.
      Fix a blocker by reframing, merging or reordering what the deck already has,
      re-run 3c, then validate (step 4).
 
+3d. **Gap-copy check — dashboard copy AND the narrative against the brief's own
+   gaps (ace#1750, ace#1759, ace#2244).** This is where the check runs, because
+   this is the first point at which its input exists: `why_brief.yaml` is
+   authored here in Step 2, while `demo-data-setup` uploaded its dashboards one
+   step earlier, before any gap list existed — which is why its old position
+   (`demo-data-setup` § 3c) could never run and the dashboard-copy half of
+   ace#1750 was dead from the day it shipped (`spark-facilitator/20260907-1120`
+   recorded it `NOT RUN`). Read each dashboard's render_code AS UPLOADED — one
+   `mcp__connect-labs__workflow_get({workflow_id, opportunity_id | program_id})`
+   per entry in `source.dashboards[]` (the `workflow_id` is the path segment of
+   its `par_url`, `/labs/workflow/<workflow_id>/run/`; the scope is
+   `labs_synthetic_opp_id`, or `program_id` for a program-owned workflow), saved
+   to a local file — then:
+   ```bash
+   node "$ACE_ROOT/node_modules/tsx/dist/cli.mjs" "$ACE_ROOT/scripts/check-gap-copy.ts" \
+     --why-brief <demo-run>/7-synthetic/why_brief.yaml --spec <demo-run>/7-synthetic/<demo-slug>.yaml \
+     --render <key>=<scratch>/<key>.render.jsx ...   # one --render per dashboard
+   ```
+   It runs `checkGapCopy(whyBrief.gaps, [...dashboardSources, ...narrativeSources(whyBrief, unifiedSpec)])`
+   from `lib/gap-copy-check.ts` (rules, scope and known limits: `demo-data-setup`
+   § 3c). **It FLAGS, never rejects** — resolve every finding before the DDD
+   hand-off: a narrative finding by rewording the brief/spec, a dashboard
+   finding with `workflow_patch_render_code` (`workflow_get` → patch locally →
+   lint the whole source with `check-render-code-utilities.ts` → upload; still
+   cheap, nothing has rendered yet; style any added copy with `window.LabsReport`
+   per `playbook/integrations/connect-labs.md` § "Style `render_code` with
+   `window.LabsReport`"), or by recording why the line is
+   legitimate. Record the outcome as
+   `steps.demo-narrative.gap_copy_check: {ok, findings, resolved}` — never as
+   `NOT RUN`, and never scan only the narrative because the renders were
+   inconvenient to read.
+
 4. **Validate — the gate.** Resolve canopy's runtime from its installed
    plugin, then run the validator from there (pass the artifact paths as
    absolute paths — the subshell's cwd is the runtime, not yours):
@@ -608,6 +670,14 @@ paraphrase the schema here — read the model / schema and validate.
    (Confirm the exact `<kind>` tokens from `validate()`'s dispatch on first use.)
    Exit `0` = valid. Loop: fix reported problems, re-validate, until BOTH pass.
    Do not hand off an unvalidated narrative.
+
+4b. **A re-author after the DDD loop has run must `post`, never `pull`
+   (ace#2254).** The loop's corrections live in its own spec/why-brief copies;
+   Phase 7 Step 3.5 carries them to Drive and canopy-web. If you are re-invoked
+   to revise a narrative the loop already touched, start from the loop's final
+   `docs/walkthroughs/<slug>.yaml` (or Drive, once 3.5 has written it), and
+   publish with `scripts.ddd.narrative post <spec> <run_id>`. `narrative pull`
+   copies canopy-web → local and would silently restore the pre-loop text.
 
 5. **Write back** `narrative` refs + `steps.demo-narrative.status: done` via
    `mcp__plugin_ace_ace-gdrive__update_yaml_file` (`merge: 'deep'`).
@@ -705,6 +775,8 @@ paraphrase the schema here — read the model / schema and validate.
 
 | Date | Change | Author |
 |------|--------|--------|
+| 2026-10-16 | **Finale rules 2 and 3 are met on the page; a re-author posts, never pulls (ace#2347, ace#2254).** Rules 2 (show the rate) and 3 (a visible consequence) are page requirements a narrative-only scope could only meet by narrating what the page does not show (`spark-facilitator/20260910-0541`). Step 3 now says to patch the finale's dashboard (lint first, `workflow_update_render_code`), the same move `checkEscapedPayoffIsHonoured` already demands, and names an unshown rate as a `claim_reality_coherence` defect. New step 4b: after the DDD loop has run, publish with `narrative post`; `pull` would restore the pre-loop text. The loop's own write-back is Phase 7 Step 3.5. *Enforced:* `test/skills/phase7-narrative-writeback.test.ts`. | ACE team |
+| 2026-10-16 | **Step 3d: the gap-copy check runs HERE, after `why_brief.yaml` exists (ace#2244).** It was placed in `demo-data-setup` § 3c, one step before the brief that declares the gaps is authored, so it could never run — `spark-facilitator/20260907-1120` recorded it `NOT RUN`, and the dashboard-copy half of ace#1750 had been dead since it shipped. Now 3d reads each dashboard's uploaded render_code back with `workflow_get` and runs `scripts/check-gap-copy.ts` over it plus `narrativeSources(whyBrief, unifiedSpec)`; `demo-data-setup` § 3c only records the render sources and authors to the rules. *Enforced:* `test/skills/gap-copy-check-placement.test.ts`. | ACE team |
 | 2026-10-16 | **The labs sandbox frame is conditional, observed per scene, never read off the URL (ace#2885 reopened).** On `smallholder-seasonal/20261015-1402` the indicator programme report (workflow 10049), the worker review (10051) and the opp reports drew on the top page with no `/labs/sandbox/render/` iframe, and the URL-only check flagged all 14 targets of the spec. Following its rewrite would have made every one miss. `checkLabsReportFrameTargets` now takes the framing a capture observed (`framingFromCaptures` over `capture-scene-text.ts` output), flags in both directions (`labs-report-target-outside-frame` / the new `labs-report-target-in-absent-frame`, fixed with `outOfLabsReportFrame`), and says nothing for an unobserved scene. `narration-claims.ts --screen-text` runs it against its captures. `screen-text-outer-page-only` now fires only when a top-page-only capture is MISSING figures, because the capture of an unframed report holds them. | ACE team |
 | 2026-10-13 | **Labs report targets enter the sandbox iframe, and figures are checked against the frame's text (ace#2885).** Labs now draws report bodies in `/labs/sandbox/render/` (dimagi-internal/connect-labs#2449, #2466, #2470). The recorder resolves targets on the top page, so `smallholder-seasonal/20261012-1549` scene 1's `wait_for` missed. Its captured text was the breadcrumb only, so every narrated figure had to be checked by hand. Step 2c now passes every report target through `inLabsReportFrame` (`lib/labs-report-frame.ts`, the one place the frame prefix lives), and `checkSceneActions` flags `labs-report-target-outside-frame`. Step 3b adds `scripts/capture-scene-text.ts`, a read-only capture that enters the frame, and `narration-claims.ts --screen-text`, which flags `figure-not-on-screen` and refuses a top-page-only capture (`screen-text-outer-page-only`). The Spark worked example (`test/fixtures/demo-arc/spark-facilitator-20261004-1706-spec.json`) carries the framed targets. | ACE team |
 | 2026-10-06 | **Step 3c — a pre-render arc check over the spec's text (ace#2735).** `scripts/demo-arc-precheck.ts` / `lib/demo-arc-precheck.ts`: blocks consecutive scenes on the same surface + component and a finale claim that only restates scene 1's; reports a restated opening fact and a side-branch scene; then ONE text-only judge pass with a rubric mirroring `ddd-arc-eval`, gated by `gateArcPrecheckVerdict`. Never replaces the post-render arc judge. On `spark-facilitator/20261004-1706` it finds all three things that run's arc judge found after render, while `checkSceneVariety` and `checkArcLadder` both pass it (`test/lib/demo-arc-precheck.test.ts`). | ACE team |
