@@ -275,7 +275,14 @@ response time.
      marked placeholder
    - The UAT checklist section has at least 5 line items (real
      checklists do)
-   - Word count 500-1200 — operations docs should be scannable
+   - Word count 500-1200 words excluding the verbatim UAT checklist —
+     operations docs should be scannable. The checklist is pasted verbatim
+     from every journey's `pass_criteria`, so it scales with journey count
+     (7 journeys / 32 criteria = 583 words on bednet-check-2-visit/20260908-1544)
+     and is not counted. The band is a guide for the guide's OWN prose; the
+     eval is authoritative. `training-llo-guide-eval` has no length dimension
+     and hard-gates `operational_realism` on troubleshooting depth, so never
+     cut troubleshooting to fit the band (ace#2311).
 
 7. **Write** to `ACE/<opp>/runs/<run-id>/6-qa-and-training/training-llo-guide.md`
    **as a NATIVE Google Doc via `drive_create_doc_from_markdown`** — NOT
@@ -444,6 +451,7 @@ The self-eval criterion must assert duplicate handling explicitly.
 ## Change Log
 
 - v1 (0.10.84): Initial skill. Owns `training-llo-guide.md` only.
+- 2026-10-16: **The word band excludes the verbatim UAT checklist, and the eval is authoritative (ace#2311).** The band was 500-1200 words for the whole guide, but the mandated verbatim checklist alone was 583 words on a 7-journey PDD, and the eval hard-gates troubleshooting depth the remaining budget could not fund. *Enforced:* `test/skills/llo-guide-word-band.test.ts`.
 - 2026-10-15: **"Where the data lives" no longer links the Phase 4 opportunity (ace#3000).** That opportunity is ACE's build/QA vehicle, held by ACE's own NM org since ace#2419, and the partner cannot open it. The line now carries `selected_llo.opportunity_url` (Phase 9) or a verbatim labelled placeholder. *Enforced:* `test/skills/partner-artifacts-no-phase4-opp-url.test.ts`.
 - 2026-08-14: Added Step 7b — embed the screenshots into the rendered doc via `scripts/embed-doc-screenshots.ts` (Docs API `insertInlineImage`), plus a format rule making filename citations first-class and a `screenshot grounding` self-eval criterion keyed to the PUBLISHED image count. The guide cited nine frames in prose and rendered none. Artifact flagged `illustrated: true`; enforced by `test/lib/illustrated-artifacts.test.ts` (ace#1418).
 - 2026-09-06: **The `.source.md` companion goes through `drive_upload_binary`, not `drive_create_file` (ace#1991).** `drive_create_file` ALWAYS creates a Google Doc; it has no `mimeType` that changes that, and the key a caller passed to try was dropped by the MCP schema. So this step produced a SECOND rendered Doc and `run-surface-audit`'s `DOC-FIDELITY-UNVERIFIED` compared one Doc against another built by the same importer — passing structurally while unable to detect the content loss it exists to catch. Measured on `poverty-graduation/20260905-0924`: 57,178 bytes sent, 58,470 read back, every `#`/`**`/`>`/pipe-table marker gone. `skills/_training-template.md` had prescribed `drive_upload_binary` since 2026-09-01; the six producers had not followed it. `drive_create_file` now REFUSES a `mimeType` and names the `drive_upload_binary` call in the refusal. *Enforced:* `test/lib/source-persisted-artifacts.test.ts` (`PLAIN_WRITE_MARKERS` no longer accepts `drive_create_file`) + `test/mcp/gdrive/create-file-mimetype.test.ts`.
