@@ -94,7 +94,10 @@ consequence for the worker. Cite the verification-panel frame from
 
 ## Where the data lives
 - HQ domain: <ACE_HQ_DOMAIN from 3-commcare/app-deploy_summary.md>
-- Connect opportunity URL: <opportunity URL from connect-setup/opportunity.md>
+- Connect opportunity URL: <`phases.solicitation-management.products.selected_llo.opportunity_url`
+  if set, else verbatim `[PLACEHOLDER — your organisation's Connect opportunity link, sent when your opportunity is set up]` —
+  NEVER the Phase 4 opportunity URL: it is held by ACE's own Connect org
+  (`connect_orgs.nm_org` / `connect_orgs.pm_org`) and the partner cannot open it (ace#3000)>
 - Submission audit: <how LLO can review FLW submissions from Connect>
 
 ## Where to get help
@@ -441,6 +444,7 @@ The self-eval criterion must assert duplicate handling explicitly.
 ## Change Log
 
 - v1 (0.10.84): Initial skill. Owns `training-llo-guide.md` only.
+- 2026-10-15: **"Where the data lives" no longer links the Phase 4 opportunity (ace#3000).** That opportunity is ACE's build/QA vehicle, held by ACE's own NM org since ace#2419, and the partner cannot open it. The line now carries `selected_llo.opportunity_url` (Phase 9) or a verbatim labelled placeholder. *Enforced:* `test/skills/partner-artifacts-no-phase4-opp-url.test.ts`.
 - 2026-08-14: Added Step 7b — embed the screenshots into the rendered doc via `scripts/embed-doc-screenshots.ts` (Docs API `insertInlineImage`), plus a format rule making filename citations first-class and a `screenshot grounding` self-eval criterion keyed to the PUBLISHED image count. The guide cited nine frames in prose and rendered none. Artifact flagged `illustrated: true`; enforced by `test/lib/illustrated-artifacts.test.ts` (ace#1418).
 - 2026-09-06: **The `.source.md` companion goes through `drive_upload_binary`, not `drive_create_file` (ace#1991).** `drive_create_file` ALWAYS creates a Google Doc; it has no `mimeType` that changes that, and the key a caller passed to try was dropped by the MCP schema. So this step produced a SECOND rendered Doc and `run-surface-audit`'s `DOC-FIDELITY-UNVERIFIED` compared one Doc against another built by the same importer — passing structurally while unable to detect the content loss it exists to catch. Measured on `poverty-graduation/20260905-0924`: 57,178 bytes sent, 58,470 read back, every `#`/`**`/`>`/pipe-table marker gone. `skills/_training-template.md` had prescribed `drive_upload_binary` since 2026-09-01; the six producers had not followed it. `drive_create_file` now REFUSES a `mimeType` and names the `drive_upload_binary` call in the refusal. *Enforced:* `test/lib/source-persisted-artifacts.test.ts` (`PLAIN_WRITE_MARKERS` no longer accepts `drive_create_file`) + `test/mcp/gdrive/create-file-mimetype.test.ts`.
 - 2026-10-02: **Window from the opportunity, false paid records, LLO screens, honest contacts (ace#2610).** On `spark/spark-facilitator/20261001-2208` the guide had four defects. It printed "149 days to complete", which is the app's countdown on the capture date (`ConnectJobRecord.getDaysRemaining()`), next to a 116-day window. It had no procedure for a paid meeting later found fabricated. It showed only CBF phone screens. It could not name a Spark contact without inventing one. Fixes:

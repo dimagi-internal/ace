@@ -26,7 +26,8 @@ personalization tokens at send time.
 | Source | Artifact | Used for |
 |---|---|---|
 | Phase 1 | `ACE/<opp>/runs/<run-id>/1-design/idea-to-pdd.md` | one-paragraph opp framing for the email body |
-| Phase 4 | `ACE/<opp>/runs/<run-id>/4-connect/connect-opp-setup.md` | opportunity name + URL |
+| Phase 4 | `ACE/<opp>/runs/<run-id>/4-connect/connect-opp-setup.md` | opportunity **name only** — never its URL (see § The partner's opportunity link) |
+| Phase 9 (`run_state.yaml`, if present) | `phases.solicitation-management.products.selected_llo.opportunity_url` | the partner's own opportunity link for the CTA |
 | Phase 4 (`run_state.yaml`) | `connect.payment_units` | payment-summary line |
 | Phase 5 | `ACE/<opp>/runs/<run-id>/5-ocs/ocs-setup_widget-handoff.md` (`widget_url`) | widget link in the email |
 | Phase 6 (per-artifact training siblings) | `6-qa-and-training/training-llo-guide.md`, `training-flw-guide.md`, `training-quick-reference.md` | links to the docs LLO will use |
@@ -62,7 +63,7 @@ invites. Here's everything you need to start.
 **Accept the opportunity invite** here — it takes about 5 minutes, and
 we'd like it done by <deadline: absolute date, or "within 3 working
 days">:
-<opportunity URL from connect-setup/opportunity.md>
+<the partner's opportunity link — see § The partner's opportunity link>
 
 ## Then, before your FLWs start
 
@@ -100,6 +101,37 @@ to seeing the data.
 ace@dimagi-ai.com
 ```
 
+## The partner's opportunity link
+
+The CTA links the **partner's own** Connect opportunity, and in Phase 6 that
+opportunity does not exist yet. The Phase 4 opportunity
+(`phases.connect-setup.products.connect.opportunity.url`) is ACE's build/QA
+vehicle, held by ACE's own NM org (or its PM org when no NM org is
+configured) — CLAUDE.md § Phases, ace#2419. A partner cannot open it. The
+partner's opportunity is created in Phase 9 by `llo-onboarding` (step 2b), on
+fresh app copies, and recorded at
+`phases.solicitation-management.products.selected_llo.opportunity_url`
+(`opportunity_id` beside it).
+
+So the CTA link is, in order:
+
+1. **`selected_llo.opportunity_url`** from the current run's `run_state.yaml`,
+   when it is set — the email is being (re)drafted after Phase 9 made the
+   partner's opportunity.
+2. Otherwise this exact labelled placeholder, verbatim:
+
+   `[PLACEHOLDER — your organisation's Connect opportunity link, sent when your opportunity is set up]`
+
+   `llo-onboarding` replaces it with `selected_llo.opportunity_url` at send
+   time.
+
+**Never** the Phase 4 opportunity URL, and never any URL whose `/a/<org>/`
+segment is one of ACE's own Connect orgs (`connect_orgs.pm_org` /
+`connect_orgs.nm_org` from `lib/connect-orgs.ts`, shown by
+`bash bin/ace-doctor --preflight --no-live`; on a workspace run, the run's
+`products.connect.pm_org_slug` / `holding_org_slug`). Do not type an org slug
+— resolve it. (ace#3000)
+
 ## Format rules
 
 - **Personalization tokens use `{{TOKEN}}` syntax** so Phase 9 can
@@ -107,7 +139,10 @@ ace@dimagi-ai.com
   `LLO_ORG`. Don't introduce new tokens without coordinating a
   Phase-7-side update.
 - **Every URL is a real URL** — no `<insert link here>` placeholders.
-  All inputs are available at the time this skill runs.
+  The ONE exception is the partner-opportunity placeholder in § The
+  partner's opportunity link, which must appear verbatim when
+  `selected_llo.opportunity_url` is not yet set; every other input is
+  available at the time this skill runs.
 - **One paragraph per section.** This is an email, not a manual; LLOs
   scan and click.
 - **Subject line on the first line, prefixed `Subject:`** so Phase 9
@@ -158,7 +193,12 @@ ace@dimagi-ai.com
 
 5. **Self-check before write.** Verify:
    - Subject line is present and ≤ 78 chars
-   - Every URL is a real URL (no `<...>` placeholders, no `TODO`)
+   - Every URL is a real URL (no `<...>` placeholders, no `TODO`) — except
+     the verbatim partner-opportunity placeholder
+   - The CTA link is `selected_llo.opportunity_url` or the verbatim
+     placeholder, and **no URL in the body is under an ACE Connect org**
+     (`connect_orgs.pm_org` / `connect_orgs.nm_org`) — in particular not the
+     Phase 4 opportunity URL (ace#3000)
    - Word count 200-350, excluding URLs
    - Every **in-scope** sibling doc is linked, and **no out-of-scope artifact is
      linked or attached** — assert both with `assertSendScopeRespected(scope,
@@ -219,8 +259,10 @@ ace@dimagi-ai.com
 7. **Self-evaluate (LLM-as-Judge).** Five criteria:
    - **Subject + token discipline:** subject ≤ 78 chars, exactly
      `LLO_NAME`/`LLO_FIRST_NAME`/`LLO_ORG` tokens used
-   - **URL hygiene:** all 4 URLs (opp + 3 docs + widget) are real
-     URLs, not placeholders
+   - **URL hygiene:** the 3 doc URLs and the widget URL are real URLs,
+     not placeholders; the opportunity link is the partner's
+     `selected_llo.opportunity_url` or the verbatim partner-opportunity
+     placeholder, and no URL is under an ACE Connect org
    - **Word budget:** 200-350 words, excluding URLs
    - **Audience fit:** professional but warm; no jargon-heavy
      phrasing
@@ -233,8 +275,13 @@ ace@dimagi-ai.com
         ("within the next 3 working days"). "Soon" is not a deadline.
      3. **a time estimate** for the primary ask ("takes about 5
         minutes").
-     4. **a named link or contact** for that ask — the actual
-        opportunity URL, not "your Connect dashboard".
+     4. **a named link or contact** for that ask — the partner's own
+        opportunity URL (`selected_llo.opportunity_url`) or, before Phase 9
+        creates it, the verbatim partner-opportunity placeholder. Either
+        satisfies this item; "your Connect dashboard" does not. **A link to
+        the Phase 4 opportunity, or to any URL under an ACE Connect org
+        (`connect_orgs.pm_org` / `connect_orgs.nm_org`), fails this item and
+        caps the criterion at 3** — the partner cannot open it (ace#3000).
 
      Score 10 only with all four present. Missing a deadline OR a time
      estimate caps this criterion at 6. No CTA at all, or multiple
@@ -356,4 +403,5 @@ agent now dispatches each child directly.
   bednet-check-2-visit/20260825-1310 (9.3 self → 6.90/warn independent →
   8.95/pass after revision). The eval was NOT weakened to match.
 - v1 (0.10.84): Initial skill. Owns `training-onboarding-email.md` only.
+- 2026-10-15: **The CTA no longer links the Phase 4 opportunity (ace#3000).** Since the PM→NM flow (ace#2419) that opportunity is held by ACE's own NM org and the partner cannot open it; the template told the producer to link it and self-eval criterion 4 rewarded it. The CTA now carries `selected_llo.opportunity_url` when Phase 9 has recorded it, else a verbatim labelled placeholder that `llo-onboarding` fills; any URL under an ACE Connect org caps the CTA criterion at 3. Repro: `smallholder-seasonal/20261015-1402`. *Enforced:* `test/skills/partner-artifacts-no-phase4-opp-url.test.ts`.
 - 2026-09-06: **The `.source.md` companion goes through `drive_upload_binary`, not `drive_create_file` (ace#1991).** `drive_create_file` ALWAYS creates a Google Doc; it has no `mimeType` that changes that, and the key a caller passed to try was dropped by the MCP schema. So this step produced a SECOND rendered Doc and `run-surface-audit`'s `DOC-FIDELITY-UNVERIFIED` compared one Doc against another built by the same importer — passing structurally while unable to detect the content loss it exists to catch. Measured on `poverty-graduation/20260905-0924`: 57,178 bytes sent, 58,470 read back, every `#`/`**`/`>`/pipe-table marker gone. `skills/_training-template.md` had prescribed `drive_upload_binary` since 2026-09-01; the six producers had not followed it. `drive_create_file` now REFUSES a `mimeType` and names the `drive_upload_binary` call in the refusal. *Enforced:* `test/lib/source-persisted-artifacts.test.ts` + `test/mcp/gdrive/create-file-mimetype.test.ts`.

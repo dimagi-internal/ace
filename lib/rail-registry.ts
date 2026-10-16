@@ -261,6 +261,7 @@ export const RAILS: Readonly<Record<string, RailProvenance>> = {
   'test/skills/ocs-publication-gate.test.ts': { issues: ['ace#1905', 'ace#891', 'ace#1828', 'ace#1895'] },
   'test/skills/ocs-upload-strips-data-uris.test.ts': { issues: ['ace#1827'], observed: 'bednet-check-2-visit/20260828-0629' },
   'test/skills/onboarding-email-word-band.test.ts': { issues: ['ace#1673', 'ace#1654'], observed: 'hh-poverty-targeting/20260824-1404' },
+  'test/skills/partner-artifacts-no-phase4-opp-url.test.ts': { issues: ['ace#3000', 'ace#2419'], observed: 'smallholder-seasonal/20261015-1402' },
   'test/skills/payability-key-names-entity-name.test.ts': { issues: ['ace#1958', 'ace#1434'], observed: 'bednet-check-2-visit/20260902-1555' },
   'test/skills/pdd-must-not-assert-mechanisms.test.ts': { issues: ['ace#1213'] },
   'test/skills/pdd-retired-premise-bidirectional.test.ts': { issues: ['ace#1924', 'ace#1213', 'voidcraft-labs/commcare-nova#458'] },
