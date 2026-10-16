@@ -158,6 +158,84 @@ describe('3. displayed columns vary (ace#2735: "two all-constant columns (Commun
   });
 });
 
+// ace#2746: spark-facilitator/20261004-1706 attempt 3 passed check 26 ("8 worker, 5 case column(s)
+// vary") while the DDD user judge capped trust at 2 on ten facilitators reading Women attending
+// 35.8-36.9%, Spoke up 31.4-32.5%, Women who spoke 21.1-22.5% beside Meeting regularity 55-98%.
+// The figures are the judge's verbatim ranges; the rows are spread linearly across them.
+describe('3b. near-constant worker rates fail (ace#2746)', () => {
+  const span = (lo: number, hi: number, i: number, n: number) => (lo + ((hi - lo) * i) / (n - 1)) / 100;
+  const flatBuild = (partners: string[]) => {
+    const s = copy(SNAP);
+    s.byFLW = partners.flatMap((llo) =>
+      Array.from({ length: 10 }, (_, i) => ({
+        ...copy(SNAP.byFLW![0]),
+        llo,
+        flw: `${llo}-${i}`,
+        rows: i % 2 ? [1, 2] : [1],
+        ind: {
+          SF_P1: { value: span(55, 98, i, 10) },
+          SF_D1: { value: (i % 3) / 10 },
+          SF_P3: { value: i % 2 },
+          SF_S1: { value: span(55, 80, i, 10) },
+          SF_S2: { value: span(35.8, 36.9, i, 10) },
+          SF_S3: { value: span(31.4, 32.5, i, 10) },
+          SF_S4: { value: span(21.1, 22.5, i, 10) },
+        },
+      })),
+    );
+    return s;
+  };
+
+  it("fails the run's three participation columns, flat inside every partner beside a 43-point spread", () => {
+    const r = checkConstantDisplayedColumns(flatBuild(['A (example)', 'B (example)']));
+    expect(r.pass).toBe(false);
+    const near = r.findings.filter((f) => f.near && f.scope === 'programme').map((f) => f.column.split(' ')[0]);
+    expect(near.sort()).toEqual(['SF_S2', 'SF_S3', 'SF_S4']);
+    expect(r.detail).toMatch(/SF_S2 "Women attending" = 35\.8%–36\.9%/);
+    expect(r.auto_fix_hint).toMatch(/per-worker[\s\S]*§ C3/);
+  });
+
+  it('CONTROL: the same columns with a per-worker effect (an 8-point spread) pass', () => {
+    const s = flatBuild(['A (example)', 'B (example)']);
+    s.byFLW!.forEach((w, i) => {
+      for (const id of ['SF_S2', 'SF_S3', 'SF_S4']) w.ind![id] = { value: (w.ind![id]!.value as number) + ((i % 10) - 5) * 0.016 };
+    });
+    expect(checkConstantDisplayedColumns(s).pass).toBe(true);
+  });
+
+  it('CONTROL: a flat column with no widely spread sibling is not judged near-constant', () => {
+    const s = flatBuild(['A (example)']);
+    s.byFLW!.forEach((w, i) => {
+      w.ind!.SF_P1 = { value: 0.8 + (i % 5) / 100 };
+      w.ind!.SF_S1 = { value: 0.6 + (i % 4) / 100 };
+      w.ind!.SF_P3 = { value: 1 };
+      w.ind!.SF_D1 = { value: (i % 3) / 100 };
+    });
+    expect(checkConstantDisplayedColumns(s).findings.some((f) => f.near)).toBe(false);
+  });
+
+  it('flat in only some partners is reported, not failed', () => {
+    const s = flatBuild(['A (example)', 'B (example)']);
+    s.byFLW!.filter((w) => w.llo === 'B (example)').forEach((w, i) => (w.ind!.SF_S2 = { value: 0.2 + i * 0.03 }));
+    const r = checkConstantDisplayedColumns(s);
+    expect(r.findings.some((f) => f.near && f.column.startsWith('SF_S2') && f.scope === 'programme')).toBe(false);
+    expect(r.findings.some((f) => f.near && f.column.startsWith('SF_S2') && f.scope === 'A (example)')).toBe(true);
+    expect(r.detail).toMatch(/SF_S2 "Women attending"=35\.8%–36\.9% \(near-constant\) in A \(example\)/);
+  });
+
+  it('the real Spark saved run is not failed by the near-constant rule (its story signals break the flatness)', () => {
+    const r = checkConstantDisplayedColumns(SNAP, VISITS);
+    expect(r.findings.some((f) => f.near && f.scope === 'programme')).toBe(false);
+  });
+
+  it('demo-data-setup § C3 tells the pool author to give each worker its own effect', () => {
+    const skill = readFileSync(join(__dirname, '../../skills/demo-data-setup/SKILL.md'), 'utf8');
+    const c3 = skill.slice(skill.indexOf('**C3.'), skill.indexOf('**C4.'));
+    expect(c3).toMatch(/per-worker effect/);
+    expect(c3).toMatch(/ace#2746/);
+  });
+});
+
 describe('4. drill levels branch (ace#2735: "a redundant single-row Opportunities level")', () => {
   it('counts children per parent from the saved run', () => {
     const c = drillLevelChildCounts(SNAP);

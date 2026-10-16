@@ -86,7 +86,9 @@ front half (how the labs-only opp + its data come to exist) differs.
         expression: "<verbatim>"   # with a known resolution and a non-empty detail
         resolution: spec-addition  # spec-addition | direct-measured-assertion | spec-correction | out-of-scope-form
         detail: "<the measured count, e.g. 0 of 167 violate>"
-    additions:                     # hand-declared, merged via mergeDatasetSpecs
+    additions:                     # hand-declared, merged via mergeDatasetSpecs; check 9 rebuilds
+      conditional_fields: []       # the merged spec from these, so list EVERY addition (ace#2245)
+      integer_fields: []
       whole_currency_fields: []
       cross_field_rules: []
       unique_pairs: []
@@ -1532,6 +1534,15 @@ exact form paths. Synthetic slot mode cannot express this — it draws a random
 entity per visit, so one case would be visited by every worker. This is still
 curation, not mirroring of real data ("curate invents signal"): the pool is
 written, not profiled. Mechanics that bite (all observed, ace#2510):
+- **give every worker its own per-worker effect on every per-visit draw**, not
+  only partner-level ranges (ace#2746). Over ~30 visits a worker, values drawn
+  per visit from one partner range all converge on the partner mean, so ten
+  facilitators read 35.8–36.9% while regularity spans 55–98%, and the DDD user
+  judge reads that as generated data (`trust` 2 on
+  `spark-facilitator/20261004-1706`). Draw a worker offset once, for example
+  Gaussian with a few points' SD, and add it to that worker's draws. Check 26
+  (`checkConstantDisplayedColumns`) fails a scorecard rate that is under 3
+  points across every partner's workers beside a column spread ≥ 15 points;
 - `jitter_frac: 0` — jitter turns people-counts fractional and breaks a
   deliberately repeated count;
 - a categorical constant across an entity's visits is stamped onto ALL its
