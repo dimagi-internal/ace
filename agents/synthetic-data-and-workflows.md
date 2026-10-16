@@ -397,8 +397,17 @@ canopy's `webm→mp4` conversion fails.
 
 **On a non-`converged_clean` ending, do not halt the run.** Phase 7 has no gate.
 Record the terminal status and any open strategy findings in the phase write-back
-(`verdict: passed-with-deferred-evals`), publish the `--stuck` package URL as the
-`summary_artifact`, and proceed to Phase 8.
+with a verdict that NAMES the outcome — `verdict: partial-ddd-<terminal_status>`
+(e.g. `partial-ddd-stopped_not_converged`, the status copied verbatim) — keep
+`status: done`, publish the `--stuck` package URL as the `summary_artifact`, and
+proceed to Phase 8. **Never `passed-with-deferred-evals` here:** the judges ran
+and the loop stopped short of its bar, so nothing was deferred, and ace-web's
+`_verdict_caveat` reads any verdict containing `deferred` as "Built; some quality
+checks were deferred" on the anonymous run-summary page — the only ending signal
+an outside reader gets, since `ddd_terminal_status` renders to members only. A
+`partial-…` verdict renders "Only partly finished — some of this stage's checks
+did not pass", which is true (ace#2995). `passed-with-deferred-evals` stays
+reserved for evals that genuinely did not run.
 
 ### Step 3.9: Promote a dashboard that EARNED it (the learning loop)
 
@@ -552,7 +561,7 @@ phases:
   synthetic-data-and-workflows:
     status: <done|partial>
     completed_at: <ISO>
-    verdict: <pass|passed-with-deferred-evals>
+    verdict: <pass|partial-ddd-<terminal_status>|passed-with-deferred-evals>  # partial-ddd-… on a non-converged_clean DDD ending; deferred ONLY when an eval did not run (ace#2995)
     summary_artifact: <DDD package / summary doc id>
     products:
       synthetic:

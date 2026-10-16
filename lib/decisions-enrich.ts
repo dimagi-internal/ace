@@ -323,12 +323,23 @@ function overlap(a: string, b: string): number {
 const HUMAN_DECISION =
   /\bdesign decision\b|\bdecision (?:for|belongs)\b|\bfor (?:the )?(?:partner|design owner|operator|programme owner|reviewer)\b|\b(?:to|must|should) decide\b|\bsign[- ]?off\b|\bnative[- ]speaker\b|\bneeds?[- ]review\b|\bunreviewed\b/i;
 
+/** The "Why confirm" line for a residual with no named owner (ace#2996). */
+export const RESIDUAL_REASON = 'The build recorded no fix; a person must decide how this is handled.';
+/** The "In plain words" line for a residual ask; the question carries its content. */
+export const RESIDUAL_PLAIN = 'The build went ahead as described and left this for a person to decide.';
+
 const TRANSLATION = /\btranslat|\bnative[- ]speaker\b|\bneeds[- ]review\b/i;
 
 export interface OpenResidual {
   phaseKey: string;
   what: string;
   whereToApply: string;
+  /**
+   * The residual's optional reviewer-facing wording (`residuals[].plain`).
+   * `what` / `where_to_apply` are written for the FIXER; when a residual
+   * becomes a reviewer ask, `plain` is what the reader sees (ace#2996).
+   */
+  plain?: string;
 }
 
 /**
@@ -346,11 +357,14 @@ export function openResiduals(runState: unknown): OpenResidual[] {
   }
   for (const [phaseKey, raw] of Object.entries(phases(runState))) {
     const block = rec(raw);
-    const items: Array<{ what: string; where: string }> = [];
+    const items: Array<{ what: string; where: string; plain?: string }> = [];
     if (Array.isArray(block.residuals)) {
       for (const r of block.residuals) {
         if (typeof r === 'string') items.push({ what: r, where: '' });
-        else items.push({ what: str(rec(r).what), where: str(rec(r).where_to_apply) });
+        else {
+          const plain = str(rec(r).plain).trim();
+          items.push({ what: str(rec(r).what), where: str(rec(r).where_to_apply), ...(plain ? { plain } : {}) });
+        }
       }
     }
     if (Array.isArray(block.open_residuals)) for (const r of block.open_residuals) items.push({ what: str(r), where: '' });
@@ -363,9 +377,10 @@ export function openResiduals(runState: unknown): OpenResidual[] {
       const dup = out.find((o) => overlap(residualBody(o.what), residualBody(it.what)) >= 0.6);
       if (dup) {
         if (!dup.whereToApply && it.where) dup.whereToApply = it.where;
+        if (!dup.plain && it.plain) dup.plain = it.plain;
         continue;
       }
-      out.push({ phaseKey, what: it.what, whereToApply: it.where });
+      out.push({ phaseKey, what: it.what, whereToApply: it.where, ...(it.plain ? { plain: it.plain } : {}) });
     }
   }
   return out;
@@ -623,17 +638,28 @@ export function deriveReviewAsks(runState: unknown, rows: DecisionRow[]): Review
     const existing = rows.find((r) => r.id === id);
     if (existing && humanRuled(existing)) continue;
     const owner = /\bdesign decision for ([^;.]+?)(?:[;.]|$)/i.exec(where)?.[1]?.trim();
+    // `where_to_apply` is a location for the fixer ("HQ app builder → …",
+    // "Nova review on both apps"), never a reason a reviewer can act on, so
+    // it is only mined for a named owner — never copied into the "Why
+    // confirm" line (ace#2996).
     const reason = owner
       ? `Only ${owner.replace(/\s*\/\s*/g, ' and ')} can decide how this is handled; as built, the app has no way to handle it.`
-      : sentence(where || 'The build recorded no fix; a person must decide how this is handled');
+      : RESIDUAL_REASON;
+    // The reader-facing question comes from the residual's own `plain` when
+    // the phase wrote one; `what` (fixer prose) is the fallback, and the
+    // plain-language gate still audits whichever lands.
+    const shown = res.plain ? plainText(res.plain) : what;
+    const question = `How should this be handled: ${shown.replace(/[.?]$/, '')}?`;
     asks.push({
       id,
       reason,
-      plain: sentence(`Open question: ${what}`),
-      plainQuestion: `How should this be handled: ${what.replace(/[.?]$/, '')}?`,
+      // `plain` says where things stand; the question carries the content —
+      // the two must not restate the same text (ace#2996).
+      plain: RESIDUAL_PLAIN,
+      plainQuestion: question,
       basis: `run_state phases.${res.phaseKey} residual`,
       synthesize: synthRow({
-        plain_question: `How should this be handled: ${what.replace(/[.?]$/, '')}?`,
+        plain_question: question,
         id,
         phase: tag,
         skill: skillFromResidual(res.what, res.phaseKey),
@@ -641,7 +667,7 @@ export function deriveReviewAsks(runState: unknown, rows: DecisionRow[]): Review
         value: 'Not decided — built as described',
         options: ['Not decided — built as described', 'Change the build'],
         source: `run_state phases.${res.phaseKey}.residuals`,
-        plain: sentence(`Open question: ${what}`),
+        plain: RESIDUAL_PLAIN,
         reason,
         value_set_by: 'external',
         evidence_basis: 'inferred',

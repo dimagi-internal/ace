@@ -1008,7 +1008,15 @@ residuals:
   - what: "camera-only photo capture — flip appearance to acquire on the Deliver photo upload question"
     where_to_apply: "HQ app builder → <deliver app> → <form> → photo question → appearance"
     verifiable_by: "app-release-qa camera-only check (image <upload> carries appearance containing 'acquire' in the released CCZ)"
+    plain: "Workers can still pick a photo from the phone's gallery instead of taking one."   # optional
 ```
+
+`what` / `where_to_apply` are written for the fixer. A residual a person must
+decide becomes a confirm ask on the reviewer page (`lib/decisions-enrich.ts`),
+and its question is taken from `plain` when present, else from `what` — so give
+any residual a reviewer will see a `plain` line with no internal names
+(skills, Nova, "operator review", language codes). `where_to_apply` is never
+shown to a reviewer (ace#2996).
 
 A build note alone is write-once and gets lost: on
 hh-poverty-targeting/20260702-1456 the camera-only flip sat in the
