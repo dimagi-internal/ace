@@ -76,6 +76,7 @@ import {
 } from '../lib/replacement-coverage.js';
 import { assertDimagiOwnerRecipient } from '../lib/destructive-guards.js';
 import { googleDriveLookup, installDriveTenancyGuard } from '../lib/drive-tenancy-guard.js';
+import { extractSheetHyperlinks } from '../lib/sheets-hyperlinks.js';
 import { createIdentityGate, installIdentityGate, DRIVE_REFUSAL_HINT } from '../lib/agent-identity-gate.js';
 import {
   runDecisionsRender,
@@ -551,6 +552,53 @@ server.tool(
   async ({ spreadsheetId, ranges }) => {
     try {
       return result(await handleSheetsBatchRead({ spreadsheetId, ranges }));
+    } catch (e: any) {
+      return error(e.message);
+    }
+  },
+);
+
+/**
+ * `sheets_read_hyperlinks` handler, exported for unit testing with mocked
+ * clients. Read-only: one `spreadsheets.get` with grid data narrowed to the
+ * three fields a link can live in (ace#2390). Extraction is the pure
+ * `extractSheetHyperlinks` in `lib/sheets-hyperlinks.ts`.
+ */
+export async function handleSheetsReadHyperlinks(
+  args: { spreadsheetId: string; range: string },
+  sheetsClient: typeof sheets = sheets,
+  driveClient: typeof drive = drive,
+  opts: ResolveOpts = {},
+) {
+  const resolved = await resolveShortcutTarget(args.spreadsheetId, driveClient, opts);
+  const resp = await sheetsClient.spreadsheets.get({
+    spreadsheetId: resolved.fileId,
+    ranges: [args.range],
+    includeGridData: true,
+    fields:
+      'sheets(properties(title),data(startRow,startColumn,rowData(values(hyperlink,formattedValue,textFormatRuns,userEnteredValue,userEnteredFormat/textFormat/link))))',
+  });
+  const links = extractSheetHyperlinks(resp.data);
+  return {
+    spreadsheet_id: resolved.fileId,
+    ...shortcutEcho(resolved),
+    range: args.range,
+    total: links.length,
+    links,
+  };
+}
+
+// 6b. Read hyperlink TARGETS in a range
+server.tool(
+  'sheets_read_hyperlinks',
+  "Read the hyperlink TARGETS behind cells in a range — what `sheets_read` cannot see, since it returns only the displayed text. Use when a human-maintained sheet carries meaning in the link rather than the label (the Connect LLO Directory joins an org to its EOI on the link behind the text). Read-only.\n\nReturns `{spreadsheet_id, requested_file_id, shortcut_resolved, range, total, links: [{a1, displayText, url, kind}]}`; cells with no link are omitted. `kind` says where the link came from: `cell` (a whole-cell rich-text link), `run` (a link on PART of the cell's text — one entry per linked span, `displayText` is that span), or `formula` (`=HYPERLINK(...)`). All three are covered — `--render FORMULA` and the xlsx-export workaround each see only some of them, and a plain-looking cell can hide a rich-text link." + SHORTCUT_READ_NOTE,
+  {
+    spreadsheetId: z.string().describe('The spreadsheet ID (a shortcut id is resolved to its target)'),
+    range: z.string().describe('A1 notation range, e.g. "\'EOI/RFP\'!J1:J50" or just a sheet name'),
+  },
+  async ({ spreadsheetId, range }) => {
+    try {
+      return result(await handleSheetsReadHyperlinks({ spreadsheetId, range }));
     } catch (e: any) {
       return error(e.message);
     }

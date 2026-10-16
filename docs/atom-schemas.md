@@ -12,7 +12,7 @@ For the deterministic atom-rename / remove drift check, see `test/skill-atom-ref
 
 ## ace-gdrive
 
-Source: `mcp/google-drive-server.ts` — 49 atoms
+Source: `mcp/google-drive-server.ts` — 50 atoms
 
 ### `sheets_list_tabs`
 
@@ -67,6 +67,15 @@ Read multiple ranges from a spreadsheet in one call. Returns `{spreadsheet_id, r
 |-------|------|----------|-------------|
 | `spreadsheetId` | `z.string` | **required** | The spreadsheet ID (a shortcut id is resolved to its target) |
 | `ranges` | `z.array` | **required** | Array of A1 notation ranges |
+
+### `sheets_read_hyperlinks`
+
+Read the hyperlink TARGETS behind cells in a range — what `sheets_read` cannot see, since it returns only the displayed text. Use when a human-maintained sheet carries meaning in the link rather than the label (the Connect LLO Directory joins an org to its EOI on the link behind the text). Read-only. Returns `{spreadsheet_id, requested_file_id, shortcut_resolved, range, total, links: [{a1, displayText, url, kind}]}`; cells with no link are omitted. `kind` says where the link came from: `cell` (a whole-cell rich-text link), `run` (a link on PART of the cell's text — one entry per linked span, `displayText` is that span), or `formula` (`=HYPERLINK(...)`). All three are covered — `--render FORMULA` and the xlsx-export workaround each see only some of them, and a plain-looking cell can hide a rich-text link. A Drive shortcut id is resolved to its target first (the Sheets/Docs/Slides/Forms APIs do not follow shortcuts); the result echoes `requested_file_id` and `shortcut_resolved`.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `spreadsheetId` | `z.string` | **required** | The spreadsheet ID (a shortcut id is resolved to its target) |
+| `range` | `z.string` | **required** | A1 notation range, e.g. "'EOI/RFP'!J1:J50" or just a sheet name |
 
 ### `sheets_create_tab`
 
