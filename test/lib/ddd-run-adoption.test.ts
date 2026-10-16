@@ -291,3 +291,46 @@ describe("canopy's in-flight 'running' is not an ending (ace#2360)", () => {
     expect(isTerminatedRun(null)).toBe(false);
   });
 });
+
+describe("a TERMINATED run under this ACE run's own root is not resumed (ace#2745)", () => {
+  // spark-facilitator/20261004-1706, Phase 7 attempt 3: the re-run found the
+  // previous attempt's ended run under the SAME pinned root and was told
+  // resume-in-place — inheriting a stopped_not_converged score_history.
+  const HERE = 'ace-spark-facilitator-20261004-1706';
+  const SLUG = 'spark-facilitator-programme-cascade';
+  const ENDED = 'spark-facilitator-programme-cascade-2026-10-06-002';
+  const EARLIER = 'spark-facilitator-programme-cascade-2026-10-06-001';
+  const runDir = (runId: string) => `${RUNS_PARENT}/${HERE}/${runId}`;
+
+  const resolveWith = (liveness: Record<string, DddRunLiveness>) =>
+    resolveDddRunAdoption({
+      ...input({ [HERE]: [EARLIER, ENDED] }, HERE, SLUG),
+      readRunLiveness: (d: string) => liveness[d] ?? null,
+    });
+
+  const stopped: DddRunLiveness = {
+    terminal_status: 'stopped_not_converged',
+    auto_iterate_next_action: null,
+  };
+
+  it('starts fresh when every in-place run has ended, naming them', () => {
+    const out = resolveWith({ [runDir(ENDED)]: stopped, [runDir(EARLIER)]: stopped });
+    expect(out.disposition).toBe('start-fresh');
+    expect(out.adopt).toBeNull();
+    expect(out.inPlace).toHaveLength(0);
+    expect(out.reason).toContain(
+      `${HERE}/${ENDED} (already ended: terminal_status=stopped_not_converged)`,
+    );
+  });
+
+  it('resumes the live in-place run, skipping an ended newer one', () => {
+    const out = resolveWith({ [runDir(ENDED)]: stopped });
+    expect(out.disposition).toBe('resume-in-place');
+    expect(out.adopt?.runId).toBe(EARLIER);
+  });
+
+  it('still resumes in place when no liveness reader is supplied', () => {
+    const out = resolveDddRunAdoption(input({ [HERE]: [ENDED] }, HERE, SLUG));
+    expect(out.disposition).toBe('resume-in-place');
+  });
+});

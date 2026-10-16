@@ -297,7 +297,9 @@ Then resolve whether a run for this narrative slug already exists **anywhere on
 this machine** — `lib/ddd-run-adoption.ts::resolveDddRunAdoption`
 (`test/lib/ddd-run-adoption.test.ts`) returns one of:
 
-- `resume-in-place` — a run sits under this run's root. Dispatch normally.
+- `resume-in-place` — a LIVE run sits under this run's root. Dispatch normally.
+  An ended run under this root (a Phase 7 re-run inside the same ACE run) is
+  skipped like any other, so all-ended in place means `start-fresh` (ace#2745).
 - `adopt-from-other-worktree` — move/copy the named `runDir` into this run's runs
   root FIRST, then dispatch with `--resume <run_id>`.
 - `start-fresh` — no adoptable run for this slug anywhere. A fresh run is correct.
