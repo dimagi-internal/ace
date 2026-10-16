@@ -97,6 +97,17 @@ executable form of these rules; `unaccounted` is the HARNESS WARN list):
   `multi-day` criterion, add the remedy: re-run `/ace:qa-deep` on
   successive days against the same cases.
 
+**Known platform rendering — not a product finding: stray spaces on an
+id-mapping case-list label (ace#2692).** HQ compiles a Nova `id-mapping`
+column as `replace(join(' ', ...), '\s+', ' ')`, which never trims, so a value
+renders with a leading and/or trailing space (`"Step 1: Our Partnership "`)
+while the blueprint label is clean. The app cannot trim it without dropping
+the label's translations. Do not deduct `clarity` or any other dimension for
+it, and do not raise it in `auto_surfaced` as a `PRODUCT` concern; if it is
+visible in a screenshot you cite, say "known platform rendering (ace#2692)" in
+that dimension's reason. The upstream fix is Nova's (emit HQ
+`conditional-enum`, or trim the joined result).
+
 For each dimension, write a one-sentence reason citing the specific
 screenshot(s) that drove the score (e.g.
 `"journey-deliver-step-04 shows field labelled q3_v2_optional"`).

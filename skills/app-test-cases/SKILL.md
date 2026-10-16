@@ -351,6 +351,17 @@ FULL-match regex and case-list cells are routinely truncated — and on any
 app built before 2026-08-14, language-stacked as well). Omit it on a followup and the walk fails loud on the case
 list rather than silently picking a row.
 
+**Match an id-mapping column's rendered label with surrounding-whitespace
+tolerance** (ace#2692). A Nova `id-mapping` case-list column compiles in HQ
+to `replace(join(' ', if(selected(...), label, ''), ...), '\s+', ' ')`, which
+collapses but never trims, so every value but the first renders with a
+leading space and every value but the last with a trailing one — on
+`spark-facilitator/20261004-1706` the device showed `"Step 1: Our Partnership "`
+and `" Step 2: Community Dynamics, Governance &amp; Leadership "` for clean
+blueprint labels. A `text:` exact match on such a cell fails. Wrap the label
+as ` *<label> *` (or `.*<label>.*`), never the bare label, in any `tapOn`,
+`assertVisible` or `CASE_NAME`-style match on an id-mapping column.
+
 Two things worth knowing, both live-established on 2.63.2 and both
 already handled inside the palette — do not re-derive them:
 
