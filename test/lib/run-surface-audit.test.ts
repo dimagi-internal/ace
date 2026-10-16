@@ -25,6 +25,7 @@ import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { parse as parseYaml } from 'yaml';
 
 import {
   ACCEPTED_PUBLIC_SECRETS,
@@ -2240,6 +2241,15 @@ describe('auditCarriedParity — a carried blocker or residual must reach the pa
     expect(auditCarriedParity(payload, { run_notes: { carried_residuals_needing_a_human: [] } })).toEqual([]);
     expect(auditCarriedParity(payload, { run_notes: { carried_residuals_needing_a_human: ['  '] } })).toEqual([]);
     expect(auditCarriedParity(payload, { blocker_dispositions: {} })).toEqual([]);
+  });
+
+  it('says nothing about a real run_state that carried nothing (poverty-graduation/20260908-0510)', () => {
+    // Captured run_state.yaml; its live payload had `carried_residuals: null` (ace#2346 body).
+    const runState = parseYaml(readFileSync(
+      path.join(process.cwd(), 'test/fixtures/run-surface-carried/poverty-graduation-20260908-0510.run_state.yaml'),
+      'utf8',
+    ));
+    expect(auditCarriedParity({ carried_residuals: null, build: null }, runState)).toEqual([]);
   });
 
   it('ignores blocker dispositions on phases the page has no field for', () => {
