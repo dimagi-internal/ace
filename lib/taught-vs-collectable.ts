@@ -62,23 +62,42 @@ export interface Blueprint {
 // location", "all three get a location fix"), which silently downgraded the
 // whole check to `unable`. `location fix` / `gps fix` also match on their own:
 // the noun phrase names the evidence action without needing a verb at all.
+//
+// ace#2873 — `photograph` is matched on its own, as verb or noun, in any
+// inflection. It used to need a helper verb (`take … photograph`) or a
+// following `of`, so the plain imperative a curriculum actually writes
+// ("If she agrees, photograph the turmeric she has for sale",
+// turmeric-market-study-ghana/20261012-1749) matched nothing and the whole
+// check went `unable`. Matching the NOUN too ("Which photographs you are asked
+// for…") widens what counts as teaching an evidence step; that is bounded by
+// the conditionality split below — such a label lands `conditional` or
+// `unclassified`, and only becomes a finding if it ALSO carries an
+// unconditional marker. `photo` (a short, common word) keeps its helper-verb
+// requirement. The same review widened GPS and audio to their noun-phrase
+// spellings (`GPS coordinates`, `geotag`, `voice note`, `audio recording`)
+// and GPS to `log` / `save`, rather than fixing one verb at a time.
 const EVIDENCE_ACTIONS: { action: string; phrases: RegExp; kinds: string[] }[] = [
   {
     action: 'photograph',
-    phrases: /\b(tak(?:e|es|en|ing)|captur(?:e|es|ed|ing)|snap(?:s|ped|ping)?)\b[^.]{0,40}\bphotograph|\bphotograph\b[^.]{0,20}\bof\b|\b(tak(?:e|es|en|ing)|captur(?:e|es|ed|ing))\b[^.]{0,20}\bphoto\b/i,
+    phrases: /\bphotograph(?:s|ed|ing)?\b|\b(tak(?:e|es|en|ing)|captur(?:e|es|ed|ing)|snap(?:s|ped|ping)?)\b[^.]{0,20}\bphotos?\b/i,
     kinds: ['image', 'photo'],
   },
   {
     action: 'GPS fix',
-    phrases: /\b(captur(?:e|es|ed|ing)|record(?:s|ed|ing)?|tak(?:e|es|en|ing)|get(?:s|ting)?)\b[^.]{0,30}\b(gps|location|coordinates)\b|\b(gps|location)\s+fix\b/i,
+    phrases: /\b(captur(?:e|es|ed|ing)|record(?:s|ed|ing)?|tak(?:e|es|en|ing)|get(?:s|ting)?|log(?:s|ged|ging)?|sav(?:e|es|ed|ing))\b[^.]{0,30}\b(gps|location|coordinates)\b|\b(gps|location)\s+fix\b|\bgps\s+(?:coordinates|point|reading|position)\b|\bgeo-?tag(?:s|ged|ging)?\b/i,
     kinds: ['geopoint', 'gps'],
   },
   {
     action: 'audio recording',
-    phrases: /\b(record(?:s|ed|ing)?)\b[^.]{0,30}\b(audio|voice|recording)\b/i,
+    phrases: /\b(record(?:s|ed|ing)?)\b[^.]{0,30}\b(audio|voice|recording)\b|\baudio[- ]record(?:ing|ed|s)?\b|\bvoice\s+(?:note|memo|recording)s?\b/i,
     kinds: ['audio'],
   },
 ];
+
+/** The evidence actions a Learn label teaches, by `action` name. */
+export function evidenceActionsIn(text: string): string[] {
+  return EVIDENCE_ACTIONS.filter((a) => a.phrases.test(text)).map((a) => a.action);
+}
 
 /**
  * Only text a curriculum states as applying to EVERY visit counts. A step
