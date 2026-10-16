@@ -2157,6 +2157,38 @@ describe('visiblePhaseLabels — what the provenance probe looks for', () => {
       .toEqual(['OCS Setup', 'X']);
   });
 
+  it('expects no heading for a stage whose rows are all internal or confirm-list (ace#2886)', () => {
+    // The (stage_label, audience, review_ask) tuples of smallholder-seasonal/20261012-1549:
+    // 'QA and training' had 1 confirm-list row + 3 internal rows, so the grouped list
+    // drew no heading for it — by design, not a hidden grouping.
+    const payload = {
+      decisions: {
+        rows: [
+          { stage_label: 'Design', audience: '', review_ask: '' },
+          { stage_label: 'QA and training', audience: '', review_ask: 'recommended-confirmation' },
+          { stage_label: 'QA and training', audience: 'internal', review_ask: '' },
+          { stage_label: 'QA and training', audience: 'internal', review_ask: 'recommended-confirmation' },
+          { stage_label: 'QA and training', audience: 'internal', review_ask: 'recommended-confirmation' },
+          { stage_label: 'Demo', superseded_by: 'demo-x-v2' },
+          { stage_label: 'Connect setup', review_ask: 'required-before' },
+        ],
+      },
+    };
+    expect(visiblePhaseLabels(payload)).toEqual(['Design', 'Connect setup']);
+  });
+
+  it('a stage with ONE default-drawn row still expects its heading', () => {
+    const payload = {
+      decisions: {
+        rows: [
+          { stage_label: 'QA and training', audience: 'internal' },
+          { stage_label: 'QA and training' },
+        ],
+      },
+    };
+    expect(visiblePhaseLabels(payload)).toEqual(['QA and training']);
+  });
+
   it('no decisions → no labels', () => {
     expect(visiblePhaseLabels({})).toEqual([]);
     expect(visiblePhaseLabels(null)).toEqual([]);
