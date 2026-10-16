@@ -81,14 +81,38 @@ export function isIdBearingCopy(path: string, mimeType?: string): boolean {
 }
 
 /**
- * A source path the clone deliberately does not copy: ACE's email records
- * (ace-web `run_cloner._skip_run_child` — a segment named `comms-log`, or
- * ending `_comms-log`). An id of one of those has no copy to point at.
+ * One path segment names a comms-log: `comms-log` or `<x>_comms-log`, AFTER
+ * stripping a file extension. The extension was the whole bug of ace#3027:
+ * `run-closeout_comms-log.md` ends in `.md`, so a bare `endsWith('_comms-log')`
+ * — the shape ace-web `run_cloner._skip_run_child` also has (ace-web#909) —
+ * let the clone copy it and this read-back pass it.
+ */
+export function isCommsLogSegment(seg: string): boolean {
+  const stem = seg.replace(/\.[A-Za-z0-9]+$/, '');
+  return stem === 'comms-log' || stem.endsWith('_comms-log');
+}
+
+/** A run-relative path with a comms-log segment (a `comms-log/` folder, or a `*_comms-log[.ext]` file). */
+export function isCommsLogPath(path: string): boolean {
+  return path.split('/').filter(Boolean).some(isCommsLogSegment);
+}
+
+/**
+ * A source path the clone deliberately does not copy: ACE's email records.
+ * An id of one of those has no copy to point at.
  */
 export function isLeftBehind(sourcePath: string): boolean {
-  return sourcePath
-    .split('/')
-    .some((seg) => seg === 'comms-log' || seg.endsWith('_comms-log'));
+  return isCommsLogPath(sourcePath);
+}
+
+/**
+ * Every comms-log that EXISTS in the target run. A clone must hold none: a
+ * copied comms-log carries the source run's `thread_id` (inbox-triage's
+ * routing key) and any unsent draft the source had, so the read-back observes
+ * the absence directly instead of inferring it from ids (ace#3027).
+ */
+export function findCopiedCommsLogs(targetPaths: Iterable<string>): string[] {
+  return [...targetPaths].filter(isCommsLogPath);
 }
 
 const VERDICT_FILE = /(_verdict[^/]*|-qa_result[^/]*|_result)(\.ya?ml)?$/i;

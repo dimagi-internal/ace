@@ -13,6 +13,7 @@ import {
   isArchived,
   assessLinks,
   assessPostcondition,
+  assessPreviewIndexes,
   assessPreviews,
   assessSurfaceAudit,
   buildReleaseVerdict,
@@ -158,6 +159,27 @@ describe('the other evidence on the real Spark run', () => {
     expect(assessPreviews([{ id: 'connect-setup:connect.program', output_key: 'connect.program', phase: 'connect-setup' }])[0].severity).toBe('blocker');
     expect(assessPreviews(null)[0].id).toBe('previews-unchecked');
     expect(assessPreviews([], [{ frame: '01-program-card.png', ok: false, detail: 'a probe program, not this one' }])).toHaveLength(1);
+  });
+
+  // ace#3030: noora-health/noora-health/20261015-1129's indexes, as found by eye.
+  it('previews: an index still listing opportunity-LIST frames blocks, automatically', () => {
+    const index = (names: string[]) =>
+      `schema_version: 1\nphase: commcare-setup\noutput_key: apps.learn\ncaptured_by: app-screenshot-capture\ncaptured_phase: qa-and-training\ncaptured_at: "2026-10-15T12:00:00Z"\nitems:\n${names.map((n, i) => `  - file_id: f${i}\n    name: ${n}\n`).join('')}`;
+    const files: RunFile[] = [
+      { path: '3-commcare/previews/apps-learn/_previews.yaml', modifiedTime: '', text: index(['02-claim-opp-detail.png', '03-claim-opp-list.png', '04-claim-opp-list-synced.png']) },
+      { path: '3-commcare/previews/apps-deliver/_previews.yaml', modifiedTime: '', text: index(['01-connect-resume-opp-list-synced.png', '02-deliver-sync-pre.png']) },
+      { path: '7-synthetic/previews/synthetic-workflows-worker-review/_previews.yaml', modifiedTime: '', text: index(['01-dashboard.png']) },
+    ];
+    const f = assessPreviewIndexes(files);
+    expect(f.map((x) => [x.id, x.severity])).toEqual([
+      ['preview-other-opps:3-commcare/previews/apps-learn', 'blocker'],
+      ['preview-other-opps:3-commcare/previews/apps-deliver', 'blocker'],
+    ]);
+    expect(f[0].detail).toContain('03-claim-opp-list.png, 04-claim-opp-list-synced.png');
+    // a clean index, or one the inventory did not read, is not a finding
+    expect(assessPreviewIndexes([{ path: '3-commcare/previews/apps-learn/_previews.yaml', modifiedTime: '', text: index(['02-claim-opp-detail.png']) }])).toEqual([]);
+    expect(assessPreviewIndexes([{ path: '3-commcare/previews/apps-learn/_previews.yaml', modifiedTime: '' }])).toEqual([]);
+    expect(INVENTORY_TEXT_WANTED.test('3-commcare/previews/apps-learn/_previews.yaml')).toBe(true);
   });
 
   it('links: every real probe loaded; a failed one blocks', () => {

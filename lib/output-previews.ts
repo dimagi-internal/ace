@@ -37,6 +37,7 @@
 //
 
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
+import { showsOtherOpportunities } from './opp-title-frames.js';
 
 export const PREVIEWS_SCHEMA_VERSION = 1 as const;
 export const PREVIEWS_INDEX_NAME = '_previews.yaml';
@@ -183,7 +184,10 @@ export interface BuildPreviewsIndexInput {
  *
  * Drops `duplicate_of` aliases (the same moment twice is one preview) and rows
  * without a file id (nothing to show), and keeps the first of any repeated file
- * id. Order is the caller's. The CALLER decides which frames are eligible —
+ * id. Also drops every frame of the shared test worker's opportunity LIST
+ * (`showsOtherOpportunities`): it names other programs, other partners'
+ * included, and is never a picture of this run's app (ace#3030).
+ * Order is the caller's. The CALLER decides which frames are eligible —
  * only a passing journey's frames, only frames whose anonymous readback
  * passed — and passes those.
  */
@@ -201,6 +205,7 @@ export function buildPreviewsIndex(input: BuildPreviewsIndexInput): PreviewsInde
   const items: PreviewItem[] = [];
   for (const f of input.frames) {
     if (nonEmpty(f.duplicate_of)) continue;
+    if (showsOtherOpportunities(f)) continue;
     const fileId = nonEmpty(f.file_id) ? String(f.file_id).trim() : '';
     if (!fileId || seen.has(fileId)) continue;
     seen.add(fileId);
@@ -218,6 +223,32 @@ export function buildPreviewsIndex(input: BuildPreviewsIndexInput): PreviewsInde
     captured_at: input.capturedAt,
     items,
   };
+}
+
+/** The run-relative path of an output's preview index (`<N>-<phase>/previews/<slug>/_previews.yaml`). */
+export const PREVIEWS_INDEX_PATH = /(^|\/)previews\/[^/]+\/_previews\.ya?ml$/;
+
+/**
+ * An index written BEFORE `buildPreviewsIndex` dropped opportunity-list frames
+ * (or copied verbatim by a clone), with those items removed. `removed` names
+ * them; `text` is unchanged when there are none, and otherwise re-serialized
+ * with the file's leading comment lines (a clone's provenance note) kept.
+ * Unparseable text is returned untouched — `assertPreviewsIndexReadable`
+ * owns that failure (ace#3030).
+ */
+export function withoutOtherOpportunityFrames(text: string): { text: string; removed: string[] } {
+  let doc: any;
+  try {
+    doc = parseYaml(text);
+  } catch {
+    return { text, removed: [] };
+  }
+  const items: any[] = Array.isArray(doc?.items) ? doc.items : [];
+  const removed = items.filter((i) => showsOtherOpportunities(i ?? {})).map((i) => String(i?.name ?? i?.file_id));
+  if (!removed.length) return { text, removed };
+  doc.items = items.filter((i) => !showsOtherOpportunities(i ?? {}));
+  const lead = /^(?:#[^\n]*\n)+/.exec(text)?.[0] ?? '';
+  return { text: lead + stringifyYaml(doc, { lineWidth: 0 }), removed };
 }
 
 /** YAML text for `_previews.yaml` — write it to a local file, then `drive_upload_binary`. */

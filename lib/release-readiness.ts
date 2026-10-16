@@ -27,6 +27,7 @@ import { checkOppPostcondition, type OppDecided, type OppReadback } from './conn
 import { hqEnterpriseFlipSteps } from './hq-enterprise-flip.js';
 import { collapseSharedCauses, plainFinding } from './release-readiness-plain.js';
 import { driveFileId } from './preview-capture.js';
+import { PREVIEWS_INDEX_PATH, withoutOtherOpportunityFrames } from './output-previews.js';
 import { auditDecisionsPlainLanguage, describePlainLanguageGate } from './decisions-enrich.js';
 import { parseDecisionsYaml } from './decisions-schema.js';
 import type { DecisionOverrideRow } from './decision-overrides.js';
@@ -411,6 +412,32 @@ export function assessPreviews(gaps: readonly PreviewGapLite[] | null, looks: re
   return out;
 }
 
+/**
+ * Every preview index in the run (`<phase>/previews/<slug>/_previews.yaml`,
+ * read by the inventory) that still lists a frame of the shared test worker's
+ * opportunity LIST — a frame naming other programs, other partners' included
+ * (ace#3030). Automatic, so it does not depend on step 4's look sampling the
+ * frame. An index that will not parse is left to its writer's read-back.
+ */
+export function assessPreviewIndexes(files: readonly RunFile[]): ReleaseFinding[] {
+  const out: ReleaseFinding[] = [];
+  for (const f of files) {
+    if (!PREVIEWS_INDEX_PATH.test(f.path) || typeof f.text !== 'string') continue;
+    const { removed } = withoutOtherOpportunityFrames(f.text);
+    if (!removed.length) continue;
+    const folder = f.path.replace(/\/_previews\.ya?ml$/, '');
+    out.push({
+      id: `preview-other-opps:${folder}`,
+      area: 'previews',
+      severity: 'blocker',
+      owner: 'app-screenshot-capture',
+      detail: `${f.path} shows ${removed.length} frame(s) of the shared test worker's opportunity list, which name other programs: ${removed.join(', ')}`,
+      fix: `drop them from the index: write withoutOtherOpportunityFrames(<index text>).text (lib/output-previews.ts) back to ${f.path} (drive_update_file), then re-run assess`,
+    });
+  }
+  return out;
+}
+
 // ---------------------------------------------------------------------------
 // 4. Links resolve for the intended audience
 // ---------------------------------------------------------------------------
@@ -517,7 +544,7 @@ export function assessChatbot(transcript: RunFile | null, now: string, maxAgeDay
  * only). Every gate that reads a file's text needs its file here — ace#2698's
  * app-release_summary.md was missing, so the apps gate could never see it.
  */
-export const INVENTORY_TEXT_WANTED = /-qa_result(?:-[a-z0-9]+)?\.ya?ml$|-eval_verdict(?:-[a-z]+)?\.ya?ml$|ocs-chatbot-qa_transcript[^/]*\.md$|release-readiness_verdict\.yaml$|(^|\/)decisions\.ya?ml$|(^|\/)app-release_summary\.md$/;
+export const INVENTORY_TEXT_WANTED = /-qa_result(?:-[a-z0-9]+)?\.ya?ml$|-eval_verdict(?:-[a-z]+)?\.ya?ml$|ocs-chatbot-qa_transcript[^/]*\.md$|release-readiness_verdict\.yaml$|(^|\/)decisions\.ya?ml$|(^|\/)app-release_summary\.md$|(^|\/)previews\/[^/]+\/_previews\.ya?ml$/;
 
 /** app-release's summary — the SOLE owner of released build state. Re-exported from lib/app-release-record.ts. */
 export { APP_RELEASE_SUMMARY };

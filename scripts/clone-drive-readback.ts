@@ -11,10 +11,14 @@
  * targets) — and reports any SOURCE run file id still in one. Read-only on
  * Drive.
  *
- * Prints one JSON object: {checked, hits[], left_behind[], provenance[]}.
- * `left_behind` = comms-log ids (not cloned, expected); `provenance` = the
- * decisions log and eval/QA records (history, left as is). Exit 0 = clean,
- * 1 = source ids remain in `hits`, 2 = usage / Drive error.
+ * Prints one JSON object: {checked, hits[], comms_logs_copied[], left_behind[], provenance[]}.
+ * `comms_logs_copied` = comms-logs that EXIST in the target run (`<x>_comms-log`
+ * with or without an extension, or a `comms-log/` folder) — a clone must hold
+ * none, since each carries the source's thread_id (ace#3027); trash them.
+ * `left_behind` = ids of source comms-logs (not cloned, expected); `provenance`
+ * = the decisions log and eval/QA records (history, left as is). Exit 0 =
+ * clean, 1 = source ids remain in `hits` or a comms-log was copied, 2 = usage /
+ * Drive error.
  *
  * `--plan <dir>` also writes the repair, without applying it: source → copy
  * ids paired by relative path, then per hit file either a rewritten local
@@ -36,6 +40,7 @@ import {
   buildCopyIdMap,
   docIdRewriteRequests,
   docTextAndLinks,
+  findCopiedCommsLogs,
   findLeftoverSourceIds,
   isIdBearingCopy,
   rewriteDriveIds,
@@ -135,10 +140,17 @@ async function main(): Promise<number> {
     }
   }
   const r = findLeftoverSourceIds(sourceFiles, copies);
+  // A comms-log in the TARGET is a failure on its own, whatever ids it holds
+  // (ace#3027): it carries the source's thread_id and drafts.
+  const commsLogsCopied = findCopiedCommsLogs(targetTree.map((f) => f.path)).map((p) => {
+    const e = targetTree.find((f) => f.path === p)!;
+    return { path: p, fileId: e.id };
+  });
   const report: any = {
     source_files: sourceFiles.length,
     checked: r.checked.length,
     hits: r.hits,
+    comms_logs_copied: commsLogsCopied,
     left_behind: r.leftBehind,
     provenance: r.provenance.map((h) => ({ copyPath: h.copyPath, sourceId: h.sourceId, occurrences: h.occurrences })),
   };
@@ -169,7 +181,7 @@ async function main(): Promise<number> {
     report.plan = { path: path.resolve(planDir, 'plan.json'), files: files.length, ambiguous: map.ambiguous.length };
   }
   console.log(JSON.stringify(report, null, 2));
-  return r.hits.length ? 1 : 0;
+  return r.hits.length || commsLogsCopied.length ? 1 : 0;
 }
 
 main().then(

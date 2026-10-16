@@ -28,6 +28,7 @@
  */
 
 import { parseAppReleaseSummary, releasedBuild } from './app-release-record.js';
+import { isCommsLogPath } from './clone-readback.js';
 
 export interface AppAssets {
   hq_app_id?: string;
@@ -43,10 +44,33 @@ export interface ConnectAssets {
   holding_org?: string;
 }
 
+/** Where a run's ace-web pages live: `…/opps/<workspace>/<opp>/runs/<run>/summary`, `…/w/<workspace>/opps/<opp>/runs/<run>`. */
+export interface AceWebRun {
+  workspace: string;
+  opp: string;
+  run: string;
+}
+
 export interface RunAssets {
   hq_domain?: string;
   apps: Record<string, AppAssets>; // keyed learn / deliver
   connect?: ConnectAssets;
+  /** The run's own ace-web page (ace#3032) — a copied doc must link the CLONE's. */
+  ace_web?: AceWebRun;
+}
+
+/**
+ * The run's ace-web identity, from `ace_web_summary_url` (the contracted
+ * pointer; the clone's `summary_url` stage sets the target's before 4e runs),
+ * else from the run_state's own `workspace` / `opportunity` / `run_id`.
+ */
+export function aceWebRunFromRunState(rs: any): AceWebRun | undefined {
+  const m = /\/opps\/([^/?#\s]+)\/([^/?#\s]+)\/runs\/([^/?#\s]+)/.exec(String(rs?.ace_web_summary_url ?? ''));
+  if (m) return { workspace: m[1], opp: m[2], run: m[3] };
+  const ws = s(rs?.workspace);
+  const opp = s(rs?.opportunity);
+  const run = s(rs?.run_id);
+  return ws && opp && run ? { workspace: ws, opp, run } : undefined;
 }
 
 export interface CloneLabel {
@@ -115,6 +139,8 @@ export function runAssetsFromRunState(rs: any, releaseSummary?: string | null): 
       holding_org: s(c.holding_org_slug ?? c.organization_slug),
     };
   }
+  const aw = aceWebRunFromRunState(rs);
+  if (aw) out.ace_web = aw;
   return out;
 }
 
@@ -186,12 +212,37 @@ function idPatterns(p: AssetPair): Array<{ re: RegExp; to: string }> {
   return out;
 }
 
+/**
+ * The source run's ace-web pages → the clone's (ace#3032): the public summary
+ * `/opps/<ws>/<opp>/runs/<run>` and the members' workbench
+ * `/w/<ws>/opps/<opp>/runs/<run>`, whatever follows (`/summary`, a tab). A
+ * cloned LLO guide kept "Run page: …/ace/opps/dimagi-team/noora-health/runs/…"
+ * and sent partner reviewers to the source workspace's page — which resolves
+ * (200), so no link probe catches it. Empty when the run's page did not move.
+ */
+function aceWebPatterns(map: AssetMap): Array<{ re: RegExp; to: string }> {
+  const a = map.source.ace_web;
+  const b = map.target.ace_web;
+  if (!a || !b || (a.workspace === b.workspace && a.opp === b.opp && a.run === b.run)) return [];
+  const tail = '(?![\\w-])';
+  return [
+    {
+      re: new RegExp(`/opps/${escapeRe(a.workspace)}/${escapeRe(a.opp)}/runs/${escapeRe(a.run)}${tail}`, 'g'),
+      to: `/opps/${b.workspace}/${b.opp}/runs/${b.run}`,
+    },
+    {
+      re: new RegExp(`/w/${escapeRe(a.workspace)}/opps/${escapeRe(a.opp)}/runs/${escapeRe(a.run)}${tail}`, 'g'),
+      to: `/w/${b.workspace}/opps/${b.opp}/runs/${b.run}`,
+    },
+  ];
+}
+
 /** Connect URLs carry an org AND an id; rewrite them as a unit first. */
 function urlPatterns(map: AssetMap): Array<{ re: RegExp; to: string }> {
   const sc = map.source.connect;
   const tc = map.target.connect;
-  if (!map.connectRebuilt || !sc || !tc) return [];
-  const out: Array<{ re: RegExp; to: string }> = [];
+  if (!map.connectRebuilt || !sc || !tc) return aceWebPatterns(map);
+  const out: Array<{ re: RegExp; to: string }> = [...aceWebPatterns(map)];
   if (sc.holding_org && sc.opportunity_id && tc.holding_org && tc.opportunity_id) {
     out.push({
       re: new RegExp(`/a/${escapeRe(sc.holding_org)}/opportunity/${escapeRe(sc.opportunity_id)}`, 'g'),
@@ -277,6 +328,11 @@ export function rewriteAssetRefs(text: string, map: AssetMap): { text: string; r
 /** True when the text still names any source asset (the read-back). */
 export function findSourceRefs(text: string, map: AssetMap): string[] {
   const found = new Set<string>();
+  const a = map.source.ace_web;
+  for (const { re } of aceWebPatterns(map)) {
+    re.lastIndex = 0;
+    if (a && re.test(text)) found.add(`ace-web ${a.workspace}/${a.opp}/${a.run}`);
+  }
   for (const p of map.pairs) {
     for (const { re } of idPatterns(p)) {
       re.lastIndex = 0;
@@ -319,7 +375,7 @@ export function classifyClonePath(path: string, opts: ClassifyOpts = {}): CloneF
   const top = segs[0];
   const base = segs[segs.length - 1];
   if (keep.includes(top)) return 'skip';
-  if (segs.some((x) => x === 'comms-log' || x.endsWith('_comms-log'))) return 'skip';
+  if (isCommsLogPath(path)) return 'skip';
   if (/^decisions\b/.test(base)) return 'skip';
   if (/^release-readiness_/.test(base) || base === 'README.md' || base === 'run_state.yaml') return 'skip';
   // 4b re-runs Phase 4, which re-authors 4-connect from the clone's own products;
@@ -350,6 +406,9 @@ function mappingSummary(map: AssetMap): string {
     parts.push(
       `Connect opportunity ${sc.opportunity_id!.slice(0, 8)} (${sc.holding_org}) → ${tc.opportunity_id!.slice(0, 8)} (${tc.holding_org})`,
     );
+  }
+  if (aceWebPatterns(map).length) {
+    parts.push(`run page ${map.source.ace_web!.workspace} → ${map.target.ace_web!.workspace}`);
   }
   return parts.join('; ');
 }

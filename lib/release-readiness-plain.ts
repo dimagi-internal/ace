@@ -129,6 +129,12 @@ export function plainFinding(f: ReleaseFinding, ctx: PlainContext): { summary: s
   }
   if (/^connect-/.test(id)) return { summary: `The Connect opportunity is not set up as designed: ${plainText(f.detail)}.`, action: 'Re-run the Connect opportunity setup and check it again.' };
   if (/^preview-gap:/.test(id)) return { summary: 'A run output has no preview on the review page.', action: 'Capture a preview for it.' };
+  if (/^preview-other-opps:/.test(id)) {
+    return {
+      summary: "An app preview on the review page shows the test phone's list of opportunities, which names other programs.",
+      action: 'Take those pictures out of the preview list.',
+    };
+  }
   if (/^preview-bad-frame:/.test(id)) return { summary: 'A preview on the review page shows the wrong thing.', action: 'Capture that preview again and look at it.' };
   if (/^link:/.test(id)) return { summary: `A link on the review page does not open for the people it is meant for.`, action: 'Fix the link, or stop presenting it to them.' };
   if (/^chatbot-/.test(id)) return { summary: 'The support chatbot has not been shown to answer a question recently.', action: 'Ask it a test question and record the answer.' };

@@ -343,6 +343,17 @@ async function stageDriveIds(ctx: Ctx): Promise<StageRecord> {
   if (r.code === 2) return { status: 'not-done', reason: `clone-drive-readback failed: ${r.stderr.slice(-300)}` };
   const rep = lastJson(r.stdout);
   const remaining = rep?.hits?.length ?? 0;
+  // A copied comms-log is not repaired here: trashing a file is the operator's
+  // call. Not done until it is gone (ace#3027; the copier bug is ace-web#909).
+  const commsLogs: Array<{ path: string; fileId: string }> = rep?.comms_logs_copied ?? [];
+  if (commsLogs.length) {
+    return {
+      status: 'not-done',
+      source_ids_remaining: remaining,
+      comms_logs_copied: commsLogs,
+      reason: `${commsLogs.length} comms-log(s) were copied into the clone (each carries the source's thread_id) — trash them, then re-run: ${commsLogs.map((c) => `${c.path} (${c.fileId})`).join(', ')}`,
+    };
+  }
   return remaining
     ? { status: 'not-done', source_ids_remaining: remaining, reason: `${remaining} copied file(s) still name a source Drive id` }
     : { status: 'done', source_ids_remaining: 0 };

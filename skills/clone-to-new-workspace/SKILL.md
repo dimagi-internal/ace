@@ -284,8 +284,11 @@ What it does, stage by stage — the rules each one keeps:
 5. **Drive ids** (`clone.drive_ids`) — `scripts/clone-drive-readback.ts`; on hits it applies its
    `--plan` (plain files rewritten keeping their type, Docs retargeted with
    link-only `docs` requests — never flattened to text) and reads back again.
-   Records `clone.drive_ids.source_ids_remaining`; `left_behind` (comms-logs)
-   and `provenance` (decisions log, eval records) are not failures.
+   Records `clone.drive_ids.source_ids_remaining`; `left_behind` (comms-log
+   ids) and `provenance` (decisions log, eval records) are not failures. A
+   comms-log that EXISTS in the target (`comms_logs_copied`, e.g.
+   `run-closeout_comms-log.md` — ace-web#909) IS: the stage stays not-done,
+   naming each file, until the operator trashes it (ace#3027).
 6. **`hq`** (was § 4a). Requires `commcare_get_subscription(<hq>)` →
    `is_paid_edition: true` (demo mode, checklist item 1a — else not-done with
    `scripts/release-readiness.ts hq-flip-steps --domain <hq>`). For learn and

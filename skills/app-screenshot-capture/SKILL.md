@@ -1678,6 +1678,13 @@ learn-completion / deliver gates in Step 5, not merely the recipe's `status`
 (the Step 5 hard rule, jjackson/ace#756). Leave out `duplicate_of` aliases
 (Step 5.5 — one moment is one preview) and any frame whose Step 5.8 readback was
 not `ok`. Caption each from its `shows:` line (Step 5.6) where it has one.
+`buildPreviewsIndex` also drops every opportunity-LIST frame
+(`claim-opp-list*`, `claim-opp-new-tile`, `connect-resume-opp-list*`,
+`connect-resume-opp-tile` — `showsOtherOpportunities` in
+`lib/opp-title-frames.ts`): the +7426 test worker is a shared pool, so its
+list names other ACE programs, other partners' included, and reviewers
+outside Dimagi read these previews (ace#3030). The frames stay in the
+manifest and the folder; they are only not previews.
 
 ```ts
 import {

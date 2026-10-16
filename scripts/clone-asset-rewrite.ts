@@ -48,11 +48,13 @@ import { normalizeDriveExport } from '../lib/drive-export.js';
 import {
   buildAssetMap,
   docTextFromExport,
+  findSourceRefs,
   processCloneFile,
   rewriteRunState,
   runAssetsFromRunState,
 } from '../lib/clone-asset-refs.js';
 import { APP_RELEASE_SUMMARY } from '../lib/app-release-record.js';
+import { PREVIEWS_INDEX_PATH, withoutOtherOpportunityFrames } from '../lib/output-previews.js';
 import { docTextAndLinks, rewriteDriveIds } from '../lib/clone-readback.js';
 import {
   citedDriveIds,
@@ -206,6 +208,7 @@ async function main(): Promise<number> {
   const docJson = new Map<string, any>();
   const citedBy = new Map<string, Set<string>>(); // id -> paths
   const embeddedBy = new Map<string, string[]>(); // doc path -> embedded ids
+  const linkRefs = new Set<string>(); // doc paths whose hyperlink targets name a source asset
   const cite = (id: string, where: string) => citedBy.set(id, (citedBy.get(id) ?? new Set()).add(where));
   for (const { f, r } of pending) {
     if (r.kind !== 'rewrite') continue;
@@ -213,7 +216,12 @@ async function main(): Promise<number> {
     if (f.mimeType === GOOGLE_DOC) {
       const d = (await docs.documents.get({ documentId: f.id })).data;
       docJson.set(f.id, d);
-      for (const l of docTextAndLinks(d).links) for (const id of citedDriveIds(l.url)) cite(id, f.path);
+      for (const l of docTextAndLinks(d).links) {
+        for (const id of citedDriveIds(l.url)) cite(id, f.path);
+        // A link TARGET naming a source asset (e.g. the source run's ace-web
+        // page, ace#3032) is invisible to the text export: re-render the Doc.
+        if (findSourceRefs(l.url, map).length) linkRefs.add(f.path);
+      }
       const emb = embeddedImageIds(d);
       embeddedBy.set(f.path, emb);
       for (const id of emb) cite(id, f.path);
@@ -254,10 +262,16 @@ async function main(): Promise<number> {
   // `.source.md` companion when it has one, else its own markdown export.
   const stale = new Set([...Object.keys(frames.ids), ...frames.foreign.map((c) => c.id)]);
   for (const { f, r: r0 } of pending) {
-    const fr = r0.kind === 'rewrite' ? rewriteDriveIds(r0.text, frames.ids) : { text: r0.text, replacements: 0 };
+    const fr0 = r0.kind === 'rewrite' ? rewriteDriveIds(r0.text, frames.ids) : { text: r0.text, replacements: 0 };
+    // A copied preview index still lists the source's opportunity-LIST frames,
+    // which name other programs (ace#3030): drop them for the partner's review.
+    const idx = PREVIEWS_INDEX_PATH.test(f.path) ? withoutOtherOpportunityFrames(fr0.text) : { text: fr0.text, removed: [] as string[] };
+    const fr = { text: idx.text, replacements: fr0.replacements };
+    if (idx.removed.length) (plan.opp_list_frames_removed ??= []).push({ path: f.path, frames: idx.removed });
     const embedsStale = (embeddedBy.get(f.path) ?? []).some((id) => stale.has(id));
-    const r = { ...r0, text: fr.text, changed: r0.changed || fr.replacements > 0 || embedsStale };
-    if (r.changed && f.mimeType === GOOGLE_DOC && (embedsStale || (await isStyledDoc(docs, f.id)))) {
+    const linksStale = linkRefs.has(f.path);
+    const r = { ...r0, text: fr.text, changed: r0.changed || fr.replacements > 0 || embedsStale || linksStale || idx.removed.length > 0 };
+    if (r.changed && f.mimeType === GOOGLE_DOC && (embedsStale || linksStale || (await isStyledDoc(docs, f.id)))) {
       const sibling = f.path.replace(/\.md$/i, '.source.md');
       let md = sibling !== f.path ? texts.get(sibling) : undefined;
       if (md === undefined) {
@@ -309,6 +323,7 @@ async function main(): Promise<number> {
     run_state: plan.run_state?.changed ?? [],
     left_on_source: plan.left_on_source.map((x: any) => x.path),
     frames_repointed: Object.keys(frames.ids).length,
+    opp_list_frames_removed: (plan.opp_list_frames_removed ?? []).map((x: any) => `${x.path}: ${x.frames.join(', ')}`),
     frames_foreign: frames.foreign.map((c) => `${c.id} (${c.path ?? 'outside both runs'}; cited in ${c.where})`),
     embedded_outside_run: embeddedOutside.map((e) => `${e.path}: ${e.ids.join(', ')}`),
     plan: path.resolve(outDir, 'plan.json'),

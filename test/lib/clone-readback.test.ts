@@ -3,7 +3,9 @@ import {
   buildCopyIdMap,
   docIdRewriteRequests,
   docTextAndLinks,
+  findCopiedCommsLogs,
   findLeftoverSourceIds,
+  isCommsLogPath,
   isIdBearingCopy,
   isLeftBehind,
   isProvenanceCopy,
@@ -252,5 +254,29 @@ describe('path predicates', () => {
     expect(isLeftBehind('comms-log/llo-invite.md')).toBe(true);
     expect(isLeftBehind('8-solicitation-management/llo-invite_comms-log')).toBe(true);
     expect(isLeftBehind('8-solicitation-management/solicitation.md')).toBe(false);
+  });
+
+  // ace#3027: the copied file in the noora-health clone, by its real name.
+  it('matches a comms-log on its stem, so the .md extension no longer hides it', () => {
+    expect(isLeftBehind('10-closeout/run-closeout_comms-log.md')).toBe(true);
+    expect(isCommsLogPath('run-closeout_comms-log.md')).toBe(true);
+    expect(isCommsLogPath('8-solicitation-management/llo-invite_comms-log.yaml')).toBe(true);
+    expect(isCommsLogPath('comms-log/')).toBe(true);
+    // controls: not a comms-log
+    expect(isCommsLogPath('10-closeout/run-closeout_summary.md')).toBe(false);
+    expect(isCommsLogPath('docs/comms-log-format.md')).toBe(false);
+  });
+
+  it('reports every comms-log present in the target run (absence is the invariant)', () => {
+    expect(
+      findCopiedCommsLogs([
+        'run_state.yaml',
+        '10-closeout/run-closeout_comms-log.md',
+        '10-closeout/run-closeout_summary.md',
+        '9-execution/comms-log/',
+        '9-execution/comms-log/onboarding.md',
+      ]),
+    ).toEqual(['10-closeout/run-closeout_comms-log.md', '9-execution/comms-log/', '9-execution/comms-log/onboarding.md']);
+    expect(findCopiedCommsLogs(['run_state.yaml', '6-qa-and-training/training-llo-guide.md'])).toEqual([]);
   });
 });
