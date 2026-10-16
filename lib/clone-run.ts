@@ -26,8 +26,9 @@
  *    script makes outside MCP (where hooks/tenancy_guard.py cannot see them);
  *  - the products / release-summary / summary-url rewrites;
  *  - `rebuildLabs` — the Labs stage: a COPY into the clone's own labs
- *    program (§ 4c, ace#3020), blocked on connect-labs#2571 — until that
- *    lands it reports `not-done: labs atom gap` and never regenerates.
+ *    program (§ 4c, ace#3020). The copy is agent-run (MCP atoms, not this
+ *    script), so the stage reports `not-done: run § 4c` until the agent
+ *    records `clone.labs.status: done`; it never regenerates.
  */
 
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
@@ -763,12 +764,13 @@ export interface LabsRebuildContext {
  * a labs workspace whose LLOs are the clone's Connect orgs — no allowlist is
  * ever widened, and nothing is regenerated (owner, 2026-10-16).
  *
- * BLOCKED: the deployed `synthetic_clone_to_labs_only` takes no `program_id`
- * (connect-labs#2571), so the copies cannot share one program, and no read
- * atom returns a synthetic opp's fixture folder for `synthetic_create_labs_only`
- * to point at. So this is an explicit `not-done` naming that gap — never a
- * silent skip (the old "Labs stays Dimagi-only" was #3020's defect) and never a
- * regeneration standing in for the copy.
+ * The copy is possible (connect-labs#2574 shipped `program_id` on
+ * `synthetic_clone_to_labs_only`) but is made through labs MCP atoms, which
+ * this script cannot call. So the stage records an explicit `not-done`
+ * pointing the agent at § 4c — never a silent skip (the old "Labs stays
+ * Dimagi-only" was #3020's defect), never a false "atom gap" (ace#3038), and
+ * never a regeneration standing in for the copy. Once the agent records
+ * `clone.labs.status: done`, the planner treats the stage as final.
  */
 export async function rebuildLabs(ctx: LabsRebuildContext): Promise<StageRecord> {
   const synthetic = obj(obj(obj(obj(ctx.sourceRunState).phases)['synthetic-data-and-workflows']).products).synthetic;
@@ -777,6 +779,6 @@ export async function rebuildLabs(ctx: LabsRebuildContext): Promise<StageRecord>
   }
   return {
     status: 'not-done',
-    reason: 'labs atom gap: synthetic_clone_to_labs_only has no program_id, so the records cannot be copied into one new program (connect-labs#2571); never regenerated instead — clone-to-new-workspace § 4c',
+    reason: 'labs copy is agent-run: do clone-to-new-workspace § 4c by hand (synthetic_clone_to_labs_only, first partner without program_id, later partners with it), then record clone.labs.status: done — never regenerated instead',
   };
 }

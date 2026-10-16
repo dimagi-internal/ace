@@ -365,8 +365,9 @@ describe('rewrites', () => {
 });
 
 describe('rebuildLabs (ace#3020)', () => {
-  it('is an explicit not-done until ace#3020 lands — never a silent skip', async () => {
+  it('is an explicit not-done pointing at § 4c — never a silent skip, never a false atom-gap claim (ace#3038)', async () => {
     const r = await rebuildLabs({ source: cloneSourceFromRunState(source, null), sourceRunState: source, targetRunState: partial, to: 'noora-health', tenancy: TENANCY });
-    expect(r).toEqual({ status: 'not-done', reason: expect.stringMatching(/labs atom gap.*connect-labs#2571.*never regenerated/) });
+    expect(r).toEqual({ status: 'not-done', reason: expect.stringMatching(/§ 4c.*program_id.*clone\.labs\.status: done.*never regenerated/) });
+    expect(r.reason).not.toMatch(/atom gap|2571/);
   });
 });

@@ -14,8 +14,8 @@
  *   opp in ONE new program (`synthetic_clone_to_labs_only`, which serves the
  *   source's own fixture folder and keeps its generated-data mark). Never
  *   `synthetic_generate_from_manifest` or any clone_generate/profile atom.
- *   BLOCKED until connect-labs#2571: the deployed atom takes no `program_id`,
- *   so the copies cannot share one program — § 4c stops NOT DONE there;
+ *   The first partner is copied without `program_id` (its opp id becomes the
+ *   new program id); every later partner passes it (connect-labs#2574);
  * - reports: the same report definitions, instantiated from their templates in
  *   the new program with the source definition's configuration copied
  *   (`workflow_get` → `workflow_create_from_template`);
@@ -140,6 +140,42 @@ export function remapSyntheticProducts(
   const newIds = new Set(map.values());
   const leftover = [...labsIdsIn(next)].filter((id) => before.has(id) && !newIds.has(id)).sort((a, b) => a - b);
   return { products: next, leftover };
+}
+
+const LABS_URL_PARAM = /(workflow\/|run_id=|program_id=|opportunity_id=|source_run=|flw=)(\d{4,})/g;
+
+/**
+ * The same rewrite for copied PROSE (ace#3038). After `products.synthetic` is
+ * remapped, the clone's copied text — `7-synthetic/realized.json` read as
+ * text, `synthetic-data-and-workflows_summary.md`, the DDD spec yaml — still
+ * links the SOURCE dashboards (observed on noora-health/20261015-1129: 5
+ * files). This rewrites every Labs URL parameter (`workflow/<id>`,
+ * `run_id=`, `program_id=`, `opportunity_id=`, `source_run=`, `flw=`) through
+ * `idMap`. It never rewrites a bare number — in prose a 4+ digit integer can
+ * be a count or a year — but reports each source id still standing alone as
+ * `bare` so the agent reviews those by hand. A Labs id the map LACKS is
+ * invisible here (the text cannot say which ids are source ids) — the
+ * re-scan after the rewrite (§ 4c step 7) is what catches it.
+ */
+export function remapLabsText(
+  text: string,
+  idMap: ReadonlyMap<number, number> | Record<number, number>,
+): { text: string; changes: number; bare: number[] } {
+  const map = idMap instanceof Map ? idMap : new Map(Object.entries(idMap).map(([k, v]) => [Number(k), v as number]));
+  let changes = 0;
+  const out = text.replace(LABS_URL_PARAM, (m, p: string, d: string) => {
+    const n = map.get(Number(d));
+    if (n === undefined || n === Number(d)) return m;
+    changes++;
+    return `${p}${n}`;
+  });
+  const newIds = new Set(map.values());
+  const sourceIds = new Set([...map.keys()].filter((k) => !newIds.has(k)));
+  const stripped = out.replace(LABS_URL_PARAM, '');
+  const bare = new Set<number>();
+  for (const m of stripped.matchAll(/(?<![\d.])(\d{4,})(?![\d.])/g)) if (sourceIds.has(Number(m[1]))) bare.add(Number(m[1]));
+  const sort = (s: Set<number>) => [...s].sort((a, b) => a - b);
+  return { text: out, changes, bare: sort(bare) };
 }
 
 /**

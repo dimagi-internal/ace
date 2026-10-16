@@ -343,10 +343,11 @@ What it does, stage by stage — the rules each one keeps:
    apps) and `release` needs `--allow-shared connect` — report that loudly.
 9. **`labs`** (§ 4c below) — `rebuildLabs` in `lib/clone-run.ts`. Labs is
    REBUILT as a COPY in the clone's own labs program (ace#3020), never widened
-   in place. The copy is blocked on a labs atom gap (connect-labs#2571), so the
-   stage records `not-done: labs atom gap …` and never regenerates data
-   instead. Do NOT call `synthetic_set_allowed_domains` by hand (it REPLACES the
-   list, ace#2713).
+   in place. The copy goes through labs MCP atoms the script cannot call, so
+   the script's stage records `not-done: labs copy is agent-run …` until YOU run
+   § 4c and record `clone.labs.status: done` (a re-run then treats the stage as
+   final). It never regenerates data instead. Do NOT call
+   `synthetic_set_allowed_domains` by hand (it REPLACES the list, ace#2713).
 10. **`ocs`** (§ 4d) — kept on ACE's team; reviewers use its `public_url`
     (no OCS accounts — team-wide permissions). Recorded `kept`.
 11. **`asset_refs`** (§ 4e) — `scripts/clone-asset-rewrite.ts` over the copied
@@ -402,24 +403,15 @@ linked to the Connect orgs that stage rebuilt. `$CL` is `npx tsx "$CLAUDE_PLUGIN
    program_name: <source program name>, program_id: <new program>,
    allowed_domains: ['@dimagi.com', '@dimagi-ai.com']})` — the first partner
    WITHOUT `program_id` (its own id becomes the new program id), every later
-   one with it (`program_id` is the parameter the gap below is about). It serves the source's own fixture folder (the records
+   one with it (connect-labs#2574). It serves the source's own fixture folder (the records
    themselves, as-is) and keeps their generated-data mark. The org name MUST be
    new and carry the TARGET workspace: step 6 refuses an organisation that
    holds any other program. Read back each copy's counts against
    `products.synthetic.source.record_counts` (`synthetic_local_records_count`
    / the programme report's partner rows); a mismatch is `NOT DONE`.
-   **Gap, 2026-10-16:** the deployed `synthetic_clone_to_labs_only` takes no
-   `program_id` (connect-labs `mcp/tools/synthetic.py`; its
-   `register_labs_only_opp` already accepts one), so partners 2..N would each
-   become their own program and no programme report could span them; and no
-   read atom returns a synthetic opp's fixture folder, so
-   `synthetic_create_labs_only(gdrive_folder_id, program_id)` cannot stand in.
-   Until that lands (connect-labs#2571), create NOTHING here — one copied
-   partner is not the programme and would be an orphan to sweep: check the
-   live schema (`ToolSearch` → `synthetic_clone_to_labs_only` lists
-   `program_id`, or it does not), and without it record `clone.labs: {status:
-   not-done, reason: "labs atom gap: synthetic_clone_to_labs_only has no
-   program_id — connect-labs#2571"}`. The release then grants no Labs.
+   Start `map.json` here: `{<source opp>: <new opp>, …, <source program>:
+   <new program>}`. (Done live on noora-health/20261015-1129, 2026-10-16: 5
+   partners into one program, every visit count equal to the source.)
 3. **The registry, copied.** `semantic_registry_get(<source registry>)` →
    save its `properties_doc`, `indicators_doc`, `deployment` as JSON; build
    the id map so far (`{<source opp>: <new opp>, …, <source program>: <new
@@ -449,13 +441,22 @@ linked to the Connect orgs that stage rebuilt. `$CL` is `npx tsx "$CLAUDE_PLUGIN
    SOURCE's `history` window (same weeks, same count) with
    `workflow_rebuild_history` and the benchmark publishes (`demo-data-setup`
    § C5) — these COMPUTE the saved runs from the copied records; they generate
-   no data. Never `workflow_clone(linked: true)`: a linked twin reads the
+   no data. If one `benchmarks_publish` mid-sequence fails transiently (a
+   gateway HTML / non-JSON response), republish that period, then republish
+   the LAST period again so the Benchmarks tab's as-of stays the latest week.
+   **`workflow_history_runs` pages at 10** (`done: false`, `next_start_at`):
+   follow the cursor until `done: true` wherever you read history — the
+   history-count check here, each opp report's latest handed-down run (the
+   first page alone returned 2026-08-30 instead of 2026-10-11 on
+   noora-health/20261015-1129), and step 5. Never `workflow_clone(linked: true)`: a linked twin reads the
    source's pipelines in the source's scope, so a reviewer without source
    access sees nothing.
 5. **Verify the findings carried over.** `demo-data-setup` § C6
    (`verifyCascadeStoryLanded` against the source's `7-synthetic/cascade-story.yaml`):
    every signal the source verified lands here, from the same records. A miss
-   is `NOT DONE` — a defect in the copy, never re-described.
+   is `NOT DONE` — a defect in the copy, never re-described. Feed it EVERY
+   saved run (page `workflow_history_runs` to `done: true`): on the first page
+   only, the trend signal silently graded 10 of 16 periods.
 6. **Let the clone's Connect orgs in — the labs workspace.** A labs workspace
    replaces the email-domain rule with roles: every MEMBER of a Connect org
    listed as one of its LLOs is a Network Manager (connect-labs
@@ -484,7 +485,20 @@ linked to the Connect orgs that stage rebuilt. `$CL` is `npx tsx "$CLAUDE_PLUGIN
    `update_yaml_file(localFilePath, merge: "deep")` (arrays are replaced
    wholesale, so the whole block goes in one file). The DDD narrative and
    walkthrough entries keep pointing at the source's render — say so in Step 6;
-   `products.ocs_coach` is not rebuilt (stage `ocs`).
+   `products.ocs_coach` is not rebuilt (stage `ocs`), but its
+   `coaching_on[].url` links Labs dashboards — remap those too.
+   **Then the copied prose.** The clone's copied files still link the SOURCE
+   dashboards after the products remap (5 files on noora-health/20261015-1129:
+   `7-synthetic/realized.json`, `synthetic-data-and-workflows_summary.md`, the
+   DDD spec yaml, and `products.ocs_coach.coaching_on[].url`). Rewrite each
+   with the same `map.json` — JSON with `$CL remap-json`, text with
+   `$CL remap-text --in <file> --id-map map.json --out <file>` (Labs URL
+   params only; it prints `bare`: source ids standing alone in prose — a 4+
+   digit number may be a count, so change those by hand only when they name a
+   Labs object) — write back keeping each file's type (§ 4e's `update` /
+   `render` rule), and re-scan the clone folder for every source id in
+   `map.json` until only eval/QA verdicts remain. Eval and QA verdicts stay on
+   the source: they judged the source run.
 8. **Read back, then record.** `labs_context({search: '<to>/<opp>/<run-id>'})`
    lists every new opp under the new program (ACE sees what it built), the
    workspace script's JSON lists both LLOs, and the programme report URL in the
@@ -518,7 +532,7 @@ From the script's JSON report (re-read the TARGET run_state's `clone:` block
 rather than trusting memory): one line per stage — `done` with the ids / URLs
 it read back (HQ apps + builds and the space's edition; Connect program,
 opportunity and holding org), `kept` / `kept-shared`, or `NOT DONE` + its
-`reason` (Labs reads `not-done: labs atom gap … connect-labs#2571` until that lands — § 4c); the
+`reason` (the script's Labs stage reads `not-done: labs copy is agent-run …` until § 4c is done and recorded); the
 Drive-link read-back (`source_ids_remaining`, expected 0 outside comms-logs);
 § 4e's rewrite (files changed, and every place left on the source on purpose —
 e.g. the Phase 8 solicitation); `products_check` (expected empty); the run's

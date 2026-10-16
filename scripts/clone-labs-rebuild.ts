@@ -10,13 +10,16 @@
  *     → products.synthetic rewritten to the new ids; exit 1 naming every source id left behind
  *   npx tsx scripts/clone-labs-rebuild.ts remap-json --in <registry.json> --id-map <map.json> --out <file>
  *     → the same rewrite on any JSON doc (a registry's deployment.llo_map is keyed by opp id)
+ *   npx tsx scripts/clone-labs-rebuild.ts remap-text --in <file> --id-map <map.json> --out <file>
+ *     → Labs URL params in copied prose (summary .md, DDD spec yaml) rewritten; prints
+ *       {changes, bare} — `bare` lists source ids standing alone in prose (review by hand)
  *
  * `map.json` is `{"<source id>": <new id>, …}` for every opp, the program,
  * registry, workflows, runs, pipelines, cohort and benchmark publications.
  */
 import { readFileSync, writeFileSync } from 'node:fs';
 import { parse } from 'yaml';
-import { labsRebuildSource, remapSyntheticProducts } from '../lib/clone-labs-rebuild.js';
+import { labsRebuildSource, remapLabsText, remapSyntheticProducts } from '../lib/clone-labs-rebuild.js';
 
 function arg(name: string): string {
   const i = process.argv.indexOf(`--${name}`);
@@ -50,7 +53,14 @@ function main(): number {
     console.log(JSON.stringify({ leftover }));
     return leftover.length ? 1 : 0;
   }
-  console.error('usage: clone-labs-rebuild.ts inspect|remap|remap-json … (see the header)');
+  if (cmd === 'remap-text') {
+    const map = JSON.parse(readFileSync(arg('id-map'), 'utf8')) as Record<string, number>;
+    const r = remapLabsText(readFileSync(arg('in'), 'utf8'), Object.fromEntries(Object.entries(map).map(([k, v]) => [Number(k), Number(v)])));
+    writeFileSync(arg('out'), r.text);
+    console.log(JSON.stringify({ changes: r.changes, bare: r.bare }));
+    return 0;
+  }
+  console.error('usage: clone-labs-rebuild.ts inspect|remap|remap-json|remap-text … (see the header)');
   return 2;
 }
 
