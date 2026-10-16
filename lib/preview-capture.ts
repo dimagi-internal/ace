@@ -32,6 +32,20 @@ import {
 /** `captured_by` on every index this skill writes. */
 export const CAPTURED_BY = 'output-preview-capture';
 
+/**
+ * The chat box on an OCS public chat page, legacy or current. The legacy
+ * `/a/<team>/chatbots/<public_id>/start/` page is a server-rendered form
+ * (`[name=message]`); the "Public link" page ACE now hands out
+ * (`/c/<widget_token>/`, OCS #4792, ace#3046) renders `<open-chat-studio-widget>`,
+ * whose box is a `textarea.message-textarea` inside an OPEN shadow root —
+ * Playwright CSS pierces it, so one selector covers both. Observed live
+ * 2026-10-16 on `/c/wi2488M38JpSOQNIG41Ed1uLzbGerHnR/` (noora-health clone):
+ * the legacy selector alone matched nothing and a working chat probed "blank".
+ */
+export const CHAT_INPUT_SELECTOR = 'input[name=message], textarea[name=message], textarea.message-textarea';
+/** A bot reply on either page: legacy `.chat-message-system`, widget `.message-bubble-assistant` (same observation). */
+export const CHAT_BOT_REPLY_SELECTOR = '#message-list .chat-message-system, .message-bubble-assistant';
+
 export type PreviewAuth = 'connect' | 'labs' | 'hq' | 'ocs' | 'google' | 'public' | 'canopy';
 
 export type GapReason = 'no-preview' | 'not-viewable-file';

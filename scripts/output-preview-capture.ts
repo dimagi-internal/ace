@@ -65,6 +65,8 @@ import {
   screenPage,
   selectGaps,
   CAPTURED_BY,
+  CHAT_BOT_REPLY_SELECTOR,
+  CHAT_INPUT_SELECTOR,
   type CapturePlan,
   type PageSignals,
   type PreviewAuth,
@@ -299,12 +301,15 @@ async function captureChat(ctx: BrowserContext, plan: CapturePlan, dir: string):
     const res = await page.goto(plan.url as string, { waitUntil: 'networkidle', timeout: 60_000 });
     const pre = screenPage(await signals(page, res?.status() ?? 0));
     if (!pre.ok && pre.reason !== 'blank') return { frames: [], fail: `${pre.reason}: ${pre.detail}` };
-    const input = page.locator('input[name=message], textarea[name=message]').first();
+    const input = page.locator(CHAT_INPUT_SELECTOR).first();
+    await input.waitFor({ timeout: 15_000 }).catch(() => {});
     if ((await input.count()) === 0) return { frames: [], fail: 'no chat input on the public page' };
-    const bot = page.locator('#message-list .chat-message-system');
+    const bot = page.locator(CHAT_BOT_REPLY_SELECTOR);
     const before = await bot.count();
     await input.fill(plan.question as string);
-    await page.locator('#message-submit, button[type=submit]').first().click();
+    const submit = page.locator('#message-submit, button[type=submit]').first();
+    // The widget page has no form submit; Enter sends (observed live, see CHAT_INPUT_SELECTOR).
+    if (await submit.count()) await submit.click(); else await input.press('Enter');
     let last = '';
     let stable = 0;
     for (let i = 0; i < 60; i++) {
