@@ -246,18 +246,58 @@ export function classifyAvdPool(
     };
   }
 
-  const shortfall =
-    eligibleCount === 0
-      ? // NOT "every dispatch fails": selectAvd returns the REQUESTED AVD whenever it is
-        // free without checking `proven` (mcp/mobile/avd-allocator.ts), and a successful
-        // register_test_user rewrites the marker under the current map (ace#2642).
-        'NO AVD on this host is both provisioned and proven, so there is no fallback: a single ' +
-        'Phase 6 still runs on the requested AVD, but a second concurrent session fails at ' +
-        'AvdPoolExhaustedError. Markers refresh on the next successful register_test_user'
-      : `only ${eligibleCount} AVD (${eligible[0].name}) is both provisioned and proven, so ` +
-        "selectAvd's fallback branch can never execute — per-session AVD allocation is present " +
-        'but inert, and concurrent Phase 6 sessions cold-boot the same device with -wipe-data ' +
-        "and destroy each other's state";
+  // Will the NEXT dispatch fail, not just a second concurrent one? Mirrors
+  // selectAvd (mcp/mobile/avd-allocator.ts): the requested AVD is returned
+  // whenever it is free, with no `proven` check; otherwise only a free PROVEN
+  // other member will do, and none means AvdPoolExhaustedError. So it fails
+  // exactly when the requested AVD is held (or absent) and no eligible member
+  // other than it is unheld (ace#2929 — the case ace#2642 named as the one
+  // where the error is genuinely reachable).
+  const req = members.find((m) => m.name === opts.requested);
+  const freeFallbacks = eligible.filter((m) => !m.held && m.name !== opts.requested);
+  const dispatchFails = (!req || req.held) && freeFallbacks.length === 0;
+  const reqState = !req
+    ? `the requested AVD ${opts.requested} does not exist on this host`
+    : `the requested AVD ${req.name} is held by live pid ${req.holderPids.join(', ')}`;
+  // The requested-AVD path needs no marker, so booting an UNHELD member by name
+  // runs, and its successful register_test_user rewrites the marker under the
+  // current map — which is how the pool heals.
+  const bootable = members.filter(
+    (m) => !m.held && m.provisioned !== false && m.name !== opts.requested,
+  );
+  const bootByName = bootable.length
+    ? `To run now, request a free member by name — ACE_AVD_NAME=${bootable[0].name} ` +
+      `(free: ${bootable.map((m) => m.name).join(', ')}); the requested-AVD path needs no ` +
+      'marker, and its successful register_test_user re-proves it under the current map'
+    : `No unheld AVD exists to request instead — wait for ${req ? `pid ${req.holderPids.join(', ')}` : 'one'} ` +
+      'to be released, or add a member';
+
+  let shortfall: string;
+  if (dispatchFails) {
+    shortfall =
+      (eligibleCount === 0
+        ? 'NO AVD on this host is both provisioned and proven'
+        : `only ${eligibleCount} AVD (${eligible[0].name}) is both provisioned and proven` +
+          (eligible[0].held && eligible[0].name !== opts.requested
+            ? ` and it is held by live pid ${eligible[0].holderPids.join(', ')}`
+            : '')) +
+      `, and ${reqState}, so THE NEXT Phase 6 dispatch fails at AvdPoolExhaustedError — ` +
+      `not only a second concurrent one. ${bootByName}`;
+  } else if (eligibleCount === 0) {
+    // NOT "every dispatch fails": selectAvd returns the REQUESTED AVD whenever it is
+    // free without checking `proven` (mcp/mobile/avd-allocator.ts), and a successful
+    // register_test_user rewrites the marker under the current map (ace#2642).
+    shortfall =
+      'NO AVD on this host is both provisioned and proven, so there is no fallback: a single ' +
+      'Phase 6 still runs on the requested AVD, but a second concurrent session fails at ' +
+      'AvdPoolExhaustedError. Markers refresh on the next successful register_test_user';
+  } else {
+    shortfall =
+      `only ${eligibleCount} AVD (${eligible[0].name}) is both provisioned and proven, so ` +
+      "selectAvd's fallback branch can never execute — per-session AVD allocation is present " +
+      'but inert, and concurrent Phase 6 sessions cold-boot the same device with -wipe-data ' +
+      "and destroy each other's state";
+  }
 
   return {
     verdict: 'warn',
@@ -268,6 +308,8 @@ export function classifyAvdPool(
       `(${names.join(', ') || 'none'}); ${eligibleCount} eligible, ${MIN_ELIGIBLE_POOL} needed. ` +
       'A working allocator over a pool of one is indistinguishable from no allocator — ' +
       'nothing errors, which is why this decayed unnoticed. See ace#1821.',
-    remediation: poolRemediation(opts.requested),
+    remediation: dispatchFails
+      ? `  ${bootByName}.\n\n${poolRemediation(opts.requested)}`
+      : poolRemediation(opts.requested),
   };
 }
