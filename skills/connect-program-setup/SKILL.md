@@ -130,10 +130,16 @@ alone makes the artifact land outside `4-connect` and fail
       `reconcileProgramWithPdd` (`lib/program-reconcile.ts` — pure
       helper; run it via `npx tsx -e`, having the snippet `readFileSync`
       that description file rather than pasting the prose into it — or
-      replicate its semantics exactly: description/dates compare
+      replicate its semantics exactly: description compares
       whitespace-normalized; budget diverges only when the live ceiling
       is *below* the PDD budget, since Step 4a deliberately raises it
-      above for headroom).
+      above for headroom; dates use the same CONTAINMENT rule — the
+      program window holds every opportunity on the durable program, so
+      `start_date` diverges only when the live start is *later* than the
+      PDD start and `end_date` only when the live end is *earlier* than
+      the PDD end (trimmed YYYY-MM-DD, compared lexicographically; an
+      empty live date diverges). A live window wider than the PDD's is
+      healthy and never narrowed (ace#2985)).
       **Pass the live `name` and the PDD's `archetype`** — they cost
       nothing and they are what powers step 3 below.
    3. **Emit every line in `warnings[]` verbatim into the program notes
@@ -585,6 +591,7 @@ Rows this skill writes use `phase: "4-connect"` and `skill: "connect-program-set
 
 | Date | Change | Author |
 |------|--------|--------|
+| 2026-10-15 | **Step 3a no longer proposes NARROWING a reused program's window below opportunities already on it (ace#2985).** `reconcileProgramWithPdd` compared `start_date`/`end_date` by string equality and put any difference in `updateArgs`, so on `smallholder-seasonal/20261015-1402` (program `09b74c39-…`) it proposed `end_date: 2030-01-31` while both existing opportunities end `2030-02-28`. Dates now have containment semantics like `budget`: `start_date` diverges only when live starts later than the PDD, `end_date` only when live ends earlier; a wider live window is no diff, no `updateArgs`, no `[WARN]`. *Enforced:* `test/lib/program-reconcile.test.ts` § date containment, incl. the live repro. | ACE team |
 | 2026-09-17 | **The reuse-path description refresh no longer round-trips ~21 KB of prose through the model (ace#2291).** `connect_update_program` gained `description_path`, the same `<param>_path` handle this server already offers on `new_xform_xml_path` / `file_bytes_path` / `ccz_path`: the server reads the bytes off disk verbatim. Step 3a refreshes `description` on EVERY reuse and reuse is the normal path after an opp's first run, so the inline-only shape cost ~5.8k output tokens per run forever (measured live 2026-09-17 on program `efb8af66`, `ai-demo-space`: 21,012 chars). It also removes a correctness gap — the description the reconciler judged and the description sent were two separate generations, with nothing making them match (the ace#1737 class). Step 3a now authors the description to a file first and points BOTH consumers at it. A relative, unreadable or empty file is a typed refusal naming the path with nothing sent, never a silently blanked LLO-facing description. *Enforced:* `test/mcp/connect/unit/update-program-description-path.test.ts`. | ACE team |
 | 2026-09-06 | **The name is made NON-AUTHORITATIVE in code, not in prose (ace#1966, cause #2).** `reconcileProgramWithPdd` now takes the live `name` and the PDD `archetype` and returns `nameArchetype`, a `CheckOutcome` (`lib/check-outcome.ts`): a name whose archetype token contradicts this run's PDD produces a `[WARN]` in `warnings[]`, and a caller that passes neither gets a loud `UNABLE TO CHECK` rather than silence. Step 3a now emits `warnings[]` **unconditionally**, before branching — `inSync` covers only the four refreshable fields, so the live case (`Bednet Check Multi-Stage Study — 2026`, content fully refreshed, `inSync: true`) was dropped by every branch that existed. `name` still never enters `updateArgs`: the reconciler reports, it does not rename. Also corrects the module's own false rationale — `name` was documented as durable "because it is the cross-run reuse-lookup key", which Step 2 has contradicted since ace#1252 (no `name` filter; match on delivery type + archetype). | ACE team |
 | 2026-09-05 | **§ Archetypes: add the missing `longitudinal-visits` row, and state that a name outlives the run that chose it (ace#1966).** The section covered `atomic-visit` / `focus-group` / `multi-stage` only — `grep -n "longitudinal" ` on this file returned zero hits — even though `connect-opp-setup` § Archetypes has covered `longitudinal-visits` for some time, so an archetype ACE fully supports at the opportunity layer was named by improvisation at the program layer. Compounding it, `name` is in `DURABLE_PROGRAM_FIELDS`, so Step 3a can refresh a program's description against a later PDD but never its name: `bednet-check-2-visit` reuses a program called `Bednet Check Multi-Stage Study — 2026` whose own ACE-refreshed description now says "deliberately NOT multi-stage", and the mislabel undermines Step 2's archetype-matched reuse scan. Guidance is to prefer archetype-neutral names when the archetype is contested and to `[WARN]` on a contradiction rather than autonomously rename a durable reuse key. The `lib/program-reconcile.ts` half stays open on ace#1966. | ACE team |
