@@ -296,7 +296,36 @@ export interface ConstantColumnFinding {
   value: string;
   /** `programme`: constant on every row (fails); otherwise the partner whose drilled table it is constant in (reported). */
   scope: string;
+  /**
+   * `near`: not identical, but a worker-table rate whose spread across a partner's workers is under
+   * NEAR_FLAT_POINTS while another scorecard rate there spreads ≥ WIDE_SPREAD_POINTS (ace#2746).
+   * Absent means exactly constant.
+   */
+  near?: true;
 }
+
+/**
+ * Near-constant thresholds for worker-table rate columns, in percentage points (ace#2746).
+ * Measured on spark-facilitator/20261004-1706 attempt 3: Women attending 35.8–36.9%, Spoke up
+ * 31.4–32.5% and Women who spoke 21.1–22.5% across ten facilitators, beside Meeting regularity at
+ * 55–98%. The DDD user judge read that as generated data and capped `trust` at 2, while this check
+ * passed because no column was EXACTLY constant. A spread of ~1 point is what per-visit draws from
+ * one partner-level range converge to over ~30 visits per worker. Real facilitators differ.
+ */
+export const NEAR_FLAT_POINTS = 3;
+export const WIDE_SPREAD_POINTS = 15;
+
+/** A column reads as a rate when every present value is a number in [0, 1]. */
+function rateSpreadPoints(values: unknown[]): { min: number; max: number; spread: number } | null {
+  const nums = values.filter((v) => v !== undefined && v !== null);
+  if (nums.length < 3 || !nums.every((v) => typeof v === 'number' && Number.isFinite(v) && v >= 0 && v <= 1)) return null;
+  const n = nums as number[];
+  const min = Math.min(...n);
+  const max = Math.max(...n);
+  return { min, max, spread: (max - min) * 100 };
+}
+
+const pct = (v: number) => `${(v * 100).toFixed(1)}%`;
 
 function constantValue(values: unknown[]): { constant: boolean; value: unknown } {
   const present = values.filter((v) => v !== undefined);
@@ -319,6 +348,11 @@ function constantValue(values: unknown[]): { constant: boolean; value: unknown }
  *    (ace#2972: noora-health/20261015-1129 failed on a column that was not drawn);
  *  - case table: `display.case_fields`;
  *  - visit table: `display.visit_fields` + `display.visit_flags`, when visit rows are supplied.
+ *
+ * Worker rate columns are also judged NEAR-constant (ace#2746): a spread under
+ * NEAR_FLAT_POINTS inside every partner, while another scorecard rate there
+ * spreads ≥ WIDE_SPREAD_POINTS, fails; the same inside only some partners is
+ * reported.
  *
  * Constant over EVERY row of the saved run → fail. Constant only within one
  * partner's drilled worker table → reported (a flag that is zero for a whole
@@ -352,6 +386,43 @@ export function checkConstantDisplayedColumns(
       if (c.constant) findings.push({ table: 'worker', column: col.name, value: fmt(c.value), scope: p });
     }
   }
+  // ace#2746: near-constant worker rates. Judged per partner, because that is the table a viewer
+  // drills into; a column is flat in a partner when its spread there is under NEAR_FLAT_POINTS
+  // while another scorecard rate in the same partner spreads at least WIDE_SPREAD_POINTS. Flat in
+  // EVERY partner fails (the pool has no per-worker effect for it); flat in some is reported.
+  const exactProgramme = new Set(findings.filter((f) => f.table === 'worker' && f.scope === 'programme').map((f) => f.column));
+  const groups = [...new Set(workers.map((w) => w.llo ?? ''))];
+  const spreads = new Map<string, Map<string, ReturnType<typeof rateSpreadPoints>>>();
+  for (const col of workerCols) {
+    const perGroup = new Map<string, ReturnType<typeof rateSpreadPoints>>();
+    for (const g of groups) perGroup.set(g, rateSpreadPoints(workers.filter((w) => (w.llo ?? '') === g).map(col.get)));
+    spreads.set(col.name, perGroup);
+  }
+  for (const col of workerCols) {
+    if (exactProgramme.has(col.name)) continue;
+    const flatIn: Array<{ group: string; min: number; max: number }> = [];
+    let judged = 0;
+    for (const g of groups) {
+      const own = spreads.get(col.name)!.get(g);
+      if (!own) continue;
+      judged++;
+      const contrast = workerCols.some((o) => o.name !== col.name && (spreads.get(o.name)!.get(g)?.spread ?? 0) >= WIDE_SPREAD_POINTS);
+      if (own.spread < NEAR_FLAT_POINTS && contrast) flatIn.push({ group: g, min: own.min, max: own.max });
+    }
+    if (judged === 0 || flatIn.length === 0) continue;
+    if (flatIn.length === judged) {
+      const lo = Math.min(...flatIn.map((f) => f.min));
+      const hi = Math.max(...flatIn.map((f) => f.max));
+      const value = `${pct(lo)}–${pct(hi)}, under ${NEAR_FLAT_POINTS} points within every partner${groups.length > 1 ? '' : "'s workers"}`;
+      findings.push({ table: 'worker', column: col.name, value, scope: 'programme', near: true });
+    } else {
+      for (const f of flatIn) {
+        // Exactly constant inside this partner is already reported above.
+        if (f.max === f.min) continue;
+        findings.push({ table: 'worker', column: col.name, value: `${pct(f.min)}–${pct(f.max)} (near-constant)`, scope: f.group || '(no partner)', near: true });
+      }
+    }
+  }
   const cases = snapshot?.cases ?? [];
   for (const f of display.case_fields ?? []) {
     const c = constantValue(cases.map((r) => r[f.field]));
@@ -379,10 +450,15 @@ export function checkConstantDisplayedColumns(
   return {
     pass: false,
     findings,
-    detail: `constant on every row: ${failing.map((f) => `${f.table} ${f.column} = ${f.value}`).join('; ')}${reportedText}`,
+    detail: `constant${failing.some((f) => f.near) ? ' or near-constant' : ''} on every row: ${failing.map((f) => `${f.table} ${f.column} = ${f.value}`).join('; ')}${reportedText}`,
     auto_fix_hint:
       'a column the same on every row is width a viewer reads for nothing: vary it in the data (the pool) or stop ' +
-      'showing it (registry display `scorecard: false` / drop the case field) (ace#2735)',
+      'showing it (registry display `scorecard: false` / drop the case field) (ace#2735)' +
+      (failing.some((f) => f.near)
+        ? '. A NEAR-constant worker rate means the pool draws that value per visit from a partner-level range ' +
+          'with no per-worker effect, so every worker converges on the partner mean: give each worker its own ' +
+          'effect on the draw (demo-data-setup § C3), regenerate, rebuild history (ace#2746)'
+        : ''),
   };
 }
 
