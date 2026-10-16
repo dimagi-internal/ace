@@ -275,7 +275,15 @@ screenshot-blocked run cannot lose it.
      7. `section` divider titled `"Verify"`
      8. Quality and verification (1-2 content slides)
      9. `section` divider titled `"Pay"`
-     10. Payment details (stats slide preferred)
+     10. Payment details (stats slide preferred). **Sibling `stats[].big`
+         values share their unit.** If any column carries a unit prefix or
+         suffix (`USD 3`, `25%`, `10/day`), a numeric sibling carries it too:
+         `USD 0`, not `0`. A bare numeral beside unit-carrying siblings reads
+         as a footnote, not a peer, and the stencil cannot know that `0`
+         means `USD 0` (ace#2205, `poverty-graduation/20260905-1345` slide 6).
+         `lintDeckFormatting` reports it as a `statsUnits` warning, and step
+         9b's `bind-deck-frames.ts` prints it under `formatting warnings`.
+         Fix every one before writing.
      11. Safety and ethics (1 content slide, cross-pillar)
    - **`practice`** module (C2 — REQUIRED per-opp content): emit one
      `exercise` slide per Learn module (enumerated from the Learn app
@@ -676,6 +684,7 @@ The self-eval criterion must assert duplicate handling explicitly.
 
 ## Change Log
 
+- 2026-10-16: **Sibling stat values share their unit (ace#2205).** `USD 3 / USD 3 / 0` rendered the bare `0` as a footnote. There is now an authoring rule at the payment stats slide, and `lintDeckFormatting` raises a `statsUnits` warning, which `bind-deck-frames.ts` surfaces as `formatting_warnings`. *Enforced:* `test/lib/training-deck-formatting.test.ts`.
 - 2026-10-05: **No dogfood run id on a trainee's screen (ace#2660, step 9b).** spark-facilitator/20261004-1706's deck showed "20261004-1706 · Spark Facilitator — …" on slides 8 and 9 because Phase 6 captures against the Phase 4 opportunity, whose name carries the run id by contract. The binder now prefers a title-free sibling of the same screen, else binds a below-the-title crop computed from the frame's pixels (crop only), else reports the slide in `opp_title_visible`. Run live read-only against 20261004-1706: both slides got crops, `opp_title_visible` empty, gate PASS; the `claim-opp` crop matches the hand-made workaround. *Enforced:* `test/lib/opp-title-frames.test.ts`.
 - 2026-10-01: **Every screen slide is bound to a real frame, or merged — never shipped empty (step 9b).** The render eval failed spark-facilitator/20260926-1800 at 4.66: ten walkthrough / app-screen slides carried no screenshot (five had a frame in the manifest; five had none of their screen and shipped empty anyway), slides 10/17/22/28 showed a loading screen or a one-tile form list, slides 6/32 a keyboard, and slide 53's raw URLs overflowed onto its title. Step 9b runs `scripts/bind-deck-frames.ts` (lib/training-deck-frames.ts + lib/frame-pixels.ts): pools frames from the capture manifest, the Phase 3 previews indexes and the fork source along `forked_from`; measures each frame's pixels; binds by the slide's own words within its part of the app; merges frameless Learn modules into one slide over the Learn home grid and folds other frameless screen slides into a neighbour's notes; expands `mobile_flow`. `checkDeckScreenBacking` is the gate. URLs in bodies are written `[label](url)` (resources template updated) and render as link text; `parseTrainingSpec` refuses a body taller than its frame. On the real spec the gate goes from 11 findings to 0. *Enforced:* `test/lib/training-deck-frames.test.ts`, `test/lib/frame-pixels.test.ts`, `test/lib/training-deck-body-fit.test.ts`.
 - 2026-09-08: **`verify_caption_backing` counts the slides' citations, not `manifest.opp`'s inventory (dimagi-internal/ace#2238).** Step 5 builds the resolution map from the whole capture pool and step 5 then makes the caption gate a BLOCKER — and the gate extracted every Drive fileId in the published artifact, which for a deck spec includes the map. On `spark-facilitator/20260907-1120` that read 91 citations over a deck that places 10 images and reported 66 `no-shows` + 12 `duplicate-cited`, every one naming a frame no slide cites. The two instructions were mutually unsatisfiable for any deck that does not place every captured frame, i.e. for every deck. The fix is in `lib/caption-backing.ts`, not here: for a document that parses as a deck spec, the citations are the slides' image refs resolved through `manifest.*`, and everything else in the spec is still read the way a rendered document is read. Trimming the map is no longer needed (and would break nothing but honesty about what was available). *Enforced:* `test/lib/caption-backing.test.ts § a deck spec cites what its SLIDES place`, with negative controls proving an undescribed, aliased or unknown frame a slide really does place still fails.
