@@ -21,7 +21,11 @@
  * - **Default workspace** (`ACE_WEB_WORKSPACE`, `dimagi-team`): every value
  *   comes from the installed `.env` exactly as before workspaces were
  *   addressable, so nothing changes for existing runs. The ace-web tenancy is
- *   read only to WARN when it disagrees with `.env`.
+ *   read to WARN when it disagrees with `.env` — except for the Connect orgs,
+ *   where an org key `.env` leaves unset is filled from the tenancy and an
+ *   org key that CONTRADICTS it is a `CONNECT_ORG_CONFLICT` halt (ace#2919;
+ *   see `defaultWorkspaceOrgs`), because the opportunity's org is create-time
+ *   only.
  * - **Any other workspace** (a partner's): every value comes from ace-web and
  *   a missing one is a typed `RunWorkspaceError` naming the field and how to
  *   set it. There is NO fallback to `.env` — that would build a partner run in
@@ -35,7 +39,13 @@
  * *Enforced:* `test/lib/run-workspace.test.ts`.
  */
 
-import { connectOrgsFromTenancy, renderConnectOrgsBlock, resolveConnectOrgs, type ConnectOrgs } from './connect-orgs.js';
+import {
+  connectOrgsFromTenancy,
+  LEGACY_DEFAULT_PM_ORG,
+  renderConnectOrgsBlock,
+  resolveConnectOrgs,
+  type ConnectOrgs,
+} from './connect-orgs.js';
 
 /** The tenancy fields ace-web stores per opp (`apps/opps/tenancy.py` `Tenancy`). */
 export interface AceWebTenancy {
@@ -61,6 +71,7 @@ export type RunWorkspaceErrorCode =
   | 'TENANCY_INCOMPLETE'
   | 'SHARED_TENANT'
   | 'OCS_TEAM_MISMATCH'
+  | 'CONNECT_ORG_CONFLICT'
   | 'BAD_SLUG';
 
 /** Loud, typed failure: `fields` names what is missing/wrong, `remediation` says how to fix it. */
@@ -81,7 +92,12 @@ export interface RunWorkspace {
   opp: string;
   /** True iff `workspace` is the instance default (`ACE_WEB_WORKSPACE`). */
   is_default: boolean;
-  /** Where the values below came from. */
+  /**
+   * Where the workspace's values (Drive root, HQ space) came from. NOT the
+   * Connect orgs' provenance — that is `connect_orgs.source.{pm_org,nm_org}`
+   * (`env` | `tenancy` | `legacy-default` | `unset`), which is what a run
+   * records (ace#2919: a run wrote this flat `env` for orgs `.env` never set).
+   */
   source: 'env' | 'ace-web';
   /** The workspace's ACE Drive root — pass as `resolve_opp_path`'s `aceRootFolderId`. */
   drive_root_folder_id: string;
@@ -195,6 +211,83 @@ const TENANCY_FIX = (ws: string, opp: string) =>
   'the clone-to-new-workspace operator checklist (Step 0) sets up and verifies each one';
 
 /**
+ * The default workspace's Connect orgs. `.env` still wins where it SETS a key,
+ * but the opp's ace-web tenancy is no longer ignored (ace#2919):
+ *
+ * - a key `.env` leaves unset is filled from the tenancy (`source: tenancy`),
+ *   never silently from the legacy default when the tenancy names one;
+ * - a key `.env` sets to a DIFFERENT org than the tenancy is a typed
+ *   `CONNECT_ORG_CONFLICT`, not a warning: the org a Connect opportunity is
+ *   created in (`target_organization_slug`) is create-time only, so a run that
+ *   completes in the wrong org has no repair path;
+ * - with no tenancy to compare (unread, or it names no PM org) an unset PM key
+ *   still yields the legacy default — but says so in `warnings`.
+ *
+ * Measured: turmeric-market-study-ghana, 2026-10-13 — `.env` set neither key,
+ * the tenancy said ace-pm-org / ace-nm-org, and a whole Phase 4 (flags, payment
+ * units, activation, FLW invite) landed in the legacy default org.
+ */
+function defaultWorkspaceOrgs(input: {
+  env: Record<string, string | undefined>;
+  tenancy: AceWebTenancy | null;
+  workspace: string;
+  opp: string;
+  warnings: string[];
+}): ConnectOrgs {
+  const { env, tenancy, workspace, opp, warnings } = input;
+  const local = resolveConnectOrgs(env);
+  const tSlug = (field: 'connect_pm_org' | 'connect_holding_org'): string | null => {
+    const v = clean(tenancy?.[field] ?? null);
+    if (v !== null && !SLUG.test(v)) {
+      throw new RunWorkspaceError('BAD_SLUG', `ace-web tenancy.${field} ${JSON.stringify(v)} is not a Connect org slug`, TENANCY_FIX(workspace, opp), [
+        `tenancy.${field}`,
+      ]);
+    }
+    return v;
+  };
+  const tPm = tSlug('connect_pm_org');
+  const tHold = tSlug('connect_holding_org');
+
+  const conflicts: Array<[string, string]> = [];
+  if (local.source.pm_org === 'env' && tPm && tPm !== local.pm_org) {
+    conflicts.push(['ACE_CONNECT_PM_ORG', `ACE_CONNECT_PM_ORG=${local.pm_org} but ace-web tenancy.connect_pm_org=${tPm}`]);
+  }
+  if (local.source.nm_org === 'env' && tHold && tHold !== local.nm_org) {
+    conflicts.push(['ACE_CONNECT_NM_ORG', `ACE_CONNECT_NM_ORG=${local.nm_org} but ace-web tenancy.connect_holding_org=${tHold}`]);
+  }
+  if (conflicts.length) {
+    throw new RunWorkspaceError(
+      'CONNECT_ORG_CONFLICT',
+      `the installed .env and ${workspace}/${opp}'s ace-web tenancy name different Connect orgs (${conflicts.map((c) => c[1]).join('; ')}). ` +
+        'The org an opportunity is created in cannot be changed afterwards, so the run halts rather than pick one.',
+      'make them agree: correct (or remove) the key in the installed .env (a local-only key /ace:setup --force-env preserves), ' +
+        `or, if .env is right, ${TENANCY_FIX(workspace, opp)}`,
+      conflicts.map((c) => c[0]),
+    );
+  }
+
+  const pmFromTenancy = local.source.pm_org !== 'env' && tPm !== null;
+  const nmFromTenancy = local.source.nm_org !== 'env' && tHold !== null;
+  const orgs: ConnectOrgs = {
+    pm_org: pmFromTenancy ? tPm! : local.pm_org,
+    nm_org: nmFromTenancy ? tHold! : local.nm_org,
+    source: {
+      pm_org: pmFromTenancy ? 'tenancy' : local.source.pm_org,
+      nm_org: nmFromTenancy ? 'tenancy' : local.source.nm_org,
+    },
+  };
+  if (pmFromTenancy) warnings.push(`ACE_CONNECT_PM_ORG is unset; pm_org=${tPm} comes from ace-web's tenancy for ${opp}`);
+  if (nmFromTenancy) warnings.push(`ACE_CONNECT_NM_ORG is unset; nm_org=${tHold} comes from ace-web's tenancy for ${opp}`);
+  if (orgs.source.pm_org === 'legacy-default') {
+    warnings.push(
+      `ACE_CONNECT_PM_ORG is unset and ${tenancy ? "ace-web's tenancy names no PM org" : "ace-web's tenancy was not read"}; ` +
+        `pm_org falls back to the legacy default ${LEGACY_DEFAULT_PM_ORG}: confirm that is intended before Phase 4 creates anything`,
+    );
+  }
+  return orgs;
+}
+
+/**
  * Resolve the workspace a run targets. Pure: pass the env map and, for any
  * workspace other than the default, the ace-web tenancy response (or the
  * error reading it).
@@ -238,8 +331,8 @@ export function resolveRunWorkspace(input: {
         missing,
       );
     }
-    const orgs = resolveConnectOrgs(env);
     const warnings: string[] = [];
+    const orgs = defaultWorkspaceOrgs({ env, tenancy: input.response ? t : null, workspace, opp, warnings });
     if (input.response) {
       const drift = (field: string, aceWeb: string | null | undefined, local: string | null) => {
         const a = clean(aceWeb ?? null);
@@ -247,8 +340,6 @@ export function resolveRunWorkspace(input: {
       };
       drift('drive_root_folder_id', input.response.drive_root_folder_id, drive);
       drift('tenancy.hq_domain', t.hq_domain, hq);
-      drift('tenancy.connect_pm_org', t.connect_pm_org, orgs.pm_org);
-      drift('tenancy.connect_holding_org', t.connect_holding_org, orgs.nm_org);
       drift('tenancy.ocs_team', t.ocs_team, configuredOcs);
     } else if (input.responseError) {
       warnings.push(`ace-web tenancy not read (${input.responseError.message}); default workspace runs from .env`);
@@ -403,7 +494,7 @@ export function renderRunWorkspaceYaml(r: RunWorkspace | RunWorkspaceError): str
     `  workspace: ${r.workspace}`,
     `  opp: ${r.opp}`,
     `  is_default: ${r.is_default}`,
-    `  source: ${r.source}`,
+    `  source: ${r.source}   # the workspace's values; the orgs' provenance is connect_orgs.source below`,
     `  drive_root_folder_id: ${r.drive_root_folder_id}`,
     `  hq_domain: ${r.hq_domain}`,
     `  ocs_team: ${r.ocs.team}`,

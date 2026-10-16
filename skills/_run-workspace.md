@@ -17,8 +17,11 @@ replace the `.env` ones everywhere this skill names them:**
 | `${ACE_HQ_API_KEY}` as the `api_key` an opportunity's apps are read with | `run_workspace.hq_api_key` |
 | `${ACE_WEB_WORKSPACE}` in an ace-web URL | `run_workspace.workspace` (or `run_state.yaml` `workspace:`) |
 
-For the default workspace the block holds exactly the `.env` values, so nothing
-changes. For a partner workspace (`is_default: false`):
+For the default workspace the block holds the `.env` values, except that its
+`connect_orgs` fills an org key `.env` leaves unset from the opp's ace-web
+tenancy (`source: tenancy`) and refuses one that contradicts it
+(`CONNECT_ORG_CONFLICT`, ace#2919) — so use `run_workspace.connect_orgs`, not the
+preflight's, for every workspace. For a partner workspace (`is_default: false`):
 
 - **Never fall back to `.env`.** A missing value is a halt, not a default —
   falling back builds a partner run in ACE's shared HQ space / Connect orgs,

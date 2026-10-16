@@ -124,9 +124,17 @@ PM→NM flow change; a program an opp already owns keeps the org recorded in
 the instance's.** `§ Starting a New Opportunity` step 1 resolves a
 `run_workspace:` block (`scripts/resolve-run-workspace.ts`, logic in
 `lib/run-workspace.ts`). For the default workspace (a bare `<opp>`) it is the
-`.env` values above, unchanged. For any other workspace (`/ace:run <ws>/<opp>`)
-its nested `connect_orgs:` block (`source: tenancy`) REPLACES the preflight's in
-every Connect-acting dispatch, and the whole `run_workspace:` block goes into
+`.env` values above — except the Connect orgs, which are checked against the
+opp's ace-web tenancy: an org key `.env` leaves unset comes from the tenancy
+(`source: tenancy`), and one that contradicts it halts with
+`CONNECT_ORG_CONFLICT` (ace#2919 — a Phase 4 once completed in the legacy
+default org while the tenancy named another, and the org is create-time only).
+So for EVERY workspace the run block's nested `connect_orgs:` REPLACES the
+preflight's in every Connect-acting dispatch, and when you record the orgs in
+`run_state.yaml` copy that nested block's `source.pm_org` / `source.nm_org`
+(`env` | `tenancy` | `legacy-default` | `unset`) — never `run_workspace.source`,
+which names where the workspace's Drive/HQ values came from. The whole
+`run_workspace:` block goes into
 EVERY phase dispatch: Phase 3 deploys and releases into `run_workspace.hq_domain`
 (wherever a skill says `<ACE_HQ_DOMAIN>`), Phase 4 builds in the partner's PM +
 holding orgs and hands Connect the space-restricted `run_workspace.hq_api_key`
