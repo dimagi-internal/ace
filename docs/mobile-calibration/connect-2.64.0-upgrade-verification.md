@@ -50,6 +50,7 @@ to keep it in step with the runtime default; it now does.
 | C3 | An atlas exists for `2.64.0` | **PASS** | `docs/mobile-atlas/connect-2.64.0.md`, written from the 34 committed dumps, tagged per surface. |
 | C4 | `app-release-qa`'s CCZ min-version check changed disposition | **PASS — and this is a behaviour change to watch** | See below. |
 | C5 | The calibration report's residuals are carried forward, not dropped | **PASS** | R1–R6 reproduced in `docs/mobile-atlas/connect-2.64.0.md § Residuals`; R7 (calibrate unexercised) folded into the skill itself. |
+| C6 | The common screenshot pool for `2.64.0` exists, and the previously-live aliases are live and distinct | **FAIL (added 2026-10-16)** | This row did not exist when the checklist was filled in, and the pool was never produced: `ACE/_common/connect-screenshots/` holds only `2.63.0/` (listed live 2026-10-16), whose manifest has 5 of 16 aliases live. Tracked by dimagi-internal/ace#3060. |
 
 **C4 in full.** `lib/ccz-min-version.ts` keys severity on whether a remedy is
 *reachable*: `required <= pinned` → `ok`; `required > pinned` **with** a selector
