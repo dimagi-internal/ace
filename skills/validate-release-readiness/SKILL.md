@@ -246,9 +246,10 @@ does; do not walk them by hand. Repairs first, then ONE validation:
 
 ```bash
 $RC run --workspace <ws> --opp <opp> --run <run-id> $FLAGS --out-dir <scratch>     # pass 1 → exit 10
-#   do agent_work: re-run each `regrade[].skill` (Skill(<gate>)), LOOK at each
-#   `look[]` frame → <scratch>/looks.json [{frame, ok, detail}], and the step-6
-#   repairs the surface audit asks for
+#   do agent_work: run `repair` first when present (a clone's ledgered link
+#   repair, step 6), re-run each `regrade[].skill` (Skill(<gate>)), LOOK at each
+#   `look[]` frame → <scratch>/looks.json [{frame, ok, detail}], and the other
+#   step-6 repairs the surface audit asks for
 $RC run --workspace <ws> --opp <opp> --run <run-id> $FLAGS --out-dir <scratch> \
   --looks <scratch>/looks.json                                                        # pass 2 → 0 READY / 1 NOT READY
 ```
@@ -304,12 +305,19 @@ cause and rerun pass 2. An HQ `hq-plan-free` blocker still needs the operator
    anonymously on `<workspace>/<opp>/<run-id>` and fix, in the run's OWN
    documents and run_state, everything an outsider would trip on that ACE can
    fix: links on the summary that point into the SOURCE workspace or a shared
-   tenant (`scripts/clone-asset-rewrite.ts` plan → read `plan.json` → apply, as in
-   `clone-to-new-workspace` Step 4e — never apply a file listed in
-   `plan.clone_native`: it was re-authored in the clone after the copy, and the
-   plan would overwrite it with the source's content, ace#2730; fix such a file's
-   remaining source refs by hand), anything marked misleading, missing
-   previews (step 4). What cannot be fixed here stays a blocker, with its owner.
+   tenant — for a cloned run, run `agent_work.repair` from pass 1
+   (`clone-run.ts --from <clone.from.workspace> --to <ws> <opp>/<run> --readiness-repair`,
+   run from the plugin root exactly as pass 1 prints it).
+   It applies the `scripts/clone-asset-rewrite.ts` plan and records every pure
+   id/URL rewrite in `release-readiness_content-ledger.yaml`, so the repair
+   makes no gate stale; **do not apply `plan.json` by hand** — an unledgered
+   write reads as new content and re-opens every gate on that file (ace#3092).
+   A file in its `readiness_repair.unrecorded[]` changed by more than the id
+   map: its gates ARE stale — re-run pass 1 for the re-grade list. It never
+   applies a `plan.clone_native` file (re-authored in the clone after the copy;
+   the plan would overwrite it with the source's content, ace#2730) — fix such a
+   file's remaining source refs by hand. Also fix anything marked misleading,
+   and missing previews (step 4). What cannot be fixed here stays a blocker, with its owner.
    **Sharing is never a repair** — a private document becomes a plan action
    (step 8), never a `drive_set_anyone_with_link` call here. After any repair,
    re-run step 1. All content changes happen here; `/ace:release` makes none.
@@ -425,3 +433,5 @@ prints why and the release stops — it never adapts.
 | 2026-10-03 | Became `validate-release-readiness` (owner decision): absorbs the HQ plan check, the review-page audit (per reviewer), the repairs `/ace:release` used to make, Drive sharing; requires reviewers; on READY writes the hashed release plan + every email, and a run_state hash. Verdict file renamed `release-readiness_verdict.yaml` (v2). | ACE team |
 | 2026-10-16 | Labs is REBUILT by the clone, never widened (ace#3020): the plan grants Labs only on `clone.labs.status: done` + `clone.connect.status: done`, rides on the Connect grant (no Labs action), and blocks with `plan-labs-workspace-llo-missing` when the rebuilt labs workspace lacks a granted Connect org. | ACE team |
 | 2026-10-16 | One readiness pass + staleness by content: `$RC run` does every deterministic step (inventory, Connect post-condition, HQ plan, gaps, links, memberships, surface audit, Drive sharing, assess) in parallel and leaves the agent only `agent_work` (gates to re-grade, frames to look at) — repairs first, then one validation. A gate is stale only when its artifact CONTENT changed: pure id/URL rewrites recorded in `release-readiness_content-ledger.yaml` (clone drive_ids / asset_refs / labs) date the file to the content they rewrote, a grade may carry `artifact_sha256`, and the release gate tolerates such writes after validation. | ACE team |
+| 2026-10-16 | Step-6 link repairs go through the content ledger (ace#3092): pass 1 prints `agent_work.repair` for a cloned run — `clone-run.ts --readiness-repair`, the asset_refs plan applied via `recordMappedRewrite` without moving the clone's stamps — so a pure id/URL repair makes no gate stale; a non-pure one is listed in `unrecorded[]` and its gates stay stale. Never apply `plan.json` by hand. | ACE team |
+| 2026-10-16 | Every grade carries `artifact_sha256` (ace#3092): ace-gdrive's write atoms stamp `contentSha(<capture_path artifact>)` onto each `*-qa_result*.yaml` / `*_verdict*.yaml` they write (`lib/gate-artifact-hash.ts`) — no skill changes — so a gate stays fresh while its artifact's content matches, for every run, not only a clone's ledgered rewrites. A grade whose `capture_path` is not one run file is written unstamped and judged by timestamp. | ACE team |

@@ -103,14 +103,22 @@ export interface CloneBudget {
 
 /**
  * The defaults, mirrored by config/clone-budget.json (the file wins). Set from
- * what each stage costs when it works — ace-web's copy with its 8-way pool
- * (ace-web#864: ~850 files ≈ 4–5 min), Connect's ~20 calls, the scripted Labs
- * copy — so a breach means something got slow, not that the budget was tight.
+ * what each stage costs when it works — ace-web's copy with its 8-way pool,
+ * Connect's ~20 calls, the scripted Labs copy — so a breach means something got
+ * slow, not that the budget was tight.
+ *
+ * ace_web (10 min) and the total (20 min) are ESTIMATES, not measurements
+ * (ace#3092): ace-web#913 puts ~850 files at pool 8 at 6–8 min end to end
+ * (~4.3 min pooled copy + serial folder creation + the id-rewrite pass), so the
+ * first 5 min would have breached on every real clone — a budget that fires
+ * every run is noise, and noise gets ignored. Once two real clones have run,
+ * tune both from their recorded `seconds` (≈ the slower run + 25%), here and in
+ * the file together.
  */
 export const DEFAULT_CLONE_BUDGET: CloneBudget = {
-  total_seconds: 15 * 60,
+  total_seconds: 20 * 60,
   stages: {
-    ace_web: 5 * 60,
+    ace_web: 10 * 60,
     summary_url: 30,
     drive_ids: 3 * 60,
     hq: 4 * 60,
@@ -920,6 +928,14 @@ export interface LabsCopyDeps {
   workspace: (programId: number, llos: string[]) => Promise<{ ok: boolean; llos: string[]; detail: string }>;
   sleep?: (ms: number) => Promise<void>;
   log?: (msg: string) => void;
+  /**
+   * Steps whose earlier create came back ambiguous and the operator has
+   * checked by hand (`--retry-ambiguous labs.registry,…`). Without it an
+   * ambiguous create is never repeated — see `labsCreate`.
+   */
+  retryAmbiguous?: Set<string>;
+  /** Look-again attempts after an ambiguous create (default 4, `lookThenCreate`'s). */
+  settle?: number;
 }
 
 export interface LabsRebuildContext {
@@ -1139,6 +1155,43 @@ async function copyLabs(
     }
   };
 
+  /**
+   * The three Labs CREATES (registry, programme report, cohort) are
+   * look-then-create (ace#3092 item 4). `step()` only marks a step done AFTER
+   * its body returns, so a create that LANDS but whose response is lost (a
+   * 502/504, a dropped socket, a crash before `save`) used to be repeated on
+   * the rerun: a second registry / report / cohort in the clone's program.
+   * Each is now found first by the clone-unique name it was made with, and
+   * the create's progress is recorded in `steps.<name>_create`, so a rerun
+   * ADOPTS what landed and an unresolved ambiguous create is refused until
+   * the operator checks (`--retry-ambiguous labs.<name>`). Same semantics as
+   * the Connect/HQ creates — "a timeout is not a failure; look before retry".
+   */
+  const labsCreate = (name: string, look: () => Promise<{ id: string } | null>, create: () => Promise<{ id: string }>) =>
+    lookThenCreate({
+      step: `labs.${name}`,
+      record: steps[`${name}_create`] as CreateRecord | undefined,
+      retryAmbiguous: deps.retryAmbiguous?.has(`labs.${name}`),
+      settle: deps.settle,
+      sleep,
+      look: async () => {
+        const rec = steps[`${name}_create`] as CreateRecord | undefined;
+        if (rec?.status === 'done' && rec.id) return { id: rec.id };
+        return look();
+      },
+      create,
+      save: async (r) => {
+        steps[`${name}_create`] = r;
+        await save(state);
+      },
+    });
+  /** At most one object of this name — two means a duplicate already exists; never guess which. */
+  const oneNamed = (what: string, hits: Array<Record<string, any>>): { id: string } | null => {
+    if (hits.length > 1) throw new Error(`${hits.length} ${what} — record the right one in clone.labs.copy.steps, then rerun`);
+    const id = int(hits[0]?.id);
+    return id ? { id: String(id) } : null;
+  };
+
   const programName = s(cascade.program_name) ?? s(synthetic.program_name) ?? `${ctx.source.opp} programme`;
   const orgName = `${programName} partners (${tag})`;
 
@@ -1187,18 +1240,29 @@ async function copyLabs(
       const regProgram = int(obj(cascade.registry).program_id) ?? src.program_id;
       const got = obj(await call('semantic_registry_get', { registry_id: src.registry_id, program_id: regProgram }));
       const docs = remapSyntheticProducts({ properties_doc: got.properties_doc, indicators_doc: got.indicators_doc, deployment: got.deployment }, map).products as Record<string, unknown>;
-      const made = obj(await call('semantic_registry_create', {
-        name: `${s(got.name) ?? 'registry'} (${tag})`,
-        description: s(got.description) ?? '',
-        program_id: newProgram,
-        is_shared: false,
-        properties_doc: docs.properties_doc,
-        indicators_doc: docs.indicators_doc,
-        deployment: docs.deployment ?? {},
-      }));
-      const id = int(made.id ?? made.registry_id);
-      if (!id) throw new Error('semantic_registry_create returned no id');
-      return { registry_id: id };
+      const regName = `${s(got.name) ?? 'registry'} (${tag})`;
+      const made = await labsCreate(
+        'registry',
+        async () => {
+          const { registries } = obj(await call('semantic_registry_list', { program_id: newProgram })) as { registries?: unknown };
+          return oneNamed(`registries named "${regName}" in labs program ${newProgram}`, arr(registries).map(obj).filter((r) => r.name === regName));
+        },
+        async () => {
+          const r = obj(await call('semantic_registry_create', {
+            name: regName,
+            description: s(got.description) ?? '',
+            program_id: newProgram,
+            is_shared: false,
+            properties_doc: docs.properties_doc,
+            indicators_doc: docs.indicators_doc,
+            deployment: docs.deployment ?? {},
+          }));
+          const id = int(r.id ?? r.registry_id);
+          if (!id) throw new Error('semantic_registry_create returned no id');
+          return { id: String(id) };
+        },
+      );
+      return { registry_id: int(made.id)!, adopted: made.adopted };
     });
     put(src.registry_id, reg.registry_id);
     sourceIds.add(src.registry_id);
@@ -1212,22 +1276,53 @@ async function copyLabs(
     const def = obj(await call('workflow_get', { workflow_id: srcPr, program_id: src.program_id, include_render_code: false }));
     const key = s(def.template_type);
     if (!key) throw new Error(`source workflow ${srcPr} has no template_type — cannot instantiate the same template`);
-    const made = obj(await call('workflow_create_from_template', {
-      template_key: key,
-      program_id: newProgram,
-      opportunity_ids: newOpps,
-      ...(map[String(src.registry_id)] ? { registry_source: { registry_id: map[String(src.registry_id)] } } : {}),
-      ...(s(def.name) ? { name: s(def.name)! } : {}),
-      config: portableConfig(def.config, new Set([...sourceIds, srcPr, ...labsIdsIn(synthetic)])),
-    }));
-    const id = int(made.workflow_id);
-    if (!id) throw new Error('workflow_create_from_template returned no workflow_id');
-    const companion = obj(obj(made.companions).worker_review);
+    const wfName = s(def.name);
+    let made: Record<string, any> | null = null;
+    const got = await labsCreate(
+      'programme_report',
+      async () => {
+        // The program is this clone's own (step 1 made it), so a workflow of this
+        // template — and this name, when the source has one — is this clone's.
+        const { workflows } = obj(await call('workflow_list', { program_id: newProgram, kind: 'workflow' })) as { workflows?: unknown };
+        const hits = arr(workflows).map(obj).filter((w) => w.template_type === key && (!wfName || w.name === wfName));
+        return oneNamed(`"${key}" workflows${wfName ? ` named "${wfName}"` : ''} in labs program ${newProgram}`, hits);
+      },
+      async () => {
+        made = obj(await call('workflow_create_from_template', {
+          template_key: key,
+          program_id: newProgram,
+          opportunity_ids: newOpps,
+          ...(map[String(src.registry_id)] ? { registry_source: { registry_id: map[String(src.registry_id)] } } : {}),
+          ...(wfName ? { name: wfName } : {}),
+          config: portableConfig(def.config, new Set([...sourceIds, srcPr, ...labsIdsIn(synthetic)])),
+        }));
+        const id = int(made.workflow_id);
+        if (!id) throw new Error('workflow_create_from_template returned no workflow_id');
+        return { id: String(id) };
+      },
+    );
+    const id = int(got.id)!;
+    let pipelineId: number | null;
+    let companion: Record<string, any>;
+    if (made) {
+      const m = made as Record<string, any>;
+      pipelineId = int(m.pipeline_id);
+      companion = obj(obj(m.companions).worker_review);
+    } else {
+      // Adopted: the create's reply is gone, so read what it would have said.
+      // Companion links live in the definition's config under their config key
+      // (connect-labs `companion_links`); the pipeline is its visits source.
+      const have = obj(await call('workflow_get', { workflow_id: id, program_id: newProgram, include_render_code: false }));
+      const sources = arr(have.pipeline_sources).map(obj);
+      pipelineId = int((sources.find((p) => p.alias === 'visits') ?? sources[0])?.pipeline_id);
+      companion = obj(obj(have.config).worker_review);
+    }
     return {
       workflow_id: id,
-      pipeline_id: int(made.pipeline_id),
+      pipeline_id: pipelineId,
       worker_review: { workflow_id: int(companion.workflow_id), run_id: int(companion.run_id) },
       source_pipeline_sources: arr(def.pipeline_sources),
+      adopted: got.adopted,
     };
   });
   put(srcPr, report.workflow_id);
@@ -1262,9 +1357,24 @@ async function copyLabs(
       const org = arr(lc.organizations).map(obj).find((o) => o.name === orgName);
       const slug = s(org?.slug);
       if (!slug) throw new Error(`labs_context finds no organisation named "${orgName}" — read the slug, never derive it (ace#2522)`);
-      const c = obj(await call('benchmarks_cohort_create', { name: `${programName} (${tag})`, organization_id: slug, min_peers: 2, min_denominator: 1, require_complete_series: false }));
-      const cid = int(c.id ?? c.cohort_id);
-      if (!cid) throw new Error('benchmarks_cohort_create returned no id');
+      const cohortName = `${programName} (${tag})`;
+      const cohortMade = await labsCreate(
+        'cohort',
+        async () => {
+          const { cohorts } = obj(await call('benchmarks_cohort_list', { organization_id: slug })) as { cohorts?: unknown };
+          return oneNamed(`cohorts named "${cohortName}" in ${slug}`, arr(cohorts).map(obj).filter((c) => c.name === cohortName));
+        },
+        async () => {
+          const c = obj(await call('benchmarks_cohort_create', { name: cohortName, organization_id: slug, min_peers: 2, min_denominator: 1, require_complete_series: false }));
+          const id = int(c.id ?? c.cohort_id);
+          if (!id) throw new Error('benchmarks_cohort_create returned no id');
+          return { id: String(id) };
+        },
+      );
+      const cid = int(cohortMade.id)!;
+      // Adding members and making opp reports are idempotent (the latter
+      // reports `skipped` for an opp that already has one), so an adopted
+      // cohort just runs through them again.
       await call('benchmarks_cohort_add_opportunities', { cohort_id: cid, opportunity_ids: newOpps });
       const srcOppReport = int(obj(arr(cascade.opp_reports)[0]).workflow_id);
       const oppTemplate = srcOppReport

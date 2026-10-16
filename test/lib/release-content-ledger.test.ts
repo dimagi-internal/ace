@@ -25,6 +25,7 @@ import {
   isPureMappedRewrite,
   parseContentLedger,
   readinessAgentWork,
+  readinessRepairCommand,
   recordMappedRewrite,
   releaseGate,
   runLastWrite,
@@ -167,6 +168,46 @@ describe('readinessAgentWork — what `release-readiness.ts run` leaves to the a
     const l = recordMappedRewrite(ledgerWith(), '4-connect/build-memo.md', { modifiedTime: '2026-10-16T10:00:00Z', text: ORIGINAL }, { modifiedTime: '2026-10-16T11:00:00Z', text: REWRITTEN });
     const w = readinessAgentWork([...files, ledgerFile(l)], { phases: {} }, catalog, now);
     expect(w.regrade).toEqual([]);
+  });
+});
+
+describe('readiness step-6 repairs go through the ledger (ace#3092)', () => {
+  const catalog = { qaSkills: new Set<string>(), evalSkills: new Set(['build-memo']) };
+  const now = '2026-10-16T12:00:00Z';
+  const evalFile: RunFile = { path: '4-connect/build-memo-eval_verdict.yaml', modifiedTime: '2026-10-16T10:00:30Z', text: 'verdict: pass\n' };
+  const target = { workspace: 'spark', opp: 'spark-facilitator', run: '20260926-1800' };
+  // The clone's asset_refs left one source id behind; the readiness repair maps it at 11:30.
+  const REPAIR_PAIR = { kind: 'drive_id', from: '1LeftOnSourceCCCCCCCCCCCCCCCCCCCCCCCC', to: '1RepairedDDDDDDDDDDDDDDDDDDDDDDDDDDDD' };
+  const AFTER_CLONE = `${REWRITTEN}\nGuide: https://drive.google.com/file/d/${REPAIR_PAIR.from}/view`;
+  const AFTER_REPAIR = AFTER_CLONE.replace(REPAIR_PAIR.from, REPAIR_PAIR.to);
+  const cloned = (): ContentLedger => recordMappedRewrite(ledgerWith(), '4-connect/build-memo.md', { modifiedTime: '2026-10-16T10:00:00Z', text: ORIGINAL + `\nGuide: https://drive.google.com/file/d/${REPAIR_PAIR.from}/view` }, { modifiedTime: '2026-10-16T10:45:00Z', text: AFTER_CLONE }, 'clone-run:asset_refs');
+
+  it('a pure repair chains onto the clone\'s entry: content still dated to what was graded, no re-grade', () => {
+    let l = cloned();
+    l = { ...l, id_map: extendIdMap(l.id_map, [REPAIR_PAIR]) };
+    l = recordMappedRewrite(l, '4-connect/build-memo.md', { modifiedTime: '2026-10-16T10:45:00Z', text: AFTER_CLONE }, { modifiedTime: '2026-10-16T11:30:00Z', text: AFTER_REPAIR }, 'validate-release-readiness:repair');
+    const e = l.files['4-connect/build-memo.md'];
+    expect(e).toMatchObject({ content_as_of: '2026-10-16T10:00:00Z', modified_after: '2026-10-16T11:30:00Z', by: 'validate-release-readiness:repair' });
+    const w = readinessAgentWork([evalFile, { path: '4-connect/build-memo.md', modifiedTime: '2026-10-16T11:30:00Z' }, ledgerFile(l)], { phases: {} }, catalog, now);
+    expect(w.regrade).toEqual([]);
+  });
+
+  it('a repair that is more than the id map is not recorded — its gate reads stale', () => {
+    let l = { ...cloned(), id_map: extendIdMap(cloned().id_map, [REPAIR_PAIR]) };
+    const next = recordMappedRewrite(l, '4-connect/build-memo.md', { modifiedTime: '2026-10-16T10:45:00Z', text: AFTER_CLONE }, { modifiedTime: '2026-10-16T11:30:00Z', text: `${AFTER_REPAIR}\nA reworded caveat.` }, 'validate-release-readiness:repair');
+    expect(next).toBe(l);
+    l = next;
+    const w = readinessAgentWork([evalFile, { path: '4-connect/build-memo.md', modifiedTime: '2026-10-16T11:30:00Z' }, ledgerFile(l)], { phases: {} }, catalog, now);
+    expect(w.regrade.map((r) => r.finding)).toEqual(['eval-stale:build-memo-eval']);
+  });
+
+  it('pass 1 names the ledgered repair command for a cloned run, and none for a run that is not a clone', () => {
+    const rs = { phases: {}, clone: { from: { workspace: 'dimagi-team', opp: 'spark-facilitator', run: '20260926-1800' } } };
+    expect(readinessAgentWork([], rs, catalog, now, target).repair).toBe('npx tsx scripts/clone-run.ts --from dimagi-team --to spark spark-facilitator/20260926-1800 --readiness-repair');
+    expect(readinessRepairCommand(rs, { ...target, root: '/p/ace' })).toBe('node "/p/ace/node_modules/tsx/dist/cli.mjs" "/p/ace/scripts/clone-run.ts" --from dimagi-team --to spark spark-facilitator/20260926-1800 --readiness-repair');
+    expect(readinessRepairCommand(rs, target)).toMatch(/--readiness-repair$/);
+    expect(readinessAgentWork([], { phases: {} }, catalog, now, target).repair).toBeUndefined();
+    expect(readinessRepairCommand({ clone: { from: { workspace: 'spark' } } }, target)).toBeNull();
   });
 });
 

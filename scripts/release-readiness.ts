@@ -712,13 +712,13 @@ async function runPass(): Promise<void> {
   fs.writeFileSync(invPath, JSON.stringify(files, null, 1));
   fs.writeFileSync(rsPath, rsText);
   const runState = parseYaml(rsText) as Record<string, unknown>;
-  const work = readinessAgentWork(files, runState, catalog(), new Date().toISOString());
+  const work = readinessAgentWork(files, runState, catalog(), new Date().toISOString(), { workspace: ws, opp, run: runId, root: ROOT });
   fs.writeFileSync(path.join(dir, 'agent-work.json'), JSON.stringify(work, null, 1));
   const looks = arg('looks');
   if (!looks) {
     process.stdout.write(JSON.stringify({
       phase: 'prepare', run_folder: ids.run, agent_work: work, timings,
-      next: `re-run each regrade gate's skill (writes to Drive), LOOK at each frame → looks.json [{frame, ok, detail}], then: release-readiness.ts run … --looks looks.json`,
+      next: `${work.repair ? `repair links first (ledgered): ${work.repair}; then ` : ''}re-run each regrade gate's skill (writes to Drive), LOOK at each frame → looks.json [{frame, ok, detail}], then: release-readiness.ts run … --looks looks.json`,
     }, null, 1) + '\n');
     process.exit(10);
   }

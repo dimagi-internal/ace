@@ -430,7 +430,14 @@ const WEEKS = [
 const snap = (v: number) => ({ snapshot: { state: { snapshot: { programInd: { coverage: { value: v } }, byLLO: [{ llo: 'Kulawa', ind: { coverage: { value: v + 0.1 } } }] } } } });
 
 /** A minimal labs: the source cascade exists; every write mints ids from 20000 up. */
-function fakeLabs(opts: { failOnce?: string; workspaceOk?: boolean; figureDrift?: boolean } = {}) {
+function fakeLabs(opts: {
+  failOnce?: string;
+  /** How `failOnce` fails: `unlanded` = a 502 before the write (the default), `lost` = the write
+   *  LANDS and then the reply is lost (a 502 after), `error` = a plain non-transport tool error. */
+  failMode?: 'unlanded' | 'lost' | 'error';
+  workspaceOk?: boolean;
+  figureDrift?: boolean;
+} = {}) {
   let next = 20000;
   const id = () => next++;
   const calls: Array<{ tool: string; args: any }> = [];
@@ -442,13 +449,28 @@ function fakeLabs(opts: { failOnce?: string; workspaceOk?: boolean; figureDrift?
   const counts: Record<number, number> = { 10137: 645, 10138: 625 };
   const oppReports: number[] = [];
   let programReport = 0;
+  // What the creates made, so the list tools (the look-ups) can find it.
+  const registries: Array<{ id: number; name: string; program_id: number }> = [];
+  const workflows: Array<{ id: number; name: string; template_type: string; program_id: number; pipeline_id: number; worker_review: { workflow_id: number; run_id: number } }> = [];
+  const cohorts: Array<{ id: number; name: string; organization_id: string }> = [];
   const call = async (tool: string, args: any): Promise<any> => {
     calls.push({ tool, args });
-    if (opts.failOnce === tool && !failed.has(tool)) {
-      failed.add(tool);
-      throw new Error(`${tool}: labs HTTP 502: Bad Gateway`);
-    }
+    const failNow = opts.failOnce === tool && !failed.has(tool);
+    if (failNow) failed.add(tool);
+    if (failNow && opts.failMode === 'error') throw new Error(`${tool}: INVALID_SCHEMA bad argument`);
+    if (failNow && opts.failMode !== 'lost') throw new Error(`${tool}: labs HTTP 502: Bad Gateway`);
+    const reply = await answer(tool, args);
+    if (failNow) throw new Error(`${tool}: labs HTTP 502: Bad Gateway`); // landed; reply lost
+    return reply;
+  };
+  const answer = async (tool: string, args: any): Promise<any> => {
     switch (tool) {
+      case 'semantic_registry_list':
+        return { registries: registries.filter((r) => r.program_id === args.program_id) };
+      case 'workflow_list':
+        return { workflows: workflows.filter((w) => w.program_id === args.program_id).map((w) => ({ id: w.id, name: w.name, template_type: w.template_type, kind: 'workflow' })) };
+      case 'benchmarks_cohort_list':
+        return { cohorts: cohorts.filter((c) => c.organization_id === args.organization_id) };
       case 'synthetic_clone_to_labs_only': {
         const o = id();
         counts[o] = counts[args.source_opportunity_id];
@@ -458,17 +480,25 @@ function fakeLabs(opts: { failOnce?: string; workspaceOk?: boolean; figureDrift?
         return { opportunity_id: args.opportunity_id, total: counts[args.opportunity_id] ?? 0 };
       case 'semantic_registry_get':
         return { id: 9684, name: 'Noora registry', properties_doc: { properties: [] }, indicators_doc: { measures: [] }, deployment: { llo_map: { '10137': 'Kulawa', '10138': 'Tallafi' } } };
-      case 'semantic_registry_create':
-        return { id: id() };
+      case 'semantic_registry_create': {
+        const r = { id: id(), name: args.name, program_id: args.program_id };
+        registries.push(r);
+        return { id: r.id };
+      }
       case 'workflow_get':
         if (args.workflow_id === 9686) return { id: 9686, name: 'Programme report', template_type: 'indicator_programme_report', config: { showFilters: true, worker_review: { workflow_id: 9688 } }, pipeline_sources: [{ pipeline_id: 9685, alias: 'visits' }] };
         if (args.workflow_id === 9691) return { id: 9691, template_type: 'indicator_opp_report', config: {} };
+        {
+          const w = workflows.find((x) => x.id === args.workflow_id);
+          if (w) return { id: w.id, name: w.name, template_type: w.template_type, config: { worker_review: w.worker_review }, pipeline_sources: [{ pipeline_id: w.pipeline_id, alias: 'visits' }] };
+        }
         return { id: args.workflow_id, template_type: 'indicator_programme_report', config: {}, pipeline_sources: [{ pipeline_id: programReport + 1, alias: 'visits' }] };
       case 'workflow_create_from_template': {
         programReport = id();
         const pipe = id();
         const wr = id();
         const wrRun = id();
+        workflows.push({ id: programReport, name: args.name, template_type: args.template_key, program_id: args.program_id, pipeline_id: pipe, worker_review: { workflow_id: wr, run_id: wrRun } });
         return { workflow_id: programReport, pipeline_id: pipe, companions: { worker_review: { workflow_id: wr, run_id: wrRun } } };
       }
       case 'pipeline_get':
@@ -477,8 +507,11 @@ function fakeLabs(opts: { failOnce?: string; workspaceOk?: boolean; figureDrift?
         return { ok: true };
       case 'labs_context':
         return { organizations: [{ slug: 'labs-synthetic-noora-care-companion-partners--ace-noora-health-x', name: `Noora Care Companion partners (ace noora-health/noora-health/20261015-1129)` }] };
-      case 'benchmarks_cohort_create':
-        return { id: 40 };
+      case 'benchmarks_cohort_create': {
+        const c = { id: 40 + cohorts.length, name: args.name, organization_id: args.organization_id };
+        cohorts.push(c);
+        return { id: c.id };
+      }
       case 'benchmarks_cohort_add_opportunities':
         return { ok: true };
       case 'benchmarks_create_opp_reports': {
@@ -509,10 +542,10 @@ function fakeLabs(opts: { failOnce?: string; workspaceOk?: boolean; figureDrift?
         throw new Error(`fake labs: unexpected ${tool}`);
     }
   };
-  return { call, calls, workspaceOk: opts.workspaceOk ?? true };
+  return { call, calls, made: { registries, workflows, cohorts }, workspaceOk: opts.workspaceOk ?? true };
 }
 
-function labsCtx(labs: ReturnType<typeof fakeLabs>, saved: { state?: LabsCopyState } = {}) {
+function labsCtx(labs: ReturnType<typeof fakeLabs>, saved: { state?: LabsCopyState } = {}, retryAmbiguous?: Set<string>) {
   const sourceRunState = { ...source, phases: { ...source.phases, 'synthetic-data-and-workflows': { products: { synthetic: SYN } } } };
   return {
     source: cloneSourceFromRunState(sourceRunState, null),
@@ -523,6 +556,7 @@ function labsCtx(labs: ReturnType<typeof fakeLabs>, saved: { state?: LabsCopySta
     deps: {
       call: labs.call,
       sleep: async () => {},
+      retryAmbiguous,
       save: async (s: LabsCopyState) => { saved.state = JSON.parse(JSON.stringify(s)); },
       workspace: async (_p: number, llos: string[]) => (labs.workspaceOk ? { ok: true, llos, detail: 'listed' } : { ok: false, llos: [], detail: 'no labs session (~/.ace/labs-session.json)' }),
     },
@@ -558,7 +592,7 @@ describe('rebuildLabs — the scripted § 4c copy (ace#3020)', () => {
   });
 
   it('a failure mid-copy resumes at that step — no partner is copied twice', async () => {
-    const labs = fakeLabs({ failOnce: 'semantic_registry_create' });
+    const labs = fakeLabs({ failOnce: 'semantic_registry_create', failMode: 'error' });
     const saved: { state?: LabsCopyState } = {};
     const first = await rebuildLabs(labsCtx(labs, saved));
     expect(first).toMatchObject({ status: 'not-done', step: 'registry' });
@@ -580,6 +614,67 @@ describe('rebuildLabs — the scripted § 4c copy (ace#3020)', () => {
     const r = await rebuildLabs(labsCtx(fakeLabs({ figureDrift: true })));
     expect(r).toMatchObject({ status: 'not-done', step: 'verify' });
     expect(String(r.reason)).toMatch(/2026-10-11 program\.coverage: source 0\.6, copy 0\.61/);
+  });
+});
+
+describe('rebuildLabs — the three Labs creates are look-then-create (ace#3092)', () => {
+  const CREATES = [
+    ['semantic_registry_create', 'registries', 'registry'],
+    ['workflow_create_from_template', 'workflows', 'programme_report'],
+    ['benchmarks_cohort_create', 'cohorts', 'cohort'],
+  ] as const;
+
+  for (const [tool, kind, stepName] of CREATES) {
+    it(`${tool}: a create that LANDS but whose reply is lost is adopted, never repeated`, async () => {
+      const labs = fakeLabs({ failOnce: tool, failMode: 'lost' });
+      const saved: { state?: LabsCopyState } = {};
+      const r = await rebuildLabs(labsCtx(labs, saved));
+      expect(r.status).toBe('done');
+      expect(labs.calls.filter((c) => c.tool === tool)).toHaveLength(1);
+      expect(labs.made[kind]).toHaveLength(1);
+      expect((saved.state!.steps as any)[`${stepName}_create`]).toMatchObject({ status: 'done', id: String(labs.made[kind][0].id) });
+      // A rerun that lost every later record (only the partner copies kept) still finds it.
+      const { records, records_partial, program_id } = saved.state!.steps as any;
+      await rebuildLabs(labsCtx(labs, { state: { id_map: saved.state!.id_map, steps: { records, records_partial, program_id } } }));
+      expect(labs.made[kind]).toHaveLength(1);
+    });
+
+    it(`${tool}: an ambiguous create that did NOT land is refused on rerun until --retry-ambiguous labs.${stepName}`, async () => {
+      const labs = fakeLabs({ failOnce: tool, failMode: 'unlanded' });
+      const saved: { state?: LabsCopyState } = {};
+      const first = await rebuildLabs(labsCtx(labs, saved));
+      expect(first).toMatchObject({ status: 'not-done', step: stepName });
+      expect(String(first.reason)).toMatch(/recorded as ambiguous, NOT retried/);
+      expect((saved.state!.steps as any)[`${stepName}_create`].status).toBe('ambiguous');
+      const second = await rebuildLabs(labsCtx(labs, saved));
+      expect(second).toMatchObject({ status: 'not-done', step: stepName });
+      expect(String(second.reason)).toMatch(/--retry-ambiguous/);
+      expect(labs.made[kind]).toHaveLength(0);
+      const third = await rebuildLabs(labsCtx(labs, saved, new Set([`labs.${stepName}`])));
+      expect(third.status).toBe('done');
+      expect(labs.made[kind]).toHaveLength(1);
+    });
+  }
+
+  it('an adopted programme report still yields its pipeline and worker-review companion', async () => {
+    const labs = fakeLabs({ failOnce: 'workflow_create_from_template', failMode: 'lost' });
+    const saved: { state?: LabsCopyState } = {};
+    const r = await rebuildLabs(labsCtx(labs, saved));
+    expect(r.status).toBe('done');
+    const wf = labs.made.workflows[0];
+    expect((saved.state!.steps as any).programme_report).toMatchObject({ workflow_id: wf.id, pipeline_id: wf.pipeline_id, worker_review: wf.worker_review, adopted: true });
+    expect(saved.state!.id_map['9688']).toBe(wf.worker_review.workflow_id);
+  });
+
+  it('two objects already bearing the clone-unique name stop the step — never a guess', async () => {
+    const labs = fakeLabs();
+    // Seed a registry list with two hits by making the first run create one, then duplicating it.
+    const saved: { state?: LabsCopyState } = {};
+    await rebuildLabs(labsCtx(labs, saved));
+    labs.made.registries.push({ ...labs.made.registries[0], id: 99999 });
+    const again = await rebuildLabs(labsCtx(labs, { state: { id_map: saved.state!.id_map, steps: { records: (saved.state!.steps as any).records } } }));
+    expect(again).toMatchObject({ status: 'not-done', step: 'registry' });
+    expect(String(again.reason)).toMatch(/2 registries named/);
   });
 });
 
@@ -608,15 +703,17 @@ describe('the wall-clock budget (config/clone-budget.json)', () => {
     const b = parseCloneBudget(file);
     expect(Object.keys(file.stages).sort()).toEqual([...STAGES].sort());
     expect(b).toEqual(DEFAULT_CLONE_BUDGET);
-    expect(b.stages.ace_web).toBe(300);
+    expect(b.stages.ace_web).toBe(600);
     expect(b.stages.connect).toBe(180);
-    expect(b.total_seconds).toBe(900);
+    expect(b.total_seconds).toBe(1200);
   });
   it('a stage or the run over budget is a breach; a skipped stage costs nothing', () => {
     const b = parseCloneBudget(file);
-    expect(budgetBreaches({ ace_web: { seconds: 301 }, connect: { seconds: 100 }, hq: { status: 'done' } }, 400, b)).toEqual([{ stage: 'ace_web', seconds: 301, budget_seconds: 300 }]);
-    expect(budgetBreaches({}, 901, b)).toEqual([{ stage: 'total', seconds: 901, budget_seconds: 900 }]);
-    expect(budgetBreaches({ connect: { seconds: 180 } }, 900, b)).toEqual([]);
+    expect(budgetBreaches({ ace_web: { seconds: 601 }, connect: { seconds: 100 }, hq: { status: 'done' } }, 700, b)).toEqual([{ stage: 'ace_web', seconds: 601, budget_seconds: 600 }]);
+    // ace-web#913's 6–8 min estimate for ~850 files sits inside the budget.
+    expect(budgetBreaches({ ace_web: { seconds: 8 * 60 } }, 8 * 60, b)).toEqual([]);
+    expect(budgetBreaches({}, 1201, b)).toEqual([{ stage: 'total', seconds: 1201, budget_seconds: 1200 }]);
+    expect(budgetBreaches({ connect: { seconds: 180 } }, 1200, b)).toEqual([]);
   });
   it('refuses an unknown stage or a non-positive budget', () => {
     expect(() => parseCloneBudget({ stages: { nope: 1 } })).toThrow(/unknown stage/);

@@ -104,6 +104,12 @@ const QAResultObjectSchema = z.object({
   ran_at: z.string(),
   /** Path to the artifact under review (relative to runs/<run-id>/). */
   capture_path: z.string().min(1),
+  /**
+   * `contentSha` of the artifact at `capture_path` when this was written —
+   * stamped by ace-gdrive's write atoms (lib/gate-artifact-hash.ts), never by
+   * the skill. Readiness keeps the gate fresh while the content still matches.
+   */
+  artifact_sha256: z.string().optional(),
 
   /** Schema version. Bump on breaking shape changes; add migration. */
   schema_version: z.literal(QA_SCHEMA_VERSION).optional(),
