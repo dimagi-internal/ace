@@ -778,11 +778,38 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
        `lib/entity-state-taxonomy.ts` BEFORE composing the brief:
        `declared: false`, or a non-empty `problems`, is a **HALT** with a
        Phase-1 finding, never a licence to invent a vocabulary. Verified
-       ACE-direct by Step 4l (ace#1564).
+       ACE-direct by Step 4l (ace#1564). `stateless: true` (row
+       `stateless [source: …]`) is a declaration, not a gap: brief NO state
+       field (ace#2774).
 
      Do NOT inline-paraphrase these — reference the library so the build
      and `pdd-to-deliver-app-eval` stay symmetric. Skip a component whose
      trigger doesn't fire.
+
+   - **Followed-entity id on every paid form (ace#2889).** When the PDD's
+     `program_parameters.followed_entity_case_type` names a case type
+     (`parseFollowedEntityCaseType` from `lib/followed-entity-id.ts`), every
+     paid form — every form carrying a Connect `deliver_unit` — that serves
+     that entity must record its id in a **hidden** field at the form root
+     named `followedEntityIdField(caseType)` (= `<case_type>_case_id`, e.g.
+     `participant_case_id`), whose value is DERIVED from the case model, never
+     worker-entered or hard-coded. Put this in the brief as a `REQUIRED:`
+     line naming the field and, per paid form, its source:
+     - a form that runs ON the followed case → the session case id
+       (`#case/@case_id`, i.e. `instance('commcaresession')/session/data/case_id`);
+     - a child-case form (a crop cycle, session or pregnancy under the
+       followed entity) → the child case's PARENT id, read from casedb
+       (`instance('casedb')/casedb/case[@case_id = instance('commcaresession')/session/data/case_id]/index/parent`);
+     - a form that CREATES the followed entity → the new case block's
+       `@case_id`.
+     A paid form that genuinely serves no followed entity is recorded in the
+     summary's `## Build notes` under `followed_entity_id.exempt` with its
+     reason (the PDD's Deliver spec must say so) — `app-release-qa § Step 4.9`
+     reads that map and fails every other paid form that lacks the field. On
+     `smallholder-seasonal/20261012-1549` the paid Harvest visit updated the
+     crop cycle and named nothing that identified the woman, so no reporting
+     layer could attach the visit to her. `followed_entity_case_type: none
+     (<reason>)` or an absent row (non-longitudinal, non-multi-stage) → skip.
 
    - **App-test economy (always).** Insert this paragraph **verbatim** into
      the brief, in its own paragraph, prefixed `REQUIRED:`:
@@ -2077,6 +2104,15 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
        case-list requirement makes such a state mandatory. No such state
        anywhere → skip cleanly and say so in the summary's `## Build notes`
        (`entity_state_taxonomy: skipped — <reason>`).
+       **Exception — a declared stateless entity (ace#2774).** When
+       `parseStateTaxonomy` returns `stateless: true` (the PDD row reads
+       `stateless [source: …]`), the PDD has positively declared that the
+       followed entity has no states: brief NO state field, no phase picker
+       and no state case-list column, and record
+       `entity_state_taxonomy: stateless — 0 states declared` in the summary.
+       The diff in step 3 still runs (declared `[]`), so any state option set
+       the architect added anyway surfaces as `extraInBuild` — an invented
+       state — and is repaired by removal.
 
     2. **Parse the DECLARED taxonomy — this is the only authority.**
 
@@ -2444,6 +2480,11 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
              # payable marker, image uploads). Not every field.
              fields:
                entity_key: <fieldUuid>
+   # Componentized runs ONLY (Phase 1 products.mode == componentized): the
+   # Phase-1 component ids this Deliver app built forms for, verbatim.
+   # app-deploy copies it into products.apps.deliver.components_built via
+   # buildCommcareProducts (ace#2157). Omit on the synthesized path.
+   components_built: [<component_id>, ...]
    option_source_gaps: []   # Step 4f — one entry per PDD-declared select
                             # that still shipped as free text, with the
                             # table + value column + label column it needs.
