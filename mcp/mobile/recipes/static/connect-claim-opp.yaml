@@ -442,9 +442,23 @@ appId: org.commcare.dalvik
               id: "${SELECTOR:opp-detail-start}"
           commands:
             - takeScreenshot: "claim-opp-resume-detail"
+            # Single tap + delayed guarded re-tap — see the ace#3064 note
+            # on the Branch B btn_start tap below.
             - tapOn:
                 id: "${SELECTOR:opp-detail-start}"
-                retryTapIfNoChange: true
+            - extendedWaitUntil:
+                notVisible:
+                  id: "${SELECTOR:opp-detail-start}"
+                timeout: 15000
+                optional: true
+            - runFlow:
+                when:
+                  visible:
+                    id: "${SELECTOR:opp-detail-start}"
+                commands:
+                  - takeScreenshot: "claim-opp-resume-detail-start-retap"
+                  - tapOn:
+                      id: "${SELECTOR:opp-detail-start}"
 
 # --- BRANCH B: new-opportunity (btn_view_opportunity present) ---
 - runFlow:
@@ -488,11 +502,51 @@ appId: org.commcare.dalvik
       # `retryTapIfNoChange: true` Maestro detects the no-hierarchy-change
       # state ~1s after the first tap and re-taps, surviving transient
       # tap loss without masking a genuinely-wedged state (Maestro caps
-      # retries). Applied to btn_resume + connect_learning_button +
-      # both btn_start sites for parity.
+      # retries). Applied to btn_resume + connect_learning_button.
+      #
+      # NOT to btn_start any more (dimagi-internal/ace#3064). Start fires
+      # POST /users/start_learn_app/ and the hierarchy does not change
+      # while that request is in flight, so `retryTapIfNoChange` re-taps
+      # ~1s later and queues a SECOND success callback, which navigates
+      # from a fragment that has already moved on:
+      #   IllegalArgumentException: Navigation action/destination
+      #     action_connect_job_intro_fragment_to_connect_downloading_fragment
+      #     cannot be found from the current destination
+      #     connect_downloading_fragment
+      #     at ConnectJobIntroFragment$1.onSuccess(ConnectJobIntroFragment.java:161)
+      # and CommCare dies on the main thread (ace#2584, spark-facilitator/
+      # 20261001-2208; ace#3064 baseline 02-learn-install, 2026-10-16 —
+      # both with the retried tap). A SINGLE tap on a fresh unclaimed opp
+      # (20260730-1718 Spark, worker-1, APK 2.64.0, 2026-10-17) did NOT
+      # crash: no new CommCare FATAL in `logcat -b crash`, same pid, the
+      # "Downloading Learn App" page rendered and the Learn home followed.
+      # THIS recipe, with the change below, then passed on a second fresh
+      # opp (20260810-0737, same device/worker): btn_start left the screen
+      # inside the 15s wait, the guarded re-tap was SKIPPED, Learn home
+      # reached, still no CommCare FATAL, same pid.
+      #
+      # The tap-loss defence is kept, but DELAYED: wait up to 15s for
+      # btn_start to leave the screen, and re-tap only if it is still
+      # there. A real tap is gone in ~2s (the download page replaces
+      # it), so the re-tap only fires on a genuinely lost tap.
+      # RESIDUAL: a start_learn_app round-trip slower than 15s with
+      # btn_start still rendered would re-tap into the same crash; that
+      # was not observed in either direction.
       - tapOn:
           id: "${SELECTOR:opp-detail-start}"
-          retryTapIfNoChange: true
+      - extendedWaitUntil:
+          notVisible:
+            id: "${SELECTOR:opp-detail-start}"
+          timeout: 15000
+          optional: true
+      - runFlow:
+          when:
+            visible:
+              id: "${SELECTOR:opp-detail-start}"
+          commands:
+            - takeScreenshot: "claim-opp-start-retap"
+            - tapOn:
+                id: "${SELECTOR:opp-detail-start}"
 # After Start, Connect fires POST /users/start_learn_app/ and downloads
 # the Learn CCZ ("Downloading Learn App" progress, Step N of 14, atlas
 # §4). On a verified+invited demo user, the post-download transition

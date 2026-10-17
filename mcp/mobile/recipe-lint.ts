@@ -1098,6 +1098,8 @@ function findDatePickerNextCellTaps(yaml: string, apkVersion: string): LintViola
           remediation:
             'replace it with a one-row upward fling on the DAY column — `dayStepFlingYaml()` from lib/date-picker-drive.ts ' +
             '(next-cell centre -> current-cell centre, duration 600) — and keep the form\'s own constraint as the loud check. ' +
+            'To go BACK a day, use `dayStepBackFlingYaml()` (the reverse fling, ace#2785) followed by a read-back assert on ' +
+            'form-date-picker-input. ' +
             'See skills/app-test-cases/SKILL.md § `kind: date` questions.',
         });
       }

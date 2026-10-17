@@ -1589,10 +1589,43 @@ lands. `dayStepFlingYaml()`'s emitted swipe is unchanged — this is
 composition around it, not a different gesture. On a recipe that does NOT
 trip the refusal first, no settle is needed.
 
-Residuals (not yet observed on-device): the derivation for a picker at a
-different screen position, more than one fling in a row, and month/year
-rollover. A constraint with a far-future floor still needs live calibration
-before authoring.
+**Going back one day (ace#2785).** The mirror gesture: a one-row DOWNWARD
+fling on the day column, from the CURRENT cell's centre to the NEXT cell's
+centre. Emit it from the helper, with the day cells read from a ui dump of
+the form's screen:
+
+```ts
+import { dayStepBackFlingYaml } from '../../lib/date-picker-drive';
+dayStepBackFlingYaml(cells);   // default cells: - swipe: { start: 529, 969, end: 529, 1119, duration: 600 }
+```
+
+```yaml
+# `session_date` — Day 1 = yesterday: step the day back by one, then READ IT BACK
+- swipe:
+    start: 529, 969
+    end: 529, 1119
+    duration: 600
+- waitForAnimationToEnd:
+    timeout: 3000
+- assertVisible:
+    id: "${SELECTOR:form-date-picker-input}"
+    text: "15"                 # the expected day — yesterday's day-of-month
+```
+
+Measured on spark-facilitator/20261004-1706 "Other Meeting Record"
+(2026-10-17, 1080x2400, date question at the top of the first screen;
+day cells previous `[445,733][613,906]`, current `[445,906][613,1032]`,
+next `[445,1032][613,1206]`): `16 → 15`, and the same swipe again
+`15 → 14`. The read-back assert is REQUIRED. Unlike the forward drive, a
+backward step has no loud check of its own: a `. >= today() - 14` rule
+accepts a wrong step, because a wrong step still lands inside the window.
+
+Residuals (not yet observed on-device): month/year rollover in either
+direction (day 1 → last day of the previous month), and a picker below the
+fold. The forward derivation now holds at two screen positions (the same
+2026-10-17 screen moved `14 → 15` with the derived forward fling), and two
+back flings in a row each moved exactly one day. A constraint with a
+far-future floor still needs live calibration before authoring.
 
 **2.63.2 — one tap per step (ace#1081).** Each column renders three
 children in order:
@@ -2140,10 +2173,12 @@ and the orchestrator had to `drive_move_file` it into `3-commcare/`.
   `<= today()`, a case takes at most one such record per device-day. When
   the anchor is also stamped `today()` at registration (an `enrolment_date`
   hidden `calculate: today()`), a case registered today takes exactly one.
-  Back-dating cannot rescue it: the 2.64.0 picker has only a calibrated
-  **+1-day forward** drive (`lib/date-picker-drive.ts`, ace#2518), and a
-  backward drive is uncalibrated. Those criteria are therefore unreachable
-  inside one `/ace:qa-deep` session.
+  A one-day backward drive is now calibrated (`dayStepBackFling`,
+  ace#2785), but whether `/ace:qa-deep` may back-date records to reach them
+  is undecided (commands/qa-deep.md Stage B step 4), so those criteria
+  stay unreachable inside one `/ace:qa-deep` session. Back-dating a
+  SINGLE field the journey itself asks for (e.g. "Day 1 = yesterday")
+  is a different thing and is allowed, with the read-back assert above.
 
   For each deep journey criterion, check this when cataloguing it, and
   again when `/ace:qa-deep` composes the deferred recipe. Read the

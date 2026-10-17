@@ -49,7 +49,7 @@ The check-in cadence is operator-judgment, not automated.
 | `connect-home` | **Composited** (base: `00-connect-home.yaml`) | Step 5.4 | ✓ 2.64.0, 2026-10-16 |
 | `sync-button` | **QUARANTINED** | `03-sync-button.yaml` — defective, see below | ✗ byte-identical to `connect-home` (ace#1832) |
 | `claim-opp` | **Composited** (base: `01-claim-opp.yaml`, requires OPP_NAME) | Step 5.4 | ✓ 2.64.0, 2026-10-16 |
-| `learn-install` | Live | `02-learn-install.yaml` | ✓ 2026-05-24 |
+| `learn-install` | Live | `02-learn-install.yaml` (requires OPP_NAME for crash recovery) | ✓ 2.64.0, 2026-10-17 (ace#3064) |
 | `personal-id-start` | Live | `04-personal-id.yaml` (nav-drawer Sign In/Register) | ✓ 2026-05-24 |
 | `personal-id-phone` | Live | `04-personal-id.yaml` | ✓ 2026-05-24 |
 | `personal-id-name` | Live | `04-personal-id.yaml` | ✓ 2026-05-24 |
@@ -290,13 +290,32 @@ Produces: `claim-opp.png` (opp-detail with Start button), bonus
 mobile_run_recipe({
   recipePath: 'mcp/mobile/recipes/baseline/02-learn-install.yaml',
   screenshotDir: '/tmp/ace-baseline-capture/',
+  envVars: { OPP_NAME: forkedOppName }, // same value as 4d; read only by the crash-recovery branch
 });
 ```
 
-Produces: `learn-install.png` (the "Downloading Learn App" mid-flight
-dialog — often <100KB because the screen is mostly solid blue;
-threshold rule should not flag this), `learn-install-home.png` (the
+Produces: `learn-install.png` and `learn-install-home.png` (the
 post-install Learn StandardHomeActivity).
+
+**The 2.64.0 surface.** After Start, 2.64.0 shows a FULL-SCREEN blue
+page (Connect toolbar on top, phone-with-heart icon, "Downloading Learn
+App", a progress bar; "Step N of 11" while it runs), not the 2.63-era
+progress dialog. Then a "Launching App / Contacting Server" dialog, then
+the Learn home. The recipe WAITS for the "Downloading Learn App" text
+before taking `learn-install` (a one-shot probe straight after the tap
+ran before the page rendered and was skipped). The frame is ~37 KB
+because it is mostly solid blue, so the 30 KB floor below admits it.
+
+**Start is tapped once** (ace#3064). A `retryTapIfNoChange` tap re-taps
+while `start_learn_app` is still in flight, and the second callback
+crashes CommCare 2.64.0 (`ConnectJobIntroFragment.java:161`, the ace#2584
+stack). If the device still lands off the download path, the recipe
+recovers on its own: the Job Card's DOWNLOAD LEARN APP gate
+(`connect_learning_button`) is tapped once, and a crash back to the job
+list is recovered with Resume on the `OPP_NAME` tile, then DOWNLOAD
+LEARN APP. Validated live on 2026-10-17 (worker-1, opp `20260730-1718`):
+a single tap, no CommCare crash, `learn-install` captured, Learn home
+reached.
 
 ### Step 4.5: Sweep the device-video spool
 
