@@ -81,10 +81,17 @@ loop:
     #      "remove the legend and hint", "thin the tick labels") — the verb must
     #      open a clause, so a description ("the frame cannot show that …
     #      chip") does not count.
+    #
+    # ACE owns these templates (built for ACE), but their SOURCE is
+    # connect-labs connect_labs/workflow/templates/ (indicator_*.py +
+    # indicator_report_render.js); each run deploys a copy. So the fix is a
+    # template-source PR in connect-labs — patching one run's render_code would
+    # not reach the next run. No `issue`: ace#2337 (the no-write-path issue) is
+    # closed, and an umbrella comment thread buries findings; canopy opens one
+    # issue per finding in `repo`, deduped by its ddd-finding marker.
     - name: labs-report-template
-      owner: ACE Phase 7 (labs report templates)
-      issue: dimagi-internal/ace#2337
-      repo: dimagi-internal/ace
+      owner: ACE (labs report templates, source in connect-labs)
+      repo: dimagi-internal/connect-labs
       match: |-
         (?s)^(?!.*(?:(?-i:\b(?:RECIPE|NARRATION|SCRIPTING)\b)|\[SPEC|\b(?:rewrite|reword|restate|edit)\s+(?:the\s+)?(?:scene\s*\d*\s*(?:\Ws\s*)?)?(?:narration|voiceover|concept_claim)|\bfrom the narration|\bthe narration (?:to|so)\b|\bin the recipe|\bnarrate\b|\breword to\b|scroll_to|before-frame|\bcursor\b|\bpointer\b)).*?(render[_ ]?code|labs (?:[\w-]+ ){0,3}template|deployed (?:labs )?[\w ]{0,30}template|indicator_(?:programme_report|worker_review|opp_report)|semantic registry|in the registry|\[CODE\]|(?-i:\bPRODUCT\b)(?: change)?\s*[:(]|(?:^\s*|[.;:!?)\]]\s+|\b(?:and|or|then|either)\s+|\([a-z]\)\s*)(?:remove|make|use (?:one|a single)|drop|delete|collapse|merge|rename|retitle|relabel|shorten|replace|render|add|label|mark|show|state|tint|thin|narrow|draw|caption|define|redefine|compute|exclude|fit|change|print|plain-language)\b[^.;!?]{0,60}?\b(?:column header|columns?|legend|chips?|badges?|tick labels?|ticks|axis|swatch|subline|sparkline|tiles?|KPI|bubbles?|ⓘ|picker|panel(?: heading| title| header)?|chart(?: title)?|row label|own row|thresholds?|numerator|denominator|bulk (?:action|button)|hints?|footnote|breadcrumb|mini (?:bars|chart)|attention|peer (?:median|count)|labels?|deltas|rows))
 
