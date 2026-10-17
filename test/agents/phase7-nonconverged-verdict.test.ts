@@ -57,6 +57,6 @@ describe('Phase 7 non-converged DDD verdict (ace#2995)', () => {
   });
 
   it('the write-back template lists the partial-ddd verdict', () => {
-    expect(DOC).toMatch(/verdict: <pass\|partial-ddd-<terminal_status>\|passed-with-deferred-evals>/);
+    expect(DOC).toMatch(/verdict: <pass\|partial-ddd-found_not_fixed\|partial-ddd-<terminal_status>\|passed-with-deferred-evals>/); // found_not_fixed: ace#2337
   });
 });

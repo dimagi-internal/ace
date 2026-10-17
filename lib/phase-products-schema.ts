@@ -846,6 +846,9 @@ export const PRODUCT_PRODUCERS: Partial<Record<PhaseName, Record<string, string>
     'synthetic.walkthroughs': 'synthetic-data-and-workflows',
     'synthetic.promoted_template': 'synthetic-data-and-workflows',
     'synthetic.ddd_*': 'synthetic-data-and-workflows',
+    // Dashboard defects the loop found but could not apply (ace#2337,
+    // lib/ddd-unapplied-findings.ts) — written at finalize from the loop's ending.
+    'synthetic.unapplied_dashboard_findings': 'synthetic-data-and-workflows',
     ocs_coach: 'ocs-coach-setup',
   },
   'solicitation-management': {

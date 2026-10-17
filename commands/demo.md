@@ -1,6 +1,6 @@
 ---
 description: Stand up a standalone live labs-dashboard demo (clone or de-novo synthetic) and hand it to the canopy DDD loop
-argument-hint: --source denovo --brief <text|path> --name <demo-name> [--pin-monday YYYY-MM-DD] [--render]
+argument-hint: --source denovo --brief <text|path> --name <demo-name> [--pin-monday YYYY-MM-DD] [--render] [--style explainer|recorded]
 allowed-tools: [Read, Write, Edit, Bash, Glob, Grep, Agent, AskUserQuestion]
 ---
 
@@ -27,6 +27,12 @@ the PDD → app → Connect lifecycle.
   omitted, a recent Monday is computed and recorded. Never a sliding window.
 - `--render` — run the full `canopy:ddd` converge + video + upload loop. Default
   is a single render+judge pass (`canopy:ddd-run`).
+- `--style {explainer|recorded}` — the video shape. **Default `explainer`** (one
+  produced arc). `recorded` authors canopy's recorded-walkthrough shape (several
+  short standalone cuts, no music or cards; `style: recorded` + `cuts:`) and is
+  used ONLY when requested: this flag, or a brief that explicitly asks for a
+  recorded walkthrough / short separate cuts (ace#2789,
+  `skills/demo-narrative/SKILL.md` Step 3r).
 
 ## Process
 
@@ -42,7 +48,7 @@ the PDD → app → Connect lifecycle.
    which keeps that chain well inside the budget; `lib/agent-depth.ts` has the
    arithmetic.
 
-   Thread through: `source`, `brief`, `name`, `pinMonday`, `render`.
+   Thread through: `source`, `brief`, `name`, `pinMonday`, `render`, `style`.
 
 3. The procedure produces the live dashboard `par_url` and (with `--render`) the
    canopy-web `/ddd/<slug>/<run_id>` package. Log both to the console.
