@@ -1,0 +1,565 @@
+{
+ "_doc": "Real findings from the 2026-10-15 ACE DDD runs (noora-health/20261015-1129, smallholder-seasonal/20261015-1402, kaduna-graduation/20261015-1411). expect = the config/ddd-loop.yaml fixed surface it must match, or 'in' (a recipe/narration finding the loop can fix). Out rows were declined by the loops as out of scope; in rows had fix_scope recipe|narrative. Built by sampling; see test/lib/ddd-loop-config.test.ts.",
+ "findings": [
+  {
+   "run": "noora-health/20261015-1129",
+   "fix_scope": "product",
+   "detail": "The facility class list has two columns, \"Caregivers in the class\" and \"Caregivers\", with identical values on every row (known residual). Two zero-caregiver class records (8 Jul, 15 Jul) pull the chart to 0.",
+   "fix_recommendation": "Remove the duplicate \"Caregivers\" column from the facility visit table.",
+   "expect": "labs-report-template",
+   "declined_as": "Labs report page / workflow render code (deployed labs template): ACE-owned labs object, outside this DDD loop's write p"
+  },
+  {
+   "run": "noora-health/20261015-1129",
+   "fix_scope": null,
+   "detail": "",
+   "fix_recommendation": "Make Attention count the row's highlighted cells, or rename it to what it counts.",
+   "expect": "labs-report-template",
+   "declined_as": "Labs report page / workflow render code (deployed labs template): ACE-owned labs object, outside this DDD loop's write p"
+  },
+  {
+   "run": "noora-health/20261015-1129",
+   "fix_scope": null,
+   "detail": "",
+   "fix_recommendation": "PRODUCT: draw discrete per-date marks instead of a connected line, thin the axis ticks, delete the legend row, and use one boolean format.",
+   "expect": "labs-report-template",
+   "declined_as": "Labs report page / workflow render code (deployed labs template): ACE-owned labs object, outside this DDD loop's write p"
+  },
+  {
+   "run": "noora-health/20261015-1129",
+   "fix_scope": "product",
+   "detail": "Partners table clipped at the right edge: 'Attention' header reads 'Attent' and its values are off-frame; 'Last visit' column is identical (10 Oct) for every row.",
+   "fix_recommendation": "Remove the uniform 'Last visit' column (or narrow columns) so the full table, including Attention, fits the frame.",
+   "expect": "labs-report-template",
+   "declined_as": "Labs report page / workflow render code (deployed labs template): ACE-owned labs object, outside this DDD loop's write p"
+  },
+  {
+   "run": "noora-health/20261015-1129",
+   "fix_scope": "product",
+   "detail": "8 Jul and 15 Jul records show 0 caregivers in the class (doll demonstration '-'), plotted as normal points that dive to 0 on the chart, with no explanation.",
+   "fix_recommendation": "Mark zero-attendee records as flagged (distinct point style + row label) rather than ordinary attendance.",
+   "expect": "labs-report-template",
+   "declined_as": "Labs report page / workflow render code (deployed labs template): ACE-owned labs object, outside this DDD loop's write p"
+  },
+  {
+   "run": "noora-health/20261015-1129",
+   "fix_scope": null,
+   "detail": "",
+   "fix_recommendation": "PRODUCT: remove the info bubbles and legend via clearer labels and a single colour rule; make the indicators table span its card and drop the duplicated 'against 40 peer educators' caption.",
+   "expect": "labs-report-template",
+   "declined_as": "Labs report page / workflow render code (deployed labs template): ACE-owned labs object, outside this DDD loop's write p"
+  },
+  {
+   "run": "noora-health/20261015-1129",
+   "fix_scope": null,
+   "detail": "",
+   "fix_recommendation": "PRODUCT: remove the legend, label the self row and the value column 'You' / 'Your value' so nothing truncates or wraps, and keep the full org name only in the page header.",
+   "expect": "labs-report-template",
+   "declined_as": "Labs report page / workflow render code (deployed labs template): ACE-owned labs object, outside this DDD loop's write p"
+  },
+  {
+   "run": "noora-health/20261015-1129",
+   "fix_scope": "product",
+   "detail": "'At payment floor' and 'Call consent' are internal programme terms that need a hover to decode. The Off target vs Watch threshold isn't stated (Doll demonstration at 70.0% below its 80% target is only 'Watch'), and the light-blue fill on Educator cells isn't in the legend.",
+   "fix_recommendation": "Plain-language labels ('Classes paid at the minimum rate', 'Caregivers agreeing to a follow-up call'), plus the threshold rule added to the legend line.",
+   "expect": "labs-report-template",
+   "declined_as": "Labs report page / workflow render code (deployed labs template): ACE-owned labs object, outside this DDD loop's write p"
+  },
+  {
+   "run": "smallholder-seasonal/20261015-1402",
+   "fix_scope": null,
+   "detail": "",
+   "fix_recommendation": "[UPSTREAM] labs template: grade cells with an explicit per-indicator off-target threshold carried on the target definition so a cell far below target renders Off target, and fit the table so the Attention column is visible.",
+   "expect": "labs-report-template",
+   "declined_as": "deployed indicator_programme_report template (Attention column / legend); no write path to labs render code (ace#2337) —"
+  },
+  {
+   "run": "noora-health/20261015-1129",
+   "fix_scope": null,
+   "detail": "",
+   "fix_recommendation": "PRODUCT: remove the 'click a row…' and 'Click a column name…' hints and the footer target list. Carry targets in the table structure (a target value under each column header), matching the tiles.",
+   "expect": "labs-report-template",
+   "declined_as": "Labs report page / workflow render code (deployed labs template): ACE-owned labs object, outside this DDD loop's write p"
+  },
+  {
+   "run": "noora-health/20261015-1129",
+   "fix_scope": "product",
+   "detail": "The 'See educators' click lands coherently on a worst-first educator table. However, the 'Attention' count contradicts the cell flags (the best educator scores the highest attention), the Off target/Watch band is undeclared, and 'Start coaching' is duplicated as a header chip and on all eight rows.",
+   "fix_recommendation": "PRODUCT: make 'Attention' name the flagged indicator (or remove it), put the watch band into the column header, and drop the per-row coaching links when the header action already covers every educator.",
+   "expect": "labs-report-template",
+   "declined_as": "Labs report page / workflow render code (deployed labs template): ACE-owned labs object, outside this DDD loop's write p"
+  },
+  {
+   "run": "noora-health/20261015-1129",
+   "fix_scope": "product",
+   "detail": "Unexplained Attention column, 'n<1: too few records' legend jargon, and truncated 'AT PAYMENT FLO...' tile label make the table need a second read.",
+   "fix_recommendation": "Drop the Attention column (or give it a click definition), reword 'n<1' to '- : too few records', move 'lower is better' under the KPI value so the label fits.",
+   "expect": "labs-report-template",
+   "declined_as": "Labs report page / workflow render code (deployed labs template): ACE-owned labs object, outside this DDD loop's write p"
+  },
+  {
+   "run": "noora-health/20261015-1129",
+   "fix_scope": null,
+   "detail": "",
+   "fix_recommendation": "PRODUCT: collapse the status into one chip and add one 'review reason' field naming the failed payment rule, taken from the rule the product already applies. Keep sent-to-review records off the attendance line.",
+   "expect": "labs-report-template",
+   "declined_as": "Labs report page / workflow render code (deployed labs template): ACE-owned labs object, outside this DDD loop's write p"
+  },
+  {
+   "run": "noora-health/20261015-1129",
+   "fix_scope": null,
+   "detail": "",
+   "fix_recommendation": "PRODUCT: remove the info bubbles, legend and hint; let target and peer columns plus a single threshold marker carry the meaning.",
+   "expect": "labs-report-template",
+   "declined_as": "Labs report page / workflow render code (deployed labs template): ACE-owned labs object, outside this DDD loop's write p"
+  },
+  {
+   "run": "noora-health/20261015-1129",
+   "fix_scope": "product",
+   "detail": "The floating 'Ask an agent' button occludes footer text (deduction: frame element overlaps content, max 2). The table also overflows the viewport ('Attent…' clipped), the fifth tile title is truncated ('AT PAYMENT FLO…'), and chart axis labels are tiny. The tiles' type hierarchy and target bars are otherwise well crafted.",
+   "fix_recommendation": "PRODUCT: give the page a bottom inset so the floating button cannot overlap content. Drop the derived 'Attention' column so the table fits 1440px. Move 'lower is better' into the tile's target line so the title is not truncated.",
+   "expect": "connect-labs-chrome",
+   "declined_as": "Labs report page / workflow render code (deployed labs template): ACE-owned labs object, outside this DDD loop's write p"
+  },
+  {
+   "run": "noora-health/20261015-1129",
+   "fix_scope": null,
+   "detail": "",
+   "fix_recommendation": "PRODUCT: delete the legend and hint row, move 'lower is better' to the target line so the KPI label fits, and pad the page bottom so the floating button clears the charts.",
+   "expect": "connect-labs-chrome",
+   "declined_as": "Labs report page / workflow render code (deployed labs template): ACE-owned labs object, outside this DDD loop's write p"
+  },
+  {
+   "run": "noora-health/20261015-1129",
+   "fix_scope": null,
+   "detail": "",
+   "fix_recommendation": "PRODUCT: reserve bottom padding for (or dock) the floating agent button; drop the all-identical 'Last visit' column so the table fits; shorten the payment-floor indicator label and remove its 'lower is better' chip.",
+   "expect": "connect-labs-chrome",
+   "declined_as": "Labs report page / workflow render code (deployed labs template): ACE-owned labs object, outside this DDD loop's write p"
+  },
+  {
+   "run": "smallholder-seasonal/20261015-1402",
+   "fix_scope": "upstream",
+   "detail": "",
+   "fix_recommendation": "[UPSTREAM] labs template: reserve a bottom-right gutter for the 'Ask an agent' launcher (page padding-bottom ≥ its height) and give the field-worker table horizontal containment that keeps the last column inside the card (narrower numeric columns or a sticky Attention column).",
+   "expect": "connect-labs-chrome",
+   "declined_as": "deployed indicator_programme_report template (Attention column / legend); no write path to labs render code (ace#2337) —"
+  },
+  {
+   "run": "noora-health/20261015-1129",
+   "fix_scope": "product",
+   "detail": "The opportunity display name in the H1 and the Opp picker includes the internal run tag '(synthetic, ace noora-health/20261015-1129)', and the picker also shows '(id: 10140 visits: 388)'. This is jargon a partner manager cannot read, and it is the biggest text on the screen.",
+   "fix_recommendation": "Create the opportunity with a human display name ('Rayuwa Caregivers Alliance (example) - newborn care classes'). Keep the synthetic marker in the 'Built on synthetic data' pill and move the run tag into metadata rather than the name.",
+   "expect": "connect-labs-chrome",
+   "declined_as": "Synthetic opportunity naming comes from ACE's labs synthetic data setup (ace noora-health/20261015-1129), outside this D"
+  },
+  {
+   "run": "noora-health/20261015-1129",
+   "fix_scope": null,
+   "detail": "",
+   "fix_recommendation": "PRODUCT: delete the hint and legend text, shorten the truncated KPI label, and keep the floating agent button clear of content.",
+   "expect": "connect-labs-chrome",
+   "declined_as": "Labs report page / workflow render code (deployed labs template): ACE-owned labs object, outside this DDD loop's write p"
+  },
+  {
+   "run": "noora-health/20261015-1129",
+   "fix_scope": null,
+   "detail": "",
+   "fix_recommendation": "PRODUCT: give the page a bottom inset so the floating button cannot overlap content. Drop the derived 'Attention' column so the table fits 1440px. Move 'lower is better' into the tile's target line so the title is not truncated.",
+   "expect": "connect-labs-chrome",
+   "declined_as": "Labs report page / workflow render code (deployed labs template): ACE-owned labs object, outside this DDD loop's write p"
+  },
+  {
+   "run": "noora-health/20261015-1129",
+   "fix_scope": null,
+   "detail": "",
+   "fix_recommendation": "Every effecting action now succeeds and shows its result, and the figures are consistent from the\nprogramme to the educator. The floor is clarity at 2, held by the labs pages and by ACE's synthetic\nnaming, not by the recipe:\n(1) Scenes 1 and 5: the \"n<1: too few records\" legend and the \"pt\" deltas. [PRODUCT, labs]\n(2) Scenes 4 and 5: the build slug \"ace noora-health/20261015-1129\" and \"(id: 10140 visits: 388)\"\n    in the opportunity title and picker. Naming \"noora-health\" also undercuts the \"not Noora\n    Health's program\" disclaimer. [PRODUCT, ACE synthetic opp naming]\n(3) Scene 3: duplicate \"Caregivers in the class\" / \"Caregivers\" columns (known residual). [PRODUCT]\n(4) Scene 5: the Attention column does not follow the highlighted cells. [PRODUCT, labs]\nNarration-side: scene 3 overclaims what the gaps explain, and scene 5 describes a coaching\nconversation the demo never opens.\n",
+   "expect": "connect-labs-chrome",
+   "declined_as": "deployed indicator_programme_report template (Attention column / legend); no write path to labs render code (ace#2337) —"
+  },
+  {
+   "run": "noora-health/20261015-1129",
+   "fix_scope": null,
+   "detail": "",
+   "fix_recommendation": "PRODUCT: reserve a gutter for the floating button (or dock it into the side rail), remove the legend and hint row, and move 'lower is better' off the label line.",
+   "expect": "connect-labs-chrome",
+   "declined_as": "Labs report page / workflow render code (deployed labs template): ACE-owned labs object, outside this DDD loop's write p"
+  },
+  {
+   "run": "noora-health/20261015-1129",
+   "fix_scope": "product",
+   "detail": "Same run slug and \"(id: 10140 visits: 388)\" in the Opp picker at the top of the frame.",
+   "fix_recommendation": "Same fix as scene 4. Drop the run id from the synthetic opportunity names ACE creates.",
+   "expect": "connect-labs-chrome",
+   "declined_as": "Synthetic opportunity naming comes from ACE's labs synthetic data setup (ace noora-health/20261015-1129), outside this D"
+  },
+  {
+   "run": "noora-health/20261015-1129",
+   "fix_scope": "product",
+   "detail": "The KPI label 'AT PAYMENT FLO...' is truncated, and the 'Ask an agent' pill overlaps the Doll demonstration chart.",
+   "fix_recommendation": "Shorten the KPI label to fit beside the 'lower is better' tag, and dock or dismiss the Ask-an-agent pill so it never covers chart content.",
+   "expect": "connect-labs-chrome",
+   "declined_as": "Labs report page / workflow render code (deployed labs template): ACE-owned labs object, outside this DDD loop's write p"
+  },
+  {
+   "run": "noora-health/20261015-1129",
+   "fix_scope": "product",
+   "detail": "The partner opportunity's display name carries the build run slug, \"Rayuwa Caregivers Alliance (example) - newborn care classes (synthetic, ace noora-health/20261015-1129)\", as the page H1. The Opp picker adds \"(id: 10140 visits: 388)\". The slug names \"noora-health\" on a demo that is not Noora Health's program.",
+   "fix_recommendation": "ACE's synthetic opportunity creation should name each partner opportunity without the run id (e.g. \"Rayuwa Caregivers Alliance (example) - newborn care classes (synthetic)\") and keep the run id in opportunity metadata.",
+   "expect": "connect-labs-chrome",
+   "declined_as": "Synthetic opportunity naming comes from ACE's labs synthetic data setup (ace noora-health/20261015-1129), outside this D"
+  },
+  {
+   "run": "noora-health/20261015-1129",
+   "fix_scope": "product",
+   "detail": "The table is cleanly grouped (Delivery / Teaching / Reach / Data quality) with tidy right-aligned numbers and calm tinted cells. Against that, explanatory legend and hint lines sit above the header, the 'AT PAYMENT FLO…' label is truncated, and the 'Ask an agent' pill overlaps a chart. (sanity floor: explanatory-copy deduction caps at 3)",
+   "fix_recommendation": "PRODUCT: delete the legend and hint row, move 'lower is better' to the target line so the KPI label fits, and pad the page bottom so the floating button clears the charts.",
+   "expect": "connect-labs-chrome",
+   "declined_as": "Labs report page / workflow render code (deployed labs template): ACE-owned labs object, outside this DDD loop's write p"
+  },
+  {
+   "run": "noora-health/20261015-1129",
+   "fix_scope": "product",
+   "detail": "Deduction rules fire. (1) The floating 'Ask an agent' launcher overlaps and cuts off the footer paragraph: a frame element occluding content, max 2. (2) Real content overflows the viewport: the 'Attent...' column is clipped at the right edge, max 3. (3) Explanatory copy carries the screen (legend row, hint strings, footer prose), max 3. Also present: the truncated 'AT PAYMENT FLO...' tile title and very small axis labels on the registrations chart. The tiles and the table's group headers (DELIVERY / TEACHING / REACH / DATA QUALITY) otherwise have a clean, intentional hierarchy.",
+   "fix_recommendation": "PRODUCT (deployed Labs report template): reserve bottom padding (or dock the 'Ask an agent' launcher in the header/left rail) so the floating launcher never overlays report content; fit the Partners table to the card width by moving 'Last visit' and 'Attention' into the partner drill-down so no column is clipped at the right edge; shorten the fifth tile label so 'AT PAYMENT FLOOR' does not truncate.",
+   "expect": "connect-labs-chrome",
+   "declined_as": "Labs report page / workflow render code (deployed labs template): ACE-owned labs object, outside this DDD loop's write p"
+  },
+  {
+   "run": "noora-health/20261015-1129",
+   "fix_scope": null,
+   "detail": "",
+   "fix_recommendation": "PRODUCT: delete the hint line and legend once thresholds live in the headers; add bottom scroll-margin so the floating button never covers chart content.",
+   "expect": "connect-labs-chrome",
+   "declined_as": "Labs report page / workflow render code (deployed labs template): ACE-owned labs object, outside this DDD loop's write p"
+  },
+  {
+   "run": "noora-health/20261015-1129",
+   "fix_scope": "product",
+   "detail": "The internal run identifier 'synthetic, ace noora-health/20261015-1129' is visible in the report H1 and the opportunity picker. It is jargon to a partner manager, it wraps the title to two lines, and it triggers the jargon cap.",
+   "fix_recommendation": "Drop the 'ace <opp>/<run-id>' suffix from the synthetic opportunity's display name (keep '(synthetic)' / '(example)'). If the run id is needed for traceability, move it into a tooltip or the admin metadata.",
+   "expect": "ace-synthetic-opp-naming",
+   "declined_as": "Synthetic opportunity naming comes from ACE's labs synthetic data setup (ace noora-health/20261015-1129), outside this D"
+  },
+  {
+   "run": "noora-health/20261015-1129",
+   "fix_scope": "product",
+   "detail": "The opportunity picker shows the internal run id 'ace noora-health/20261015-1129' alongside the synthetic marker.",
+   "fix_recommendation": "Name the synthetic opportunity without the ACE run id, keeping '(synthetic)' and '(example)'.",
+   "expect": "ace-synthetic-opp-naming",
+   "declined_as": "Synthetic opportunity naming comes from ACE's labs synthetic data setup (ace noora-health/20261015-1129), outside this D"
+  },
+  {
+   "run": "noora-health/20261015-1129",
+   "fix_scope": null,
+   "detail": "",
+   "fix_recommendation": "ACE's synthetic opportunity creation should name each partner opportunity without the run id (e.g. \"Rayuwa Caregivers Alliance (example) - newborn care classes (synthetic)\") and keep the run id in opportunity metadata.",
+   "expect": "ace-synthetic-opp-naming",
+   "declined_as": "Synthetic opportunity naming comes from ACE's labs synthetic data setup (ace noora-health/20261015-1129), outside this D"
+  },
+  {
+   "run": "noora-health/20261015-1129",
+   "fix_scope": null,
+   "detail": "",
+   "fix_recommendation": "Drop the 'ace <opp>/<run-id>' suffix from the synthetic opportunity's display name (keep '(synthetic)' / '(example)'). If the run id is needed for traceability, move it into a tooltip or the admin metadata.",
+   "expect": "ace-synthetic-opp-naming",
+   "declined_as": "Synthetic opportunity naming comes from ACE's labs synthetic data setup (ace noora-health/20261015-1129), outside this D"
+  },
+  {
+   "run": "noora-health/20261015-1129",
+   "fix_scope": "product",
+   "detail": "The H1 and opp picker show the internal run identifier 'synthetic, ace noora-health/20261015-1129' as part of the partner's programme name. That is jargon to a feature user and it dominates the frame.",
+   "fix_recommendation": "Name the synthetic opportunity 'Rayuwa Caregivers Alliance (example) - newborn care classes' and keep the run id out of the display name.",
+   "expect": "ace-synthetic-opp-naming",
+   "declined_as": "Synthetic opportunity naming comes from ACE's labs synthetic data setup (ace noora-health/20261015-1129), outside this D"
+  },
+  {
+   "run": "noora-health/20261015-1129",
+   "fix_scope": "product",
+   "detail": "The run-ID suffix in the entity name reads as test data. Peer comparability (same period and definition) is implicit only.",
+   "fix_recommendation": "Drop the run identifier from the opportunity name. The existing 'Built on synthetic data' chip already carries the honest framing.",
+   "expect": "ace-synthetic-opp-naming",
+   "declined_as": "Synthetic opportunity naming comes from ACE's labs synthetic data setup (ace noora-health/20261015-1129), outside this D"
+  },
+  {
+   "run": "kaduna-graduation/20261015-1411",
+   "fix_scope": "recipe",
+   "detail": "After the Benchmarks click, the frame stays at page top (header, chips, tabs, helper sentence take y~110-350). The Benchmarks table is clipped after 'Transfer not arrived 7.9% 4th of 5'. 'Short visits 0.8% 2nd of 5' is narrated ('while on short visits it ranks 2nd of 5') and required by features[].verify, but it appears only in page text. Table header plus 6 rows is roughly 550px and fits a 720px viewport.",
+   "fix_recommendation": "In the scene's recipe, after `click role:tab:Benchmarks`, add a `scroll_to` targeting the Benchmarks table (e.g. its INDICATOR header row) so the table header through the Short visits row are fully in frame, then `hold` while the narration reads the ranks.",
+   "expect": "in"
+  },
+  {
+   "run": "noora-health/20261015-1129",
+   "fix_scope": "recipe",
+   "detail": "The as-of date ('figures as of 11 Oct') and report header scroll off-frame, and the Attention counts look inconsistent with the off-target/watch colouring, so a partner may question what the numbers mean.",
+   "fix_recommendation": "Recipe: limit the scroll so the header's as-of line stays visible above the table (or the product makes the summary line sticky).",
+   "expect": "in"
+  },
+  {
+   "run": "noora-health/20261015-1129",
+   "fix_scope": "recipe",
+   "detail": "The final frame of the opening scrolls the headline tiles so their labels (CLASSES AGAINST PLAN, MALE CAREGIVERS) are cut off. The narrated 84.3% / 10.5% sit under no visible name, which weakens the 'against its own targets' premise.",
+   "fix_recommendation": "In scene 1, replace scroll_to the Rayuwa row with scroll_to the Partners card header (or the tile row's top) so the tile labels and the Rayuwa row are both in frame.",
+   "expect": "in"
+  },
+  {
+   "run": "kaduna-graduation/20261015-1411",
+   "fix_scope": "narrative",
+   "detail": "",
+   "fix_recommendation": "Narrate only what the frame holds. Either drop 'below every other partner's average' (the previous scene showed it) or have the screen carry it via a pinned comparison row. Move the trend-line sentence to a beat that is framed on the chart.",
+   "expect": "in"
+  },
+  {
+   "run": "smallholder-seasonal/20261015-1402",
+   "fix_scope": "narrative",
+   "detail": "",
+   "fix_recommendation": "[NARRATION] Replace 'whose women's transfers wait on those accounts' with a clause the screen shows, e.g. 'Delu first, at 66.7%', without adding length.",
+   "expect": "in"
+  },
+  {
+   "run": "noora-health/20261015-1129",
+   "fix_scope": "recipe",
+   "detail": "The sort click lands and the result is legible: Rayuwa drops to last with a red cell, the scroll frames the header, tiles and the full partner table in one viewport, and the action trace is clean (all ok). Held at 3 for two reasons. The cursor is parked on the narrated 56.7% cell. The before-frame shows the scene opening on an unstyled, unpainted page (serif 'Connect Labs' on a blank grey field), so the voiceover's opening line risks playing over a blank frame. Its duration is not observable from stills, so the max-2 rule was not applied.",
+   "fix_recommendation": "SCRIPTING (recipe): trim the clip to start after the first wait_for resolves so the voiceover never opens over the unpainted before-frame, and after the sort click move the pointer to the page title so it is clear of the narrated 56.7% cell during the hold.",
+   "expect": "in"
+  },
+  {
+   "run": "smallholder-seasonal/20261015-1402",
+   "fix_scope": "recipe",
+   "detail": "",
+   "fix_recommendation": "[SCRIPTING] After clicking 'See field workers', scroll_to the 'Field workers · 15 women each' heading so the table starts at the top of the viewport and holds there, instead of resting on a mid-page offset with clipped tiles above.",
+   "expect": "in"
+  },
+  {
+   "run": "kaduna-graduation/20261015-1411",
+   "fix_scope": "recipe",
+   "detail": "The end frame is scrolled so the breadcrumb \"Programme › Sabon Haske Community Alliance (example)\" and the partner tiles are off-screen; only a clipped caption line names the partner. The cursor parks on the \"Registrations and visits by week\" chart title rather than Laraba Isa's row, the row the narration names.",
+   "fix_recommendation": "Recipe — replace the hover on \"Registrations and visits by week\" with a hover on css:tr:has-text(\"Laraba Isa\"), and scroll_to the table caption with an offset that keeps the breadcrumb in frame.",
+   "expect": "in"
+  },
+  {
+   "run": "noora-health/20261015-1129",
+   "fix_scope": "narrative",
+   "detail": "The view is otherwise readable: an educator row set against a 40-peer median and a target, under a clear name/partner header. It would sit at 3 (capped by the explanatory-copy rule: info icons on every label, an 'Off target / Watch' legend, the 'click a facility for its visits' hint). It drops to 2 because the scene's concept ('good classes, too few of them') is contradicted on screen by Doll demonstration 70.0% vs 84.8% peer median / 80.0% target. (sanity floor: claim-scrutiny trigger fired -> concept dimension max 2; deduction: explanatory copy max 3)",
+   "fix_recommendation": "NARRATION: restate the scene at the strength the screen supports: 'her topic coverage is above her peers, 82.5% against 77.3%, her doll demonstrations are below them, 70.0% against 84.8%, and the biggest gap is how many classes she holds, 50.0% against a peer median of 90.0%.' Retitle the scene from 'good classes, too few of them' to 'Rayuwa's lowest educator: the biggest gap is how many classes she holds', and align concept_claim to the same wording.",
+   "expect": "in"
+  },
+  {
+   "run": "noora-health/20261015-1129",
+   "fix_scope": "recipe",
+   "detail": "The hover step parks the cursor on the side nav at the end of the scene, away from the 5th-of-5 result the narration lands on.",
+   "fix_recommendation": "Replace the final side-nav hover with a hover on the Rayuwa bar or the '5th of 5' rank cell.",
+   "expect": "in"
+  },
+  {
+   "run": "kaduna-graduation/20261015-1411",
+   "fix_scope": "recipe",
+   "detail": "The 300px scroll pushes the Report/Benchmarks tabs and the 'as of 11 Oct · all 5 organizations covered' line out of frame, so the ranks appear with no visible date or coverage; the bars also carry no values.",
+   "fix_recommendation": "Reduce scene 6's scroll so the Benchmarks tab and its 'as of 11 Oct · all 5 organizations covered' line stay in frame above the table.",
+   "expect": "in"
+  },
+  {
+   "run": "noora-health/20261015-1129",
+   "fix_scope": "recipe",
+   "detail": "During the hold the cursor rests on the panel heading and covers part of 'Kogin Arewa'.",
+   "fix_recommendation": "Hover a neutral target (gap band or blank margin) instead of the heading during the hold.",
+   "expect": "in"
+  },
+  {
+   "run": "kaduna-graduation/20261015-1411",
+   "fix_scope": "recipe",
+   "detail": "",
+   "fix_recommendation": "After the scroll_to on the Laraba Isa row and its hold, add a scroll_to on the 'Home-visit coverage' chart card (not 'Registrations and visits by week') so the chart row is fully in frame, timed to the 'trend line below the table' sentence. Park the cursor off the chart titles.",
+   "expect": "in"
+  },
+  {
+   "run": "kaduna-graduation/20261015-1411",
+   "fix_scope": "narrative",
+   "detail": "The scene's point is 'which partner is behind', but the partner table is in alphabetical order, so Sabon Haske's 74.0% is the fourth row of five, and nothing in the structure singles it out. The narration also tells the viewer to read the 'first figure' at the top, which is off-screen. A cold viewer has to find the right column and scan it to follow.",
+   "fix_recommendation": "Replace 'The design sets no targets, so nothing is graded red; the partner table does the work.' with 'The design sets no targets, so nothing is graded red; read down the Home-visit coverage column instead.'",
+   "expect": "in"
+  },
+  {
+   "run": "smallholder-seasonal/20261015-1402",
+   "fix_scope": "recipe",
+   "detail": "",
+   "fix_recommendation": "[SCRIPTING] Hover the 'Accounts confirmed' figure cell (66.7%) rather than its label so the cursor no longer covers the narrated label. Then step the hover to the 'Harvest visits on time' and 'Graduated' rows as each is spoken.",
+   "expect": "in"
+  },
+  {
+   "run": "kaduna-graduation/20261015-1411",
+   "fix_scope": "narrative",
+   "detail": "Scene 5 (Hadin Kai) has no setup: scene 1's partner table already shows Hadin Kai at 5.5% short visits against 0.5-0.9% for every other partner, but the narration ignores it, so scene 5 reads as a detour and the back half can be reordered with no loss. The finale (scene 6) leads by re-reading scene 1's fact (Sabon Haske lowest at 74.0%), so scene 4 (Grace Yakubu) stays the peak.",
+   "fix_recommendation": "(a) In scene 1, name two threads (Sabon Haske lowest on coverage; Hadin Kai highest on short visits at 5.5%) and open scene 5 by returning to that 5.5%; or (b) cut scene 5 and let scene 6's 2nd-of-5 on short visits carry the reach-vs-quality contrast; and (c) rewrite scene 6 to lead with what only it shows (the partner's own view, no peer named, 5th of 5 on coverage and payable vs 2nd of 5 on short visits), keeping the 74.0% re-read to a clause.",
+   "expect": "in"
+  },
+  {
+   "run": "smallholder-seasonal/20261015-1402",
+   "fix_scope": "recipe",
+   "detail": "",
+   "fix_recommendation": "[SCRIPTING] hold on the unscrolled top of the page, with the 'Invented example data.' banner in frame, while the invented-data sentence is spoken. Scroll to the funnel only when the narration reaches '1,200 households surveyed'.",
+   "expect": "in"
+  },
+  {
+   "run": "smallholder-seasonal/20261015-1402",
+   "fix_scope": "recipe",
+   "detail": "",
+   "fix_recommendation": "[SCRIPTING] Hover the Accounts confirmed field-worker value cell (66.7%) instead of the label button so the cursor points at the narrated figure without covering its label.",
+   "expect": "in"
+  },
+  {
+   "run": "kaduna-graduation/20261015-1411",
+   "fix_scope": "recipe",
+   "detail": "Narrated 'on short visits it ranks 2nd of 5' is in page_text (0.8%, 2nd of 5) but outside the screenshot (0.8% cell box y=826, viewport 720). The narrated 'His report carries the same figures, handed down from the programme report' is never shown: the before-frame is the previous scene's mentor page, and the trace goes straight to clicking Benchmarks. 'Laraba Isa' is found:false on this page.",
+   "fix_recommendation": "Recipe: after the Benchmarks click, add a scroll_to on the 'Short visits' row (block: center) before the hold, so Coaching through Data quality are in one frame. Optionally add a hold on the Report tab before the click so the hand-down beat is actually shown.",
+   "expect": "in"
+  },
+  {
+   "run": "noora-health/20261015-1129",
+   "fix_scope": "recipe",
+   "detail": "The scroll leaves the 'Opportunities: 5 selected / Edit' row half-clipped under the top bar, and the cursor idles on the sidenav instead of pointing at the red cell.",
+   "fix_recommendation": "Scroll so the review card header sits right below the top bar and hover the 'Classes against plan' row during the hold.",
+   "expect": "in"
+  },
+  {
+   "run": "smallholder-seasonal/20261015-1402",
+   "fix_scope": "recipe",
+   "detail": "",
+   "fix_recommendation": "[SCRIPTING] replace the final 3s hold with a scroll_to the footnote beginning 'Census coverage, the share of selected households enrolled' timed to the closing narration sentence, so the named-without-a-figure indicators are on screen when they are spoken (no added duration).",
+   "expect": "in"
+  },
+  {
+   "run": "kaduna-graduation/20261015-1411",
+   "fix_scope": "narrative",
+   "detail": "Every narrated figure is on screen: 69.2% vs 88.8%, 60 peers, 23.1% vs 6.2%, short visits 0.0%. But the claim rests on figures with no visible n (23.1% reads as 3 of 13 checks), and the narration's 'her problem is reach' needs the viewer to trust the presenter, because the frame shows no not-at-home outcomes.",
+   "fix_recommendation": "Restate the assertion at the strength the artifact supports: edit the scene's narration / title / concept_claim so it matches what is actually on screen and what the underlying data actually shows. Change the words, never the artifact — if the artifact itself needs to change, this is a strategy finding, not an accuracy one.",
+   "expect": "in"
+  },
+  {
+   "run": "smallholder-seasonal/20261015-1402",
+   "fix_scope": "recipe",
+   "detail": "",
+   "fix_recommendation": "[SCRIPTING] hover the Nasara row's Accounts confirmed cell (td:nth-child(2)) instead of its first cell, so the cursor points at 81.7% rather than sitting over the partner name.",
+   "expect": "in"
+  },
+  {
+   "run": "kaduna-graduation/20261015-1411",
+   "fix_scope": "narrative",
+   "detail": "The most striking anomaly on this screen is Ci Gaba Women's Enterprise Trust's 'Transfer not arrived' at 19.1%, against a programme figure of 8.2% and a next-highest partner at 7.9%. Neither this scene nor any later scene title addresses it. An M&E specialist would ask why a walkthrough about finding who is falling behind ignores the largest gap on its first screen.",
+   "fix_recommendation": "Decide whether the story acknowledges the Ci Gaba consumption-transfer outlier, either as a beat or a scene, or whether the synthetic data is regenerated so that the home-visit gap is the dominant signal on the overview.",
+   "expect": "in"
+  },
+  {
+   "run": "noora-health/20261015-1129",
+   "fix_scope": "recipe",
+   "detail": "The cursor rests on the sidenav during the hold and never points at the 'Start coaching' action the narration ends on.",
+   "fix_recommendation": "Hover the first row's 'Start coaching' link (Firdausi Isah) during the hold instead of #labs-sidenav.",
+   "expect": "in"
+  },
+  {
+   "run": "noora-health/20261015-1129",
+   "fix_scope": "recipe",
+   "detail": "The narrated artifact (the Indicators table: Classes against plan, All eight topics, At payment floor) is fully in frame and settled, with no spinner or blank frame. Rough edges: the scroll_to was a no-op (trace warning: 'already framed at scrollTop 0'), the Facilities card is clipped mid-header at the bottom edge, and the mouse cursor sits in the middle of the table during the hold.",
+   "fix_recommendation": "SCRIPTING (recipe): the scroll_to on 'Classes against plan' was a no-op (already at scrollTop 0); replace it with a scroll that frames the Indicators card through the first Facilities row (Kogin Arewa Maternity · 45), and move the pointer off the table during the hold.",
+   "expect": "in"
+  },
+  {
+   "run": "kaduna-graduation/20261015-1411",
+   "fix_scope": "recipe",
+   "detail": "Capture scroll is [0,221]. regions.json puts the h1 'Aisha Chindo' at y=-5 and the 'Hadin Kai Livelihoods Forum (example) - 30 participants' span at y=33, both under the 64px sticky Connect Labs bar. The indicator table bottom is at y~444, so the identity and the whole table fit in a 720px viewport, but the scene framed the table alone. The narration names Aisha Chindo and Hadin Kai, and the viewer sees neither.",
+   "fix_recommendation": "Change the scene's scroll_to target from css:tr:has-text(\"Short visits\") to css:h1:has-text(\"Aisha Chindo\") (or scroll to the indicator card with roughly 80px top offset). The frame should open with the name and partner line visible below the sticky header and the full Indicators table in view. Move the mouse off the Participants table before the hold.",
+   "expect": "in"
+  },
+  {
+   "run": "noora-health/20261015-1129",
+   "fix_scope": "recipe",
+   "detail": "The cursor rests on Rayuwa's \"56.7%\" cell after the sort and partly covers the scene's key number.",
+   "fix_recommendation": "After the sort click, add a hover on the left nav (or the Partner header) so the cursor leaves the data.",
+   "expect": "in"
+  },
+  {
+   "run": "kaduna-graduation/20261015-1411",
+   "fix_scope": "narrative",
+   "detail": "The narration closes on 'so her problem is reach, not record quality', a narrator verdict that the spine item s2-drill-to-mentor does not carry and that skips the transfer figure the same narration just raised (23.1% vs a 6.2% peer median is a consumption-transfer delivery problem, not reach). The screen shows the measures; the narration should read them, not conclude past them.",
+   "fix_recommendation": "Replace the scene narrative with: \"From her row, the worker review opens on her alone. Her 69.2% home-visit coverage sits beside the 88.8% median of her 60 peer mentors. Her short visits read 0.0%, against a peer median of 0.7%, so the visits she does record are not thin. One more figure is hers to explain: on 23.1% of her transfer checks the woman's consumption transfer had not arrived, against a peer median of 6.2%.\"",
+   "expect": "in"
+  },
+  {
+   "run": "kaduna-graduation/20261015-1411",
+   "fix_scope": "narrative",
+   "detail": "Narration says 'each of those is flagged for the programme team', but the worker review shows no flag, count or marker for transfer-not-arrived checks, and the programme Partners table in the before-frame shows 'Attention' = 0 for Sabon Haske Community Alliance (example). The narration also re-frames the page's 'against 60 peer mentors' (defined in the Peer median tooltip as a same-start-month cohort) as 'the programme's 60 mentors'.",
+   "fix_recommendation": "Old: \"One more figure stands out: 23.1% of her transfer checks found the woman's consumption transfer had not arrived, against a median of 6.2%, and each of those is flagged for the programme team.\" -> New: \"One more figure stands out: 23.1% of her transfer checks found the woman's consumption transfer had not arrived, against a peer median of 6.2%.\"  Also Old: \"Her 69.2% sits beside the 88.8% median of the programme's 60 mentors.\" -> New: \"Her 69.2% home-visit coverage sits beside the 88.8% median of her 60 peer mentors.\"",
+   "expect": "in"
+  },
+  {
+   "run": "kaduna-graduation/20261015-1411",
+   "fix_scope": "narrative",
+   "detail": "The narration asserts 'a flagged visit waits for review before it is approved'. No visit status, review state or approval appears in the screenshot or the page text, so the viewer must take the mechanism on trust.",
+   "fix_recommendation": "Old: \"The flag is a reason to look at those visits, not a verdict on her: a flagged visit waits for review before it is approved.\" -> New: \"The flag is a reason to look at those visits, not a verdict on her.\"",
+   "expect": "in"
+  },
+  {
+   "run": "noora-health/20261015-1129",
+   "fix_scope": "narrative",
+   "detail": "Going from 'this partner ranks 5th of 5' to the partner's own eight educators is a real, useful step. But when all eight are flagged, the per-educator coaching action stops prioritising anyone, and the coaching itself is only hovered, never opened. A skeptic would ask what the partner does differently after seeing this list.",
+   "fix_recommendation": "NARRATION: carry the scene through to the consequence by opening coaching for the worst educator (a click, not a hover). Alternatively, reframe the scene around the partner-wide pattern the data shows.",
+   "expect": "in"
+  },
+  {
+   "run": "kaduna-graduation/20261015-1411",
+   "fix_scope": "narrative",
+   "detail": "Every number checks (12 mentors, best 78.2%, lowest Laraba Isa 69.2%, trend declining since July), but 'below every other partner's average' is not visible anywhere in the after-frame and the 'slipping since July' trend is a small, bottom-clipped sparkline, so the viewer must trust the narrator for the comparison.",
+   "fix_recommendation": "[NARRATION] Narration: tie the comparison to what was just seen ('every one of its twelve mentors is below Tallafi, the next-lowest partner at 85.2%, which we just saw') or drop the cross-partner comparison from this scene and let the mentor spread carry it.",
+   "expect": "in"
+  },
+  {
+   "run": "kaduna-graduation/20261015-1411",
+   "fix_scope": "recipe",
+   "detail": "scroll_to 'tr:has-text(\"Short visits\")' scrolled the page by 221px, putting the H1 'Aisha Chindo' (box y=-5) and 'Hadin Kai Livelihoods Forum (example) · 30 participants' (box y=33) under the 64px sticky top bar. At scroll 0 the header (~y216) through the end of the Indicators card (~y665) fits in the 720px viewport, so the narrated subject and the Short visits row could both be in frame. The cursor is also left over the Participants table.",
+   "fix_recommendation": "Replace the scene's scroll_to on 'tr:has-text(\"Short visits\")' with a scroll_to on the page H1 (css:h1:has-text(\"Aisha Chindo\")) aligned to the top below the sticky bar, keeping the wait_for on the Short visits row. Move the pointer off the data (e.g. hover the page H1) before the hold.",
+   "expect": "in"
+  },
+  {
+   "run": "smallholder-seasonal/20261015-1402",
+   "fix_scope": "recipe",
+   "detail": "",
+   "fix_recommendation": "[SCRIPTING] Drop the no-op scroll_to('p:has-text(\"reported from CommCare HQ\")'). Open the scene with a scroll_to on the Programme header or tile row so the frame runs from 'figures as of 11 Oct' to the 'All partners' row, then hold on the Nasara row while '81.7%' is spoken.",
+   "expect": "in"
+  },
+  {
+   "run": "kaduna-graduation/20261015-1411",
+   "fix_scope": "narrative",
+   "detail": "'The design keeps an overdue visit visible until it is done' is narrated over a frame with no overdue marker, so the viewer has to trust the narrator. Every number in the narration does match the screen (5 visits, 4 not_home, 1 met, Payable no/yes, 30 participants).",
+   "fix_recommendation": "Old: 'The design keeps an overdue visit visible until it is done, and this is where Hauwa would ask Laraba to go back.' -> New: 'Only the September visit found her, and this is where Hauwa would ask Laraba to go back.'",
+   "expect": "in"
+  },
+  {
+   "run": "noora-health/20261015-1129",
+   "fix_scope": "recipe",
+   "detail": "The before-frame is a blank, unstyled page, so the before/after pair cannot show the effect of the sort click.",
+   "fix_recommendation": "Take the before-frame after the table has rendered (after the first wait_for), before the sort click.",
+   "expect": "in"
+  },
+  {
+   "run": "kaduna-graduation/20261015-1411",
+   "fix_scope": "recipe",
+   "detail": "The end frame scrolls past Grace Yakubu's row, so the visit panel sits at the bottom of a 30-row list, cut off from the row that opened it and from Laraba's indicators.",
+   "fix_recommendation": "Recipe — end scene 4 with the visit panel top-aligned in the viewport (scroll_to the panel heading with an offset that keeps the panel and its 5 rows centred), so the panel fills the frame instead of the participant list.",
+   "expect": "in"
+  },
+  {
+   "run": "smallholder-seasonal/20261015-1402",
+   "fix_scope": "recipe",
+   "detail": "",
+   "fix_recommendation": "[SCRIPTING] Change the final hover target from 'From the programme report' to the 'See field workers →' link so the cursor lands on it as the narration ends.",
+   "expect": "in"
+  },
+  {
+   "run": "kaduna-graduation/20261015-1411",
+   "fix_scope": "narrative",
+   "detail": "Narration asserts a per-partner trend the screen does not show. The four charts below the table ('Home-visit coverage', 'Transfer not arrived', 'Short visits', 'Exits') are single programme-wide series; the Home-visit coverage line sits flat around 86% from 19 Jul to 11 Oct. Nothing on the page text or frame shows Tallafi's July position or Sabon Haske slipping.",
+   "fix_recommendation": "Replace 'The weekly trend lines below show it has not always been so: in the July reports Tallafi was the partner behind, and it has climbed while Sabon Haske has slipped.' -> 'The trend lines below are for the whole programme: coverage has held near 86% since July.'",
+   "expect": "in"
+  }
+ ]
+}

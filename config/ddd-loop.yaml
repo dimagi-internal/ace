@@ -1,0 +1,108 @@
+# ACE's canopy DDD loop config — the template every Phase 7 run
+# writes to `$DDD_DIR/config.yaml` before the loop starts
+# (`scripts/write-ddd-loop-config.ts`, `lib/ddd-loop-config.ts`). The writer adds
+# `workspace: <ws>` on top; everything else is this file, verbatim.
+#
+# Schema: canopy `scripts/ddd/loop_config.py` (module docstring). Every key is
+# optional and a malformed value is silently dropped by canopy, so
+# `test/lib/ddd-loop-config.test.ts` parses this file with canopy's own
+# `loop_config.load` (skipped where canopy is not installed) and pins each
+# regex against real findings from the 2026-10-15 runs.
+#
+# WHY this file exists. Before it, ACE configured none of this:
+#   - noora-health/20261015-1129: score 2.0 on all six iterations, ended
+#     stopped_not_converged. The floor was scene 1 visual_polish=2 — the floating
+#     'Ask an agent' launcher covering report text — which the loop cannot fix.
+#     With no `fixed_surfaces`, every rewording of the same labs-template finding
+#     needed its own text-matched decline: out_of_scope.json grew to 145 entries,
+#     none naming who owns the fix.
+#   - kaduna-graduation/20261015-1411: the session improvised its own
+#     config.yaml with bare words (`labs`, `template`, `seed`) — broad enough to
+#     pin in-scope recipe findings that merely mention a template.
+#   - DDD_DIR was never pinned, so this config had nowhere stable to live: the
+#     dir fell back to ~/.canopy/ddd/<cwd-basename> (seen as `runtime/` and
+#     `ace-kaduna-graduation-20261015-1411/`).
+
+loop:
+  # What THIS loop may not edit. Under ACE the loop's write path is the unified
+  # spec (narration + recipe) only: the labs pages are deployed templates whose
+  # render_code lives in the connect-labs database, and the loop has no write
+  # path to it (ace#2337). A finding matching a surface is OUT of edit scope; a
+  # cell whose findings are all out is PINNED and the loop optimizes the rest.
+  # At run end canopy comments the evidence on `issue` (or finds/opens one in
+  # `repo`). First matching surface wins, so the most specific owner goes first.
+  #
+  # Matching (canopy floor.scope_detail): re.search(match, detail + " " +
+  # fix_recommendation, re.I). Every `match` below starts with the SAME guard —
+  # a negative lookahead that keeps a finding IN scope when it also asks for a
+  # recipe or narration change (a RECIPE:/NARRATION:/SCRIPTING tag, [SPEC], a
+  # scroll_to / cursor / pointer / before-frame instruction, or a narration
+  # rewrite). Such a mixed finding has a part the loop CAN fix; pinning it would
+  # throw that part away. Only case-sensitive tags use (?-i:...).
+  #
+  # Measured on all 1,046 unique findings of the three 2026-10-15 runs
+  # (test/fixtures/ddd-loop-config/findings.json holds the minimal shapes):
+  # 163 of 180 findings the loops declined as labs-template / labs-chrome /
+  # naming are matched (the 17 misses are mixed recipe+product findings, kept in
+  # on purpose, or one-offs with no UI noun); 0 of 146 recipe/narration-scoped
+  # findings are newly pinned (2 match, both already out by canopy's own
+  # [EXTERNAL]/[REGISTRY] tag rule).
+  fixed_surfaces:
+    # (b) Connect Labs product chrome — not ACE's and not the template's: the
+    # global floating 'Ask an agent' launcher drawn over report content (the
+    # noora floor), the workflow run page shell, and the opportunity picker's
+    # internal "(id: N visits: N)". Tracked in connect-labs#2578.
+    - name: connect-labs-chrome
+      owner: Connect Labs
+      issue: dimagi-internal/connect-labs#2578
+      repo: dimagi-internal/connect-labs
+      match: |-
+        (?s)^(?!.*(?:(?-i:\b(?:RECIPE|NARRATION|SCRIPTING)\b)|\[SPEC|\b(?:rewrite|reword|restate|edit)\s+(?:the\s+)?(?:scene\s*\d*\s*(?:\Ws\s*)?)?(?:narration|voiceover|concept_claim)|\bfrom the narration|\bthe narration (?:to|so)\b|\bin the recipe|\bnarrate\b|\breword to\b|scroll_to|before-frame|\bcursor\b|\bpointer\b)).*?(ask[- ]an[- ]agent|agent (?:launcher|button|pill)|floating (?:\w+ )?(?:launcher|button|pill)|\blauncher\b|\(id: ?\d+,? visits: ?\d+\)|workflow run page|labs shell)
+    # The ACE run id in the page title / opportunity name ("Rayuwa … (synthetic,
+    # ace noora-health/20261015-1129)"). It reads as labs chrome, but the string
+    # is the opportunity NAME ACE's synthetic setup gives it, so the fix is
+    # ACE's (11 noora declines said so; ace#2733, closed 2026-10-16, fixed the
+    # naming — a recurrence opens a fresh ace issue rather than reopening it).
+    # canopy's lint emits these as internal_id_leak ("Remove the internal run
+    # identifier …"), which this also catches.
+    - name: ace-synthetic-opp-naming
+      owner: ACE Phase 7 (synthetic opportunity naming)
+      repo: dimagi-internal/ace
+      match: |-
+        (?s)^(?!.*(?:(?-i:\b(?:RECIPE|NARRATION|SCRIPTING)\b)|\[SPEC|\b(?:rewrite|reword|restate|edit)\s+(?:the\s+)?(?:scene\s*\d*\s*(?:\Ws\s*)?)?(?:narration|voiceover|concept_claim)|\bfrom the narration|\bthe narration (?:to|so)\b|\bin the recipe|\bnarrate\b|\breword to\b|scroll_to|before-frame|\bcursor\b|\bpointer\b)).*?(\brun[- ]?id\b|\brun (?:slug|tag|identifier)|build slug|ace [\w-]+/(?:\d{8}-\d{4}|<run-id>))
+    # (a) The labs indicator / programme report templates and dashboards ACE
+    # Phase 7 authors (indicator_programme_report, worker review, opp report,
+    # their semantic registry). Three kinds of evidence, any one suffices:
+    #   1. the finding names the surface (render_code, a labs/deployed template,
+    #      an indicator_* template, the semantic registry, a [CODE] fix);
+    #   2. the judge tagged the fix PRODUCT: / PRODUCT change (case-sensitive —
+    #      the word "product" in prose is not a tag);
+    #   3. an imperative edit to a page element ("Drop the Attention column",
+    #      "remove the legend and hint", "thin the tick labels") — the verb must
+    #      open a clause, so a description ("the frame cannot show that …
+    #      chip") does not count.
+    - name: labs-report-template
+      owner: ACE Phase 7 (labs report templates)
+      issue: dimagi-internal/ace#2337
+      repo: dimagi-internal/ace
+      match: |-
+        (?s)^(?!.*(?:(?-i:\b(?:RECIPE|NARRATION|SCRIPTING)\b)|\[SPEC|\b(?:rewrite|reword|restate|edit)\s+(?:the\s+)?(?:scene\s*\d*\s*(?:\Ws\s*)?)?(?:narration|voiceover|concept_claim)|\bfrom the narration|\bthe narration (?:to|so)\b|\bin the recipe|\bnarrate\b|\breword to\b|scroll_to|before-frame|\bcursor\b|\bpointer\b)).*?(render[_ ]?code|labs (?:[\w-]+ ){0,3}template|deployed (?:labs )?[\w ]{0,30}template|indicator_(?:programme_report|worker_review|opp_report)|semantic registry|in the registry|\[CODE\]|(?-i:\bPRODUCT\b)(?: change)?\s*[:(]|(?:^\s*|[.;:!?)\]]\s+|\b(?:and|or|then|either)\s+|\([a-z]\)\s*)(?:remove|make|use (?:one|a single)|drop|delete|collapse|merge|rename|retitle|relabel|shorten|replace|render|add|label|mark|show|state|tint|thin|narrow|draw|caption|define|redefine|compute|exclude|fit|change|print|plain-language)\b[^.;!?]{0,60}?\b(?:column header|columns?|legend|chips?|badges?|tick labels?|ticks|axis|swatch|subline|sparkline|tiles?|KPI|bubbles?|ⓘ|picker|panel(?: heading| title| header)?|chart(?: title)?|row label|own row|thresholds?|numerator|denominator|bulk (?:action|button)|hints?|footnote|breadcrumb|mini (?:bars|chart)|attention|peer (?:median|count)|labels?|deltas|rows))
+
+  # Product-clarity findings (a judge tagged product_clarity) become a doc /
+  # UI-copy issue here. Default would be the target repo's git origin — and ACE
+  # runs the loop from a non-repo cwd, so there is none; the product being
+  # demoed is Connect Labs.
+  product_repo: dimagi-internal/connect-labs
+
+product:
+  lint:
+    # Pre-judge frame lint, MERGED onto canopy's DEFAULT_JARGON. canopy's
+    # INTERNAL_ID_PATTERNS already flag ACE run ids (\d{8}-\d{4}) and the
+    # 'ace <opp>/' tag, so they are not repeated here. These are the other ACE
+    # vocabulary that reached captured page text on the 2026-10-15 runs (or is
+    # its nearest neighbour):
+    jargon:
+      '\(id: ?\d+,? visits: ?\d+\)': "an internal opportunity id and visit count ('(id: 10140 visits: 388)') — show the programme name only"
+      '\bACE run\b': "the build tool's name ('Generated for ACE run …') — say 'invented example data'"
+      '\bPDD\b': "an internal acronym ('PDD', ACE's programme design doc) — say 'the programme design'"
+      '\bACE Phase \d\b|\bsynthetic-data-and-workflows\b|\bdemo-data-setup\b|\bdemo-narrative\b|\bsemantic-registry-author\b': "an internal ACE phase or step name — a reader never needs to know how the page was built"

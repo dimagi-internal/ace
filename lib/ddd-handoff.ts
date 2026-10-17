@@ -38,11 +38,20 @@
  * Pure: takes the parsed `phases.synthetic-data-and-workflows` block.
  */
 
+import { dddDirForRunsDir } from './ddd-loop-config.js';
+
 export interface DddHandoff {
   /** Drive file id of `7-synthetic/ddd-dispatch-prompt.md` — the full canopy:ddd prompt. */
   prompt_file_id: string;
   /** `CANOPY_DDD_RUNS_DIR` for this run (`~/.canopy/ddd/runs/ace-<opp>-<run-id>`). */
   runs_dir: string;
+  /**
+   * `DDD_DIR` for this run (`~/.canopy/ddd/ace-<opp>-<run-id>`) — where canopy reads
+   * `config.yaml` (`lib/ddd-loop-config.ts`). Optional in the recorded hand-off:
+   * one written before this field existed gets it derived from `runs_dir` by
+   * `phase7DddStep`, so an in-flight run is never re-built for lacking it.
+   */
+  ddd_dir?: string;
   /** The narrative slug the loop renders. */
   narrative_slug: string;
   /** Step 3.1's adoption outcome: a run id to `--resume`, or null for a fresh run. */
@@ -80,6 +89,9 @@ export function handoffProblem(raw: unknown): string | null {
   for (const k of ['prompt_file_id', 'runs_dir', 'narrative_slug', 'workspace'] as const) {
     if (!nonEmpty(raw[k])) return `ddd_handoff.${k} is missing or empty`;
   }
+  if (raw.ddd_dir !== undefined && raw.ddd_dir !== null && !nonEmpty(raw.ddd_dir)) {
+    return 'ddd_handoff.ddd_dir must be a path when present';
+  }
   const r = raw.resume_run_id;
   if (r !== null && r !== undefined && !nonEmpty(r)) {
     return 'ddd_handoff.resume_run_id must be a run id or null';
@@ -107,5 +119,16 @@ export function phase7DddStep(block: unknown): Phase7DddStep {
   const problem = handoffProblem(raw);
   if (problem) return { step: 'malformed', reason: problem };
   const handoff = { resume_run_id: null, ...(raw as object) } as DddHandoff;
+  if (!nonEmpty(handoff.ddd_dir)) {
+    // Pre-DDD_DIR hand-off: derive it. An unexpected runs_dir shape leaves it
+    // unset (the loop then resolves its dir as it did before) rather than
+    // failing a hand-off that is otherwise usable — `malformed` re-runs the
+    // build half, which regenerates the run's data.
+    try {
+      handoff.ddd_dir = dddDirForRunsDir(handoff.runs_dir);
+    } catch {
+      delete handoff.ddd_dir;
+    }
+  }
   return ended ? { step: 'finalize', handoff } : { step: 'dispatch-ddd', handoff };
 }
