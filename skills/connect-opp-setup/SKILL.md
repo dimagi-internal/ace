@@ -278,8 +278,54 @@ alone makes the artifact land outside `4-connect` and fail
 
    The auto-mode default is to proceed, unchanged (matches current Phase 9
    pause-point auto-approval). Review-mode pauses for explicit operator
-   confirmation. An idempotent-resume path that detects an existing
-   matching opp and asks before recreating is tracked as future work.
+   confirmation.
+
+   **4.0 Resume check — finish THIS run's opportunity, never mint a second
+   (ace#2083).** The create below makes an opportunity with no payment units;
+   Connect's `is_setup_complete` stays false until Step 6 adds one, and every
+   read then reports `dashboard_read: 'setup_incomplete'`. A dispatch that dies
+   between here and Step 6 leaves exactly that, and a re-dispatch that creates
+   again strands it for good: Connect has no opportunity-delete route, and its
+   only purge (`delete_stale_opportunities`) takes visit-free opportunities at
+   SIX MONTHS. Meanwhile each one costs a full `EXPECTED_OPP_BUDGET` in every
+   program-ceiling sum on the org (11 of 71 rows on the shared PM org, 2026-09-06 —
+   ACE's own abandoned Phase 4 runs). So, before creating:
+
+   1. Read `phases.connect-setup.products.connect.opportunity` from this
+      run's `run_state.yaml` (null on a first dispatch).
+   2. `connect_list_opportunities({organization_slug: <pm_org>, name:
+      <run_id>, hydrate: true})` — the PM org lists NM-held opportunities too;
+      `name` is a substring match, so the run id finds every row of this run.
+   3. Decide with `planOpportunityCreate({runId, expectedName, recorded,
+      listing, rows})` (`lib/connect-opp-resume.ts`, pinned by
+      `test/lib/connect-opp-resume.test.ts`), where `expectedName` is the
+      exact `"<run_id> · <PDD display name>"` you would create:
+      - `create` → proceed with the create below.
+      - `adopt` → do NOT create. Use `opportunity_id`, record it now (the
+        write below), take `deliver_units[].server_id` from
+        `connect_list_deliver_units`, and continue at Step 5 on that
+        opportunity. `setup_incomplete: true` means Steps 5, 6 and 6.5 all
+        still have to run on it; `false` means setup is done — call
+        `connect_list_payment_units` before Step 6 and create only the units
+        not already listed by name. Log the adoption and its `reason` to
+        `comms-log/observations.md` and the step log.
+      - `halt` → stop Phase 4 with a `[BLOCKER]` carrying `code`,
+        `opportunity_ids` and `reason`. Never create on a halt: every halt is
+        a case where creating could add another permanent orphan.
+
+   **The atom enforces the same rule.** `connect_create_opportunity` refuses an
+   `is_test` create whose exact name already exists (`OPPORTUNITY_ALREADY_EXISTS`,
+   naming the ids) or whose listing came back incomplete
+   (`OPPORTUNITY_EXISTENCE_UNKNOWN`). Treat either as this step's `adopt` /
+   `halt`; `allow_existing_name: true` is for a replacement the operator
+   explicitly approved, never a retry.
+
+   **Record the id the moment the create returns (ace#2412).** Right after a
+   successful create (or an `adopt`), before Step 5, write
+   `phases.connect-setup.products.connect.opportunity: {id, name, url}` with
+   `update_yaml_file({merge: 'deep'})` on the run's `run_state.yaml` (no
+   `validateAs` — Step 10 writes the full block and validates it). That one
+   write is what lets the next dispatch's 4.0 take the `recorded` branch.
 
    **Endpoint:** the new endpoint is
    `POST /api/programs/<program_id>/opportunities/` and takes the
@@ -451,7 +497,9 @@ alone makes the artifact land outside `4-connect` and fail
    `connect_list_deliver_units` and `connect_int_id` from the Step 6.5
    `/activate/` response (it returns `id`, the integer), and say in the
    step log that the create response was lost. Re-create only once the
-   bounded wait has confirmed the opportunity is absent.
+   bounded wait has confirmed the opportunity is absent — and if the row
+   lands after that, the atom's `OPPORTUNITY_ALREADY_EXISTS` refusal names it:
+   adopt it per Step 4.0.
 
    **App-wire fields are write-once at create.** Connect's `/edit` form
    does NOT expose `learn_app` / `deliver_app` — they're only set at create.
@@ -462,8 +510,10 @@ alone makes the artifact land outside `4-connect` and fail
    (Connect's `delete_opportunity()` helper exists in
    `commcare_connect/opportunity/deletion.py` but no Django view exposes
    it yet; see `skills/sweep-connect/SKILL.md § Implementation notes`)
-   followed by `connect_create_opportunity` against the canonical HQ ids,
-   then update the current run's
+   followed by `connect_create_opportunity` against the canonical HQ ids
+   (if the stale one could not be deleted, the create needs
+   `allow_existing_name: true` — the operator's call, since the stale one stays
+   on the org until Connect's six-month purge), then update the current run's
    `phases.solicitation-management.products.solicitation.connect_opportunity_id`
    to the new UUID. **This recovery is low-cost.** A labs solicitation
    already published for this opp is unaffected: solicitations are
@@ -1964,3 +2014,4 @@ decisions_append_rows({
 | 2026-09-16 | **Phase 4 creates ACE's build/QA opportunity, never the LLO's — the network-manager / program-manager model (operator decision 2026-09-16).** Step 3a's third branch said of a distinct `target_organization_slug`: *"Phase 9 already handled the round-trip; skip this sub-step."* **That precondition is impossible** — `connect-setup` is Phase 4 and `llo-onboarding` is Phase 9, so no invite has been sent and none accepted when this skill runs; the create it waved through could only reject with `Organization must have an accepted application for this program`. Worse, had it succeeded the opportunity would be stranded: `target_organization_slug` is create-time only and `connect_update_opportunity` carries no org field, so it could never be handed to the LLO. That branch now HALTs with the remedy. Step 3 states the model: PM creates the program → invites the NM → **NM accepts** → PM creates the NM's opportunity (`llo-onboarding` § 2b, on freshly-copied `cc_app_id`s). Two opportunities is structural, not a workaround — it falls out of the ace#573 `DeliverUnit.payment_unit` FK constraint. | ACE team |
 | 2026-09-26 | **Phase 4 runs the real PM→NM flow when `connect_orgs.nm_org` is configured (operator decision, Jon).** Step 3 was rewritten: 3.0 resolves `pm_org` / `holding_org` via `phase4Orgs()` (`lib/connect-orgs.ts`); 3a invites + accepts the HOLDING org (the NM org in `pm-nm` mode) and captures `program_application_id` from the invite POST; Step 4 passes `target_organization_slug = holding_org` and asserts the echo; Step 5 sets verification rules at `pm_org`, which Connect now serves because request org ≠ holding org (ace#2419 — a self-managed opp can never carry them; observed spark-facilitator/20260925-1536). Proved live 2026-09-26 on program `777f9060-8f26-43bb-aad1-b8f1d7df22db` / opportunity `7bfcb845-015c-416a-a200-9795c68dfc55` (NM-held; rule saved at the PM-org URL, refused at the NM-org URL). Step 10 records `pm_org_slug` + `holding_org_slug` (+ legacy `organization_slug`). The partner LLO's opportunity is still created in Phase 9. Self-managed behaviour is unchanged when `nm_org` is unset. | ACE team |
 | 2026-10-15 | **Step 7: a `match === null` read-back now waits, re-reads and re-sends ONCE before it WARNs (dimagi-internal/ace#2946).** On `smallholder-seasonal/20261014-0859` (opp `30605010-4be8-49e3-954c-deeb0b4ad8d6`) the invite sent right after `/activate/` returned `queued` but created no row across three reads; one identical re-send produced both rows, and the requester row's `invited_date` equalled the re-send time — so the first send created nothing, it was not lag. The step previously went straight to WARN, so a run following it recorded `invite_row_present: false` and a Phase 6 blocker that one idempotent re-send would have cleared. Now: wait ~60 s → re-read → re-send once → re-read → only then `invite_row_present: false` + WARN; both sends are logged to `comms-log/observations.md`. *Enforced:* `test/skills/connect-opp-setup-invite-resend.test.ts`. | ACE team |
+| 2026-10-16 | **Step 4.0: a re-dispatched Phase 4 finishes the opportunity it already created instead of minting a second (dimagi-internal/ace#2083 fix (1)).** A create with no payment unit yet is `setup_incomplete` in Connect (`is_setup_complete` needs one), and the skill had no resume path while `products.connect` landed only at Step 10 — so a dispatch killed between Steps 4 and 6 left an opportunity no read can open, and the re-dispatch created another. There is no delete API; Connect's `delete_stale_opportunities` purges visit-free opportunities only at six months, and each orphan costs one `EXPECTED_OPP_BUDGET` in every program-ceiling sum (11 of 71 `ai-demo-space` rows, 2026-09-06). Now Step 4.0 lists by run id and decides create / adopt / halt with `planOpportunityCreate` (`lib/connect-opp-resume.ts`), the id is recorded the moment the create returns (ace#2412), and `connect_create_opportunity` itself refuses an `is_test` create whose exact name exists (`OPPORTUNITY_ALREADY_EXISTS`) or whose listing is incomplete (`OPPORTUNITY_EXISTENCE_UNKNOWN`). *Enforced:* `test/lib/connect-opp-resume.test.ts`, `test/mcp/connect/unit/opportunity-duplicate-guard.test.ts`. | ACE team |

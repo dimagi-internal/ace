@@ -181,9 +181,14 @@ preventer for jjackson/ace#635.
   the API key in `.env` doesn't have access to the named project space).
   Pre-flight Phase 3's `app-deploy` output before retrying.
 - **Step 2 succeeds but verification/payment-unit calls fail:** the opp
-  is left as a bare shell. The skill reports which sub-step failed; the
-  operator can re-run just that step (`/ace:step connect-opp-setup
-  <opp-name>`) without re-creating the opp.
+  is left as a bare shell — `setup_incomplete` in Connect until a payment
+  unit exists, and there is no API to delete it (Connect purges visit-free
+  opportunities only at six months, ace#2083). Re-run the skill
+  (`/ace:step connect-opp-setup <opp-name>` or a re-dispatch): its Step 4.0
+  adopts the opportunity this run already created — by the id recorded the
+  moment the create returned, or by its exact run-id name — and finishes
+  Steps 5–6.5 on it. `connect_create_opportunity` refuses a second create
+  of the same name (`OPPORTUNITY_ALREADY_EXISTS`).
 
 ## Dry-Run Behavior
 
