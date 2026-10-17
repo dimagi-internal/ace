@@ -75,7 +75,12 @@ the zip magic `PK\x03\x04`. If not, halt with `download-failed`.
 
 For each downloaded CCZ:
 
-1. Unzip into an in-memory file tree (or temp dir; clean up at end).
+1. Read the zip into an in-memory file tree (`readCczTextFiles` in
+   `lib/ccz-language-tables.ts`). If a tool needs files on disk, extract into a
+   NEW, EMPTY directory per CCZ (`mktemp -d`) — never `unzip -o` into a
+   directory an earlier build was extracted into. `unzip -o` deletes nothing,
+   so the previous build's files survive and read as this build's: that is how
+   ace#2292 reported another opportunity's language tables in a clean CCZ.
 2. Read `suite.xml` from the zip root. Parse as XML.
 3. For each `<menu>` / `<entry>` in suite.xml, identify the per-form
    XForm path (typically `modules-N/forms-M.xml`).
@@ -1123,57 +1128,49 @@ than a rubric line.
 
 **Language tables vs. declared locales — always, every CCZ
 (dimagi-internal/ace#2292).** Every `<lang>/app_strings.txt` in the zip must be
-declared as a `<locale language="…">` in that CCZ's own `suite.xml`. Run the
-pure helper over the unzipped tree:
+declared as a `<locale language="…">` in that CCZ's own `suite.xml`. Build the
+file map FROM THE ARCHIVE, in memory, and run the pure helper over it:
 
 ```ts
-import { auditCczLanguageTables, formatCczLanguageTables }
+import { auditCczLanguageTables, formatCczLanguageTables, readCczTextFiles }
   from '../../lib/ccz-language-tables';
+const files = readCczTextFiles(cczPath);   // in-zip path -> text, no extraction dir
 const audit = auditCczLanguageTables({
-  suiteXml,
-  files,          // in-zip path -> text, as unzipped in Step 3
+  suiteXml: files['suite.xml'],
+  files,
   appName,        // optional — the app's name from the deploy summary
 });
 ```
 
-The released Deliver CCZ for `bednet-check-2-visit/20260908-1544` (HQ app
-`a3359eaf446f498a80366e000a677a4a`, build `171996636b714bb09dee8779e7e83927`)
-unzipped to `default/ en/ modules-0/ modules-1/ nya/ tum/` while its `suite.xml`
-declared only `default` and `en`. The two extra tables were not a translation of
-this app: they were `spark-facilitator`'s Chichewa and Tumbuka programme, keyed
-to Spark's case model — 16 Spark-ish lines and **zero** bednet-ish lines in each
-50-line table, `app.display.name=Spark FCAP — pulogalamu ya wothandizira wa
-mudzi`. That CCZ scored 10.0 here with 0 BLOCKERs across 24 gates, because every
-gate above asks about forms, markers, XPath and versions and none of them asks
-whether the STRINGS in the zip belong to this opportunity.
+**Never feed it a directory you extracted into — that is how ace#2292 was
+manufactured.** The issue reported that the released Deliver CCZ for
+`bednet-check-2-visit/20260908-1544` (HQ app `a3359eaf446f498a80366e000a677a4a`,
+build `171996636b714bb09dee8779e7e83927`) "unzipped to `default/ en/ modules-0/
+modules-1/ nya/ tum/`", the last two being spark-facilitator's Chichewa/Tumbuka
+tables. Re-downloading that build on 2026-10-16 and listing its ZIP ENTRIES
+gave 7 files — `default/` and `en/` app strings, `profile.ccpr`,
+`media_suite.xml`, two forms and `suite.xml` — and no `nya/` or `tum/`. The
+reproduction (`unzip -o -q deliver.ccz && ls -d */`) had run in a scratch
+directory still holding an earlier spark extraction: `unzip -o` overwrites the
+files a zip carries and deletes nothing else, so spark's tables survived beside
+bednet's fresh `suite.xml`, which is exactly why they looked undeclared. The
+captured build is `test/fixtures/ccz/bednet-check-2-visit-20260908-1544-deliver-v7.ccz`,
+and `test/lib/ccz-language-tables.test.ts` reproduces the residue mechanism. The
+same rule binds Step 3 and every other gate that reads an unzipped tree.
 
-**This is a `[FINDING]`, not a halt, and the reason is specific.** The device is
-only ever offered the locales `suite.xml` declares, and `profile.ccpr` pinned
-`en` — so an orphan table is unreachable to a worker, Phase 6's device walk
-renders English, and Phase 4's configuration is unaffected. Halting a release on
-an unreachable file would cost a whole rebuild for something that cannot reach a
-worker. It still gets reported loudly, because it is a latent defect rather than
-a cosmetic one: the strings belong to another build, and they become reachable
-the moment a run resolves its deferred language question and declares a working
-language — at which point a worker switching language is shown another
-programme's register over another programme's case properties. It also
-contradicts the PDD, which set `working_language: en` and refused to name a
-geography ("inventing one would be fabricated context"); Chichewa and Tumbuka
-are Malawian languages, so this is the
-`docs/learnings/2026-05-12-no-inferred-backstory.md` class arriving through a
-build artifact.
-
-Emit `[FINDING]` `undeclared-language-table` naming **each orphan language and
-its `app.display.name`** — the foreign display name is what made the
-cross-opportunity origin obvious on sight, and it is carried as a
-`foreign-display-name` finding on the same audit. A `foreign-display-name` on a
-DECLARED language is `severity: 'signal'` and does not flip `ok`: a genuinely
-translated app translates its own name, so grading that would fire on every
-correctly multilingual build. `audit.missing` (declared with no table in the
-zip) is the INVERSE case, reported and deliberately not counted as an orphan.
-Record the finding as a Phase 3 residual, do not hand-edit the zip, and do not
-act on a cause — ace#2292's recycled-HQ-app hypothesis is explicitly unconfirmed
-and its second piece is still open.
+**This is a `[FINDING]`, not a halt.** The device is only ever offered the
+locales `suite.xml` declares, so an orphan table is unreachable to a worker and
+the English device walk is unaffected. Emit `[FINDING]`
+`undeclared-language-table` naming **each orphan language and its
+`app.display.name`** (carried as a `foreign-display-name` finding on the same
+audit). A `foreign-display-name` on a DECLARED language is `severity: 'signal'`
+and does not flip `ok`: a genuinely translated app translates its own name, so
+grading that would fire on every correctly multilingual build. `audit.missing`
+(declared with no table in the zip) is the INVERSE case, reported and
+deliberately not counted as an orphan. Before recording a finding, confirm the
+orphan is in the archive (`unzip -l`) — a finding that only exists on disk is a
+measurement error, not a residual. Record a real one as a Phase 3 residual and
+do not hand-edit the zip.
 
 `audit.status === 'unable'` means the check **did not run** — either the file
 map carried no `app_strings.txt` at all, or `suite.xml` yielded zero locale
@@ -1876,16 +1873,16 @@ defects.
   labels from — then re-release and re-run `app-release-qa`. Do not hand-edit
   the enum: an instance fix leaves the next build free to reinvent it.
 - `undeclared-language-table` — the CCZ ships a `<lang>/app_strings.txt` that
-  its own `suite.xml` never declares as a `<locale language="…">`, and on the
-  reported case those tables carried another opportunity's programme
-  (dimagi-internal/ace#2292: `spark-facilitator`'s Chichewa/Tumbuka strings in
-  `bednet-check-2-visit`'s released Deliver CCZ). `[FINDING]`, **not a halt** —
-  the device is only offered declared locales, so the table is unreachable to a
-  worker and the run continues. Operator action: record the orphan languages
-  and their `app.display.name` as a Phase 3 residual and check them against the
-  PDD's declared working language. Do not hand-edit the zip, and do not act on
-  a cause: whether the residue comes from a recycled HQ app or from the Nova
-  blueprint is unconfirmed, and ace#2292's second piece is open.
+  its own `suite.xml` never declares as a `<locale language="…">`. `[FINDING]`,
+  **not a halt** — the device is only offered declared locales, so the table is
+  unreachable to a worker and the run continues. Operator action: FIRST confirm
+  the table is in the archive (`unzip -l`, or the file map came from
+  `readCczTextFiles`) — the only reported case (dimagi-internal/ace#2292,
+  `spark-facilitator` tables "in" `bednet-check-2-visit`'s Deliver CCZ) was
+  residue of an earlier extraction in a reused directory, and the build itself
+  was clean. If it is real, record the orphan languages and their
+  `app.display.name` as a Phase 3 residual and check them against the PDD's
+  declared working language. Do not hand-edit the zip.
 - `ccz-min-version-gate` — the released CCZ's `profile.ccpr` declares a
   minimum CommCare (`requiredMajor.requiredMinor.requiredMinimal`) ABOVE the
   APK Phase 6 will run, so CommCare shows a version-gate screen instead of

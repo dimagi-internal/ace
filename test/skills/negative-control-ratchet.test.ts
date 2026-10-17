@@ -233,7 +233,6 @@ const GROUNDING_BASELINE: ReadonlySet<string> = new Set([
   'lib/answer-key-pattern.ts::checkAnswerKeyPattern',
   'lib/assessment-retry-leak.ts::checkAssessmentRetryLeak',
   'lib/build-phase-decisions.ts::checkBuildPhaseDecisions',
-  'lib/ccz-language-tables.ts::auditCczLanguageTables',
   'lib/ccz-min-version.ts::checkCczMinVersion',
   'lib/choice-label-integrity.ts::checkCaseListEnumDrift',
   'lib/choice-label-integrity.ts::checkMarkdownEatenLabels',
