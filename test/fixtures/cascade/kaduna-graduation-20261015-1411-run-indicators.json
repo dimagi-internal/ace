@@ -1,0 +1,2622 @@
+{
+ "source": "labs workflow_run_indicators(run_id 11139, program_id 10152, limit 500) — kaduna-graduation/20261015-1411 programme report 10512, read 2026-10-16 (ace#3053); measures = indicators_doc.measures meta of semantic registry 10510 v5 (semantic_registry_get, same day), value measures only (bands/target absent because the PDD sets none). Every cell is band 'unbanded'.",
+ "measures": [
+  {
+   "name": "kg_hv",
+   "type": "number",
+   "title": "Routine home-visit coverage",
+   "meta": {
+    "unit": "%",
+    "label": "Home-visit coverage",
+    "category": "Coaching",
+    "direction": "higher",
+    "indicator": "KG_HV",
+    "plain": "Of the completed months each woman has been in the programme, the share in which her mentor met her at a routine home visit.",
+    "scope_note": "PDD § Success Metrics — routine home-visit coverage (% of participant-months with a completed routine visit); PDD § B5.12 one routine visit a month. Target is a placeholder in the PDD, so none is set.",
+    "flw_applicable": true
+   }
+  },
+  {
+   "name": "kg_tc",
+   "type": "number",
+   "title": "Transfers not arrived",
+   "meta": {
+    "unit": "%",
+    "label": "Transfer not arrived",
+    "category": "Consumption support",
+    "direction": "lower",
+    "indicator": "KG_TC",
+    "plain": "Of the home visits sampled for the transfer check, the share where she said this month's consumption transfer had not arrived; each one is flagged for the programme team.",
+    "scope_note": "PDD § B5.12 — on a sample of visits, whether this month's consumption transfer arrived; one that did not is flagged for the program team (PDD § Evidence Model, Layer B). No target in the PDD.",
+    "flw_applicable": true
+   }
+  },
+  {
+   "name": "kg_sv",
+   "type": "number",
+   "title": "Short-visit flags",
+   "meta": {
+    "unit": "%",
+    "label": "Short visits",
+    "category": "Data quality",
+    "direction": "lower",
+    "indicator": "KG_SV",
+    "plain": "Of routine home visits, the share Connect flagged as implausibly short; a flagged visit waits for review before it is approved.",
+    "scope_note": "PDD § Evidence Model, Layer A — Connect form-duration flag on (the implausibly short rule; threshold a programme-manager setting). No target in the PDD.",
+    "flw_applicable": true
+   }
+  },
+  {
+   "name": "kg_ex",
+   "type": "number",
+   "title": "Exits recorded",
+   "meta": {
+    "unit": "%",
+    "label": "Exits",
+    "category": "Retention",
+    "direction": "none",
+    "indicator": "KG_EX",
+    "plain": "Of the women with a routine home visit, the share whose mentor recorded at a routine visit that she has left the programme.",
+    "flw_applicable": true
+   }
+  },
+  {
+   "name": "kg_pv",
+   "type": "number",
+   "title": "Payable visit share",
+   "meta": {
+    "unit": "%",
+    "label": "Payable visits",
+    "category": "Coaching",
+    "direction": "higher",
+    "indicator": "KG_PV",
+    "plain": "Of routine home visits, the share that count for payment: the first visit in the month at which she was met and is still enrolled.",
+    "scope_note": "PDD § Evidence Model, Layer A and PDD § Payment units — routine home visit paid only for the first routine visit in the month, she has not left. No target in the PDD.",
+    "flw_applicable": true
+   }
+  },
+  {
+   "name": "kg_mc",
+   "type": "number",
+   "title": "Transfer controlled by someone else",
+   "meta": {
+    "unit": "%",
+    "label": "Transfer not in her control",
+    "category": "Consumption support",
+    "direction": "lower",
+    "indicator": "KG_MC",
+    "plain": "Of the home visits sampled for the transfer check, the share where she said someone else controls the money; loss of control opens an escalation.",
+    "flw_applicable": false
+   }
+  }
+ ],
+ "run_indicators": {
+  "run_id": 11139,
+  "source": "stored",
+  "generated_at": "2026-10-16T19:18:11.677819Z",
+  "total": 60,
+  "truncated": false,
+  "workers": [
+   {
+    "key": "10152::kg_hm01",
+    "username": "kg_hm01",
+    "name": "Rabi Abubakar",
+    "opportunity_id": 10152,
+    "organisation": "Haske Mata Development Circle (example)",
+    "cases": 30,
+    "reds": 0,
+    "yellows": 0,
+    "indicators": {
+     "KG_EX": {
+      "band": "unbanded",
+      "value": 0.03333333333333333,
+      "n": 30
+     },
+     "KG_HV": {
+      "band": "unbanded",
+      "value": 0.8803418803418803,
+      "n": 117
+     },
+     "KG_MC": {
+      "band": "unbanded",
+      "value": 0,
+      "n": 33
+     },
+     "KG_PV": {
+      "band": "unbanded",
+      "value": 0.8308823529411765,
+      "n": 136
+     },
+     "KG_SV": {
+      "band": "unbanded",
+      "value": 0.014705882352941175,
+      "n": 136
+     },
+     "KG_TC": {
+      "band": "unbanded",
+      "value": 0,
+      "n": 33
+     }
+    }
+   },
+   {
+    "key": "10152::kg_hm02",
+    "username": "kg_hm02",
+    "name": "Saude Jibrin",
+    "opportunity_id": 10152,
+    "organisation": "Haske Mata Development Circle (example)",
+    "cases": 30,
+    "reds": 0,
+    "yellows": 0,
+    "indicators": {
+     "KG_EX": {
+      "band": "unbanded",
+      "value": 0,
+      "n": 30
+     },
+     "KG_HV": {
+      "band": "unbanded",
+      "value": 0.9,
+      "n": 120
+     },
+     "KG_MC": {
+      "band": "unbanded",
+      "value": 0,
+      "n": 41
+     },
+     "KG_PV": {
+      "band": "unbanded",
+      "value": 0.8181818181818181,
+      "n": 143
+     },
+     "KG_SV": {
+      "band": "unbanded",
+      "value": 0.006993006993006993,
+      "n": 143
+     },
+     "KG_TC": {
+      "band": "unbanded",
+      "value": 0.024390243902439025,
+      "n": 41
+     }
+    }
+   },
+   {
+    "key": "10152::kg_hm03",
+    "username": "kg_hm03",
+    "name": "Mariya Ishaku",
+    "opportunity_id": 10152,
+    "organisation": "Haske Mata Development Circle (example)",
+    "cases": 30,
+    "reds": 0,
+    "yellows": 0,
+    "indicators": {
+     "KG_EX": {
+      "band": "unbanded",
+      "value": 0.03333333333333333,
+      "n": 30
+     },
+     "KG_HV": {
+      "band": "unbanded",
+      "value": 0.875,
+      "n": 120
+     },
+     "KG_MC": {
+      "band": "unbanded",
+      "value": 0.08333333333333334,
+      "n": 36
+     },
+     "KG_PV": {
+      "band": "unbanded",
+      "value": 0.8321678321678321,
+      "n": 143
+     },
+     "KG_SV": {
+      "band": "unbanded",
+      "value": 0.006993006993006993,
+      "n": 143
+     },
+     "KG_TC": {
+      "band": "unbanded",
+      "value": 0.027777777777777776,
+      "n": 36
+     }
+    }
+   },
+   {
+    "key": "10152::kg_hm04",
+    "username": "kg_hm04",
+    "name": "Altine Peter",
+    "opportunity_id": 10152,
+    "organisation": "Haske Mata Development Circle (example)",
+    "cases": 30,
+    "reds": 0,
+    "yellows": 0,
+    "indicators": {
+     "KG_EX": {
+      "band": "unbanded",
+      "value": 0,
+      "n": 30
+     },
+     "KG_HV": {
+      "band": "unbanded",
+      "value": 0.925,
+      "n": 120
+     },
+     "KG_MC": {
+      "band": "unbanded",
+      "value": 0.024390243902439025,
+      "n": 41
+     },
+     "KG_PV": {
+      "band": "unbanded",
+      "value": 0.8541666666666667,
+      "n": 144
+     },
+     "KG_SV": {
+      "band": "unbanded",
+      "value": 0.013888888888888888,
+      "n": 144
+     },
+     "KG_TC": {
+      "band": "unbanded",
+      "value": 0.07317073170731708,
+      "n": 41
+     }
+    }
+   },
+   {
+    "key": "10152::kg_hm05",
+    "username": "kg_hm05",
+    "name": "Maryam Jibrin",
+    "opportunity_id": 10152,
+    "organisation": "Haske Mata Development Circle (example)",
+    "cases": 30,
+    "reds": 0,
+    "yellows": 0,
+    "indicators": {
+     "KG_EX": {
+      "band": "unbanded",
+      "value": 0.06666666666666667,
+      "n": 30
+     },
+     "KG_HV": {
+      "band": "unbanded",
+      "value": 0.9152542372881356,
+      "n": 118
+     },
+     "KG_MC": {
+      "band": "unbanded",
+      "value": 0.052631578947368425,
+      "n": 38
+     },
+     "KG_PV": {
+      "band": "unbanded",
+      "value": 0.8137931034482758,
+      "n": 145
+     },
+     "KG_SV": {
+      "band": "unbanded",
+      "value": 0.020689655172413793,
+      "n": 145
+     },
+     "KG_TC": {
+      "band": "unbanded",
+      "value": 0.07894736842105263,
+      "n": 38
+     }
+    }
+   },
+   {
+    "key": "10152::kg_hm06",
+    "username": "kg_hm06",
+    "name": "Lami Abdullahi",
+    "opportunity_id": 10152,
+    "organisation": "Haske Mata Development Circle (example)",
+    "cases": 30,
+    "reds": 0,
+    "yellows": 0,
+    "indicators": {
+     "KG_EX": {
+      "band": "unbanded",
+      "value": 0,
+      "n": 30
+     },
+     "KG_HV": {
+      "band": "unbanded",
+      "value": 0.9333333333333332,
+      "n": 120
+     },
+     "KG_MC": {
+      "band": "unbanded",
+      "value": 0.05882352941176471,
+      "n": 34
+     },
+     "KG_PV": {
+      "band": "unbanded",
+      "value": 0.8482758620689655,
+      "n": 145
+     },
+     "KG_SV": {
+      "band": "unbanded",
+      "value": 0,
+      "n": 145
+     },
+     "KG_TC": {
+      "band": "unbanded",
+      "value": 0.029411764705882356,
+      "n": 34
+     }
+    }
+   },
+   {
+    "key": "10152::kg_hm07",
+    "username": "kg_hm07",
+    "name": "Deborah Aliyu",
+    "opportunity_id": 10152,
+    "organisation": "Haske Mata Development Circle (example)",
+    "cases": 30,
+    "reds": 0,
+    "yellows": 0,
+    "indicators": {
+     "KG_EX": {
+      "band": "unbanded",
+      "value": 0,
+      "n": 30
+     },
+     "KG_HV": {
+      "band": "unbanded",
+      "value": 0.9,
+      "n": 120
+     },
+     "KG_MC": {
+      "band": "unbanded",
+      "value": 0.047619047619047616,
+      "n": 42
+     },
+     "KG_PV": {
+      "band": "unbanded",
+      "value": 0.8157894736842105,
+      "n": 152
+     },
+     "KG_SV": {
+      "band": "unbanded",
+      "value": 0,
+      "n": 152
+     },
+     "KG_TC": {
+      "band": "unbanded",
+      "value": 0.047619047619047616,
+      "n": 42
+     }
+    }
+   },
+   {
+    "key": "10152::kg_hm08",
+    "username": "kg_hm08",
+    "name": "Grace Idris",
+    "opportunity_id": 10152,
+    "organisation": "Haske Mata Development Circle (example)",
+    "cases": 30,
+    "reds": 0,
+    "yellows": 0,
+    "indicators": {
+     "KG_EX": {
+      "band": "unbanded",
+      "value": 0.06666666666666667,
+      "n": 30
+     },
+     "KG_HV": {
+      "band": "unbanded",
+      "value": 0.9043478260869565,
+      "n": 115
+     },
+     "KG_MC": {
+      "band": "unbanded",
+      "value": 0,
+      "n": 37
+     },
+     "KG_PV": {
+      "band": "unbanded",
+      "value": 0.8455882352941176,
+      "n": 136
+     },
+     "KG_SV": {
+      "band": "unbanded",
+      "value": 0,
+      "n": 136
+     },
+     "KG_TC": {
+      "band": "unbanded",
+      "value": 0.027027027027027025,
+      "n": 37
+     }
+    }
+   },
+   {
+    "key": "10152::kg_hm09",
+    "username": "kg_hm09",
+    "name": "Ruth Kure",
+    "opportunity_id": 10152,
+    "organisation": "Haske Mata Development Circle (example)",
+    "cases": 30,
+    "reds": 0,
+    "yellows": 0,
+    "indicators": {
+     "KG_EX": {
+      "band": "unbanded",
+      "value": 0,
+      "n": 30
+     },
+     "KG_HV": {
+      "band": "unbanded",
+      "value": 0.875,
+      "n": 120
+     },
+     "KG_MC": {
+      "band": "unbanded",
+      "value": 0,
+      "n": 32
+     },
+     "KG_PV": {
+      "band": "unbanded",
+      "value": 0.7823129251700681,
+      "n": 147
+     },
+     "KG_SV": {
+      "band": "unbanded",
+      "value": 0.013605442176870748,
+      "n": 147
+     },
+     "KG_TC": {
+      "band": "unbanded",
+      "value": 0.0625,
+      "n": 32
+     }
+    }
+   },
+   {
+    "key": "10152::kg_hm10",
+    "username": "kg_hm10",
+    "name": "Grace Daniel",
+    "opportunity_id": 10152,
+    "organisation": "Haske Mata Development Circle (example)",
+    "cases": 30,
+    "reds": 0,
+    "yellows": 0,
+    "indicators": {
+     "KG_EX": {
+      "band": "unbanded",
+      "value": 0,
+      "n": 30
+     },
+     "KG_HV": {
+      "band": "unbanded",
+      "value": 0.9333333333333332,
+      "n": 120
+     },
+     "KG_MC": {
+      "band": "unbanded",
+      "value": 0.034482758620689655,
+      "n": 29
+     },
+     "KG_PV": {
+      "band": "unbanded",
+      "value": 0.900709219858156,
+      "n": 141
+     },
+     "KG_SV": {
+      "band": "unbanded",
+      "value": 0.0070921985815602835,
+      "n": 141
+     },
+     "KG_TC": {
+      "band": "unbanded",
+      "value": 0,
+      "n": 29
+     }
+    }
+   },
+   {
+    "key": "10152::kg_hm11",
+    "username": "kg_hm11",
+    "name": "Umma Zakari",
+    "opportunity_id": 10152,
+    "organisation": "Haske Mata Development Circle (example)",
+    "cases": 30,
+    "reds": 0,
+    "yellows": 0,
+    "indicators": {
+     "KG_EX": {
+      "band": "unbanded",
+      "value": 0.03333333333333333,
+      "n": 30
+     },
+     "KG_HV": {
+      "band": "unbanded",
+      "value": 0.9327731092436974,
+      "n": 119
+     },
+     "KG_MC": {
+      "band": "unbanded",
+      "value": 0.03225806451612903,
+      "n": 31
+     },
+     "KG_PV": {
+      "band": "unbanded",
+      "value": 0.8680555555555556,
+      "n": 144
+     },
+     "KG_SV": {
+      "band": "unbanded",
+      "value": 0.013888888888888888,
+      "n": 144
+     },
+     "KG_TC": {
+      "band": "unbanded",
+      "value": 0,
+      "n": 31
+     }
+    }
+   },
+   {
+    "key": "10152::kg_hm12",
+    "username": "kg_hm12",
+    "name": "Altine Abdullahi",
+    "opportunity_id": 10152,
+    "organisation": "Haske Mata Development Circle (example)",
+    "cases": 30,
+    "reds": 0,
+    "yellows": 0,
+    "indicators": {
+     "KG_EX": {
+      "band": "unbanded",
+      "value": 0,
+      "n": 30
+     },
+     "KG_HV": {
+      "band": "unbanded",
+      "value": 0.9,
+      "n": 120
+     },
+     "KG_MC": {
+      "band": "unbanded",
+      "value": 0.05714285714285714,
+      "n": 35
+     },
+     "KG_PV": {
+      "band": "unbanded",
+      "value": 0.8309859154929577,
+      "n": 142
+     },
+     "KG_SV": {
+      "band": "unbanded",
+      "value": 0.01408450704225352,
+      "n": 142
+     },
+     "KG_TC": {
+      "band": "unbanded",
+      "value": 0,
+      "n": 35
+     }
+    }
+   },
+   {
+    "key": "10153::kg_tr01",
+    "username": "kg_tr01",
+    "name": "Amina Aliyu",
+    "opportunity_id": 10153,
+    "organisation": "Tallafi Rural Outreach Network (example)",
+    "cases": 30,
+    "reds": 0,
+    "yellows": 0,
+    "indicators": {
+     "KG_EX": {
+      "band": "unbanded",
+      "value": 0,
+      "n": 30
+     },
+     "KG_HV": {
+      "band": "unbanded",
+      "value": 0.85,
+      "n": 120
+     },
+     "KG_MC": {
+      "band": "unbanded",
+      "value": 0.027027027027027025,
+      "n": 37
+     },
+     "KG_PV": {
+      "band": "unbanded",
+      "value": 0.7971014492753623,
+      "n": 138
+     },
+     "KG_SV": {
+      "band": "unbanded",
+      "value": 0.014492753623188406,
+      "n": 138
+     },
+     "KG_TC": {
+      "band": "unbanded",
+      "value": 0.027027027027027025,
+      "n": 37
+     }
+    }
+   },
+   {
+    "key": "10153::kg_tr02",
+    "username": "kg_tr02",
+    "name": "Rhoda Barde",
+    "opportunity_id": 10153,
+    "organisation": "Tallafi Rural Outreach Network (example)",
+    "cases": 30,
+    "reds": 0,
+    "yellows": 0,
+    "indicators": {
+     "KG_EX": {
+      "band": "unbanded",
+      "value": 0.03333333333333333,
+      "n": 30
+     },
+     "KG_HV": {
+      "band": "unbanded",
+      "value": 0.8487394957983193,
+      "n": 119
+     },
+     "KG_MC": {
+      "band": "unbanded",
+      "value": 0.05714285714285714,
+      "n": 35
+     },
+     "KG_PV": {
+      "band": "unbanded",
+      "value": 0.7866666666666667,
+      "n": 150
+     },
+     "KG_SV": {
+      "band": "unbanded",
+      "value": 0,
+      "n": 150
+     },
+     "KG_TC": {
+      "band": "unbanded",
+      "value": 0.08571428571428572,
+      "n": 35
+     }
+    }
+   },
+   {
+    "key": "10153::kg_tr03",
+    "username": "kg_tr03",
+    "name": "Hafsat Kabiru",
+    "opportunity_id": 10153,
+    "organisation": "Tallafi Rural Outreach Network (example)",
+    "cases": 30,
+    "reds": 0,
+    "yellows": 0,
+    "indicators": {
+     "KG_EX": {
+      "band": "unbanded",
+      "value": 0,
+      "n": 30
+     },
+     "KG_HV": {
+      "band": "unbanded",
+      "value": 0.8583333333333333,
+      "n": 120
+     },
+     "KG_MC": {
+      "band": "unbanded",
+      "value": 0.03225806451612903,
+      "n": 31
+     },
+     "KG_PV": {
+      "band": "unbanded",
+      "value": 0.7945205479452055,
+      "n": 146
+     },
+     "KG_SV": {
+      "band": "unbanded",
+      "value": 0,
+      "n": 146
+     },
+     "KG_TC": {
+      "band": "unbanded",
+      "value": 0.06451612903225806,
+      "n": 31
+     }
+    }
+   },
+   {
+    "key": "10153::kg_tr04",
+    "username": "kg_tr04",
+    "name": "Saratu Idris",
+    "opportunity_id": 10153,
+    "organisation": "Tallafi Rural Outreach Network (example)",
+    "cases": 30,
+    "reds": 0,
+    "yellows": 0,
+    "indicators": {
+     "KG_EX": {
+      "band": "unbanded",
+      "value": 0.03333333333333333,
+      "n": 30
+     },
+     "KG_HV": {
+      "band": "unbanded",
+      "value": 0.875,
+      "n": 120
+     },
+     "KG_MC": {
+      "band": "unbanded",
+      "value": 0,
+      "n": 38
+     },
+     "KG_PV": {
+      "band": "unbanded",
+      "value": 0.8251748251748252,
+      "n": 143
+     },
+     "KG_SV": {
+      "band": "unbanded",
+      "value": 0.006993006993006993,
+      "n": 143
+     },
+     "KG_TC": {
+      "band": "unbanded",
+      "value": 0,
+      "n": 38
+     }
+    }
+   },
+   {
+    "key": "10153::kg_tr05",
+    "username": "kg_tr05",
+    "name": "Zuwaira Jibrin",
+    "opportunity_id": 10153,
+    "organisation": "Tallafi Rural Outreach Network (example)",
+    "cases": 30,
+    "reds": 0,
+    "yellows": 0,
+    "indicators": {
+     "KG_EX": {
+      "band": "unbanded",
+      "value": 0,
+      "n": 30
+     },
+     "KG_HV": {
+      "band": "unbanded",
+      "value": 0.8916666666666667,
+      "n": 120
+     },
+     "KG_MC": {
+      "band": "unbanded",
+      "value": 0,
+      "n": 37
+     },
+     "KG_PV": {
+      "band": "unbanded",
+      "value": 0.851063829787234,
+      "n": 141
+     },
+     "KG_SV": {
+      "band": "unbanded",
+      "value": 0.0070921985815602835,
+      "n": 141
+     },
+     "KG_TC": {
+      "band": "unbanded",
+      "value": 0.027027027027027025,
+      "n": 37
+     }
+    }
+   },
+   {
+    "key": "10153::kg_tr06",
+    "username": "kg_tr06",
+    "name": "Jummai Musa",
+    "opportunity_id": 10153,
+    "organisation": "Tallafi Rural Outreach Network (example)",
+    "cases": 30,
+    "reds": 0,
+    "yellows": 0,
+    "indicators": {
+     "KG_EX": {
+      "band": "unbanded",
+      "value": 0,
+      "n": 30
+     },
+     "KG_HV": {
+      "band": "unbanded",
+      "value": 0.8416666666666667,
+      "n": 120
+     },
+     "KG_MC": {
+      "band": "unbanded",
+      "value": 0.03225806451612903,
+      "n": 31
+     },
+     "KG_PV": {
+      "band": "unbanded",
+      "value": 0.7916666666666667,
+      "n": 144
+     },
+     "KG_SV": {
+      "band": "unbanded",
+      "value": 0.006944444444444444,
+      "n": 144
+     },
+     "KG_TC": {
+      "band": "unbanded",
+      "value": 0.03225806451612903,
+      "n": 31
+     }
+    }
+   },
+   {
+    "key": "10153::kg_tr07",
+    "username": "kg_tr07",
+    "name": "Bilkisu Bawa",
+    "opportunity_id": 10153,
+    "organisation": "Tallafi Rural Outreach Network (example)",
+    "cases": 30,
+    "reds": 0,
+    "yellows": 0,
+    "indicators": {
+     "KG_EX": {
+      "band": "unbanded",
+      "value": 0,
+      "n": 30
+     },
+     "KG_HV": {
+      "band": "unbanded",
+      "value": 0.8333333333333333,
+      "n": 120
+     },
+     "KG_MC": {
+      "band": "unbanded",
+      "value": 0.029411764705882356,
+      "n": 34
+     },
+     "KG_PV": {
+      "band": "unbanded",
+      "value": 0.7823129251700681,
+      "n": 147
+     },
+     "KG_SV": {
+      "band": "unbanded",
+      "value": 0.013605442176870748,
+      "n": 147
+     },
+     "KG_TC": {
+      "band": "unbanded",
+      "value": 0,
+      "n": 34
+     }
+    }
+   },
+   {
+    "key": "10153::kg_tr08",
+    "username": "kg_tr08",
+    "name": "Jamila Kure",
+    "opportunity_id": 10153,
+    "organisation": "Tallafi Rural Outreach Network (example)",
+    "cases": 30,
+    "reds": 0,
+    "yellows": 0,
+    "indicators": {
+     "KG_EX": {
+      "band": "unbanded",
+      "value": 0.06666666666666667,
+      "n": 30
+     },
+     "KG_HV": {
+      "band": "unbanded",
+      "value": 0.8305084745762712,
+      "n": 118
+     },
+     "KG_MC": {
+      "band": "unbanded",
+      "value": 0.05128205128205129,
+      "n": 39
+     },
+     "KG_PV": {
+      "band": "unbanded",
+      "value": 0.7708333333333333,
+      "n": 144
+     },
+     "KG_SV": {
+      "band": "unbanded",
+      "value": 0.006944444444444444,
+      "n": 144
+     },
+     "KG_TC": {
+      "band": "unbanded",
+      "value": 0.05128205128205129,
+      "n": 39
+     }
+    }
+   },
+   {
+    "key": "10153::kg_tr09",
+    "username": "kg_tr09",
+    "name": "Grace Mohammed",
+    "opportunity_id": 10153,
+    "organisation": "Tallafi Rural Outreach Network (example)",
+    "cases": 30,
+    "reds": 0,
+    "yellows": 0,
+    "indicators": {
+     "KG_EX": {
+      "band": "unbanded",
+      "value": 0,
+      "n": 30
+     },
+     "KG_HV": {
+      "band": "unbanded",
+      "value": 0.8666666666666667,
+      "n": 120
+     },
+     "KG_MC": {
+      "band": "unbanded",
+      "value": 0,
+      "n": 33
+     },
+     "KG_PV": {
+      "band": "unbanded",
+      "value": 0.823943661971831,
+      "n": 142
+     },
+     "KG_SV": {
+      "band": "unbanded",
+      "value": 0.00704225352112676,
+      "n": 142
+     },
+     "KG_TC": {
+      "band": "unbanded",
+      "value": 0.06060606060606061,
+      "n": 33
+     }
+    }
+   },
+   {
+    "key": "10153::kg_tr10",
+    "username": "kg_tr10",
+    "name": "Kulu Jibrin",
+    "opportunity_id": 10153,
+    "organisation": "Tallafi Rural Outreach Network (example)",
+    "cases": 30,
+    "reds": 0,
+    "yellows": 0,
+    "indicators": {
+     "KG_EX": {
+      "band": "unbanded",
+      "value": 0.03333333333333333,
+      "n": 30
+     },
+     "KG_HV": {
+      "band": "unbanded",
+      "value": 0.8050847457627118,
+      "n": 118
+     },
+     "KG_MC": {
+      "band": "unbanded",
+      "value": 0,
+      "n": 31
+     },
+     "KG_PV": {
+      "band": "unbanded",
+      "value": 0.7552447552447552,
+      "n": 143
+     },
+     "KG_SV": {
+      "band": "unbanded",
+      "value": 0,
+      "n": 143
+     },
+     "KG_TC": {
+      "band": "unbanded",
+      "value": 0.12903225806451613,
+      "n": 31
+     }
+    }
+   },
+   {
+    "key": "10153::kg_tr11",
+    "username": "kg_tr11",
+    "name": "Dije Aliyu",
+    "opportunity_id": 10153,
+    "organisation": "Tallafi Rural Outreach Network (example)",
+    "cases": 30,
+    "reds": 0,
+    "yellows": 0,
+    "indicators": {
+     "KG_EX": {
+      "band": "unbanded",
+      "value": 0,
+      "n": 30
+     },
+     "KG_HV": {
+      "band": "unbanded",
+      "value": 0.8916666666666667,
+      "n": 120
+     },
+     "KG_MC": {
+      "band": "unbanded",
+      "value": 0.029411764705882356,
+      "n": 34
+     },
+     "KG_PV": {
+      "band": "unbanded",
+      "value": 0.8368794326241136,
+      "n": 141
+     },
+     "KG_SV": {
+      "band": "unbanded",
+      "value": 0,
+      "n": 141
+     },
+     "KG_TC": {
+      "band": "unbanded",
+      "value": 0.05882352941176471,
+      "n": 34
+     }
+    }
+   },
+   {
+    "key": "10153::kg_tr12",
+    "username": "kg_tr12",
+    "name": "Altine Joseph",
+    "opportunity_id": 10153,
+    "organisation": "Tallafi Rural Outreach Network (example)",
+    "cases": 30,
+    "reds": 0,
+    "yellows": 0,
+    "indicators": {
+     "KG_EX": {
+      "band": "unbanded",
+      "value": 0,
+      "n": 30
+     },
+     "KG_HV": {
+      "band": "unbanded",
+      "value": 0.8333333333333333,
+      "n": 120
+     },
+     "KG_MC": {
+      "band": "unbanded",
+      "value": 0,
+      "n": 29
+     },
+     "KG_PV": {
+      "band": "unbanded",
+      "value": 0.773972602739726,
+      "n": 146
+     },
+     "KG_SV": {
+      "band": "unbanded",
+      "value": 0,
+      "n": 146
+     },
+     "KG_TC": {
+      "band": "unbanded",
+      "value": 0.06896551724137931,
+      "n": 29
+     }
+    }
+   },
+   {
+    "key": "10154::kg_hk01",
+    "username": "kg_hk01",
+    "name": "Sadiya Yohanna",
+    "opportunity_id": 10154,
+    "organisation": "Hadin Kai Livelihoods Forum (example)",
+    "cases": 30,
+    "reds": 0,
+    "yellows": 0,
+    "indicators": {
+     "KG_EX": {
+      "band": "unbanded",
+      "value": 0.06666666666666667,
+      "n": 30
+     },
+     "KG_HV": {
+      "band": "unbanded",
+      "value": 0.8,
+      "n": 115
+     },
+     "KG_MC": {
+      "band": "unbanded",
+      "value": 0,
+      "n": 40
+     },
+     "KG_PV": {
+      "band": "unbanded",
+      "value": 0.7253521126760564,
+      "n": 142
+     },
+     "KG_SV": {
+      "band": "unbanded",
+      "value": 0.00704225352112676,
+      "n": 142
+     },
+     "KG_TC": {
+      "band": "unbanded",
+      "value": 0.025,
+      "n": 40
+     }
+    }
+   },
+   {
+    "key": "10154::kg_hk02",
+    "username": "kg_hk02",
+    "name": "Maryam Bala",
+    "opportunity_id": 10154,
+    "organisation": "Hadin Kai Livelihoods Forum (example)",
+    "cases": 30,
+    "reds": 0,
+    "yellows": 0,
+    "indicators": {
+     "KG_EX": {
+      "band": "unbanded",
+      "value": 0.03333333333333333,
+      "n": 30
+     },
+     "KG_HV": {
+      "band": "unbanded",
+      "value": 0.9152542372881356,
+      "n": 118
+     },
+     "KG_MC": {
+      "band": "unbanded",
+      "value": 0.027777777777777776,
+      "n": 36
+     },
+     "KG_PV": {
+      "band": "unbanded",
+      "value": 0.8266666666666667,
+      "n": 150
+     },
+     "KG_SV": {
+      "band": "unbanded",
+      "value": 0.02,
+      "n": 150
+     },
+     "KG_TC": {
+      "band": "unbanded",
+      "value": 0.08333333333333334,
+      "n": 36
+     }
+    }
+   },
+   {
+    "key": "10154::kg_hk03",
+    "username": "kg_hk03",
+    "name": "Naomi Barde",
+    "opportunity_id": 10154,
+    "organisation": "Hadin Kai Livelihoods Forum (example)",
+    "cases": 30,
+    "reds": 0,
+    "yellows": 0,
+    "indicators": {
+     "KG_EX": {
+      "band": "unbanded",
+      "value": 0.03333333333333333,
+      "n": 30
+     },
+     "KG_HV": {
+      "band": "unbanded",
+      "value": 0.8983050847457628,
+      "n": 118
+     },
+     "KG_MC": {
+      "band": "unbanded",
+      "value": 0,
+      "n": 27
+     },
+     "KG_PV": {
+      "band": "unbanded",
+      "value": 0.8368794326241136,
+      "n": 141
+     },
+     "KG_SV": {
+      "band": "unbanded",
+      "value": 0.0070921985815602835,
+      "n": 141
+     },
+     "KG_TC": {
+      "band": "unbanded",
+      "value": 0,
+      "n": 27
+     }
+    }
+   },
+   {
+    "key": "10154::kg_hk04",
+    "username": "kg_hk04",
+    "name": "Aisha Chindo",
+    "opportunity_id": 10154,
+    "organisation": "Hadin Kai Livelihoods Forum (example)",
+    "cases": 30,
+    "reds": 0,
+    "yellows": 0,
+    "indicators": {
+     "KG_EX": {
+      "band": "unbanded",
+      "value": 0,
+      "n": 30
+     },
+     "KG_HV": {
+      "band": "unbanded",
+      "value": 0.925,
+      "n": 120
+     },
+     "KG_MC": {
+      "band": "unbanded",
+      "value": 0.026315789473684213,
+      "n": 38
+     },
+     "KG_PV": {
+      "band": "unbanded",
+      "value": 0.8591549295774648,
+      "n": 142
+     },
+     "KG_SV": {
+      "band": "unbanded",
+      "value": 0.5352112676056339,
+      "n": 142
+     },
+     "KG_TC": {
+      "band": "unbanded",
+      "value": 0.026315789473684213,
+      "n": 38
+     }
+    }
+   },
+   {
+    "key": "10154::kg_hk05",
+    "username": "kg_hk05",
+    "name": "Rahma Kabiru",
+    "opportunity_id": 10154,
+    "organisation": "Hadin Kai Livelihoods Forum (example)",
+    "cases": 30,
+    "reds": 0,
+    "yellows": 0,
+    "indicators": {
+     "KG_EX": {
+      "band": "unbanded",
+      "value": 0,
+      "n": 30
+     },
+     "KG_HV": {
+      "band": "unbanded",
+      "value": 0.8916666666666667,
+      "n": 120
+     },
+     "KG_MC": {
+      "band": "unbanded",
+      "value": 0.027027027027027025,
+      "n": 37
+     },
+     "KG_PV": {
+      "band": "unbanded",
+      "value": 0.8571428571428571,
+      "n": 147
+     },
+     "KG_SV": {
+      "band": "unbanded",
+      "value": 0.027210884353741496,
+      "n": 147
+     },
+     "KG_TC": {
+      "band": "unbanded",
+      "value": 0.08108108108108109,
+      "n": 37
+     }
+    }
+   },
+   {
+    "key": "10154::kg_hk06",
+    "username": "kg_hk06",
+    "name": "Rhoda Kabiru",
+    "opportunity_id": 10154,
+    "organisation": "Hadin Kai Livelihoods Forum (example)",
+    "cases": 30,
+    "reds": 0,
+    "yellows": 0,
+    "indicators": {
+     "KG_EX": {
+      "band": "unbanded",
+      "value": 0,
+      "n": 30
+     },
+     "KG_HV": {
+      "band": "unbanded",
+      "value": 0.8833333333333333,
+      "n": 120
+     },
+     "KG_MC": {
+      "band": "unbanded",
+      "value": 0,
+      "n": 32
+     },
+     "KG_PV": {
+      "band": "unbanded",
+      "value": 0.8671328671328671,
+      "n": 143
+     },
+     "KG_SV": {
+      "band": "unbanded",
+      "value": 0.006993006993006993,
+      "n": 143
+     },
+     "KG_TC": {
+      "band": "unbanded",
+      "value": 0.09375,
+      "n": 32
+     }
+    }
+   },
+   {
+    "key": "10154::kg_hk07",
+    "username": "kg_hk07",
+    "name": "Dije Sani",
+    "opportunity_id": 10154,
+    "organisation": "Hadin Kai Livelihoods Forum (example)",
+    "cases": 30,
+    "reds": 0,
+    "yellows": 0,
+    "indicators": {
+     "KG_EX": {
+      "band": "unbanded",
+      "value": 0,
+      "n": 30
+     },
+     "KG_HV": {
+      "band": "unbanded",
+      "value": 0.9166666666666667,
+      "n": 120
+     },
+     "KG_MC": {
+      "band": "unbanded",
+      "value": 0.030303030303030304,
+      "n": 33
+     },
+     "KG_PV": {
+      "band": "unbanded",
+      "value": 0.8344827586206897,
+      "n": 145
+     },
+     "KG_SV": {
+      "band": "unbanded",
+      "value": 0.006896551724137932,
+      "n": 145
+     },
+     "KG_TC": {
+      "band": "unbanded",
+      "value": 0.09090909090909091,
+      "n": 33
+     }
+    }
+   },
+   {
+    "key": "10154::kg_hk08",
+    "username": "kg_hk08",
+    "name": "Habiba Yahaya",
+    "opportunity_id": 10154,
+    "organisation": "Hadin Kai Livelihoods Forum (example)",
+    "cases": 30,
+    "reds": 0,
+    "yellows": 0,
+    "indicators": {
+     "KG_EX": {
+      "band": "unbanded",
+      "value": 0,
+      "n": 30
+     },
+     "KG_HV": {
+      "band": "unbanded",
+      "value": 0.9,
+      "n": 120
+     },
+     "KG_MC": {
+      "band": "unbanded",
+      "value": 0,
+      "n": 34
+     },
+     "KG_PV": {
+      "band": "unbanded",
+      "value": 0.8243243243243243,
+      "n": 148
+     },
+     "KG_SV": {
+      "band": "unbanded",
+      "value": 0.013513513513513513,
+      "n": 148
+     },
+     "KG_TC": {
+      "band": "unbanded",
+      "value": 0.05882352941176471,
+      "n": 34
+     }
+    }
+   },
+   {
+    "key": "10154::kg_hk09",
+    "username": "kg_hk09",
+    "name": "Deborah Sani",
+    "opportunity_id": 10154,
+    "organisation": "Hadin Kai Livelihoods Forum (example)",
+    "cases": 30,
+    "reds": 0,
+    "yellows": 0,
+    "indicators": {
+     "KG_EX": {
+      "band": "unbanded",
+      "value": 0.03333333333333333,
+      "n": 30
+     },
+     "KG_HV": {
+      "band": "unbanded",
+      "value": 0.8487394957983193,
+      "n": 119
+     },
+     "KG_MC": {
+      "band": "unbanded",
+      "value": 0.05714285714285714,
+      "n": 35
+     },
+     "KG_PV": {
+      "band": "unbanded",
+      "value": 0.7671232876712328,
+      "n": 146
+     },
+     "KG_SV": {
+      "band": "unbanded",
+      "value": 0.0136986301369863,
+      "n": 146
+     },
+     "KG_TC": {
+      "band": "unbanded",
+      "value": 0.05714285714285714,
+      "n": 35
+     }
+    }
+   },
+   {
+    "key": "10154::kg_hk10",
+    "username": "kg_hk10",
+    "name": "Saratu Usman",
+    "opportunity_id": 10154,
+    "organisation": "Hadin Kai Livelihoods Forum (example)",
+    "cases": 30,
+    "reds": 0,
+    "yellows": 0,
+    "indicators": {
+     "KG_EX": {
+      "band": "unbanded",
+      "value": 0.06666666666666667,
+      "n": 30
+     },
+     "KG_HV": {
+      "band": "unbanded",
+      "value": 0.905982905982906,
+      "n": 117
+     },
+     "KG_MC": {
+      "band": "unbanded",
+      "value": 0,
+      "n": 41
+     },
+     "KG_PV": {
+      "band": "unbanded",
+      "value": 0.8,
+      "n": 145
+     },
+     "KG_SV": {
+      "band": "unbanded",
+      "value": 0.013793103448275864,
+      "n": 145
+     },
+     "KG_TC": {
+      "band": "unbanded",
+      "value": 0.024390243902439025,
+      "n": 41
+     }
+    }
+   },
+   {
+    "key": "10154::kg_hk11",
+    "username": "kg_hk11",
+    "name": "Rhoda Salihu",
+    "opportunity_id": 10154,
+    "organisation": "Hadin Kai Livelihoods Forum (example)",
+    "cases": 30,
+    "reds": 0,
+    "yellows": 0,
+    "indicators": {
+     "KG_EX": {
+      "band": "unbanded",
+      "value": 0,
+      "n": 30
+     },
+     "KG_HV": {
+      "band": "unbanded",
+      "value": 0.8416666666666667,
+      "n": 120
+     },
+     "KG_MC": {
+      "band": "unbanded",
+      "value": 0.04,
+      "n": 25
+     },
+     "KG_PV": {
+      "band": "unbanded",
+      "value": 0.7642857142857143,
+      "n": 140
+     },
+     "KG_SV": {
+      "band": "unbanded",
+      "value": 0.007142857142857143,
+      "n": 140
+     },
+     "KG_TC": {
+      "band": "unbanded",
+      "value": 0.04,
+      "n": 25
+     }
+    }
+   },
+   {
+    "key": "10154::kg_hk12",
+    "username": "kg_hk12",
+    "name": "Laraba Kabiru",
+    "opportunity_id": 10154,
+    "organisation": "Hadin Kai Livelihoods Forum (example)",
+    "cases": 30,
+    "reds": 0,
+    "yellows": 0,
+    "indicators": {
+     "KG_EX": {
+      "band": "unbanded",
+      "value": 0,
+      "n": 30
+     },
+     "KG_HV": {
+      "band": "unbanded",
+      "value": 0.8583333333333333,
+      "n": 120
+     },
+     "KG_MC": {
+      "band": "unbanded",
+      "value": 0.02857142857142857,
+      "n": 35
+     },
+     "KG_PV": {
+      "band": "unbanded",
+      "value": 0.7862068965517242,
+      "n": 145
+     },
+     "KG_SV": {
+      "band": "unbanded",
+      "value": 0.006896551724137932,
+      "n": 145
+     },
+     "KG_TC": {
+      "band": "unbanded",
+      "value": 0.05714285714285714,
+      "n": 35
+     }
+    }
+   },
+   {
+    "key": "10155::kg_cg01",
+    "username": "kg_cg01",
+    "name": "Hauwa Chindo",
+    "opportunity_id": 10155,
+    "organisation": "Ci Gaba Women's Enterprise Trust (example)",
+    "cases": 30,
+    "reds": 0,
+    "yellows": 0,
+    "indicators": {
+     "KG_EX": {
+      "band": "unbanded",
+      "value": 0,
+      "n": 30
+     },
+     "KG_HV": {
+      "band": "unbanded",
+      "value": 0.9333333333333332,
+      "n": 120
+     },
+     "KG_MC": {
+      "band": "unbanded",
+      "value": 0.05405405405405405,
+      "n": 37
+     },
+     "KG_PV": {
+      "band": "unbanded",
+      "value": 0.8857142857142857,
+      "n": 140
+     },
+     "KG_SV": {
+      "band": "unbanded",
+      "value": 0.007142857142857143,
+      "n": 140
+     },
+     "KG_TC": {
+      "band": "unbanded",
+      "value": 0.1081081081081081,
+      "n": 37
+     }
+    }
+   },
+   {
+    "key": "10155::kg_cg02",
+    "username": "kg_cg02",
+    "name": "Hajara Dogara",
+    "opportunity_id": 10155,
+    "organisation": "Ci Gaba Women's Enterprise Trust (example)",
+    "cases": 30,
+    "reds": 0,
+    "yellows": 0,
+    "indicators": {
+     "KG_EX": {
+      "band": "unbanded",
+      "value": 0,
+      "n": 30
+     },
+     "KG_HV": {
+      "band": "unbanded",
+      "value": 0.9333333333333332,
+      "n": 120
+     },
+     "KG_MC": {
+      "band": "unbanded",
+      "value": 0.022727272727272724,
+      "n": 44
+     },
+     "KG_PV": {
+      "band": "unbanded",
+      "value": 0.8611111111111112,
+      "n": 144
+     },
+     "KG_SV": {
+      "band": "unbanded",
+      "value": 0.006944444444444444,
+      "n": 144
+     },
+     "KG_TC": {
+      "band": "unbanded",
+      "value": 0.25,
+      "n": 44
+     }
+    }
+   },
+   {
+    "key": "10155::kg_cg03",
+    "username": "kg_cg03",
+    "name": "Jummai Maigari",
+    "opportunity_id": 10155,
+    "organisation": "Ci Gaba Women's Enterprise Trust (example)",
+    "cases": 30,
+    "reds": 0,
+    "yellows": 0,
+    "indicators": {
+     "KG_EX": {
+      "band": "unbanded",
+      "value": 0.03333333333333333,
+      "n": 30
+     },
+     "KG_HV": {
+      "band": "unbanded",
+      "value": 0.9166666666666667,
+      "n": 120
+     },
+     "KG_MC": {
+      "band": "unbanded",
+      "value": 0.05714285714285714,
+      "n": 35
+     },
+     "KG_PV": {
+      "band": "unbanded",
+      "value": 0.8897058823529411,
+      "n": 136
+     },
+     "KG_SV": {
+      "band": "unbanded",
+      "value": 0,
+      "n": 136
+     },
+     "KG_TC": {
+      "band": "unbanded",
+      "value": 0.2,
+      "n": 35
+     }
+    }
+   },
+   {
+    "key": "10155::kg_cg04",
+    "username": "kg_cg04",
+    "name": "Bilkisu Abdullahi",
+    "opportunity_id": 10155,
+    "organisation": "Ci Gaba Women's Enterprise Trust (example)",
+    "cases": 30,
+    "reds": 0,
+    "yellows": 0,
+    "indicators": {
+     "KG_EX": {
+      "band": "unbanded",
+      "value": 0,
+      "n": 30
+     },
+     "KG_HV": {
+      "band": "unbanded",
+      "value": 0.9333333333333332,
+      "n": 120
+     },
+     "KG_MC": {
+      "band": "unbanded",
+      "value": 0.06666666666666667,
+      "n": 30
+     },
+     "KG_PV": {
+      "band": "unbanded",
+      "value": 0.8705035971223022,
+      "n": 139
+     },
+     "KG_SV": {
+      "band": "unbanded",
+      "value": 0,
+      "n": 139
+     },
+     "KG_TC": {
+      "band": "unbanded",
+      "value": 0.2,
+      "n": 30
+     }
+    }
+   },
+   {
+    "key": "10155::kg_cg05",
+    "username": "kg_cg05",
+    "name": "Saude Bawa",
+    "opportunity_id": 10155,
+    "organisation": "Ci Gaba Women's Enterprise Trust (example)",
+    "cases": 30,
+    "reds": 0,
+    "yellows": 0,
+    "indicators": {
+     "KG_EX": {
+      "band": "unbanded",
+      "value": 0.06666666666666667,
+      "n": 30
+     },
+     "KG_HV": {
+      "band": "unbanded",
+      "value": 0.9385964912280701,
+      "n": 114
+     },
+     "KG_MC": {
+      "band": "unbanded",
+      "value": 0.025641025641025644,
+      "n": 39
+     },
+     "KG_PV": {
+      "band": "unbanded",
+      "value": 0.8905109489051095,
+      "n": 137
+     },
+     "KG_SV": {
+      "band": "unbanded",
+      "value": 0.014598540145985401,
+      "n": 137
+     },
+     "KG_TC": {
+      "band": "unbanded",
+      "value": 0.3076923076923077,
+      "n": 39
+     }
+    }
+   },
+   {
+    "key": "10155::kg_cg06",
+    "username": "kg_cg06",
+    "name": "Zuwaira Yohanna",
+    "opportunity_id": 10155,
+    "organisation": "Ci Gaba Women's Enterprise Trust (example)",
+    "cases": 30,
+    "reds": 0,
+    "yellows": 0,
+    "indicators": {
+     "KG_EX": {
+      "band": "unbanded",
+      "value": 0.03333333333333333,
+      "n": 30
+     },
+     "KG_HV": {
+      "band": "unbanded",
+      "value": 0.8983050847457628,
+      "n": 118
+     },
+     "KG_MC": {
+      "band": "unbanded",
+      "value": 0.02857142857142857,
+      "n": 35
+     },
+     "KG_PV": {
+      "band": "unbanded",
+      "value": 0.8111888111888113,
+      "n": 143
+     },
+     "KG_SV": {
+      "band": "unbanded",
+      "value": 0.013986013986013986,
+      "n": 143
+     },
+     "KG_TC": {
+      "band": "unbanded",
+      "value": 0.17142857142857143,
+      "n": 35
+     }
+    }
+   },
+   {
+    "key": "10155::kg_cg07",
+    "username": "kg_cg07",
+    "name": "Maryam Haruna",
+    "opportunity_id": 10155,
+    "organisation": "Ci Gaba Women's Enterprise Trust (example)",
+    "cases": 30,
+    "reds": 0,
+    "yellows": 0,
+    "indicators": {
+     "KG_EX": {
+      "band": "unbanded",
+      "value": 0.1,
+      "n": 30
+     },
+     "KG_HV": {
+      "band": "unbanded",
+      "value": 1,
+      "n": 116
+     },
+     "KG_MC": {
+      "band": "unbanded",
+      "value": 0.05714285714285714,
+      "n": 35
+     },
+     "KG_PV": {
+      "band": "unbanded",
+      "value": 0.9767441860465117,
+      "n": 129
+     },
+     "KG_SV": {
+      "band": "unbanded",
+      "value": 0,
+      "n": 129
+     },
+     "KG_TC": {
+      "band": "unbanded",
+      "value": 0.2,
+      "n": 35
+     }
+    }
+   },
+   {
+    "key": "10155::kg_cg08",
+    "username": "kg_cg08",
+    "name": "Esther Suleiman",
+    "opportunity_id": 10155,
+    "organisation": "Ci Gaba Women's Enterprise Trust (example)",
+    "cases": 30,
+    "reds": 0,
+    "yellows": 0,
+    "indicators": {
+     "KG_EX": {
+      "band": "unbanded",
+      "value": 0,
+      "n": 30
+     },
+     "KG_HV": {
+      "band": "unbanded",
+      "value": 0.9333333333333332,
+      "n": 120
+     },
+     "KG_MC": {
+      "band": "unbanded",
+      "value": 0.030303030303030304,
+      "n": 33
+     },
+     "KG_PV": {
+      "band": "unbanded",
+      "value": 0.8840579710144928,
+      "n": 138
+     },
+     "KG_SV": {
+      "band": "unbanded",
+      "value": 0,
+      "n": 138
+     },
+     "KG_TC": {
+      "band": "unbanded",
+      "value": 0.09090909090909091,
+      "n": 33
+     }
+    }
+   },
+   {
+    "key": "10155::kg_cg09",
+    "username": "kg_cg09",
+    "name": "Hafsat Waziri",
+    "opportunity_id": 10155,
+    "organisation": "Ci Gaba Women's Enterprise Trust (example)",
+    "cases": 30,
+    "reds": 0,
+    "yellows": 0,
+    "indicators": {
+     "KG_EX": {
+      "band": "unbanded",
+      "value": 0,
+      "n": 30
+     },
+     "KG_HV": {
+      "band": "unbanded",
+      "value": 0.8916666666666667,
+      "n": 120
+     },
+     "KG_MC": {
+      "band": "unbanded",
+      "value": 0.026315789473684213,
+      "n": 38
+     },
+     "KG_PV": {
+      "band": "unbanded",
+      "value": 0.8231292517006803,
+      "n": 147
+     },
+     "KG_SV": {
+      "band": "unbanded",
+      "value": 0.006802721088435374,
+      "n": 147
+     },
+     "KG_TC": {
+      "band": "unbanded",
+      "value": 0.1842105263157895,
+      "n": 38
+     }
+    }
+   },
+   {
+    "key": "10155::kg_cg10",
+    "username": "kg_cg10",
+    "name": "Kande Dauda",
+    "opportunity_id": 10155,
+    "organisation": "Ci Gaba Women's Enterprise Trust (example)",
+    "cases": 30,
+    "reds": 0,
+    "yellows": 0,
+    "indicators": {
+     "KG_EX": {
+      "band": "unbanded",
+      "value": 0.06666666666666667,
+      "n": 30
+     },
+     "KG_HV": {
+      "band": "unbanded",
+      "value": 0.9224137931034483,
+      "n": 116
+     },
+     "KG_MC": {
+      "band": "unbanded",
+      "value": 0,
+      "n": 44
+     },
+     "KG_PV": {
+      "band": "unbanded",
+      "value": 0.8676470588235294,
+      "n": 136
+     },
+     "KG_SV": {
+      "band": "unbanded",
+      "value": 0.014705882352941175,
+      "n": 136
+     },
+     "KG_TC": {
+      "band": "unbanded",
+      "value": 0.1590909090909091,
+      "n": 44
+     }
+    }
+   },
+   {
+    "key": "10155::kg_cg11",
+    "username": "kg_cg11",
+    "name": "Halima Suleiman",
+    "opportunity_id": 10155,
+    "organisation": "Ci Gaba Women's Enterprise Trust (example)",
+    "cases": 30,
+    "reds": 0,
+    "yellows": 0,
+    "indicators": {
+     "KG_EX": {
+      "band": "unbanded",
+      "value": 0,
+      "n": 30
+     },
+     "KG_HV": {
+      "band": "unbanded",
+      "value": 0.9333333333333332,
+      "n": 120
+     },
+     "KG_MC": {
+      "band": "unbanded",
+      "value": 0,
+      "n": 33
+     },
+     "KG_PV": {
+      "band": "unbanded",
+      "value": 0.8714285714285714,
+      "n": 140
+     },
+     "KG_SV": {
+      "band": "unbanded",
+      "value": 0.02857142857142857,
+      "n": 140
+     },
+     "KG_TC": {
+      "band": "unbanded",
+      "value": 0.15151515151515152,
+      "n": 33
+     }
+    }
+   },
+   {
+    "key": "10155::kg_cg12",
+    "username": "kg_cg12",
+    "name": "Murja Tanko",
+    "opportunity_id": 10155,
+    "organisation": "Ci Gaba Women's Enterprise Trust (example)",
+    "cases": 30,
+    "reds": 0,
+    "yellows": 0,
+    "indicators": {
+     "KG_EX": {
+      "band": "unbanded",
+      "value": 0.03333333333333333,
+      "n": 30
+     },
+     "KG_HV": {
+      "band": "unbanded",
+      "value": 0.923076923076923,
+      "n": 117
+     },
+     "KG_MC": {
+      "band": "unbanded",
+      "value": 0.027027027027027025,
+      "n": 37
+     },
+     "KG_PV": {
+      "band": "unbanded",
+      "value": 0.8613138686131387,
+      "n": 137
+     },
+     "KG_SV": {
+      "band": "unbanded",
+      "value": 0,
+      "n": 137
+     },
+     "KG_TC": {
+      "band": "unbanded",
+      "value": 0.24324324324324323,
+      "n": 37
+     }
+    }
+   },
+   {
+    "key": "10156::kg_sh01",
+    "username": "kg_sh01",
+    "name": "Laraba Isa",
+    "opportunity_id": 10156,
+    "organisation": "Sabon Haske Community Alliance (example)",
+    "cases": 30,
+    "reds": 0,
+    "yellows": 0,
+    "indicators": {
+     "KG_EX": {
+      "band": "unbanded",
+      "value": 0,
+      "n": 30
+     },
+     "KG_HV": {
+      "band": "unbanded",
+      "value": 0.6916666666666668,
+      "n": 120
+     },
+     "KG_MC": {
+      "band": "unbanded",
+      "value": 0.038461538461538464,
+      "n": 26
+     },
+     "KG_PV": {
+      "band": "unbanded",
+      "value": 0.624113475177305,
+      "n": 141
+     },
+     "KG_SV": {
+      "band": "unbanded",
+      "value": 0,
+      "n": 141
+     },
+     "KG_TC": {
+      "band": "unbanded",
+      "value": 0.23076923076923075,
+      "n": 26
+     }
+    }
+   },
+   {
+    "key": "10156::kg_sh02",
+    "username": "kg_sh02",
+    "name": "Zainab Peter",
+    "opportunity_id": 10156,
+    "organisation": "Sabon Haske Community Alliance (example)",
+    "cases": 30,
+    "reds": 0,
+    "yellows": 0,
+    "indicators": {
+     "KG_EX": {
+      "band": "unbanded",
+      "value": 0.03333333333333333,
+      "n": 30
+     },
+     "KG_HV": {
+      "band": "unbanded",
+      "value": 0.7815126050420169,
+      "n": 119
+     },
+     "KG_MC": {
+      "band": "unbanded",
+      "value": 0,
+      "n": 33
+     },
+     "KG_PV": {
+      "band": "unbanded",
+      "value": 0.7142857142857143,
+      "n": 147
+     },
+     "KG_SV": {
+      "band": "unbanded",
+      "value": 0.006802721088435374,
+      "n": 147
+     },
+     "KG_TC": {
+      "band": "unbanded",
+      "value": 0,
+      "n": 33
+     }
+    }
+   },
+   {
+    "key": "10156::kg_sh03",
+    "username": "kg_sh03",
+    "name": "Kulu Tijjani",
+    "opportunity_id": 10156,
+    "organisation": "Sabon Haske Community Alliance (example)",
+    "cases": 30,
+    "reds": 0,
+    "yellows": 0,
+    "indicators": {
+     "KG_EX": {
+      "band": "unbanded",
+      "value": 0.03333333333333333,
+      "n": 30
+     },
+     "KG_HV": {
+      "band": "unbanded",
+      "value": 0.7478991596638656,
+      "n": 119
+     },
+     "KG_MC": {
+      "band": "unbanded",
+      "value": 0,
+      "n": 30
+     },
+     "KG_PV": {
+      "band": "unbanded",
+      "value": 0.717391304347826,
+      "n": 138
+     },
+     "KG_SV": {
+      "band": "unbanded",
+      "value": 0.014492753623188406,
+      "n": 138
+     },
+     "KG_TC": {
+      "band": "unbanded",
+      "value": 0.2,
+      "n": 30
+     }
+    }
+   },
+   {
+    "key": "10156::kg_sh04",
+    "username": "kg_sh04",
+    "name": "Indo Audu",
+    "opportunity_id": 10156,
+    "organisation": "Sabon Haske Community Alliance (example)",
+    "cases": 30,
+    "reds": 0,
+    "yellows": 0,
+    "indicators": {
+     "KG_EX": {
+      "band": "unbanded",
+      "value": 0,
+      "n": 30
+     },
+     "KG_HV": {
+      "band": "unbanded",
+      "value": 0.75,
+      "n": 120
+     },
+     "KG_MC": {
+      "band": "unbanded",
+      "value": 0,
+      "n": 24
+     },
+     "KG_PV": {
+      "band": "unbanded",
+      "value": 0.712230215827338,
+      "n": 139
+     },
+     "KG_SV": {
+      "band": "unbanded",
+      "value": 0.014388489208633094,
+      "n": 139
+     },
+     "KG_TC": {
+      "band": "unbanded",
+      "value": 0,
+      "n": 24
+     }
+    }
+   },
+   {
+    "key": "10156::kg_sh05",
+    "username": "kg_sh05",
+    "name": "Saratu Bello",
+    "opportunity_id": 10156,
+    "organisation": "Sabon Haske Community Alliance (example)",
+    "cases": 30,
+    "reds": 0,
+    "yellows": 0,
+    "indicators": {
+     "KG_EX": {
+      "band": "unbanded",
+      "value": 0.03333333333333333,
+      "n": 30
+     },
+     "KG_HV": {
+      "band": "unbanded",
+      "value": 0.7606837606837606,
+      "n": 117
+     },
+     "KG_MC": {
+      "band": "unbanded",
+      "value": 0.03571428571428572,
+      "n": 28
+     },
+     "KG_PV": {
+      "band": "unbanded",
+      "value": 0.6788321167883211,
+      "n": 137
+     },
+     "KG_SV": {
+      "band": "unbanded",
+      "value": 0,
+      "n": 137
+     },
+     "KG_TC": {
+      "band": "unbanded",
+      "value": 0.03571428571428572,
+      "n": 28
+     }
+    }
+   },
+   {
+    "key": "10156::kg_sh06",
+    "username": "kg_sh06",
+    "name": "Yalwa Lawal",
+    "opportunity_id": 10156,
+    "organisation": "Sabon Haske Community Alliance (example)",
+    "cases": 30,
+    "reds": 0,
+    "yellows": 0,
+    "indicators": {
+     "KG_EX": {
+      "band": "unbanded",
+      "value": 0,
+      "n": 30
+     },
+     "KG_HV": {
+      "band": "unbanded",
+      "value": 0.7083333333333333,
+      "n": 120
+     },
+     "KG_MC": {
+      "band": "unbanded",
+      "value": 0.1,
+      "n": 30
+     },
+     "KG_PV": {
+      "band": "unbanded",
+      "value": 0.6453900709219859,
+      "n": 141
+     },
+     "KG_SV": {
+      "band": "unbanded",
+      "value": 0.014184397163120567,
+      "n": 141
+     },
+     "KG_TC": {
+      "band": "unbanded",
+      "value": 0.1,
+      "n": 30
+     }
+    }
+   },
+   {
+    "key": "10156::kg_sh07",
+    "username": "kg_sh07",
+    "name": "Hadiza Joseph",
+    "opportunity_id": 10156,
+    "organisation": "Sabon Haske Community Alliance (example)",
+    "cases": 30,
+    "reds": 0,
+    "yellows": 0,
+    "indicators": {
+     "KG_EX": {
+      "band": "unbanded",
+      "value": 0,
+      "n": 30
+     },
+     "KG_HV": {
+      "band": "unbanded",
+      "value": 0.7333333333333333,
+      "n": 120
+     },
+     "KG_MC": {
+      "band": "unbanded",
+      "value": 0.08108108108108109,
+      "n": 37
+     },
+     "KG_PV": {
+      "band": "unbanded",
+      "value": 0.6736111111111112,
+      "n": 144
+     },
+     "KG_SV": {
+      "band": "unbanded",
+      "value": 0.013888888888888888,
+      "n": 144
+     },
+     "KG_TC": {
+      "band": "unbanded",
+      "value": 0.08108108108108109,
+      "n": 37
+     }
+    }
+   },
+   {
+    "key": "10156::kg_sh08",
+    "username": "kg_sh08",
+    "name": "Habiba Salihu",
+    "opportunity_id": 10156,
+    "organisation": "Sabon Haske Community Alliance (example)",
+    "cases": 30,
+    "reds": 0,
+    "yellows": 0,
+    "indicators": {
+     "KG_EX": {
+      "band": "unbanded",
+      "value": 0,
+      "n": 30
+     },
+     "KG_HV": {
+      "band": "unbanded",
+      "value": 0.725,
+      "n": 120
+     },
+     "KG_MC": {
+      "band": "unbanded",
+      "value": 0.037037037037037035,
+      "n": 27
+     },
+     "KG_PV": {
+      "band": "unbanded",
+      "value": 0.6853146853146853,
+      "n": 143
+     },
+     "KG_SV": {
+      "band": "unbanded",
+      "value": 0,
+      "n": 143
+     },
+     "KG_TC": {
+      "band": "unbanded",
+      "value": 0.1111111111111111,
+      "n": 27
+     }
+    }
+   },
+   {
+    "key": "10156::kg_sh09",
+    "username": "kg_sh09",
+    "name": "Ladidi Chindo",
+    "opportunity_id": 10156,
+    "organisation": "Sabon Haske Community Alliance (example)",
+    "cases": 30,
+    "reds": 0,
+    "yellows": 0,
+    "indicators": {
+     "KG_EX": {
+      "band": "unbanded",
+      "value": 0.03333333333333333,
+      "n": 30
+     },
+     "KG_HV": {
+      "band": "unbanded",
+      "value": 0.7815126050420169,
+      "n": 119
+     },
+     "KG_MC": {
+      "band": "unbanded",
+      "value": 0.06060606060606061,
+      "n": 33
+     },
+     "KG_PV": {
+      "band": "unbanded",
+      "value": 0.7234042553191489,
+      "n": 141
+     },
+     "KG_SV": {
+      "band": "unbanded",
+      "value": 0.0070921985815602835,
+      "n": 141
+     },
+     "KG_TC": {
+      "band": "unbanded",
+      "value": 0,
+      "n": 33
+     }
+    }
+   },
+   {
+    "key": "10156::kg_sh10",
+    "username": "kg_sh10",
+    "name": "Grace Abdullahi",
+    "opportunity_id": 10156,
+    "organisation": "Sabon Haske Community Alliance (example)",
+    "cases": 30,
+    "reds": 0,
+    "yellows": 0,
+    "indicators": {
+     "KG_EX": {
+      "band": "unbanded",
+      "value": 0,
+      "n": 30
+     },
+     "KG_HV": {
+      "band": "unbanded",
+      "value": 0.7416666666666667,
+      "n": 120
+     },
+     "KG_MC": {
+      "band": "unbanded",
+      "value": 0,
+      "n": 38
+     },
+     "KG_PV": {
+      "band": "unbanded",
+      "value": 0.6598639455782314,
+      "n": 147
+     },
+     "KG_SV": {
+      "band": "unbanded",
+      "value": 0,
+      "n": 147
+     },
+     "KG_TC": {
+      "band": "unbanded",
+      "value": 0.07894736842105263,
+      "n": 38
+     }
+    }
+   },
+   {
+    "key": "10156::kg_sh11",
+    "username": "kg_sh11",
+    "name": "Ramatu Bawa",
+    "opportunity_id": 10156,
+    "organisation": "Sabon Haske Community Alliance (example)",
+    "cases": 30,
+    "reds": 0,
+    "yellows": 0,
+    "indicators": {
+     "KG_EX": {
+      "band": "unbanded",
+      "value": 0,
+      "n": 30
+     },
+     "KG_HV": {
+      "band": "unbanded",
+      "value": 0.725,
+      "n": 120
+     },
+     "KG_MC": {
+      "band": "unbanded",
+      "value": 0,
+      "n": 28
+     },
+     "KG_PV": {
+      "band": "unbanded",
+      "value": 0.6496350364963503,
+      "n": 137
+     },
+     "KG_SV": {
+      "band": "unbanded",
+      "value": 0.021897810218978103,
+      "n": 137
+     },
+     "KG_TC": {
+      "band": "unbanded",
+      "value": 0.10714285714285714,
+      "n": 28
+     }
+    }
+   },
+   {
+    "key": "10156::kg_sh12",
+    "username": "kg_sh12",
+    "name": "Zulai Chindo",
+    "opportunity_id": 10156,
+    "organisation": "Sabon Haske Community Alliance (example)",
+    "cases": 30,
+    "reds": 0,
+    "yellows": 0,
+    "indicators": {
+     "KG_EX": {
+      "band": "unbanded",
+      "value": 0.03333333333333333,
+      "n": 30
+     },
+     "KG_HV": {
+      "band": "unbanded",
+      "value": 0.7310924369747899,
+      "n": 119
+     },
+     "KG_MC": {
+      "band": "unbanded",
+      "value": 0,
+      "n": 33
+     },
+     "KG_PV": {
+      "band": "unbanded",
+      "value": 0.6643356643356644,
+      "n": 143
+     },
+     "KG_SV": {
+      "band": "unbanded",
+      "value": 0,
+      "n": 143
+     },
+     "KG_TC": {
+      "band": "unbanded",
+      "value": 0.030303030303030304,
+      "n": 33
+     }
+    }
+   }
+  ]
+ }
+}

@@ -136,9 +136,41 @@ residual to record — we know the Coach builds (Spark Coach 13972).
    canopy panel on the page, so "start coaching for every red facilitator" works there.
    Because Step 1.9 runs before the DDD render, the panel and the button are part of
    the page the demo films — coaching is a feature of the report, not an add-on.
-   Confirm with `workflow_run_context` (the action is listed with this bot) and
-   `workflow_run_indicators(band: "red")` (workers come back), and record
-   `ocs_coach.coaching_on: [{workflow_id, run_id, url}]`.
+   Confirm with `workflow_run_context` (the action is listed with this bot), then
+   confirm there is someone to coach — the selection rule below — and record
+   `ocs_coach.coaching_on: [{workflow_id, run_id, url, selection}]`, `selection`
+   being the mode the check returned.
+
+   **Who the Coach starts with — one rule** (`lib/coach-peer-watch.ts`
+   `selectCoachingWorkers`; operator decision 2026-10-16, ace#3053). Save
+   `workflow_run_indicators({run_id, scope: "worker", limit: 500})` to a file (it
+   must not be `truncated`: peers are the whole run) and the registry's measures,
+   then:
+
+   ```bash
+   node "$ACE_ROOT/node_modules/tsx/dist/cli.mjs" "$ACE_ROOT/scripts/coach-select.ts" --indicators <json> \
+     --measures <json> --program "<programme>" --workers <plural> [--named "<a>,<b>"] --out <items.json>
+   ```
+
+   | mode | when | who | how a person starts it |
+   |---|---|---|---|
+   | `band` | any worker is red or yellow (the PDD set targets) | those workers | Labs briefs them; the report's button |
+   | `peer_watch` | nothing red or yellow (a target-less PDD) and a worker is well outside the other workers on a coachable indicator (Tukey fence, ≥ 10 points from the peer median, ≥ 8 peers) | those workers, on only those topics | the page's canopy agent, `workflow_run_action` with `--out`'s items |
+   | `named` | nobody stands out | the workers the supervisor names | same as `peer_watch` |
+   | `none` | nobody stands out and nobody is named | — | exit 2: a stop, never a pass |
+
+   A `peer_watch` / `named` item carries its own `prompt`: a Labs-shaped briefing
+   (`renderSelectionBriefing`) whose "Why this worker" line says the comparison is
+   with peers and that the programme set no target, and whose topics read
+   `band peer-watch` (or `unbanded` for a named worker). Labs keeps a briefing it is
+   handed as-is (`actions.py` `_brief_workers`), so the worker is not skipped for
+   having nothing red or yellow. The report's own button still appears only on red
+   or yellow workers — on a target-less report the canopy panel is the way in, so
+   the demo films that, not the button. A peer figure is never called a goal or a
+   target, in the briefing, on the card (`renderIndicatorCards`) or by the coach
+   (`templates/ocs-coach/coach-prompt.md`). On `none`, ask the operator for the
+   supervisor's names and re-run with `--named`; Labs has no relative band to fall
+   back on (ace#3053's upstream note).
 
    Rebuilding the Coach (a new `public_id`) means patching these reports again.
 
@@ -155,6 +187,9 @@ nothing red or yellow are skipped with a reason. So **do not put a briefing in
 
 The report shows "Start coaching" only on workers who are off target or on watch;
 Dimagi staff coaching one worker get a "Send to me instead (QA)" box (`deliver_to`).
+When the design sets no targets nobody is red or yellow, and the worker items
+`scripts/coach-select.ts` writes (step 9) carry ACE's own peer-watch briefing
+instead — through the canopy panel, never through `defaults.prompt`.
 
 ## The briefing picture (optional)
 

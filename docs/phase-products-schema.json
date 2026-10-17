@@ -1234,6 +1234,14 @@
                         "url": {
                           "type": "string",
                           "format": "uri"
+                        },
+                        "selection": {
+                          "type": "string",
+                          "enum": [
+                            "band",
+                            "peer_watch",
+                            "named"
+                          ]
                         }
                       },
                       "additionalProperties": true

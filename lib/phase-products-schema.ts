@@ -571,6 +571,10 @@ const SyntheticProducts = z
                 workflow_id: z.union([z.string(), z.number()]).optional(),
                 run_id: z.union([z.string(), z.number()]).optional(),
                 url: z.string().url().optional(),
+                // Who the Coach can start with on this report (`lib/coach-peer-watch.ts`,
+                // ace#3053). `none` is deliberately not a value: a report with nobody to
+                // coach has not had coaching put on it.
+                selection: z.enum(['band', 'peer_watch', 'named']).optional(),
               })
               .passthrough(),
           )
