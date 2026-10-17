@@ -126,6 +126,29 @@ describe('renderBriefing', () => {
     expect(text).toContain('Meeting regularity [SF_P1] — 9 of 15 (60%), band amber');
     expect(text).toMatch(/delivered to jjackson.*reply as Grace/);
   });
+
+  it('writes a peer-watch selection line before the topics and a written-out figure as given (#3053)', () => {
+    const text = renderBriefing({
+      workerName: 'Grace',
+      programName: 'Spark',
+      selection: 'Why this worker: a comparison with peers.',
+      topics: [{ key: 'SF_P1', label: 'Meeting regularity', figure: '40% (median of 9 other facilitators: 80%)', band: 'peer-watch' }],
+    });
+    const lines = text.split('\n');
+    expect(lines.indexOf('Why this worker: a comparison with peers.')).toBe(lines.indexOf('Topics, most important first:') - 1);
+    expect(text).toContain('Meeting regularity [SF_P1] — 40% (median of 9 other facilitators: 80%), band peer-watch');
+  });
+});
+
+describe('renderIndicatorCards: peer-watch wording on target-less indicators (#3053)', () => {
+  it('tells the coach a peer-watch figure is a comparison, never a goal, on outcomes and review flags alike', () => {
+    const md = renderIndicatorCards(coachableIndicators(measures));
+    const targetless = md.split('\n\n').filter((c) => !/Green /.test(c));
+    expect(targetless.length).toBeGreaterThan(0);
+    for (const card of targetless) {
+      expect(card).toMatch(/`peer-watch`[^\n]*never (as missing )?a goal/);
+    }
+  });
 });
 
 describe('findOverstatements', () => {

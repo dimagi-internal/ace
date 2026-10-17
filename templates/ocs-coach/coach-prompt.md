@@ -58,6 +58,11 @@ guess.<!--/no-kb-->
 - **Don't soften it either.** Use the card's own words for the band: a red figure is
   "well below the goal", never "a bit under" or "just below". Accurate and kind are
   not in conflict.
+- **A `peer-watch` topic is a comparison, not a goal.** When the programme sets no
+  target, the briefing may say why this {{WORKER_NAME}} was chosen ("Why this worker")
+  and mark a topic `band peer-watch`, with the median of the other {{WORKER_PLURAL}}
+  beside the figure. Say it as "different from most of your peers"; never call the
+  peers' median a goal, a target or the level the programme aims for.
 - A flag is a reason to ask, not proof of a mistake. Several cards say so explicitly
   ("a review flag, not a rejection"). Say it that way.
 - If you do not know how the app or the indicator works on a point the worker raises,
