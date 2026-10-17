@@ -130,6 +130,35 @@ export interface ConnectItemInfo {
    * thing and must never be scored as malformed.
    */
   endDate?: string;
+  /**
+   * `dashboard_read` from `connect_get_opportunity` / a hydrated list row.
+   * `'setup_incomplete'` means Connect never finished the opportunity's setup
+   * (no payment unit) — see {@link isSetupIncompleteOpportunity}. `undefined`
+   * means not read.
+   */
+  dashboardRead?: string;
+}
+
+/**
+ * The one honest disposition for a `setup_incomplete` orphan (ace#2083).
+ * Rendered verbatim in the sweep report so nobody reads it as swept.
+ */
+export const SETUP_INCOMPLETE_DISPOSITION =
+  'NOT SWEEPABLE: setup_incomplete — Connect has no opportunity-delete API, and deactivating removes ' +
+  'nothing (the row is already inactive and still counts in every program-ceiling sum); Connect ' +
+  'auto-purges visit-free opportunities at 6 months (delete_stale_opportunities) — ace#2083';
+
+/**
+ * Is this an opportunity whose setup Connect reports unfinished (ace#2083)?
+ *
+ * These are ACE's own abandoned Phase 4 creates: `is_setup_complete` is false
+ * until a payment unit exists, so they are never activatable, every read 302s
+ * to the payment-unit wizard, and `connect_update_opportunity({active:false})`
+ * is a no-op on them. The only removal is Connect's own six-month purge of
+ * visit-free opportunities. Only an explicitly-read value counts.
+ */
+export function isSetupIncompleteOpportunity(item: ConnectItemInfo): boolean {
+  return item.type === 'opportunity' && item.dashboardRead === 'setup_incomplete';
 }
 
 /**
@@ -153,6 +182,15 @@ export function isMalformedOpportunity(item: ConnectItemInfo): boolean {
  */
 export function scoreConnectItem(item: ConnectItemInfo, _liveSet: LiveSet): ScoreResult {
   const signals: string[] = [`connect ${item.type}`];
+
+  // ace#2083 — checked FIRST so the disposition is never hidden behind a
+  // name-shape early return. Still an orphan (high), but report-only: there is
+  // nothing ACE can do to it, and calling a no-op deactivate "swept" is the
+  // dishonesty this signal exists to prevent.
+  if (isSetupIncompleteOpportunity(item)) {
+    signals.push(SETUP_INCOMPLETE_DISPOSITION);
+    return { confidence: 'high', signals };
+  }
 
   if (CRISPR_PREFIX.test(item.name)) {
     signals.push('name has CRISPR- prefix');

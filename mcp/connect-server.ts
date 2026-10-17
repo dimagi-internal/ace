@@ -44,7 +44,7 @@ import { CompositeBackend } from './connect/backends/composite.js';
 import { PlaywrightSession } from './connect/auth/playwright-session.js';
 import { createLoggingProxy, defaultFileLogger } from './connect/logging.js';
 import { ConnectValidationError, ConnectSilentRejectError } from './connect/errors.js';
-import { assertRunIdNamePrefix } from './connect/opportunity-name.js';
+import { assertNoExistingRunOpportunity, assertRunIdNamePrefix } from './connect/opportunity-name.js';
 import {
   resolvePatchXformXml,
   resolveUploadMultimediaBytes,
@@ -526,6 +526,15 @@ server.tool('connect_create_opportunity',
       passing_score: z.coerce.number().int().min(0).max(100),
     }),
     deliver_app: HqAppZ.describe('cc_app_id MUST differ from learn_app.cc_app_id.'),
+    allow_existing_name: z.boolean().optional().default(false).describe(
+      'Default false: an `is_test` create first lists the org by the name\'s run id and REFUSES ' +
+        '(OPPORTUNITY_ALREADY_EXISTS, naming the ids) when an opportunity with this EXACT name already ' +
+        'exists — it is this run\'s own, created by an earlier dispatch, and usually setup_incomplete. ' +
+        'Adopt it instead (connect-opp-setup Step 4.0, lib/connect-opp-resume.ts): a second create strands ' +
+        'the first for good, because Connect has no opportunity-delete API and purges visit-free ' +
+        'opportunities only at 6 months (ace#2083). An incomplete listing refuses too ' +
+        '(OPPORTUNITY_EXISTENCE_UNKNOWN). Pass true only for a replacement the operator approved.',
+    ),
   },
   async (args) =>
     runAtom(async () => {
@@ -533,13 +542,20 @@ server.tool('connect_create_opportunity',
       // BEFORE any network call — Phase 6 tile matchers anchor on the
       // run-id prefix (jjackson/ace#755; precedent: #731 capacity guard).
       assertRunIdNamePrefix(args.name, args.is_test);
+      // Never mint a second opportunity for the same run (ace#2083): an
+      // exact-name row is this run's own half-built opportunity.
+      const { allow_existing_name, ...createArgs } = args;
+      await assertNoExistingRunOpportunity(
+        { organization_slug: args.organization_slug, name: args.name, is_test: args.is_test, allow_existing_name },
+        async (a) => (await client()).listOpportunities(a),
+      );
       // Resolve `${VAR}` patterns in API keys before forwarding to
       // Connect — see jjackson/ace#106 finding 6. The atom historically
       // sent the literal `${ACE_HQ_API_KEY}` string verbatim, which
       // surfaced server-side as a misleading "Failed to fetch apps from
       // CommCare HQ" validation error.
       const resolved = {
-        ...args,
+        ...createArgs,
         learn_app: { ...args.learn_app, api_key: resolveEnvSubstitution(resolveHqKeyRef(args.learn_app.api_key), process.env, ENV_ALLOW.hqApiKey) },
         deliver_app: { ...args.deliver_app, api_key: resolveEnvSubstitution(resolveHqKeyRef(args.deliver_app.api_key), process.env, ENV_ALLOW.hqApiKey) },
       };
