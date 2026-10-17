@@ -778,11 +778,38 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
        `lib/entity-state-taxonomy.ts` BEFORE composing the brief:
        `declared: false`, or a non-empty `problems`, is a **HALT** with a
        Phase-1 finding, never a licence to invent a vocabulary. Verified
-       ACE-direct by Step 4l (ace#1564).
+       ACE-direct by Step 4l (ace#1564). `stateless: true` (row
+       `stateless [source: …]`) is a declaration, not a gap: brief NO state
+       field (ace#2774).
 
      Do NOT inline-paraphrase these — reference the library so the build
      and `pdd-to-deliver-app-eval` stay symmetric. Skip a component whose
      trigger doesn't fire.
+
+   - **Followed-entity id on every paid form (ace#2889).** When the PDD's
+     `program_parameters.followed_entity_case_type` names a case type
+     (`parseFollowedEntityCaseType` from `lib/followed-entity-id.ts`), every
+     paid form — every form carrying a Connect `deliver_unit` — that serves
+     that entity must record its id in a **hidden** field at the form root
+     named `followedEntityIdField(caseType)` (= `<case_type>_case_id`, e.g.
+     `participant_case_id`), whose value is DERIVED from the case model, never
+     worker-entered or hard-coded. Put this in the brief as a `REQUIRED:`
+     line naming the field and, per paid form, its source:
+     - a form that runs ON the followed case → the session case id
+       (`#case/@case_id`, i.e. `instance('commcaresession')/session/data/case_id`);
+     - a child-case form (a crop cycle, session or pregnancy under the
+       followed entity) → the child case's PARENT id, read from casedb
+       (`instance('casedb')/casedb/case[@case_id = instance('commcaresession')/session/data/case_id]/index/parent`);
+     - a form that CREATES the followed entity → the new case block's
+       `@case_id`.
+     A paid form that genuinely serves no followed entity is recorded in the
+     summary's `## Build notes` under `followed_entity_id.exempt` with its
+     reason (the PDD's Deliver spec must say so) — `app-release-qa § Step 4.9`
+     reads that map and fails every other paid form that lacks the field. On
+     `smallholder-seasonal/20261012-1549` the paid Harvest visit updated the
+     crop cycle and named nothing that identified the woman, so no reporting
+     layer could attach the visit to her. `followed_entity_case_type: none
+     (<reason>)` or an absent row (non-longitudinal, non-multi-stage) → skip.
 
    - **App-test economy (always).** Insert this paragraph **verbatim** into
      the brief, in its own paragraph, prefixed `REQUIRED:`:

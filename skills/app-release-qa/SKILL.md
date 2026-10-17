@@ -1597,6 +1597,42 @@ real `poverty-graduation` inputs file and the positive control is the released
 targeting survey of `poverty-graduation/20260915-1518`; the negative control
 re-adds the observed "Declined or does not know" fan option.
 
+### Step 4.9: Every paid form records the followed entity's id (dimagi-internal/ace#2889)
+
+**Deliver app only, and only when the PDD's
+`program_parameters.followed_entity_case_type` names a case type.** A paid
+form that updates a child case (a crop cycle) can submit nothing that names
+the person the programme follows: on `smallholder-seasonal/20261012-1549`
+(HQ `6137de98` v23) the paid "Harvest visit" wrote only
+`update_crop_cycle/case/@case_id` and a non-crop-only `index/parent`, so no
+report could attach a crop-cycle harvest to the woman.
+`semantic-registry-author-qa`'s `entity-key` check saw it at Phase 7; this
+step stops the build shipping it. The released form XML is the authority.
+
+```ts
+import { parseFollowedEntityCaseType, checkFollowedEntityId } from '../../lib/followed-entity-id';
+const declared = parseFollowedEntityCaseType(programParameters.followed_entity_case_type);
+const res = checkFollowedEntityId({
+  caseType: declared.caseType!,
+  forms: deliverFormXmls,            // { path: 'modules-N/forms-M.xml', xml } from Step 3
+  // ONLY the paid forms pdd-to-deliver-app's summary records under
+  // `followed_entity_id.exempt`, each with its reason — never added here.
+  exempt,
+});
+```
+
+| Outcome | Do |
+|---|---|
+| Row absent, `none (<reason>)`, or archetype neither `longitudinal-visits` nor `multi-stage` | `followed_entity_id: not-applicable` |
+| Row present but unparseable | `[WARN]` `followed-entity-unable`, record the parser's `problems` — never a pass |
+| `ok: true` | Record `field`, `paid_forms`, `exempted`, and any `warn` findings (field written only under a `relevant`) and continue |
+| any `fail` finding | **Halt** `[BLOCKER]` `followed-entity-id-missing`, one entry per form, `detail` verbatim. Repair goes back through `pdd-to-deliver-app` (Nova edit adding the hidden derived field → re-release), not a CCZ patch |
+
+Record under `per_app.deliver.followed_entity_id`. *Enforced:*
+`test/lib/followed-entity-id.test.ts` — the negative control is the released
+smallholder-seasonal Deliver forms (`test/fixtures/layer1/`); the positive
+control is the same Harvest visit with the build rule applied.
+
 ### Step 5: Write verdict
 
 Write `3-commcare/app-release-qa_result.yaml`. Shape:
@@ -1761,6 +1797,8 @@ per_app:
 #                          # all three fields are BLOCKER-gated (ace#1082)
 #   fixed_instrument_verbatim: not-applicable | unable | { matched, exempted, findings: [...] }
 #                          # BLOCKER-gated (ace#2366); Deliver app, [FIXED] instrument only
+#   followed_entity_id:    not-applicable | unable | { field, paid_forms: [...], exempted: [...], findings: [...] }
+#                          # BLOCKER-gated (ace#2889); Deliver app, followed_entity_case_type declared
 #   language_tables:       pass | unable | { present: [...], declared: [...],
 #                            orphans: [...], missing: [...], display_names: {...} }
 #                          # FINDING-gated, never a halt (ace#2292) — an orphan

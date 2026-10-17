@@ -16,8 +16,49 @@ import {
   checkReviewerCommentTableIfReferenced,
   checkPddIsNativeGoogleDoc,
   checkProgramParametersCoherent,
+  checkFollowedEntityCaseTypeDeclared,
   CHECKS,
 } from '../../../skills/idea-to-pdd-qa/checks';
+
+// dimagi-internal/ace#2889 — a longitudinal / multi-stage PDD names the case
+// type of the entity a paid visit serves, so Phase 3 can record its id.
+describe('checkFollowedEntityCaseTypeDeclared (ace#2889)', () => {
+  const pdd = (archetype: string, rows = '') =>
+    `# PDD\n\n**Archetype:** ${archetype}\n\n## Program Parameters\n\n| Key | Value |\n|---|---|\n| daily_cap_per_flw | 12 |\n${rows}\n\n## Timeline\n`;
+
+  test('not applicable to atomic-visit', () => {
+    const r = checkFollowedEntityCaseTypeDeclared(pdd('atomic-visit'));
+    expect(r.pass).toBe(true);
+    expect(r.detail).toMatch(/not applicable/);
+  });
+
+  test('a longitudinal PDD with no row fails, naming the row', () => {
+    const r = checkFollowedEntityCaseTypeDeclared(pdd('longitudinal-visits'));
+    expect(r.pass).toBe(false);
+    expect(r.auto_fix_hint).toMatch(/followed_entity_case_type/);
+  });
+
+  test('a declared case type passes and names the hidden field', () => {
+    const r = checkFollowedEntityCaseTypeDeclared(
+      pdd('longitudinal-visits', '| followed_entity_case_type | participant |'),
+    );
+    expect(r.pass).toBe(true);
+    expect(r.detail).toContain('participant_case_id');
+  });
+
+  test('none is refused for longitudinal, accepted with a reason for multi-stage', () => {
+    const row = '| followed_entity_case_type | none (stages are cross-sectional surveys) |';
+    expect(checkFollowedEntityCaseTypeDeclared(pdd('longitudinal-visits', row)).pass).toBe(false);
+    expect(checkFollowedEntityCaseTypeDeclared(pdd('multi-stage', row)).pass).toBe(true);
+    expect(
+      checkFollowedEntityCaseTypeDeclared(pdd('multi-stage', '| followed_entity_case_type | none |')).pass,
+    ).toBe(false);
+  });
+
+  test('multi-stage with no row fails', () => {
+    expect(checkFollowedEntityCaseTypeDeclared(pdd('multi-stage')).pass).toBe(false);
+  });
+});
 
 const SECTIONS_FULL = `# PDD
 
@@ -291,8 +332,8 @@ describe('checkReviewerCommentTableIfReferenced', () => {
 });
 
 describe('CHECKS array', () => {
-  test('exports fourteen checks in stable order', () => {
-    expect(CHECKS).toHaveLength(14);
+  test('exports fifteen checks in stable order', () => {
+    expect(CHECKS).toHaveLength(15);
     const ids = CHECKS.map((c) => c.id);
     expect(ids).toEqual([
       // First deliberately: a PDD missing its launch parameters cannot be
@@ -312,6 +353,7 @@ describe('CHECKS array', () => {
       'program_parameters_provenance',
       'payment_unit_matches_entity_grain',
       'entity_state_taxonomy_declared_for_longitudinal',
+      'followed_entity_case_type_declared',
       'reviewer_comment_table_if_referenced',
     ]);
   });
@@ -643,6 +685,6 @@ describe('Drive markdown-export escaping (#1617)', () => {
         return `${c.id}=${r.pass}`;
       });
     expect(score(exported)).toEqual(score(numbered));
-    expect(score(exported).filter((s) => s.endsWith('=true'))).toHaveLength(11);
+    expect(score(exported).filter((s) => s.endsWith('=true'))).toHaveLength(12);
   });
 });

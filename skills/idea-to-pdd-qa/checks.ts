@@ -17,6 +17,7 @@ import type { QACheck, QACheckContext, QACheckResult } from '../../lib/qa-types'
 import { classifyGrainRelation } from '../../lib/payment-grain';
 import { normalizeDriveExport } from '../../lib/drive-export';
 import { parseStateTaxonomy } from '../../lib/entity-state-taxonomy';
+import { parseFollowedEntityCaseType, followedEntityIdField } from '../../lib/followed-entity-id';
 import { ARCHETYPES } from '../../lib/decisions-archetype-consistency';
 import { checkProgramLocale } from '../../lib/program-locale';
 import {
@@ -778,6 +779,79 @@ export function checkProgramParametersCoherent(raw: string): QACheckResult {
 }
 
 /**
+ * Check: a `longitudinal-visits` or `multi-stage` PDD declares the followed
+ * entity's case type in § Program Parameters (`followed_entity_case_type`).
+ *
+ * Why (dimagi-internal/ace#2889). A paid form must record the id of the
+ * person (or thing) it serves; on smallholder-seasonal/20261012-1549 the paid
+ * "Harvest visit" named only the crop cycle, so no reporting layer could attach
+ * the visit to the woman. A static check on the released app cannot tell a case
+ * id that names the woman from one that names her crop cycle, so the case type
+ * is DECLARED here and threaded to `pdd-to-deliver-app` (which records
+ * `<case_type>_case_id` on every paid form) and `app-release-qa § Step 4.9`
+ * (which checks it). Operator decision 2026-10-16.
+ *
+ * `longitudinal-visits` follows an entity by definition, so it must name a
+ * case type. A `multi-stage` programme may follow none — `none (<reason>)`.
+ * Other archetypes: not applicable. Defers to `program_parameters_coherent`
+ * when the section is absent.
+ */
+export function checkFollowedEntityCaseTypeDeclared(raw: string): QACheckResult {
+  const archetype = extractArchetype(raw);
+  if (archetype !== 'longitudinal-visits' && archetype !== 'multi-stage') {
+    return {
+      pass: true,
+      detail: `not applicable (archetype ${archetype ? `\`${archetype}\`` : 'not declared'})`,
+    };
+  }
+  const body = extractSection(normalizeDriveExport(raw), 'Program Parameters');
+  if (body === null) {
+    return {
+      pass: true,
+      detail: 'not applicable (no § Program Parameters — see program_parameters_coherent)',
+    };
+  }
+  const parsed = parseFollowedEntityCaseType(
+    parseProgramParameters(body).get('followed_entity_case_type'),
+  );
+  const REMEDIATION =
+    'Add `| followed_entity_case_type | <case_type> | <provenance> |` to § Program Parameters — the CommCare case type ' +
+    'of the entity a paid visit SERVES (e.g. `participant`, `household`), as the PDD\'s § Entity Lifecycle / Deliver spec ' +
+    'already names it. On a child-case design (crop cycles under a participant) name the PARENT the programme follows. ' +
+    'Phase 3 records `<case_type>_case_id` on every paid form from it, and app-release-qa fails a paid form that does not ' +
+    '(ace#2889).' +
+    (archetype === 'multi-stage'
+      ? ' A multi-stage programme whose stages follow no entity writes `none (<reason>)`.'
+      : '');
+  if (!parsed.declared) {
+    return {
+      pass: false,
+      detail:
+        `archetype is \`${archetype}\` but § Program Parameters declares no parseable \`followed_entity_case_type\`` +
+        (parsed.problems.length ? `: ${parsed.problems.join('; ')}` : ''),
+      auto_fix_hint: REMEDIATION,
+    };
+  }
+  if (parsed.none) {
+    if (archetype === 'longitudinal-visits') {
+      return {
+        pass: false,
+        detail:
+          '`followed_entity_case_type` is `none`, but a `longitudinal-visits` design follows an entity by definition',
+        auto_fix_hint: REMEDIATION,
+      };
+    }
+    return { pass: true, detail: `followed_entity_case_type: none (${parsed.reason})` };
+  }
+  return {
+    pass: true,
+    detail:
+      `followed entity is \`${parsed.caseType}\` — every paid form records ` +
+      `\`${followedEntityIdField(parsed.caseType!)}\``,
+  };
+}
+
+/**
  * Check: a `longitudinal-visits` PDD carries a PARSEABLE
  * `entity_state_taxonomy` row in § Program Parameters.
  *
@@ -1288,6 +1362,13 @@ export const CHECKS: QACheck[] = [
     description:
       'A longitudinal-visits PDD carries a parseable entity_state_taxonomy row in § Program Parameters — the row Phase 3 HALTs on',
     run: checkEntityStateTaxonomyForLongitudinal,
+  },
+  {
+    id: 'followed_entity_case_type_declared',
+    type: 'static',
+    description:
+      'A longitudinal-visits / multi-stage PDD declares followed_entity_case_type in § Program Parameters — the case type whose id every paid form records',
+    run: checkFollowedEntityCaseTypeDeclared,
   },
   {
     id: 'reviewer_comment_table_if_referenced',
