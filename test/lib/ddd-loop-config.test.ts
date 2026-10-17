@@ -104,8 +104,7 @@ describe('config/ddd-loop.yaml — shape (mirrors canopy loop_config)', () => {
     expect(SURFACES.map((s) => s.name)).toEqual([
       'connect-labs-chrome',
       'ace-synthetic-opp-naming',
-      'labs-engine',
-      'labs-semantic-registry',
+      'labs-product-gap',
     ]);
     for (const s of SURFACES) {
       for (const k of Object.keys(s)) expect(SURFACE_KEYS).toContain(k);
@@ -116,8 +115,9 @@ describe('config/ddd-loop.yaml — shape (mirrors canopy loop_config)', () => {
     // The report PAGES are in scope since 2026-10-16 (ACE's Labs template workflows,
     // config/labs-report-templates.yaml): no surface may pin them again.
     expect(SURFACES.some((s) => s.name === 'labs-report-template')).toBe(false);
-    expect(SURFACES.find((s) => s.name === 'labs-engine')!.repo).toBe('dimagi-internal/connect-labs');
-    expect(SURFACES.find((s) => s.name === 'labs-semantic-registry')!.repo).toBe('dimagi-internal/ace');
+    // Registry, pipelines and data are Labs data the loop writes (Jon, 2026-10-16): no surface for them.
+    for (const gone of ['labs-engine', 'labs-semantic-registry']) expect(SURFACES.some((s) => s.name === gone)).toBe(false);
+    expect(SURFACES.find((s) => s.name === 'labs-product-gap')!.repo).toBe('dimagi-internal/connect-labs');
     const chrome = SURFACES.find((s) => s.name === 'connect-labs-chrome')!;
     expect(chrome.owner).toBe('Connect Labs');
     expect(chrome.repo).toBe('dimagi-internal/connect-labs');
@@ -163,6 +163,13 @@ describe.skipIf(!hasPython())('config/ddd-loop.yaml — regexes vs real findings
       "In the indicator_opp_report Benchmarks strip, scale each row's peer marks to that row's own observed min-max range, not to a shared 0-100% axis.",
     ];
     expect(pyClassify(SURFACES, page)).toEqual(['in', 'in', 'in', 'in']);
+    // Registry / pipeline / snapshot-shaped findings are Labs DATA the loop writes — IN.
+    const data = [
+      "[REGISTRY] Add a values map for visit_outcome in the semantic registry so 'not_home' reads 'Not at home'.",
+      'The visits pipeline does not carry the transfer date; add the field to the pipeline schema.',
+      'The snapshot does not carry per-day counts for the enrolment card.',
+    ];
+    expect(pyClassify(SURFACES, data)).toEqual(['in', 'in', 'in']);
     expect(pyClassify(SURFACES, ["The floating 'Ask an agent' launcher is drawn over the Exits trend card."])).toEqual(['connect-labs-chrome']);
   });
 
@@ -329,7 +336,7 @@ describe.skipIf(!RUNTIME || !HAS_UV)('canopy loop_config.load reads the written 
       expect(out.status, out.stderr).toBe(0);
       const got = JSON.parse(out.stdout.trim().split('\n').pop()!);
       expect(got.surfaces.map((s: string[]) => s[0])).toEqual(SURFACES.map((s) => s.name));
-      expect(got.surfaces[2]).toEqual(['labs-engine', 'Connect Labs (snapshot builder / engine)', null, 'dimagi-internal/connect-labs']);
+      expect(got.surfaces[2]).toEqual(['labs-product-gap', 'Connect Labs (product bug or missing feature)', null, 'dimagi-internal/connect-labs']);
       expect(got.product_repo).toBe('dimagi-internal/connect-labs');
       for (const j of Object.keys(TEMPLATE.product.lint.jargon)) expect(got.jargon).toContain(j);
       expect(got.scope).toEqual(['out', 'connect-labs-chrome', 'Connect Labs']);

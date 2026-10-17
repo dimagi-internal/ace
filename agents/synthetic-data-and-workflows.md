@@ -466,21 +466,30 @@ with Step 3.1's two `export` lines** (`CANOPY_DDD_RUNS_DIR`, `DDD_DIR`) and requ
 every canopy command to run under them — without `DDD_DIR` the loop reads no
 `config.yaml` and every labs-template finding is re-declined by hand again.
 
-**Give the loop its write path to the report pages (2026-10-16).** The cascade
-reports follow ACE's Labs template workflows (`demo-data-setup` § C7,
-`config/labs-report-templates.yaml`), so a page finding is fixed IN the loop:
-edit the template draft, preview it on this run's page, publish only when the
-affected cells do not regress, otherwise discard. `config/ddd-loop.yaml` keeps
-only Labs chrome, engine-boundary findings (a figure Labs does not compute) and
-the registry out of scope. Generate the block for THIS run and paste it into the
-prompt verbatim, above the locked-claims ledger:
+**Give the loop its write paths into the labs build (2026-10-16).** Everything
+an ACE demo shows is Labs DATA, not Labs code: the page render (the cascade
+reports follow ACE's Labs template workflows, `demo-data-setup` § C7,
+`config/labs-report-templates.yaml`), the run's own semantic registry, its
+pipelines and its synthetic data. So the loop fixes findings on all four IN the
+loop, and `config/ddd-loop.yaml` keeps out only Labs chrome (Labs' own UI) and
+a genuine Labs product bug or missing feature (`labs-product-gap`) — nothing in
+an ACE demo should need a connect-labs deploy otherwise (Jon, 2026-10-16).
+Generate the block for THIS run and paste it into the prompt verbatim, above the
+locked-claims ledger:
 
 ```bash
 node "$ACE_ROOT/node_modules/tsx/dist/cli.mjs" "$ACE_ROOT/scripts/labs-report-templates.ts" dispatch-block \
   --run-state <local run_state.yaml>
 ```
 
-It names each page's template and the procedure — `draft-begin` (a lease: `busy`
+It names the registry, pipeline and data write paths — registry via
+`semantic_registry_set_indicator_meta` / `semantic_registry_update` /
+`semantic_registry_validate` (the registry is this run's alone, so there is no
+cross-run concern), pipelines via `pipeline_update_schema`, `[DATA]`/`[SEED]`
+findings by regenerating the pool (`demo-data-setup` § C3–C6); each of those
+reaches a filmed saved run only through a history rebuild + relink of run_state
+AND the loop's spec (`semantic-registry-author` § After a registry edit). For the
+render it names each page's template and the procedure — `draft-begin` (a lease: `busy`
 means another run holds the draft; the finding waits for the next pass, never a
 poll), render-only `workflow_template_update_draft` edits chained on
 `expected_revision`, `draft-capture` before/after on the affected scenes,
@@ -564,12 +573,13 @@ did not pass", which is true (ace#2995). `passed-with-deferred-evals` stays
 reserved for evals that genuinely did not run.
 
 **Dashboard defects the loop found but could not apply are their own outcome:
-`found_not_fixed` (ace#2337).** Page defects are now fixable in-loop (the
-template write path), but two kinds still are not: a figure Labs does not
-compute (`config/ddd-loop.yaml` `labs-engine`, a connect-labs change) and the
-registry's own labels/names (`labs-semantic-registry`). A defect on one of them is
-rediscovered every pass and never applied. (Runs before 2026-10-16 recorded
-`labs-report-template` here; it is still read.) Folded into `stopped_not_converged`,
+`found_not_fixed` (ace#2337).** Render, registry, pipeline and data defects are
+all fixable in-loop now (the write paths above), so this outcome is reserved for
+a GENUINE Connect Labs product bug or missing feature (`config/ddd-loop.yaml`
+`labs-product-gap`) — one no registry, pipeline, render or data edit can
+express. Such a defect is rediscovered every pass and never applied. (Runs
+before 2026-10-16 recorded `labs-report-template`, `labs-engine` or
+`labs-semantic-registry` here; they are still read.) Folded into `stopped_not_converged`,
 it reads as "the demo is bad" when the truth is "the fixer cannot reach that
 page". Those are opposite remedies. So, on EVERY ending, before the write-back, run:
 
@@ -850,7 +860,7 @@ phases:
         # found_not_fixed when the loop left dashboard defects unapplied, else the terminal status
         ddd_outcome: <found_not_fixed|<terminal_status>>
         unapplied_dashboard_findings:      # found, not fixed — every ending, [] when none
-          - { finding_id: <id>, scene: "<n>", dimension: <dim>, dashboard_url: <url>, surface: <labs-engine|labs-semantic-registry>, owner: <owner>, issue: <repo#n>, defect: "<what is wrong>", pinned: <bool> }
+          - { finding_id: <id>, scene: "<n>", dimension: <dim>, dashboard_url: <url>, surface: labs-product-gap, owner: <owner>, issue: <repo#n>, defect: "<what is wrong>", pinned: <bool> }
     steps:
       semantic-registry-author:    { status: done }
       semantic-registry-author-qa: { status: done }

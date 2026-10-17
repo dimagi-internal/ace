@@ -1708,9 +1708,12 @@ checks, each failing the build:
    table is reported — keep the narrative off it);
 4. **drill levels branch** — no level has exactly one child under every parent
    unless `single_child_levels` cites why (`checkDrillLevels`).
-A failure is fixed in the pool, roster or registry display and re-verified here —
-never handed to the DDD loop: these are DATA defects, and the loop's write path is
-the page (ACE's template workflows, § C7), so it could only re-find them.
+A failure is fixed HERE, in the pool, roster or registry display, and re-verified
+before the hand-off. The DDD loop can fix these too, because registry, pipelines and data are
+Labs data it writes (Phase 7's dispatch block). But a defect this check can see
+costs a render plus a judge round when the loop finds it instead, and it is
+filmed in the meantime. Nothing here needs a connect-labs deploy unless it is a
+genuine Labs product bug or missing feature.
 
 **C7. Handoff.** `realized.json` (flat) carries:
 
