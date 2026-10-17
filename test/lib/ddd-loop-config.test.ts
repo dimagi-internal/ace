@@ -113,9 +113,10 @@ describe('config/ddd-loop.yaml — shape (mirrors canopy loop_config)', () => {
       if (s.issue) expect(s.issue, s.name).toMatch(ISSUE_RE);
     }
     const tmpl = SURFACES.find((s) => s.name === 'labs-report-template')!;
-    expect(tmpl.owner).toBe('ACE Phase 7 (labs report templates)');
-    expect(tmpl.issue).toBe('dimagi-internal/ace#2337');
-    expect(tmpl.repo).toBe('dimagi-internal/ace');
+    // ACE-owned, but the template SOURCE is connect-labs; ace#2337 is closed.
+    expect(tmpl.owner).toBe('ACE (labs report templates, source in connect-labs)');
+    expect(tmpl.issue).toBeUndefined();
+    expect(tmpl.repo).toBe('dimagi-internal/connect-labs');
     const chrome = SURFACES.find((s) => s.name === 'connect-labs-chrome')!;
     expect(chrome.owner).toBe('Connect Labs');
     expect(chrome.repo).toBe('dimagi-internal/connect-labs');
@@ -316,7 +317,7 @@ describe.skipIf(!RUNTIME || !HAS_UV)('canopy loop_config.load reads the written 
       expect(out.status, out.stderr).toBe(0);
       const got = JSON.parse(out.stdout.trim().split('\n').pop()!);
       expect(got.surfaces.map((s: string[]) => s[0])).toEqual(SURFACES.map((s) => s.name));
-      expect(got.surfaces[2]).toEqual(['labs-report-template', 'ACE Phase 7 (labs report templates)', 'dimagi-internal/ace#2337', 'dimagi-internal/ace']);
+      expect(got.surfaces[2]).toEqual(['labs-report-template', 'ACE (labs report templates, source in connect-labs)', null, 'dimagi-internal/connect-labs']);
       expect(got.product_repo).toBe('dimagi-internal/connect-labs');
       for (const j of Object.keys(TEMPLATE.product.lint.jargon)) expect(got.jargon).toContain(j);
       expect(got.scope).toEqual(['out', 'connect-labs-chrome', 'Connect Labs']);
