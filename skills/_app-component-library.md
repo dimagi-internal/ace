@@ -2296,6 +2296,10 @@ reads `program_parameters.entity_state_taxonomy` from the PDD (the typed
 handoff — `templates/pdd-template.md § Program Parameters`) via
 `parseStateTaxonomy`, and:
 
+- **`stateless: true` → build no state field (ace#2774).** The PDD row reads
+  `stateless [source: …]`: a positive declaration that the repeated-visit
+  entity has zero states. Emit no state picker, no phase-filtered list and no
+  state column; the build-time diff against `[]` flags anything added anyway.
 - **`declared: false` → HALT.** The PDD declares no taxonomy while the trigger
   fires. That is a Phase-1 gap: record it as a finding naming the PDD section
   that would close it, and do not build the state picker. Never substitute a

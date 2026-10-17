@@ -386,6 +386,11 @@ and `skills/eval-calibration/SKILL.md` for calibration methodology.
      `diffStateTaxonomy`.
 
      Verdicts:
+     - `stateless: true` (PDD row `stateless [source: …]`, ace#2774) → the
+       declared set is EMPTY: a build with no state option set is a clean
+       pass (finding count `0`, summary records `stateless`), and any state
+       option set the build ships is `extraInBuild` → `[BLOCKER]`. Never
+       fail a stateless declaration for lacking states.
      - `declared: false` while the trigger fires → `[BLOCKER]` → `fail`,
        reported as a **Phase-1 gap** (the PDD owes the taxonomy), not as an
        architect defect. The build was supposed to HALT here; a build that

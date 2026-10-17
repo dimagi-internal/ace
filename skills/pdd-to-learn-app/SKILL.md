@@ -568,7 +568,8 @@ Generate the Learn (training) app from the PDD using the Nova plugin
        that row names a source document, brief from THAT file out of the
        run's frozen `inputs/`. `declared: false` or non-empty `problems` is
        a **HALT** with a Phase-1 finding, never a licence to invent phase
-       names. Both apps deriving from the one declaration is what makes
+       names. `stateless: true` (row `stateless [source: …]`, ace#2774) is
+       a declaration, not a gap: teach no state vocabulary at all. Both apps deriving from the one declaration is what makes
        Learn and Deliver agree; a Learn app taught on an invented mapping
        sends a trained worker to a phase where the step they were taught
        does not exist (ace#1564).

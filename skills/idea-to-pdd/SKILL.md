@@ -1980,6 +1980,22 @@ becomes "any visit counts." That is a real, measured failure
 (`spark-facilitator/20260813-2126`, ace#1462), and it is the specific
 thing this archetype exists to prevent.
 
+**A stateless followed entity is legitimate — declare it, never invent
+states (ace#2774).** "Carries state" above is the common case, not a
+requirement. A durable entity can be revisited repeatedly where every visit
+is the same activity and nothing progresses — a savings group paid per
+weekly session for two years, a group record paid per session
+(`group-payment-test/20261007-1700`). That is still `longitudinal-visits`
+(durable case, case list, per-entity history for Layer A), NOT
+`atomic-visit`. Write `| entity_state_taxonomy | stateless [source: <doc>] |`
+in § Program Parameters when, and only when, the source material names no
+phase / stage / status vocabulary for the entity AND nothing in the design
+(payment, eligibility, the case list, a success metric) depends on one.
+`parseStateTaxonomy` reads it as declared with zero states, `idea-to-pdd-qa`
+check 10 passes it, and Phase 3 builds no state field. Do not use it to dodge
+a vocabulary the source does carry, and do not write `none` / `n/a` — those
+read as an unfilled row and fail.
+
 **Additional questions to answer in step 3:**
 
 - **The entity**: what is followed over time, what case type represents

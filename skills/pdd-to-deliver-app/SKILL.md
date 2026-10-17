@@ -2077,6 +2077,15 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
        case-list requirement makes such a state mandatory. No such state
        anywhere → skip cleanly and say so in the summary's `## Build notes`
        (`entity_state_taxonomy: skipped — <reason>`).
+       **Exception — a declared stateless entity (ace#2774).** When
+       `parseStateTaxonomy` returns `stateless: true` (the PDD row reads
+       `stateless [source: …]`), the PDD has positively declared that the
+       followed entity has no states: brief NO state field, no phase picker
+       and no state case-list column, and record
+       `entity_state_taxonomy: stateless — 0 states declared` in the summary.
+       The diff in step 3 still runs (declared `[]`), so any state option set
+       the architect added anyway surfaces as `extraInBuild` — an invented
+       state — and is repaired by removal.
 
     2. **Parse the DECLARED taxonomy — this is the only authority.**
 

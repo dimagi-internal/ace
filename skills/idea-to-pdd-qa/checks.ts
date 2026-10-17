@@ -837,6 +837,8 @@ export function checkEntityStateTaxonomyForLongitudinal(raw: string): QACheckRes
     'The `(steps ...)` clause is optional per state and the trailing `[source: ...]` is optional for the taxonomy; ' +
     "name a source document when the states come from one in the run's `inputs/`, and the build will brief from THAT file. " +
     'Take the values, labels and partition from what the PDD already says in § Entity Lifecycle — this is a transcription, not a new decision. ' +
+    'If the followed entity genuinely has NO states (every visit is the same activity and nothing progresses), write ' +
+    '`| entity_state_taxonomy | stateless [source: <doc>] |` instead — `none` / `n/a` read as an unfilled row (ace#2774). ' +
     'Prose is not a handoff: Phase 3 reads only this row (`parseStateTaxonomy`), so without it `pdd-to-learn-app` and ' +
     "`pdd-to-deliver-app` both HALT rather than invent the partner's own phase names (ace#1564, ace#1783).";
 
@@ -858,6 +860,19 @@ export function checkEntityStateTaxonomyForLongitudinal(raw: string): QACheckRes
         `${parsed.problems.join('; ')} — Phase 3 HALTs on a non-empty \`problems\` list just as ` +
         'it does on an absent row',
       auto_fix_hint: REMEDIATION,
+    };
+  }
+
+  if (parsed.stateless) {
+    // ace#2774: an explicit `stateless [source: ...]` is a positive declaration
+    // that the repeated-visit entity has no state model. It passes; Phase 3
+    // builds no state field. `none` / `n/a` stay absent and still fail above.
+    return {
+      pass: true,
+      detail:
+        'entity_state_taxonomy declares the followed entity `stateless` (zero states' +
+        (parsed.source ? `, source: ${parsed.source}` : '') +
+        ') — Phase 3 builds no state field',
     };
   }
 

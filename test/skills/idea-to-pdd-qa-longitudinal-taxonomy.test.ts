@@ -122,6 +122,48 @@ describe('shares Phase 3’s parser, so the two cannot disagree again', () => {
   });
 });
 
+// dimagi-internal/ace#2774 — a longitudinal design whose repeated-visit entity
+// has NO states (group-payment-test/20261007-1700: sessions paid against a
+// group record the source gives no states) could only pass by inventing a
+// vocabulary or mis-declaring `atomic-visit`. Operator decision 2026-10-16:
+// an explicit `stateless` declaration passes.
+describe('an explicit stateless declaration (ace#2774)', () => {
+  it('passes with a source', () => {
+    const r = checkEntityStateTaxonomyForLongitudinal(
+      pdd(
+        'longitudinal-visits',
+        `${LIVE_ROWS}\n| entity_state_taxonomy | stateless [source: idea.md § Payment test] |`,
+      ),
+    );
+    expect(r.pass).toBe(true);
+    expect(r.detail).toMatch(/stateless/);
+    expect(r.detail).toMatch(/idea\.md § Payment test/);
+    expect(r.detail).toMatch(/no state field/);
+  });
+
+  it('passes bare (source optional, as for a stated taxonomy)', () => {
+    const r = checkEntityStateTaxonomyForLongitudinal(
+      pdd('longitudinal-visits', `${LIVE_ROWS}\n| entity_state_taxonomy | Stateless |`),
+    );
+    expect(r.pass).toBe(true);
+  });
+
+  it('`none` is still an absent row, not a stateless claim', () => {
+    const r = checkEntityStateTaxonomyForLongitudinal(
+      pdd('longitudinal-visits', `${LIVE_ROWS}\n| entity_state_taxonomy | none |`),
+    );
+    expect(r.pass).toBe(false);
+    expect(r.auto_fix_hint).toMatch(/stateless \[source: <doc>\]/);
+  });
+
+  it('stateless mixed with states fails', () => {
+    const r = checkEntityStateTaxonomyForLongitudinal(
+      pdd('longitudinal-visits', `${LIVE_ROWS}\n| entity_state_taxonomy | stateless; 1=Open |`),
+    );
+    expect(r.pass).toBe(false);
+  });
+});
+
 describe('registration', () => {
   it('is in CHECKS so the runtime QA pass actually runs it', () => {
     expect(CHECKS.map((c) => c.id)).toContain('entity_state_taxonomy_declared_for_longitudinal');

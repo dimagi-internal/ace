@@ -89,6 +89,46 @@ describe('parseStateTaxonomy', () => {
   });
 });
 
+describe('parseStateTaxonomy — explicit stateless (ace#2774)', () => {
+  it('reads `stateless [source: ...]` as declared with zero states', () => {
+    const p = parseStateTaxonomy('stateless [source: idea.md § Group sessions]');
+    expect(p.declared).toBe(true);
+    expect(p.stateless).toBe(true);
+    expect(p.states).toEqual([]);
+    expect(p.source).toBe('idea.md § Group sessions');
+    expect(p.problems).toEqual([]);
+  });
+
+  it('accepts a bare, any-case keyword', () => {
+    const p = parseStateTaxonomy('  Stateless ');
+    expect(p).toMatchObject({ declared: true, stateless: true, source: null, problems: [] });
+  });
+
+  it('keeps none / n/a ABSENT — they are not a stateless claim', () => {
+    for (const v of ['none', 'n/a', '']) {
+      expect(parseStateTaxonomy(v)).toMatchObject({ declared: false, stateless: false });
+    }
+  });
+
+  it('rejects stateless mixed with states', () => {
+    const p = parseStateTaxonomy('stateless; 1=Open');
+    expect(p.declared).toBe(false);
+    expect(p.problems.join(' ')).toMatch(/must stand alone/);
+  });
+
+  it('a stated taxonomy is not stateless', () => {
+    expect(parseStateTaxonomy('1=Open; 2=Closed').stateless).toBe(false);
+  });
+
+  it('diffs cleanly against a build with no state field, and flags any invented one', () => {
+    const p = parseStateTaxonomy('stateless');
+    expect(diffStateTaxonomy({ declared: p.states, built: [] }).ok).toBe(true);
+    const d = diffStateTaxonomy({ declared: p.states, built: [{ value: 'active', label: 'Active' }] });
+    expect(d.ok).toBe(false);
+    expect(d.extraInBuild).toEqual(['active']);
+  });
+});
+
 describe('diffStateTaxonomy', () => {
   const declared = parseStateTaxonomy(SPARK).states;
 
