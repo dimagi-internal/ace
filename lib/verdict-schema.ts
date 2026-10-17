@@ -18,6 +18,8 @@
 
 import { z } from 'zod';
 
+import { ARTIFACT_MANIFEST } from './artifact-manifest.js';
+
 export const SCHEMA_VERSION = 2;
 
 // ── Field schemas ──────────────────────────────────────────────────
@@ -149,6 +151,30 @@ export const CheckRecordSchema = z.object({
 });
 export type CheckRecord = z.infer<typeof CheckRecordSchema>;
 
+/**
+ * `published_render` — the result of `scripts/check-published-doc-render.ts`
+ * on the published Doc (`skills/_eval-template.md § Published-render gate
+ * (stock)`). Field names are the snake_case of `PublishedRenderVerdict` in
+ * `lib/published-doc-render-check.ts`.
+ */
+export const PublishedRenderRecordSchema = z.object({
+  ok: z.boolean(),
+  literal_markdown_hits: z.array(z.string()).optional(),
+  rendered_image_count: z.number().int().min(0).nullable().optional(),
+}).passthrough();
+export type PublishedRenderRecord = z.infer<typeof PublishedRenderRecordSchema>;
+
+/**
+ * Evals whose producer PUBLISHES a Google Doc — `<producedBy>-eval` for every
+ * `rendered: true` manifest entry. The same derivation
+ * `test/skills/eval-checks-published-render.test.ts` ratchets on, so the set
+ * that must run the render gate and the set that must record `published_url`
+ * cannot drift apart.
+ */
+export const PUBLISHED_DOC_EVALS: ReadonlySet<string> = new Set(
+  ARTIFACT_MANIFEST.filter((a) => a.rendered).map((a) => `${a.producedBy}-eval`),
+);
+
 export const GateSchema = z.object({
   threshold: z.number().min(0).max(10),
   disposition: z.enum(['approve', 'reject', 'iterate']),
@@ -177,6 +203,24 @@ export const VerdictSchema = z.object({
   mode: ModeSchema.optional(),
   ran_at: z.string().min(1), // ISO timestamp; not strict — Drive YAML is hand-edited
   capture_path: z.string().min(1),
+
+  /**
+   * `published_url` — the published Google Doc a reader opens, for evals of a
+   * `rendered` artifact (`PUBLISHED_DOC_EVALS`). A SIBLING of `capture_path`,
+   * not a replacement: `capture_path` keeps naming the run-folder source the
+   * Doc was composed from, and release-readiness + `lib/gate-artifact-hash.ts`
+   * resolve it as a run path. Before this field a verdict could only name the
+   * `.md`, so nothing in it showed that no eval had opened the page — all five
+   * Phase 6 training evals on poverty-graduation/20260905-1345 passed at
+   * 8.4–8.8 on Docs that rendered as raw markdown (ace#2213).
+   *
+   * Optional in the schema so historic verdicts still parse; `validateVerdict`
+   * WARNS when a published-Doc eval omits it, and the prose contract is
+   * ratcheted by `test/skills/eval-checks-published-render.test.ts`.
+   */
+  published_url: z.string().url().optional(),
+  /** The published-render gate's result on `published_url`. */
+  published_render: PublishedRenderRecordSchema.optional(),
 
   overall_score: z.number().min(0).max(10),
   /**
@@ -260,6 +304,25 @@ export function validateVerdict(input: unknown): VerdictValidationResult {
             `run, or a reader cannot tell an inapplicable input from a broken matcher`,
         );
       }
+    }
+    // ace#2213: the render gate's result is binding — a non-zero exit makes the
+    // verdict `fail`. A verdict that records the failure and still passes is
+    // the exact prose-not-executed shape the gate exists to close.
+    const v = parsed.data;
+    if (v.published_render && v.published_render.ok === false && (v.verdict === 'pass' || v.verdict === 'warn')) {
+      errors.push(
+        `published_render.ok is false but verdict is '${v.verdict}' — the published-render gate ` +
+          `failing makes the verdict 'fail' (skills/_eval-template.md § Published-render gate (stock))`,
+      );
+    }
+    if (v.published_render && !v.published_url) {
+      errors.push('published_render is recorded without published_url — name the Doc the gate checked');
+    }
+    if (PUBLISHED_DOC_EVALS.has(v.skill) && !v.published_url) {
+      warnings.push(
+        `${v.skill} grades a published Google Doc but records no published_url — capture_path ` +
+          `(${v.capture_path}) names the source, not the page a reader opens (ace#2213)`,
+      );
     }
     return { ok: errors.length === 0, errors, warnings };
   }

@@ -3,6 +3,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { ARTIFACT_MANIFEST } from '../../lib/artifact-manifest.js';
+import { PUBLISHED_DOC_EVALS } from '../../lib/verdict-schema.js';
 
 /**
  * Ratchet (ace#2213): every `-eval` whose producer PUBLISHES a Google Doc
@@ -33,6 +34,15 @@ export function processRunsRenderGate(body: string, expectImages: boolean): bool
   const proc = processSection(body);
   if (!proc.includes(SCRIPT) || !proc.includes(POINTER)) return false;
   return !expectImages || proc.includes('--expect-images');
+}
+
+/**
+ * The eval's `## Process` tells it to write the checked Doc URL into the
+ * verdict as `published_url` (ace#2213, follow-up to PR #3101): running the
+ * gate is not enough if the verdict still names only the run-folder `.md`.
+ */
+export function processRecordsPublishedUrl(body: string): boolean {
+  return processSection(body).includes('`published_url`');
 }
 
 const gated = ARTIFACT_MANIFEST
@@ -70,6 +80,31 @@ describe('evals of published Docs run the published-render gate (ace#2213)', () 
       expect(processRunsRenderGate(body, g.illustrated)).toBe(true);
     });
   }
+
+  for (const g of gated) {
+    it(`${g.eval} records the checked Doc as the verdict's published_url`, () => {
+      const body = readFileSync(join(SKILLS, g.eval, 'SKILL.md'), 'utf-8');
+      expect(processRecordsPublishedUrl(body)).toBe(true);
+    });
+  }
+
+  it('the stock section tells every gated eval to record published_url beside capture_path', () => {
+    const tpl = readFileSync(join(SKILLS, '_eval-template.md'), 'utf-8');
+    const section = tpl.split('## Published-render gate (stock)')[1]?.split(/^## /m)[0] ?? '';
+    expect(section).toContain('published_url');
+    expect(section).toContain('capture_path');
+  });
+
+  it('the ratchet set and the validator set are the same derivation', () => {
+    expect(new Set(gated.map((g) => g.eval))).toEqual(
+      new Set([...PUBLISHED_DOC_EVALS].filter((e) => existsSync(join(SKILLS, e, 'SKILL.md')))),
+    );
+  });
+
+  it('negative control: published_url mentioned only outside ## Process is caught', () => {
+    const body = `## Process\n\n1b. Run \`scripts/${SCRIPT}.ts <url>\` — ${POINTER}.\n\n## Output\n\n\`published_url\`\n`;
+    expect(processRecordsPublishedUrl(body)).toBe(false);
+  });
 
   it('the script the skills name exists', () => {
     expect(existsSync(join(ROOT, 'scripts', `${SCRIPT}.ts`))).toBe(true);
