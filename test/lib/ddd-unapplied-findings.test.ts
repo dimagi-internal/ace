@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
+  DASHBOARD_SURFACES,
   FOUND_NOT_FIXED,
   phase7DddOutcome,
   sceneUrlsFromSpec,
@@ -28,7 +29,7 @@ function dddState(terminal: string) {
       ...(out ? { surface: f.expect, owner: 'ACE Phase 7 (labs report templates)', issue: 'dimagi-internal/ace#2337' } : {}),
     };
   });
-  const firstDashboard = findings.find((f) => f.surface === 'labs-report-template')!;
+  const firstDashboard = findings.find((f) => DASHBOARD_SURFACES.includes(String(f.surface)))!;
   return {
     terminal_status: terminal,
     findings,
@@ -38,13 +39,14 @@ function dddState(terminal: string) {
   };
 }
 
-const dashboardCount = REAL.filter((f) => f.expect === 'labs-report-template').length;
+const isDashboard = (s: unknown) => DASHBOARD_SURFACES.includes(String(s));
+const dashboardCount = REAL.filter((f) => isDashboard(f.expect)).length;
 
 describe('found, not fixed (ace#2337)', () => {
   it('the fixture carries real dashboard findings and real in-scope controls', () => {
     expect(dashboardCount).toBeGreaterThan(0);
     expect(REAL.some((f) => f.expect === 'in')).toBe(true);
-    expect(REAL.some((f) => f.expect !== 'in' && f.expect !== 'labs-report-template')).toBe(true);
+    expect(REAL.some((f) => f.expect !== 'in' && !isDashboard(f.expect))).toBe(true);
   });
 
   it('a stopped loop with unapplied dashboard defects reports found_not_fixed, not stopped_not_converged', () => {
@@ -58,7 +60,7 @@ describe('found, not fixed (ace#2337)', () => {
   it('records which dashboard and what defect, and only the dashboard surface', () => {
     const urls = sceneUrlsFromSpec({ scenes: [{ url: 'https://labs/p/1' }, {}, { url: 'https://labs/p/3' }, {}] });
     const rows = unappliedDashboardFindings(dddState('stopped_not_converged'), urls);
-    expect(rows.every((r) => r.surface === 'labs-report-template')).toBe(true);
+    expect(rows.every((r) => isDashboard(r.surface))).toBe(true);
     expect(rows.every((r) => r.defect.length > 0 && r.defect.length <= 240)).toBe(true);
     expect(rows.every((r) => r.issue === 'dimagi-internal/ace#2337')).toBe(true);
     const byScene = Object.fromEntries(rows.map((r) => [r.scene, r.dashboard_url]));
@@ -69,7 +71,7 @@ describe('found, not fixed (ace#2337)', () => {
 
   it('without unapplied dashboard defects the terminal status passes through unchanged', () => {
     const state = dddState('stopped_not_converged');
-    state.findings = state.findings.filter((f) => f.surface !== 'labs-report-template');
+    state.findings = state.findings.filter((f) => !isDashboard(f.surface));
     const r = phase7DddOutcome(state);
     expect(r.outcome).toBe('stopped_not_converged');
     expect(r.verdict).toBe('partial-ddd-stopped_not_converged');

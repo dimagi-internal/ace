@@ -1,0 +1,33 @@
+# ACE's Labs TEMPLATE WORKFLOWS — one per labs report template Phase 7 builds.
+#
+# A template workflow keeps a report page's render code, config defaults and
+# snapshot spec as DATA in Labs, with a draft → preview → publish cycle and
+# numbered versions + rollback (connect-labs user_docs/shared-report-templates.md
+# § "Template workflows"). Every Phase 7 report FOLLOWS the matching template
+# while its run is live, so a page fix is one publish (seconds, no Labs deploy)
+# and the DDD loop can fix report-page findings in-loop. At run end each report
+# is FORKED off it (frozen), so a later publish never changes a finished run.
+#
+# Read by lib/labs-report-templates.ts; driven by scripts/labs-report-templates.ts
+# (`ensure` checks these ids are live, public and of the right type).
+#
+# Home: a labs-only synthetic opportunity/program created for this purpose
+# (2026-10-16, ACE identity ace@dimagi-ai.com, allowed domains @dimagi.com /
+# @dimagi-associate.com / @dimagi-ai.com). It is NOT a run artifact: never sweep
+# or disable it (lib/sweep-fingerprint.ts protects these ids). Edit rights are
+# the home program's LabsRecord write access, which the ACE identity has.
+#
+# Seeded 2026-10-16 from the deployed code templates (connect-labs main @
+# 319902a93, which carries connect-labs#2579's tile-label / no-target fixes).
+# A fix published here does NOT flow back to the code template; to promote one,
+# `workflow_template_export` + connect-labs `tools/promote_template_workflow.py`.
+home:
+  program_id: 10157
+  label: ACE report templates
+templates:
+  indicator_programme_report:
+    template_workflow_id: 11281
+  indicator_worker_review:
+    template_workflow_id: 11284
+  indicator_opp_report:
+    template_workflow_id: 11287

@@ -1,0 +1,56 @@
+{
+  "_captured": "Live labs workflow_template_get response as the ACE identity, 2026-10-16 (scripts/labs-report-templates.ts work; templates in program 10157; 10517 = kaduna-graduation/20261015-1411 opp report after its freeze).",
+  "template_workflow_id": 11281,
+  "scope": {
+    "program_id": 10157
+  },
+  "render_source": {
+    "workflow": 11281,
+    "program_id": 10157
+  },
+  "name": "ACE indicator programme report (template)",
+  "template_type": "indicator_programme_report",
+  "seeded_from": "code:indicator_programme_report",
+  "owned_by": "program 10157",
+  "editors": "members of the organization that manages program 10157 (write access to its LabsRecords)",
+  "you_can_edit": true,
+  "sharing": {
+    "public": true,
+    "template_scope": null,
+    "who_can_follow": "anyone signed in to labs, from any program or opportunity (the template is public)"
+  },
+  "template_scope": null,
+  "published_version": 1,
+  "versions": [
+    {
+      "number": 1,
+      "note": "seeded from code:indicator_programme_report",
+      "restores_version": null,
+      "published_by": "ace",
+      "published_at": "2026-10-17T04:07:31.481706+00:00",
+      "live": true,
+      "record_id": 11283
+    }
+  ],
+  "followers": [],
+  "draft": {
+    "revision": 1,
+    "differs_from_published": false,
+    "updated_at": "2026-10-17T04:07:31.186841+00:00",
+    "updated_by": "ace",
+    "render_code_bytes": 105487,
+    "config_keys": [
+      "multi_opp",
+      "noPipelineStream",
+      "renderWhileLoading",
+      "sandbox",
+      "showFilters",
+      "showSummaryCards",
+      "stale_after_days",
+      "templateType",
+      "warm_cache_on_read",
+      "worker_review"
+    ],
+    "has_snapshot_inputs": true
+  }
+}

@@ -100,11 +100,12 @@ describe('config/ddd-loop.yaml — shape (mirrors canopy loop_config)', () => {
     expect(TEMPLATE).not.toHaveProperty('workspace');
   });
 
-  it('names the three surfaces with owner, issue form and repo canopy routes on', () => {
+  it('names the surfaces with owner, issue form and repo canopy routes on', () => {
     expect(SURFACES.map((s) => s.name)).toEqual([
       'connect-labs-chrome',
       'ace-synthetic-opp-naming',
-      'labs-report-template',
+      'labs-engine',
+      'labs-semantic-registry',
     ]);
     for (const s of SURFACES) {
       for (const k of Object.keys(s)) expect(SURFACE_KEYS).toContain(k);
@@ -112,11 +113,11 @@ describe('config/ddd-loop.yaml — shape (mirrors canopy loop_config)', () => {
       expect(s.repo, s.name).toMatch(REPO_RE);
       if (s.issue) expect(s.issue, s.name).toMatch(ISSUE_RE);
     }
-    const tmpl = SURFACES.find((s) => s.name === 'labs-report-template')!;
-    // ACE-owned, but the template SOURCE is connect-labs; ace#2337 is closed.
-    expect(tmpl.owner).toBe('ACE (labs report templates, source in connect-labs)');
-    expect(tmpl.issue).toBeUndefined();
-    expect(tmpl.repo).toBe('dimagi-internal/connect-labs');
+    // The report PAGES are in scope since 2026-10-16 (ACE's Labs template workflows,
+    // config/labs-report-templates.yaml): no surface may pin them again.
+    expect(SURFACES.some((s) => s.name === 'labs-report-template')).toBe(false);
+    expect(SURFACES.find((s) => s.name === 'labs-engine')!.repo).toBe('dimagi-internal/connect-labs');
+    expect(SURFACES.find((s) => s.name === 'labs-semantic-registry')!.repo).toBe('dimagi-internal/ace');
     const chrome = SURFACES.find((s) => s.name === 'connect-labs-chrome')!;
     expect(chrome.owner).toBe('Connect Labs');
     expect(chrome.repo).toBe('dimagi-internal/connect-labs');
@@ -152,6 +153,17 @@ describe.skipIf(!hasPython())('config/ddd-loop.yaml — regexes vs real findings
     const floor = FIXTURE.findings.find((r) => r.detail.includes("floating 'Ask an agent' button occludes footer text"));
     expect(floor).toBeDefined();
     expect(pyClassify(SURFACES, [`${floor!.detail} ${floor!.fix_recommendation}`])).toEqual(['connect-labs-chrome']);
+  });
+
+  it('report-page findings (connect-labs#2578, kaduna) are IN scope; Labs chrome stays out', () => {
+    const page = [
+      "Two of the four headline tiles truncate their label: 'TRANSFER ...' and 'SHORT VISI...'. In the indicator_programme_report tile component, move the 'lower is better' direction chip to its own line.",
+      'With no targets in the registry, the partner table still shows a legend for states that cannot occur. In indicator_programme_report, render the band legend and the Attention column only when an indicator defines a band.',
+      "Delete the 'NOT RANKED · FOR COMPARISON ONLY' sub-header row from the Benchmarks table.",
+      "In the indicator_opp_report Benchmarks strip, scale each row's peer marks to that row's own observed min-max range, not to a shared 0-100% axis.",
+    ];
+    expect(pyClassify(SURFACES, page)).toEqual(['in', 'in', 'in', 'in']);
+    expect(pyClassify(SURFACES, ["The floating 'Ask an agent' launcher is drawn over the Exits trend card."])).toEqual(['connect-labs-chrome']);
   });
 
   it('a mixed finding that also asks for a recipe or narration change stays in', () => {
@@ -293,7 +305,7 @@ const RUNTIME = canopyRuntime();
 const HAS_UV = spawnSync('uv', ['--version'], { timeout: 15_000 }).status === 0;
 
 describe.skipIf(!RUNTIME || !HAS_UV)('canopy loop_config.load reads the written config', () => {
-  it('parses all three surfaces, product_repo and jargon, and pins the noora floor finding', () => {
+  it('parses every surface, product_repo and jargon, and pins the noora floor finding', () => {
     const home = fs.mkdtempSync(path.join(os.tmpdir(), 'ddd-loop-canopy-'));
     try {
       const r = writeDddLoopConfig({ runsDir: path.join(home, 'runs', 'ace-noora-health-20261015-1129'), workspace: 'connect', home });
@@ -317,7 +329,7 @@ describe.skipIf(!RUNTIME || !HAS_UV)('canopy loop_config.load reads the written 
       expect(out.status, out.stderr).toBe(0);
       const got = JSON.parse(out.stdout.trim().split('\n').pop()!);
       expect(got.surfaces.map((s: string[]) => s[0])).toEqual(SURFACES.map((s) => s.name));
-      expect(got.surfaces[2]).toEqual(['labs-report-template', 'ACE (labs report templates, source in connect-labs)', null, 'dimagi-internal/connect-labs']);
+      expect(got.surfaces[2]).toEqual(['labs-engine', 'Connect Labs (snapshot builder / engine)', null, 'dimagi-internal/connect-labs']);
       expect(got.product_repo).toBe('dimagi-internal/connect-labs');
       for (const j of Object.keys(TEMPLATE.product.lint.jargon)) expect(got.jargon).toContain(j);
       expect(got.scope).toEqual(['out', 'connect-labs-chrome', 'Connect Labs']);

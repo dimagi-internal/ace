@@ -1,117 +1,131 @@
 {
- "_doc": "Real findings from the 2026-10-15 ACE DDD runs (noora-health/20261015-1129, smallholder-seasonal/20261015-1402, kaduna-graduation/20261015-1411). expect = the config/ddd-loop.yaml fixed surface it must match, or 'in' (a recipe/narration finding the loop can fix). Out rows were declined by the loops as out of scope; in rows had fix_scope recipe|narrative. Built by sampling; see test/lib/ddd-loop-config.test.ts.",
+ "_doc": "Real findings from the 2026-10-15 ACE DDD runs (noora-health/20261015-1129, smallholder-seasonal/20261015-1402, kaduna-graduation/20261015-1411). expect = the config/ddd-loop.yaml fixed surface it must match, or 'in' (a recipe/narration finding the loop can fix). Out rows were declined by the loops as out of scope; in rows had fix_scope recipe|narrative. Built by sampling; see test/lib/ddd-loop-config.test.ts. 2026-10-16: the labs report pages follow ACE's template workflows, so the 14 rows the loops declined as labs-report-template are now expected IN (kept with was: labs-report-template); constructed rows cover the two surfaces that remain out (labs-engine, labs-semantic-registry).",
  "findings": [
   {
    "run": "noora-health/20261015-1129",
    "fix_scope": "product",
    "detail": "The facility class list has two columns, \"Caregivers in the class\" and \"Caregivers\", with identical values on every row (known residual). Two zero-caregiver class records (8 Jul, 15 Jul) pull the chart to 0.",
    "fix_recommendation": "Remove the duplicate \"Caregivers\" column from the facility visit table.",
-   "expect": "labs-report-template",
-   "declined_as": "Labs report page / workflow render code (deployed labs template): ACE-owned labs object, outside this DDD loop's write p"
+   "expect": "in",
+   "declined_as": "Labs report page / workflow render code (deployed labs template): ACE-owned labs object, outside this DDD loop's write p",
+   "was": "labs-report-template"
   },
   {
    "run": "noora-health/20261015-1129",
    "fix_scope": null,
    "detail": "",
    "fix_recommendation": "Make Attention count the row's highlighted cells, or rename it to what it counts.",
-   "expect": "labs-report-template",
-   "declined_as": "Labs report page / workflow render code (deployed labs template): ACE-owned labs object, outside this DDD loop's write p"
+   "expect": "in",
+   "declined_as": "Labs report page / workflow render code (deployed labs template): ACE-owned labs object, outside this DDD loop's write p",
+   "was": "labs-report-template"
   },
   {
    "run": "noora-health/20261015-1129",
    "fix_scope": null,
    "detail": "",
    "fix_recommendation": "PRODUCT: draw discrete per-date marks instead of a connected line, thin the axis ticks, delete the legend row, and use one boolean format.",
-   "expect": "labs-report-template",
-   "declined_as": "Labs report page / workflow render code (deployed labs template): ACE-owned labs object, outside this DDD loop's write p"
+   "expect": "in",
+   "declined_as": "Labs report page / workflow render code (deployed labs template): ACE-owned labs object, outside this DDD loop's write p",
+   "was": "labs-report-template"
   },
   {
    "run": "noora-health/20261015-1129",
    "fix_scope": "product",
    "detail": "Partners table clipped at the right edge: 'Attention' header reads 'Attent' and its values are off-frame; 'Last visit' column is identical (10 Oct) for every row.",
    "fix_recommendation": "Remove the uniform 'Last visit' column (or narrow columns) so the full table, including Attention, fits the frame.",
-   "expect": "labs-report-template",
-   "declined_as": "Labs report page / workflow render code (deployed labs template): ACE-owned labs object, outside this DDD loop's write p"
+   "expect": "in",
+   "declined_as": "Labs report page / workflow render code (deployed labs template): ACE-owned labs object, outside this DDD loop's write p",
+   "was": "labs-report-template"
   },
   {
    "run": "noora-health/20261015-1129",
    "fix_scope": "product",
    "detail": "8 Jul and 15 Jul records show 0 caregivers in the class (doll demonstration '-'), plotted as normal points that dive to 0 on the chart, with no explanation.",
    "fix_recommendation": "Mark zero-attendee records as flagged (distinct point style + row label) rather than ordinary attendance.",
-   "expect": "labs-report-template",
-   "declined_as": "Labs report page / workflow render code (deployed labs template): ACE-owned labs object, outside this DDD loop's write p"
+   "expect": "in",
+   "declined_as": "Labs report page / workflow render code (deployed labs template): ACE-owned labs object, outside this DDD loop's write p",
+   "was": "labs-report-template"
   },
   {
    "run": "noora-health/20261015-1129",
    "fix_scope": null,
    "detail": "",
    "fix_recommendation": "PRODUCT: remove the info bubbles and legend via clearer labels and a single colour rule; make the indicators table span its card and drop the duplicated 'against 40 peer educators' caption.",
-   "expect": "labs-report-template",
-   "declined_as": "Labs report page / workflow render code (deployed labs template): ACE-owned labs object, outside this DDD loop's write p"
+   "expect": "in",
+   "declined_as": "Labs report page / workflow render code (deployed labs template): ACE-owned labs object, outside this DDD loop's write p",
+   "was": "labs-report-template"
   },
   {
    "run": "noora-health/20261015-1129",
    "fix_scope": null,
    "detail": "",
    "fix_recommendation": "PRODUCT: remove the legend, label the self row and the value column 'You' / 'Your value' so nothing truncates or wraps, and keep the full org name only in the page header.",
-   "expect": "labs-report-template",
-   "declined_as": "Labs report page / workflow render code (deployed labs template): ACE-owned labs object, outside this DDD loop's write p"
+   "expect": "in",
+   "declined_as": "Labs report page / workflow render code (deployed labs template): ACE-owned labs object, outside this DDD loop's write p",
+   "was": "labs-report-template"
   },
   {
    "run": "noora-health/20261015-1129",
    "fix_scope": "product",
    "detail": "'At payment floor' and 'Call consent' are internal programme terms that need a hover to decode. The Off target vs Watch threshold isn't stated (Doll demonstration at 70.0% below its 80% target is only 'Watch'), and the light-blue fill on Educator cells isn't in the legend.",
    "fix_recommendation": "Plain-language labels ('Classes paid at the minimum rate', 'Caregivers agreeing to a follow-up call'), plus the threshold rule added to the legend line.",
-   "expect": "labs-report-template",
-   "declined_as": "Labs report page / workflow render code (deployed labs template): ACE-owned labs object, outside this DDD loop's write p"
+   "expect": "in",
+   "declined_as": "Labs report page / workflow render code (deployed labs template): ACE-owned labs object, outside this DDD loop's write p",
+   "was": "labs-report-template"
   },
   {
    "run": "smallholder-seasonal/20261015-1402",
    "fix_scope": null,
    "detail": "",
    "fix_recommendation": "[UPSTREAM] labs template: grade cells with an explicit per-indicator off-target threshold carried on the target definition so a cell far below target renders Off target, and fit the table so the Attention column is visible.",
-   "expect": "labs-report-template",
-   "declined_as": "deployed indicator_programme_report template (Attention column / legend); no write path to labs render code (ace#2337) —"
+   "expect": "in",
+   "declined_as": "deployed indicator_programme_report template (Attention column / legend); no write path to labs render code (ace#2337) —",
+   "was": "labs-report-template"
   },
   {
    "run": "noora-health/20261015-1129",
    "fix_scope": null,
    "detail": "",
    "fix_recommendation": "PRODUCT: remove the 'click a row…' and 'Click a column name…' hints and the footer target list. Carry targets in the table structure (a target value under each column header), matching the tiles.",
-   "expect": "labs-report-template",
-   "declined_as": "Labs report page / workflow render code (deployed labs template): ACE-owned labs object, outside this DDD loop's write p"
+   "expect": "in",
+   "declined_as": "Labs report page / workflow render code (deployed labs template): ACE-owned labs object, outside this DDD loop's write p",
+   "was": "labs-report-template"
   },
   {
    "run": "noora-health/20261015-1129",
    "fix_scope": "product",
    "detail": "The 'See educators' click lands coherently on a worst-first educator table. However, the 'Attention' count contradicts the cell flags (the best educator scores the highest attention), the Off target/Watch band is undeclared, and 'Start coaching' is duplicated as a header chip and on all eight rows.",
    "fix_recommendation": "PRODUCT: make 'Attention' name the flagged indicator (or remove it), put the watch band into the column header, and drop the per-row coaching links when the header action already covers every educator.",
-   "expect": "labs-report-template",
-   "declined_as": "Labs report page / workflow render code (deployed labs template): ACE-owned labs object, outside this DDD loop's write p"
+   "expect": "in",
+   "declined_as": "Labs report page / workflow render code (deployed labs template): ACE-owned labs object, outside this DDD loop's write p",
+   "was": "labs-report-template"
   },
   {
    "run": "noora-health/20261015-1129",
    "fix_scope": "product",
    "detail": "Unexplained Attention column, 'n<1: too few records' legend jargon, and truncated 'AT PAYMENT FLO...' tile label make the table need a second read.",
    "fix_recommendation": "Drop the Attention column (or give it a click definition), reword 'n<1' to '- : too few records', move 'lower is better' under the KPI value so the label fits.",
-   "expect": "labs-report-template",
-   "declined_as": "Labs report page / workflow render code (deployed labs template): ACE-owned labs object, outside this DDD loop's write p"
+   "expect": "in",
+   "declined_as": "Labs report page / workflow render code (deployed labs template): ACE-owned labs object, outside this DDD loop's write p",
+   "was": "labs-report-template"
   },
   {
    "run": "noora-health/20261015-1129",
    "fix_scope": null,
    "detail": "",
    "fix_recommendation": "PRODUCT: collapse the status into one chip and add one 'review reason' field naming the failed payment rule, taken from the rule the product already applies. Keep sent-to-review records off the attendance line.",
-   "expect": "labs-report-template",
-   "declined_as": "Labs report page / workflow render code (deployed labs template): ACE-owned labs object, outside this DDD loop's write p"
+   "expect": "in",
+   "declined_as": "Labs report page / workflow render code (deployed labs template): ACE-owned labs object, outside this DDD loop's write p",
+   "was": "labs-report-template"
   },
   {
    "run": "noora-health/20261015-1129",
    "fix_scope": null,
    "detail": "",
    "fix_recommendation": "PRODUCT: remove the info bubbles, legend and hint; let target and peer columns plus a single threshold marker carry the meaning.",
-   "expect": "labs-report-template",
-   "declined_as": "Labs report page / workflow render code (deployed labs template): ACE-owned labs object, outside this DDD loop's write p"
+   "expect": "in",
+   "declined_as": "Labs report page / workflow render code (deployed labs template): ACE-owned labs object, outside this DDD loop's write p",
+   "was": "labs-report-template"
   },
   {
    "run": "noora-health/20261015-1129",
@@ -560,6 +574,30 @@
    "detail": "Narration asserts a per-partner trend the screen does not show. The four charts below the table ('Home-visit coverage', 'Transfer not arrived', 'Short visits', 'Exits') are single programme-wide series; the Home-visit coverage line sits flat around 86% from 19 Jul to 11 Oct. Nothing on the page text or frame shows Tallafi's July position or Sabon Haske slipping.",
    "fix_recommendation": "Replace 'The weekly trend lines below show it has not always been so: in the July reports Tallafi was the partner behind, and it has climbed while Sabon Haske has slipped.' -> 'The trend lines below are for the whole programme: coverage has held near 86% since July.'",
    "expect": "in"
+  },
+  {
+   "run": "constructed 2026-10-16 from connect-labs#2578 (registry 10510 items)",
+   "detail": "The visit list prints the raw stored value 'not_home', and the indicator 'Money not hers' reads oddly to a programme manager.",
+   "fix_recommendation": "[REGISTRY] Add a values map for visit_outcome in the semantic registry and rename the indicator there.",
+   "expect": "labs-semantic-registry"
+  },
+  {
+   "run": "constructed 2026-10-16 (registry label finding)",
+   "detail": "Tile labels use internal programme terms ('At payment floor').",
+   "fix_recommendation": "Change the registry labels to plain language so every page that reads them shows the plain term.",
+   "expect": "labs-semantic-registry"
+  },
+  {
+   "run": "constructed 2026-10-16 (engine-boundary finding)",
+   "detail": "The enrolment card cannot show registrations by day for the as-of week.",
+   "fix_recommendation": "Show daily registrations; the snapshot does not store per-day counts, so this needs a snapshot builder change in connect-labs.",
+   "expect": "labs-engine"
+  },
+  {
+   "run": "constructed 2026-10-16 (engine-boundary finding)",
+   "detail": "Benchmarks show no peer median for exits.",
+   "fix_recommendation": "[ENGINE] compute a peer median for unranked indicators and serve it with the benchmark payload.",
+   "expect": "labs-engine"
   }
  ]
 }

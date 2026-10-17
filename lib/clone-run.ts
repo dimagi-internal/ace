@@ -37,6 +37,16 @@ import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
 import { parseAppReleaseSummary, releasedBuild } from './app-release-record.js';
 import { connectCountryName } from './program-locale.js';
 import { labsIdsIn, labsRebuildSource, remapSyntheticProducts } from './clone-labs-rebuild.js';
+import {
+  cloneReportTemplatesBlock,
+  copyReportRenders,
+  loadReportTemplatesConfig,
+  pairCloneReports,
+  withoutReportTemplates,
+  type RenderCopyResult,
+  type ReportTemplatesBlock,
+  type ReportTemplatesConfig,
+} from './labs-report-templates.js';
 
 // ── Stages ────────────────────────────────────────────────────────────
 
@@ -936,6 +946,8 @@ export interface LabsCopyDeps {
   retryAmbiguous?: Set<string>;
   /** Look-again attempts after an ambiguous create (default 4, `lookThenCreate`'s). */
   settle?: number;
+  /** ACE's template workflows (default: config/labs-report-templates.yaml) — step 4b's fork path. */
+  reportTemplates?: ReportTemplatesConfig;
 }
 
 export interface LabsRebuildContext {
@@ -1402,6 +1414,14 @@ async function copyLabs(
     }
   }
 
+  // 4b. The pages: the clone shows the page its source FROZE at Phase 7's end,
+  // not whatever the code template ships next (lib/labs-report-templates.ts).
+  const renderPairs = pairCloneReports(cascade, map);
+  const renders = await step('report_renders', async () => {
+    if (!renderPairs.length) return { results: [] as RenderCopyResult[] };
+    return { results: await copyReportRenders(call, renderPairs, deps.reportTemplates ?? loadReportTemplatesConfig()) };
+  });
+
   // 5. Saved history over the SOURCE's window — computed from the copied records.
   const srcHistory = await allHistoryRuns(call, { definition_id: srcPr, program_id: src.program_id });
   if (srcHistory.length) {
@@ -1486,9 +1506,25 @@ async function copyLabs(
   });
 
   // 9. Rewrite the products; refuse to leave a source id behind.
-  const remapped = remapSyntheticProducts(synthetic, Object.fromEntries(Object.entries(map).map(([k, v]) => [Number(k), v])));
+  // The source's report_templates names ACE's template HOME, which is not the
+  // run's to remap — drop it, then record the clone's own (step 4b).
+  const remapped = remapSyntheticProducts(withoutReportTemplates(synthetic), Object.fromEntries(Object.entries(map).map(([k, v]) => [Number(k), v])));
   if (remapped.leftover.length) {
     throw new LabsCopyStepError('products', `source ids still referenced after the copy: ${remapped.leftover.join(', ')} — each needs a counterpart in clone.labs.copy.id_map`);
+  }
+  const renderResults = arr(obj(renders).results) as RenderCopyResult[];
+  if (renderResults.length) {
+    const products = obj(remapped.products);
+    products.cascade = {
+      ...obj(products.cascade),
+      report_templates: cloneReportTemplatesBlock(
+        (obj(cascade.report_templates).reports ? cascade.report_templates : null) as ReportTemplatesBlock | null,
+        renderPairs,
+        renderResults,
+        deps.reportTemplates ?? loadReportTemplatesConfig(),
+      ),
+    };
+    remapped.products = products;
   }
   const prRun = map[String(int(pr.run_id) ?? 0)] ?? null;
   return {

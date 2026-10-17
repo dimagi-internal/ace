@@ -190,6 +190,14 @@ describe('scoreLabsItem', () => {
     expect(r.confidence).toBe('high');
   });
 
+  it('never scores an ACE template workflow or its home as an orphan (config/labs-report-templates.yaml)', () => {
+    for (const [id, type] of [['11281', 'workflow'], ['11287', 'workflow'], ['10157', 'synthetic']] as const) {
+      const r = scoreLabsItem({ id, type, name: 'ACE indicator programme report (template)' }, LIVE_SET);
+      expect(r.confidence).toBe('low');
+      expect(r.signals.join(' ')).toMatch(/template workflow/);
+    }
+  });
+
   it('returns high by default — ACE owns connect-labs writes', () => {
     const r = scoreLabsItem({ id: 'w1', type: 'pipeline' }, LIVE_SET);
     expect(r.confidence).toBe('high');
