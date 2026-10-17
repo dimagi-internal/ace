@@ -9,36 +9,44 @@
 # 00-connect-home recipe lands the AVD on this surface.
 #
 # Strategy: scroll the opp list to find the View Opportunity button BELOW
-# a tile whose title matches ${OPP_NAME} (substring). Tap → opp-detail
+# a tile whose title CONTAINS ${OPP_NAME}. Tap → opp-detail
 # screen with Start button. Snap. We do NOT tap Start (downstream
 # 02-learn-install does that).
 #
 # OPP_NAME PINNING: the demo user accumulates invites across every
 # /ace:run, including older pre-Nova-fix builds that hit "A part of your
 # application is invalid" when claimed. To keep baseline capture
-# deterministic, pin OPP_NAME to a known-good recent opp (e.g.
-# "malaria-rdt (run 20260523-2027)"). First-match-by-scroll is fragile
+# deterministic, pin OPP_NAME to a known-good recent opp's run id (e.g.
+# "20260730-2210"). First-match-by-scroll is fragile
 # because the first unclaimed tile may be a stale broken build.
 #
 # Required env vars:
-#   OPP_NAME — substring of the target opp's tile title. Recommended:
-#              an unclaimed opp on a Connect APK / Nova build version
-#              that's known to install cleanly. Pass verbatim from
-#              run_state.yaml.phases.connect-setup.products.connect.opportunity.name
-#              for the run you're capturing against.
+#   OPP_NAME — a fragment of the target opp's tile title (the recipe
+#              wraps it as ".*${OPP_NAME}.*" — see the scroll below). Recommended:
+#              the RUN ID of an unclaimed opp on a Connect APK / Nova
+#              build version that's known to install cleanly (tiles read
+#              "<run-id> · <title>"). Because it is spliced into a regex,
+#              prefer the run id over the full title: a title with
+#              regex metacharacters ("(", "+", "?") would not match
+#              itself.
 #
-# Selector palette: connect-2.63.0.yaml
+# Selector palette: connect-2.64.0.yaml
 appId: org.commcare.dalvik
 ---
 - assertVisible:
     id: "org.commcare.dalvik:id/connect_fragment_jobs_list"
 
-# Scroll to the target opp's title first (text match — Maestro's `text:`
-# matcher is substring by default; run-id suffixes give per-run
-# uniqueness).
+# Scroll to the target opp's title first. Maestro's `text:` matcher is a
+# FULL-STRING regex, NOT a substring match (ace#3064, measured on 2.64.0
+# 2026-10-16: with the tile "20260730-2210 · Household Poverty Targeting
+# Survey" fully on screen, OPP_NAME=20260730-2210 failed this scroll with
+# "No visible element found"; the full title passed at once). So every
+# match below is wrapped as ".*${OPP_NAME}.*", the same idiom the
+# production palette uses for ".*${OPP_RUN_ID}.*". Run ids give per-run
+# uniqueness.
 - scrollUntilVisible:
     element:
-      text: ${OPP_NAME}
+      text: ".*${OPP_NAME}.*"
     direction: DOWN
     timeout: 30000
 
@@ -50,13 +58,13 @@ appId: org.commcare.dalvik
       visible:
         id: "org.commcare.dalvik:id/btn_view_opportunity"
         below:
-          text: ${OPP_NAME}
+          text: ".*${OPP_NAME}.*"
     commands:
       - scrollUntilVisible:
           element:
             id: "org.commcare.dalvik:id/btn_view_opportunity"
             below:
-              text: ${OPP_NAME}
+              text: ".*${OPP_NAME}.*"
           direction: DOWN
           timeout: 10000
 
@@ -67,7 +75,7 @@ appId: org.commcare.dalvik
 - tapOn:
     id: "org.commcare.dalvik:id/btn_view_opportunity"
     below:
-      text: ${OPP_NAME}
+      text: ".*${OPP_NAME}.*"
 
 # Land on opp-detail. The Start button (btn_start) is the "Claim" CTA.
 - extendedWaitUntil:

@@ -11,40 +11,132 @@
 # Post-state: Learn-app StandardHomeActivity (nsv_home_screen visible) —
 # the post-download Learn home with Start/Sync/Log out tiles.
 #
-# Selector palette: connect-2.63.0.yaml
+# Required env vars:
+#   OPP_NAME — the same value 01-claim-opp was given. Only read by the
+#              crash-recovery branch below (Resume on the tile); the
+#              healthy path never needs it.
+#
+# THE 2.64.0 SURFACE (dimagi-internal/ace#3064, local AVD, CommCare
+# 2.64.0 / versionCode 490738, worker-1, 2026-10-16): a full-screen blue
+# "Downloading Learn App" page with "Step N of 11" (step 4 seen within
+# ~2s of the tap), then a "Launching App / Contacting Server" dialog, then
+# the Learn home. It is a page, not the 2.63-era progress dialog.
+#
+# Selector palette: connect-2.64.0.yaml
 appId: org.commcare.dalvik
 ---
 # Confirm we're on opp-detail with the Start button visible.
 - assertVisible:
     id: "org.commcare.dalvik:id/btn_start"
 
-# Tap Start. This fires POST /users/start_learn_app/ on Connect, then
-# downloads the Learn CCZ (per atlas §4 — "Downloading Learn App"
-# progress dialog with "Step N of 14"). The download takes 10-60s.
+# Tap Start ONCE. No `retryTapIfNoChange` (ace#3064): Start fires
+# POST /users/start_learn_app/, and the hierarchy does not change while
+# that request is in flight — so the retry re-taps, and the SECOND
+# success callback navigates from a fragment that has already moved on:
+#
+#   IllegalArgumentException: Navigation action/destination
+#     action_connect_job_intro_fragment_to_connect_downloading_fragment
+#     cannot be found from the current destination connect_downloading_fragment
+#     at ConnectJobIntroFragment$1.onSuccess(ConnectJobIntroFragment.java:161)
+#
+# CommCare dies on the main thread and restarts on first-start. Observed
+# with the retried tap on 2026-10-16 (ace#3064) and on spark-facilitator/
+# 20261001-2208 (ace#2584, same stack).
 - tapOn:
     id: "org.commcare.dalvik:id/btn_start"
-    retryTapIfNoChange: true
 
-# Try to catch the "Downloading Learn App" dialog while it's visible.
-# Best-effort: the dialog may flash by quickly on a warm network. Anchor
-# on the text; capture once visible.
+# Wait FOR the download page rather than probing once right after the tap
+# (the old one-shot `when: visible` ran before the page rendered and was
+# SKIPPED). Optional: on a warm cache the page can be gone before the
+# first poll, and the fallback capture below still covers the slide.
+- extendedWaitUntil:
+    visible:
+      text: "Downloading Learn App.*"
+    timeout: 30000
+    optional: true
 - runFlow:
     when:
       visible:
-        text: "Downloading Learn App"
+        text: "Downloading Learn App.*"
     commands:
       - takeScreenshot: "learn-install"
 
+# RECOVERY 1 — the Job Card's second gate (ace#2424). btn_start can claim
+# the opp and hand back to the Job Card with `connect_learning_button`
+# ("DOWNLOAD LEARN APP") instead of downloading. One tap starts the
+# download. Inert when the button is absent.
+- runFlow:
+    when:
+      visible:
+        id: "org.commcare.dalvik:id/connect_learning_button"
+    commands:
+      - tapOn:
+          id: "org.commcare.dalvik:id/connect_learning_button"
+      - extendedWaitUntil:
+          visible:
+            text: "Downloading Learn App.*"
+          timeout: 30000
+          optional: true
+      - runFlow:
+          when:
+            visible:
+              text: "Downloading Learn App.*"
+          commands:
+            - takeScreenshot: "learn-install"
+
+# RECOVERY 2 — CommCare crashed and came back on the Connect job list.
+# The claim had succeeded server-side, so the tile is now In Progress:
+# Resume -> Job Card -> DOWNLOAD LEARN APP, each tapped once. This is the
+# path that produced the published learn-install frame on 2026-10-16.
+- runFlow:
+    when:
+      visible:
+        id: "org.commcare.dalvik:id/connect_fragment_jobs_list"
+    commands:
+      - scrollUntilVisible:
+          element:
+            id: "org.commcare.dalvik:id/btn_resume"
+            below:
+              text: ".*${OPP_NAME}.*"
+          direction: DOWN
+          timeout: 60000
+          # The scroll and the tap are optional (recipe-lint
+          # runFlow-guard-scope-mismatch): a miss falls through to the
+          # non-optional Job Card wait below, which fails loud.
+          optional: true
+      - tapOn:
+          id: "org.commcare.dalvik:id/btn_resume"
+          below:
+            text: ".*${OPP_NAME}.*"
+          optional: true
+      - extendedWaitUntil:
+          visible:
+            id: "org.commcare.dalvik:id/connect_learning_button"
+          timeout: 15000
+      - tapOn:
+          id: "org.commcare.dalvik:id/connect_learning_button"
+      - extendedWaitUntil:
+          visible:
+            text: "Downloading Learn App.*"
+          timeout: 30000
+          optional: true
+      - runFlow:
+          when:
+            visible:
+              text: "Downloading Learn App.*"
+          commands:
+            - takeScreenshot: "learn-install"
+
 # Wait for the full download cycle to complete and land on Learn home.
-# Per connect-claim-opp.yaml comments: nsv_home_screen is the
-# StandardHomeActivity-specific signal post-download. Generous 180s
-# timeout per learnings (full window can run 30-90s on cold-booted AVDs).
+# nsv_home_screen is the StandardHomeActivity-specific signal
+# post-download. Generous 180s timeout (full window can run 30-90s on
+# cold-booted AVDs).
 - extendedWaitUntil:
     visible:
       id: "org.commcare.dalvik:id/nsv_home_screen"
     timeout: 180000
 
-# Fallback capture: if we missed the download dialog (too fast), capture
+# Fallback capture: if we missed the download page (too fast), capture
 # the post-install Learn home. The deck slide is about "Learn app
 # installed and ready" — this surface satisfies that intent too.
 - takeScreenshot: "learn-install-home"
