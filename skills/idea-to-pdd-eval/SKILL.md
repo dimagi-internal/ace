@@ -68,7 +68,7 @@ filename rule.
    the union of the manifest's contents, treated as one synthesized
    seed.
 
-1b. **Run the published-render gate before grading anything:** `scripts/check-published-doc-render.ts <published Doc URL>` — see `skills/_eval-template.md § Published-render gate (stock)`. A non-zero exit (raw markdown on the page, or a doc an anonymous reader cannot open) makes this eval's verdict `fail`, whatever the prose would score (ace#2213).
+1b. **Run the published-render gate before grading anything:** `scripts/check-published-doc-render.ts <published Doc URL>` — see `skills/_eval-template.md § Published-render gate (stock)`. A non-zero exit (raw markdown on the page, or a doc an anonymous reader cannot open) makes this eval's verdict `fail`, whatever the prose would score (ace#2213). Write the Doc URL you checked to the verdict as top-level `published_url`, and the result as `published_render` — `capture_path` keeps naming the run-folder source, so the verdict records both what was composed and what a reader opened.
 
 2. **Extract the source idea's reviewer-comment list.** Source-idea
    bodies (any file in the manifest) generally include footnoted or

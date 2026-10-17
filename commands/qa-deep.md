@@ -205,9 +205,12 @@ Writes (under `ACE/$1/runs/<run-id>/5-ocs/`):
      `timeEnd`/`timeStart` would then disagree with the server's receipt
      times, Connect would see impossible visit timing, and the grade would
      describe a timeline no worker can produce.
-   - Do not back-date either. The 2.64.0 picker has only a calibrated
-     +1-day forward drive (`lib/date-picker-drive.ts`). An uncalibrated
-     backward fling spins the date silently (ace#1300).
+   - Do not back-date to manufacture the days either. A one-day backward
+     drive is calibrated on 2.64.0 (`dayStepBackFling` in
+     `lib/date-picker-drive.ts`, ace#2785), but whether a deep run may
+     use it to reach multi-day criteria has not been decided, and nothing
+     in the form catches a wrong backward step. Until it is decided, keep
+     recording those criteria NOT REACHED.
    - The same NOT REACHED rule applies to any criterion the walk did not
      get to for another stated reason, such as a blocked leg or a surface
      outside the palette. Name the reason. A criterion that was neither

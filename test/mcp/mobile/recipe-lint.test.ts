@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { readdirSync, readFileSync } from 'node:fs';
 import { lintRecipeText } from '../../../mcp/mobile/recipe-lint.js';
 import { loadSelectorTypes } from '../../../mcp/mobile/recipe-resolver.js';
+import { dayStepBackFlingYaml } from '../../../lib/date-picker-drive.js';
 
 // Static, parse-free lint pass on Maestro recipe YAML text. Catches the
 // known-broken structural shapes that produce unhelpful parser errors at
@@ -888,6 +889,26 @@ describe('lintRecipeText — date-picker-next-cell-tap-noop (ace#2518)', () => {
       '',
     ].join('\n');
     expect(lintRecipeText(fling, { apkVersion: '2.64.0' }).ok).toBe(true);
+  });
+
+  it('passes the 2.64.0 back fling + read-back emitted by dayStepBackFlingYaml (ace#2785)', () => {
+    const back = [
+      'appId: org.commcare.dalvik',
+      '---',
+      dayStepBackFlingYaml(),
+      '- assertVisible:',
+      '    id: "${SELECTOR:form-date-picker-input}"',
+      '    text: "15"',
+      '',
+    ].join('\n');
+    expect(lintRecipeText(back, { apkVersion: '2.64.0' })).toEqual(
+      expect.objectContaining({ ok: true, violations: [] }),
+    );
+  });
+
+  it('names the backward drive in the remediation (ace#2785)', () => {
+    const { violations } = lintRecipeText(idiom, { apkVersion: '2.64.0' });
+    expect(violations[0].remediation).toMatch(/dayStepBackFlingYaml/);
   });
 });
 

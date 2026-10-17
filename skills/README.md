@@ -578,6 +578,13 @@ mode: quick | deep | monitor   # or omit if the eval has one mode
 ran_at: <ISO timestamp>
 capture_path: <phase>/<producer>_transcript[-<mode>].md  # relative to runs/<run-id>/, or "inline-self-eval" if the skill is its own producer
 
+# Evals of a PUBLISHED Google Doc (producer artifact `rendered: true` in
+# lib/artifact-manifest.ts) also record the surface a reader opens — see
+# skills/_eval-template.md § Published-render gate (stock). capture_path
+# keeps naming the run-folder source.
+published_url: https://docs.google.com/document/d/<id>/edit
+published_render: { ok: true, literal_markdown_hits: [], rendered_image_count: 12 }
+
 overall_score: 0.0-10.0           # weighted, post-cap
 overall_score_pre_cap: 0.0-10.0   # optional; raw weighted mean before any cap binds
 verdict: pass | warn | fail | incomplete | partial

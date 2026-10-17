@@ -21,6 +21,16 @@
  * control rather than one hand-built example: same run, same day, one
  * contaminated and one clean.
  *
+ * **Correction (2026-10-16): that "contaminated" shape was never in the CCZ.**
+ * Re-downloading build `171996636b714bb09dee8779e7e83927` and reading its zip
+ * entries gives 7 files and no `nya/` or `tum/` — the issue's
+ * `unzip -o -q deliver.ccz && ls -d` ran in a directory still holding an
+ * earlier spark-facilitator extraction. The inline CONTAMINATED_DELIVER map is
+ * kept as a synthetic negative control for the set logic; the
+ * `reads the archive, not a directory` block below is grounded on the real
+ * build (`test/fixtures/ccz/bednet-check-2-visit-20260908-1544-deliver-v7.ccz`)
+ * and reproduces the residue mechanism that produced the false report.
+ *
  * ## Controls
  *
  * A gate that cannot fail proves nothing, and a gate that cannot pass is worse
@@ -30,6 +40,10 @@
  * report `unable` — never a pass (`lib/check-outcome.ts`).
  */
 
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join, relative } from 'node:path';
+import { unzipSync } from 'fflate';
 import { describe, expect, it } from 'vitest';
 import {
   appDisplayName,
@@ -37,6 +51,7 @@ import {
   declaredLocales,
   formatCczLanguageTables,
   languageTables,
+  readCczTextFiles,
 } from '../../lib/ccz-language-tables';
 import { assertChecked, assertUnable } from '../../lib/check-outcome';
 
@@ -271,5 +286,89 @@ describe('inputs the check cannot answer over report unable, never a pass', () =
     });
     assertUnable(audit);
     expect(audit.reason).toMatch(/declares no <locale language/);
+  });
+});
+
+describe('reads the archive, not a directory (ace#2292 re-verification)', () => {
+  /**
+   * The real released build the issue named — re-downloaded 2026-10-16 with
+   * `commcare_download_ccz(domain=connect-ace-prod,
+   * app_id=a3359eaf446f498a80366e000a677a4a,
+   * build_id=171996636b714bb09dee8779e7e83927)`.
+   */
+  const FIXTURE = join(
+    __dirname,
+    '../fixtures/ccz/bednet-check-2-visit-20260908-1544-deliver-v7.ccz',
+  );
+
+  /** What a directory walk after extraction hands the audit. */
+  function walk(dir: string): Record<string, string> {
+    const out: Record<string, string> = {};
+    const visit = (d: string) => {
+      for (const name of readdirSync(d)) {
+        const p = join(d, name);
+        if (statSync(p).isDirectory()) visit(p);
+        else out[relative(dir, p)] = readFileSync(p, 'utf8');
+      }
+    };
+    visit(dir);
+    return out;
+  }
+
+  /** `unzip -o` semantics: write every entry, delete nothing already there. */
+  function unzipOverwrite(ccz: string, dir: string): void {
+    for (const [name, data] of Object.entries(unzipSync(new Uint8Array(readFileSync(ccz))))) {
+      if (name.endsWith('/')) continue;
+      const p = join(dir, name);
+      mkdirSync(join(p, '..'), { recursive: true });
+      writeFileSync(p, data);
+    }
+  }
+
+  it('the build the issue named carries only default + en, and audits clean', () => {
+    const files = readCczTextFiles(FIXTURE);
+    expect(Object.keys(files).sort()).toEqual([
+      'default/app_strings.txt',
+      'en/app_strings.txt',
+      'media_suite.xml',
+      'modules-0/forms-0.xml',
+      'modules-1/forms-0.xml',
+      'profile.ccpr',
+      'suite.xml',
+    ]);
+    const audit = auditCczLanguageTables({ suiteXml: files['suite.xml'], files });
+    assertChecked(audit);
+    expect(audit.ok).toBe(true);
+    expect(audit.present).toEqual(['default', 'en']);
+    expect(audit.orphans).toEqual([]);
+    expect(audit.referenceName).toBe('Bednet Check Two-Visit Deliver app');
+  });
+
+  it('unzip -o into a directory holding an earlier spark extraction manufactures the reported orphans', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'ace-2292-'));
+    try {
+      // An earlier spark-facilitator CCZ extracted into the same scratch dir.
+      for (const [lang, text] of [['nya', NYA_SPARK], ['tum', TUM_SPARK]] as const) {
+        mkdirSync(join(dir, lang), { recursive: true });
+        writeFileSync(join(dir, lang, 'app_strings.txt'), text);
+      }
+      unzipOverwrite(FIXTURE, dir);
+
+      // The directory now shows exactly what ace#2292 reported ...
+      const fromDisk = walk(dir);
+      const diskAudit = auditCczLanguageTables({ suiteXml: fromDisk['suite.xml'], files: fromDisk });
+      assertChecked(diskAudit);
+      expect(diskAudit.ok).toBe(false);
+      expect(diskAudit.orphans).toEqual(['nya', 'tum']);
+
+      // ... while the archive itself, read in memory, does not.
+      const fromZip = readCczTextFiles(readFileSync(FIXTURE));
+      const zipAudit = auditCczLanguageTables({ suiteXml: fromZip['suite.xml'], files: fromZip });
+      assertChecked(zipAudit);
+      expect(zipAudit.ok).toBe(true);
+      expect(zipAudit.orphans).toEqual([]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });

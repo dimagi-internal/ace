@@ -6,6 +6,8 @@ import {
   scoreHqApp,
   scoreLabsItem,
   sweepHandleField,
+  SETUP_INCOMPLETE_DISPOSITION,
+  isSetupIncompleteOpportunity,
 } from '../../lib/sweep-fingerprint';
 import type { LiveSet, DriveFolderInfo } from '../../lib/sweep-types';
 
@@ -297,5 +299,38 @@ describe('scoreConnectItem — malformed end_date (#938/#953)', () => {
       live,
     );
     expect(r.signals.join(' ')).toMatch(/MALFORMED/);
+  });
+});
+
+// ace#2083 — a setup_incomplete opportunity (no payment unit ever created) is
+// an orphan ACE cannot remove: no delete API, deactivate is a no-op, Connect
+// purges visit-free opps at 6 months. The scorer must say so, not hide it
+// behind a name-shape early return, so the report never counts it as swept.
+describe('scoreConnectItem — setup_incomplete (ace#2083)', () => {
+  it('names the not-sweepable disposition even for a CRISPR-/kebab-shaped name', () => {
+    for (const name of ['CRISPR-Pilot-X', 'turmeric-pilot', '20260820-0832 · Bednet Check']) {
+      const r = scoreConnectItem(
+        { id: 'o9', name, type: 'opportunity', active: false, dashboardRead: 'setup_incomplete' },
+        LIVE_SET,
+      );
+      expect(r.confidence).toBe('high');
+      expect(r.signals).toContain(SETUP_INCOMPLETE_DISPOSITION);
+      expect(r.signals.join(' ')).toMatch(/no opportunity-delete API/);
+      expect(r.signals.join(' ')).toMatch(/6 months/);
+    }
+  });
+
+  it('control: a readable inactive opportunity is NOT given the disposition', () => {
+    const r = scoreConnectItem(
+      { id: 'o8', name: 'Real LLO Opp', type: 'opportunity', active: false, dashboardRead: 'ok' },
+      LIVE_SET,
+    );
+    expect(r.signals).not.toContain(SETUP_INCOMPLETE_DISPOSITION);
+    expect(isSetupIncompleteOpportunity({ id: 'o8', name: 'x', type: 'opportunity' })).toBe(false);
+  });
+
+  it('only an explicitly-read value counts, and only on opportunities', () => {
+    expect(isSetupIncompleteOpportunity({ id: 'p', name: 'x', type: 'program', dashboardRead: 'setup_incomplete' })).toBe(false);
+    expect(isSetupIncompleteOpportunity({ id: 'o', name: 'x', type: 'opportunity', dashboardRead: 'setup_incomplete' })).toBe(true);
   });
 });

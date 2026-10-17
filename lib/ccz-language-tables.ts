@@ -1,72 +1,54 @@
 /**
- * dimagi-internal/ace#2292 — a released Deliver CCZ shipped ANOTHER
- * opportunity's language tables, and `app-release-qa` scored it 10.0 with 0
- * BLOCKERs across 24 gates.
+ * dimagi-internal/ace#2292 — does a released CCZ ship a language table that its
+ * own `suite.xml` does not declare?
  *
- * The released Deliver CCZ for `bednet-check-2-visit/20260908-1544` (HQ app
+ * ## What ace#2292 actually was (re-verified 2026-10-16)
+ *
+ * The issue reported that the released Deliver CCZ for
+ * `bednet-check-2-visit/20260908-1544` (HQ app
  * `a3359eaf446f498a80366e000a677a4a`, build `171996636b714bb09dee8779e7e83927`,
- * `connect-ace-prod`) unzipped to:
+ * `connect-ace-prod`) "unzipped to `default/ en/ modules-0/ modules-1/ nya/
+ * tum/`", the last two carrying spark-facilitator's Chichewa/Tumbuka tables.
+ *
+ * **The CCZ never contained them.** Re-downloading that exact build and listing
+ * the ZIP ENTRIES (not a directory on disk):
  *
  * ```
- * default/  en/  modules-0/  modules-1/  nya/  tum/
+ * $ unzip -l deliver-v7.ccz            # 7 files, all stamped 09-09-2026 01:36
+ *   default/app_strings.txt  en/app_strings.txt  profile.ccpr  media_suite.xml
+ *   modules-0/forms-0.xml  modules-1/forms-0.xml  suite.xml
  * ```
  *
- * while its `suite.xml` declared two locales and `profile.ccpr` pinned one:
+ * A released build's files are stored on the build doc at build time, so that
+ * listing is the same artifact the issue read. The observation came from the
+ * reproduction command itself — `unzip -o -q deliver.ccz && ls -d` — run in a
+ * scratch directory that had already held an extracted spark-facilitator CCZ.
+ * `unzip -o` overwrites the files a zip carries and leaves every other file in
+ * place, so spark's `nya/` and `tum/` survived next to bednet's fresh `en/` and
+ * `suite.xml`. That is exactly why they read as UNDECLARED: their own
+ * `suite.xml` had just been overwritten. HQ writes `app_strings` tables and
+ * `<locale>` rows from the same language list, so an undeclared table is not a
+ * shape an HQ build produces; a reused extraction directory is. The captured
+ * build is `test/fixtures/ccz/bednet-check-2-visit-20260908-1544-deliver-v7.ccz`.
  *
- * ```xml
- * <locale language="default">
- * <locale language="en">
- * ```
+ * ## So this module reads the ZIP, not a directory
  *
- * `nya/` and `tum/` were not a translation of this app. They were Spark FCAP's
- * programme, keyed to Spark's case model:
+ * `readCczTextFiles` builds the file map from the archive bytes in memory, so
+ * the audit's input is the artifact and nothing else — no extraction
+ * directory, no residue from an earlier build. Feed `auditCczLanguageTables`
+ * from it. A file map assembled by walking a directory you `unzip -o`'d into is
+ * how ace#2292 manufactured a cross-opportunity defect out of a clean build.
  *
- * ```
- * en:  app.display.name=Bednet Check Two-Visit Deliver app
- * nya: app.display.name=Spark FCAP — pulogalamu ya wothandizira wa mudzi
- * tum: app.display.name=Apu ya Mulongozgi wa Spark FCAP
- * ```
+ * ## Why the orphan check stays
  *
- * 16 Spark-ish lines and ZERO bednet-ish lines in each of the two 50-line
- * tables. The Learn app of the same run was clean, so the residue is specific
- * to that Deliver HQ app id.
- *
- * ## Why this is a finding and not a halt
- *
- * The device is only ever offered the locales `suite.xml` DECLARES, so an
- * orphan table is unreachable to a worker: an FLW cannot select `nya`, and a
- * Phase 6 device walk renders English. That is why ace#2292 is labelled
- * `harness` and why this gate is loud rather than blocking.
- *
- * It is still a real defect, for two reasons the artifact makes plain. The PDD
- * for that run declares `working_language: en` and REFUSES to name a geography
- * — "inventing one would be fabricated context" — and Chichewa and Tumbuka are
- * Malawian languages, so this is the
- * `docs/learnings/2026-05-12-no-inferred-backstory.md` class arriving through a
- * build artifact instead of through prose. And it is latent rather than inert:
- * the moment a run resolves its deferred language question and declares a
- * working language, whichever rows already exist on that HQ app become
- * reachable — pre-populated with another programme's text over another
- * programme's case properties.
- *
- * ## Why a static CCZ check
- *
- * Both halves are deterministic set logic over an artifact `app-release-qa`
- * already downloads and unzips: the `<lang>/app_strings.txt` directories in the
- * zip, and the `<locale language="…">` rows in `suite.xml`. No device, no live
- * surface — the ace#1236 rule (structure whose ground truth is the artifact
- * belongs in a unit test, not a device run).
- *
- * ## Scope: detection only
- *
- * This module answers "does this CCZ ship a language table nothing wires up?"
- * It does NOT diagnose WHY. ace#2292's leading hypothesis — a recycled HQ app
- * whose language rows survive an in-place `upload_app_to_hq` — is explicitly
- * unconfirmed there, and confirming it needs the HQ app's own history. Piece 2
- * of that issue stays open; nothing here refuses an upload or acts on the
- * hypothesis.
+ * An undeclared table is unreachable to a worker (the device is only offered
+ * the locales `suite.xml` declares), so it is a `[FINDING]`, not a halt. It is
+ * kept as a cheap structural invariant over the artifact — not because a real
+ * build has ever been seen to violate it.
  */
 
+import { readFileSync } from 'node:fs';
+import { strFromU8, unzipSync } from 'fflate';
 import { type CheckOutcome, checked, formatUnable, unable } from './check-outcome';
 
 /**
@@ -101,7 +83,8 @@ export type LanguageTableFindingKind = 'undeclared-language-table' | 'foreign-di
  * The split exists because a DECLARED language whose display name differs is
  * the normal shape of a genuinely translated app (Nova's i18n channel
  * translates the app name along with everything else), while an UNDECLARED one
- * differing is what made ace#2292's cross-opportunity origin obvious on sight.
+ * differing points at a table from some other build (in ace#2292, a stale
+ * extraction rather than the CCZ — see the module header).
  * Grading the first as a defect would fire on every correctly multilingual
  * build, so it is reported and not counted.
  */
@@ -149,6 +132,28 @@ export interface LanguageTableExtras {
 }
 
 export type LanguageTableAudit = CheckOutcome<LanguageTableFinding, LanguageTableExtras>;
+
+/** Text entries a CCZ audit reads: `profile.ccpr` and every `.txt` / `.xml`. */
+const TEXT_ENTRY_RE = /(?:^|\/)profile\.ccpr$|\.(?:txt|xml)$/;
+
+/**
+ * The CCZ's text entries as in-zip path -> text, read from the archive bytes
+ * in memory (ace#2292). Directory entries and binaries (media) are skipped.
+ *
+ * This is the input `auditCczLanguageTables` is meant to receive. It cannot see
+ * anything the archive does not carry — which a directory listing after
+ * `unzip -o` into a reused scratch directory can, and did.
+ */
+export function readCczTextFiles(ccz: Uint8Array | string): Record<string, string> {
+  const bytes = typeof ccz === 'string' ? new Uint8Array(readFileSync(ccz)) : ccz;
+  const entries = unzipSync(bytes, { filter: (f) => TEXT_ENTRY_RE.test(f.name) });
+  const out: Record<string, string> = {};
+  for (const [name, data] of Object.entries(entries)) {
+    if (name.endsWith('/')) continue;
+    out[name] = strFromU8(data);
+  }
+  return out;
+}
 
 /** Every `<locale language="…">` declared in a suite. */
 export function declaredLocales(suiteXml: string): string[] {
@@ -294,8 +299,9 @@ export function auditCczLanguageTables(input: {
           (isDeclared
             ? ' — expected for a genuinely translated language, reported so a ' +
               'foreign programme name is visible rather than silent'
-            : ' — an undeclared table naming a different programme is the ' +
-              'ace#2292 cross-opportunity signature'),
+            : ' — an undeclared table naming a different programme is what a ' +
+              'reused extraction directory produces (ace#2292); confirm it is ' +
+              'in the archive before treating it as the build'),
       });
     }
   }
@@ -345,8 +351,7 @@ export function formatCczLanguageTables(audit: LanguageTableAudit, appLabel: str
     'Not a halt: the device is only ever offered the locales suite.xml declares,',
     'so an orphan table is unreachable to a worker and the English device walk is',
     'unaffected. It is still wrong — the strings belong to some other build, and',
-    'they become reachable the moment this app declares a working language',
-    '(dimagi-internal/ace#2292).',
+    'they become reachable the moment this app declares a working language.',
     '',
   ];
   for (const f of audit.findings) {
@@ -354,9 +359,10 @@ export function formatCczLanguageTables(audit: LanguageTableAudit, appLabel: str
   }
   lines.push(
     '',
-    'Check the orphan tables against the PDD\'s declared working language, record',
-    'the orphan set as a Phase 3 residual, and do NOT hand-edit the zip. The cause',
-    'is upstream of the artifact and is unconfirmed (ace#2292 piece 2).',
+    'First confirm the orphan is IN THE ARCHIVE: build the file map with',
+    'readCczTextFiles (or read `unzip -l`), never from a directory you unzip -o\'d',
+    'into — ace#2292\'s orphans were residue of an earlier extraction, not the',
+    'build. If it is real, record it as a Phase 3 residual; do NOT hand-edit the zip.',
   );
   return lines.join('\n');
 }

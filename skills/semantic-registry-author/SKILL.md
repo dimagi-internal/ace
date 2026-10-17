@@ -143,7 +143,7 @@ target-less registry grades every cell `unbanded`, so Labs alone finds no red or
 yellow worker for the Coach. Labs has no relative band to author instead (its
 `band_of` grades only fixed thresholds), so the Coach selects by PEER WATCH — a
 worker well outside the other workers on a coachable indicator — outside the
-registry (`skills/ocs-coach-setup` § 9, `lib/coach-peer-watch.ts`; ace#3053). What
+registry (`skills/ocs-coach-setup` § 9, `lib/coach-peer-watch.ts`; ace#3053). The native relative band is requested as dimagi-internal/connect-labs#2585; when it ships, author it here and retire `lib/coach-peer-watch.ts`. What
 this step owes it: a correct `direction` and `flw_applicable` on every indicator, as
 those decide what peer watch may raise. A peer comparison is never written into
 `bands` / `target` / `targets_note` as if it were a programme target.
