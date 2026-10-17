@@ -255,6 +255,8 @@ records `steps.ocs-coach-setup: {status: done}` here.
 ### Step 2: Narrative — `demo-narrative`
 
 Invoke `demo-narrative` with `{brief: <PDD-derived>, realizedRef: 7-synthetic/realized.json, runId}`.
+That means `style: explainer`, the default. Pass `style: recorded` only when your dispatch
+explicitly carries it (ace#2789, `demo-narrative` Step 3r). Never infer it from the PDD.
 It authors a DDD `WhyBrief` + `UnifiedSpec` (scenes on `${…_par_url}`, honest gaps)
 and **validates both via canopy `scripts.ddd.validate`** — do not proceed until both
 validate. Writes `7-synthetic/why_brief.yaml` + `<slug>.yaml`.

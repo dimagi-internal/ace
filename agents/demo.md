@@ -38,7 +38,8 @@ All three converge on the realized `${var}` map (`par_url`); everything from
    <connect-opp-id>`), `--brief <text|drive-path>`,
    `--name <demo-name>`, optional `--pin-monday <YYYY-MM-DD>`, optional
    `--render` (run the full `canopy:ddd` converge+video loop; default is a single
-   render+judge via the `canopy:ddd-run` skill), optional `--workspace <canopy-web
+   render+judge via the `canopy:ddd-run` skill), optional `--style
+   {explainer|recorded}` (default `explainer`), optional `--workspace <canopy-web
    workspace>` (default `config/canopy-web.json` `ddd_workspace`; where every
    canopy-web write lands — see step 6).
 
@@ -71,7 +72,9 @@ All three converge on the realized `${var}` map (`par_url`); everything from
    proceeding — a dead or low-fidelity dashboard must not reach a funder.
 
 5. **Author the narrative.** Invoke the `demo-narrative` skill with
-   `{brief, realizedRef: 7-synthetic/realized.json, runId}`. It writes
+   `{brief, realizedRef: 7-synthetic/realized.json, runId, style}`. `style` is
+   `explainer` unless `--style recorded` was passed or the brief explicitly asks for
+   a recorded walkthrough / short separate cuts (ace#2789; `demo-narrative` Step 3r). It writes
    `why_brief.yaml` + `<demo-slug>.yaml` and **validates them via canopy's
    `scripts.ddd.validate`** — do not proceed until both validate.
 
@@ -100,6 +103,12 @@ All three converge on the realized `${var}` map (`par_url`); everything from
      `bin/ace-canopy-web --workspace "$WS" -- <command>` wrapper and `$WS` in the
      dispatch prompt and require every canopy-web write (narrative post, review,
      video upload, package) to run through it — a subagent does not inherit it.
+   - **`style: recorded` (opt-in only, ace#2789):** render per canopy's
+     `ddd-recorded-walkthrough` skill (§ 3: one master recording, one mp4 per cut
+     via canopy's `video-engine/render_locally.py`, never `/ace:video-render-local`),
+     then run its cut-length gate (`scripts.ddd.recorded gate`, § 4) and upload each
+     cut with `--cut <id>` (§ 5). Say so in the `canopy:ddd` dispatch prompt when
+     `--render` is set. The explainer path above is the default.
 
    **Verified dashboard-URL model (2026-07-21) — EVERY dashboard renders at**
    `…/labs/workflow/<def>/run/?run_id=<id>&opportunity_id=<opp>`. Traps that BOUNCE:
