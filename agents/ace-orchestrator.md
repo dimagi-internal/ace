@@ -1930,10 +1930,18 @@ normal. Name the missing asks at the Phase 1→2 pause. Do NOT widen
 2. **Before the silent-retry rule, ask `phase7DddStep(block)`** (`lib/ddd-handoff.ts`)
    — an `in_progress` Phase 7 carrying a hand-off is WAITING ON THE LOOP, not a
    silent failure, and re-dispatching the build half regenerates its data.
-   - `dispatch-ddd` → read the prompt file (`drive_read_file(prompt_file_id)`) and
-     dispatch `Agent(canopy:ddd)` with it verbatim (`--resume <resume_run_id>` is
-     already in it when Step 3.1 found a run to adopt; `CANOPY_DDD_RUNS_DIR` =
-     `runs_dir`). **Then wait on its completion notification — end your turn with
+   - `dispatch-ddd` → first (re)write the loop config and get the env block:
+     `node "$ACE_ROOT/node_modules/tsx/dist/cli.mjs" "$ACE_ROOT/scripts/write-ddd-loop-config.ts"
+     --runs-dir <runs_dir> --ddd-dir <ddd_dir> --workspace <workspace>` (all from the hand-off;
+     `phase7DddStep` derives `ddd_dir` for an older hand-off). It writes
+     `<ddd_dir>/config.yaml` from `config/ddd-loop.yaml` and prints two `export`
+     lines. Then read the prompt file (`drive_read_file(prompt_file_id)`) and
+     dispatch `Agent(canopy:ddd)` with it verbatim — **prepended with those two
+     lines when it does not already start with them**, so every canopy command in
+     the loop runs with `CANOPY_DDD_RUNS_DIR` = `runs_dir` and `DDD_DIR` = `ddd_dir`
+     (without `DDD_DIR` canopy reads no config: `lib/ddd-loop-config.ts`).
+     `--resume <resume_run_id>` is already in the prompt when Step 3.1 found a run
+     to adopt. **Then wait on its completion notification — end your turn with
      one status line; no sleep, no poll loop** (§ Anti-patterns → Waiting on
      children). When it
      returns, read `<runs_dir>/<ddd run id>/run_state.yaml` `terminal_status` and

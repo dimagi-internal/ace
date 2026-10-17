@@ -308,12 +308,28 @@ the run dir survive a fork with nothing to hand-copy:
 
 ```bash
 export CANOPY_DDD_RUNS_DIR="$HOME/.canopy/ddd/runs/ace-<opp-slug>-<run-id>"
-mkdir -p "$CANOPY_DDD_RUNS_DIR"
 # e.g. ace-bednet-check-2-visit-20260908-1544
+# Pin DDD_DIR too and write the loop config into it (prints the two exports).
+# $WS = the canopy-web workspace, resolved as in Step 3 § What the dispatch carries.
+eval "$(node "$ACE_ROOT/node_modules/tsx/dist/cli.mjs" "$ACE_ROOT/scripts/write-ddd-loop-config.ts" \
+  --runs-dir "$CANOPY_DDD_RUNS_DIR" --workspace "$WS")"
+# -> DDD_DIR=$HOME/.canopy/ddd/ace-<opp-slug>-<run-id>, config.yaml written there
 ```
 
-Pass it to `Agent(canopy:ddd)` explicitly — a subagent does not inherit your
-shell.
+**`DDD_DIR` is where canopy reads the loop's config** (`<ddd_dir>/config.yaml`:
+`loop.fixed_surfaces`, `loop.product_repo`, `product.lint.jargon`). Unset, canopy
+falls back to `~/.canopy/ddd/<cwd-basename>` — a different dir per machine and
+per run (`runtime/`, `ace-kaduna-graduation-20261015-1411/` were both observed),
+so ACE's config never reached the loop: on `noora-health/20261015-1129` the
+unfixable 'Ask an agent' launcher held the floor at 2.0 for six iterations while
+`out_of_scope.json` grew to 145 one-off declines. The config is versioned in
+`config/ddd-loop.yaml` (owners, issues and regexes, each pinned against real
+findings by `test/lib/ddd-loop-config.test.ts`); never hand-write a
+`config.yaml` in a run — change the template. Why the dir sits beside the runs
+root and not inside it: `lib/ddd-loop-config.ts`.
+
+Pass **both exports** (the script's stdout, verbatim) to `Agent(canopy:ddd)`
+explicitly — a subagent does not inherit your shell.
 
 Then resolve whether a run for this narrative slug already exists **anywhere on
 this machine** — `lib/ddd-run-adoption.ts::resolveDddRunAdoption`
@@ -365,8 +381,9 @@ across. ace#2287.
      whose Doc export mangles the newlines the prompt depends on).
   2. Write `products.synthetic.ddd_handoff` with `update_yaml_file({merge: 'deep'})`
      and keep `status: in_progress`:
-     `{prompt_file_id, runs_dir: $CANOPY_DDD_RUNS_DIR, narrative_slug,
+     `{prompt_file_id, runs_dir: $CANOPY_DDD_RUNS_DIR, ddd_dir: $DDD_DIR, narrative_slug,
      resume_run_id: <Step 3.1's run id, or null>, workspace: $WS, prepared_at}`.
+     The prompt file must open with the two `export` lines Step 3.1 printed.
      The shape is `lib/ddd-handoff.ts` (`handoffProblem` rejects a half-written one).
   3. Return. Your summary says `DDD hand-off ready: <narrative_slug>` and lists
      what Steps 0–3.1 produced. The orchestrator dispatches the loop, waits on its
@@ -375,8 +392,8 @@ across. ace#2287.
 - **`mode: finalize`.** Do NOT redo Steps 0–3.1 — their products are in
   `run_state.yaml` and regenerating them would invalidate the render the loop
   just judged. Read `products.synthetic.ddd_handoff` + `ddd_run_id` +
-  `ddd_terminal_status`, export `CANOPY_DDD_RUNS_DIR` from the hand-off's
-  `runs_dir`, run `bin/ace-canopy-web --workspace "$WS" verify narrative <slug>`,
+  `ddd_terminal_status`, export `CANOPY_DDD_RUNS_DIR` and `DDD_DIR` from the
+  hand-off's `runs_dir` / `ddd_dir`, run `bin/ace-canopy-web --workspace "$WS" verify narrative <slug>`,
   then Steps 3.9 → 4.5 against `<runs_dir>/<ddd_run_id>/`. Step 4 flips
   `status: done`.
 - **Any other dispatcher (no `ddd: orchestrator-owned` line).** Dispatch
@@ -401,7 +418,10 @@ wrapper and `$WS` in the dispatch prompt and require every canopy-web write to r
 `mode: finalize`, when the orchestrator ran it),
 `verify narrative <slug>` before the phase summary names any canopy-web URL.
 Contract: `playbook/integrations/canopy-web.md`. **On a resume, pass `--resume <run_id>` explicitly
-and say so** — an unqualified dispatch is what starts a fresh run.
+and say so** — an unqualified dispatch is what starts a fresh run. **Open the prompt
+with Step 3.1's two `export` lines** (`CANOPY_DDD_RUNS_DIR`, `DDD_DIR`) and require
+every canopy command to run under them — without `DDD_DIR` the loop reads no
+`config.yaml` and every labs-template finding is re-declined by hand again.
 
 Do NOT substitute a bare `canopy:ddd-run` invocation as the phase's render step.
 `ddd-run` is ONE render+judge pass: it returns a verdict and a findings list and
@@ -430,7 +450,10 @@ deliberate single-pass smoke check, never as the phase's convergence step.
   carries the distribution, not just the floor.
 
 **A page edit under a LOCKED narration must keep every claim that page carries
-true (ace#2727).** The loop may fix report pages (labs template workflows) while
+true (ace#2727).** `config/ddd-loop.yaml` now pins the labs report templates
+out of the loop's edit scope (ace#2337), so a page edit should not happen under
+`/ace:run` — but a finding its regexes miss can still reach a fixer with a write
+path, so keep this guard. The loop may fix report pages (labs template workflows) while
 the narration is locked, and canopy's fix direction is "when narration and
 product disagree, the narration moves" — but a locked narration cannot move
 silently. On `spark-facilitator/20261004-1706` a page fix merged two identical
@@ -734,6 +757,9 @@ and in the text you return.
   (`ace-<opp-slug>-<run-id>`) — it is what makes the DDD run dir survive a fork,
   and what lets Step 3.1 tell this run's work from another run's (ace#2287,
   ace#2315).
+- [ ] `DDD_DIR` exported beside it (`~/.canopy/ddd/ace-<opp-slug>-<run-id>`) with
+  `config.yaml` written by `scripts/write-ddd-loop-config.ts`, and both exports
+  at the top of the dispatch prompt.
 
 ## Re-runnability
 
