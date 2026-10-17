@@ -29,6 +29,8 @@ const AppEntrySchema = z.object({
   hq_app_id: z.string().min(1),
   hq_url: z.string().url(),
   build_status: BUILD_STATUS,
+  // Componentized runs only (ace#2157) — see lib/commcare-products.ts.
+  components_built: z.array(z.string().min(1)).min(1).optional(),
 }).refine(
   // Single source for the route (ace#1431) — `/build/`, never the legacy
   // `/apps/`, which 404s.

@@ -609,8 +609,8 @@ separately and asked about. *Enforced:* `test/lib/operator-rulings.test.ts`
      `payment_rate_max` / `payment_rate_currency` / `payment_rate_unit`,
      `daily_cap_per_flw`, `total_cap_per_flw`, `flw_count_min` /
      `flw_count_max`, `expected_reach_min` / `expected_reach_max`,
-     `entity_id_grain`, `entity_state_taxonomy`, `duplicate_gps_rule`,
-     `cap_rationale`, `connect_delivery_type`, `opportunity_country`,
+     `entity_id_grain`, `entity_state_taxonomy`, `followed_entity_case_type`,
+     `duplicate_gps_rule`, `cap_rationale`, `connect_delivery_type`, `opportunity_country`,
      `opportunity_currency`. **The last three are the program shell and are
      IMMUTABLE after `connect_create_program`** — `connect_update_program`
      accepts only name/description/budget/start_date/end_date, so a wrong value
@@ -1581,7 +1581,7 @@ Everything else in the base table is `value_set_by: ace`.
 
 | ID | Question | Map to surface |
 |---|---|---|
-| `longitudinal-entity` | What entity is followed over time, and what case type represents it? | PDD `Entity Lifecycle` |
+| `longitudinal-entity` | What entity is followed over time, and what case type represents it? | PDD `Entity Lifecycle` + § Program Parameters `followed_entity_case_type` (ace#2889) |
 | `entity-registration-path` | Registered by a separate form, by the first visit, or already existing in the partner's system? | PDD `Entity Lifecycle` + `pdd-to-deliver-app` case ops |
 | `visit-sequence-and-cadence` | Expected visits, their order, and the interval — including any change in cadence across the arc. | PDD `Entity Lifecycle` |
 | `payability-against-history` | Is the same activity twice payable? An out-of-order visit? A per-entity cap over a window? **Never leave unanswered** — silence degrades Layer A to "any visit counts" (ace#1462). | PDD `Evidence Model` Layer A |
@@ -1979,6 +1979,36 @@ prose stays longitudinal-aware while the payment predicate quietly
 becomes "any visit counts." That is a real, measured failure
 (`spark-facilitator/20260813-2126`, ace#1462), and it is the specific
 thing this archetype exists to prevent.
+
+**A stateless followed entity is legitimate — declare it, never invent
+states (ace#2774).** "Carries state" above is the common case, not a
+requirement. A durable entity can be revisited repeatedly where every visit
+is the same activity and nothing progresses — a savings group paid per
+weekly session for two years, a group record paid per session
+(`group-payment-test/20261007-1700`). That is still `longitudinal-visits`
+(durable case, case list, per-entity history for Layer A), NOT
+`atomic-visit`. Write `| entity_state_taxonomy | stateless [source: <doc>] |`
+in § Program Parameters when, and only when, the source material names no
+phase / stage / status vocabulary for the entity AND nothing in the design
+(payment, eligibility, the case list, a success metric) depends on one.
+`parseStateTaxonomy` reads it as declared with zero states, `idea-to-pdd-qa`
+check 10 passes it, and Phase 3 builds no state field. Do not use it to dodge
+a vocabulary the source does carry, and do not write `none` / `n/a` — those
+read as an unfilled row and fail.
+
+**Every paid form records the followed entity's id (ace#2889).** Write the
+followed entity's case type as `| followed_entity_case_type | <case_type> |`
+in § Program Parameters (required for this archetype and for `multi-stage`;
+`idea-to-pdd-qa` fails its absence). It is the entity the PROGRAMME follows,
+not whatever case a form happens to update: on a child-case design (crop
+cycles, sessions or pregnancies under a woman) it is the parent. Phase 3
+records that id in a hidden `<case_type>_case_id` on every paid form and
+`app-release-qa` fails a paid form without it — on
+`smallholder-seasonal/20261012-1549` the paid Harvest visit updated the crop
+cycle and named nothing that identified the woman, so no report could
+attach it to her. If some paid visit genuinely serves no followed entity, say
+so in the Deliver spec; the build records that form as an explicit exemption,
+never a silent gap.
 
 **Additional questions to answer in step 3:**
 

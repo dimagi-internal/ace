@@ -162,6 +162,14 @@ const AppEntry = z
     hq_url: z.string().url().optional(),
     domain: z.string().optional(),
     build_status: z.enum(['success', 'errored', 'pending']).optional(),
+    // Componentized Phase 3 (ace#2157; operator decision 2026-10-16): the
+    // Phase-1 component ids THIS app built content for, recorded per app
+    // because Learn and Deliver build different sets. The one name for the
+    // concept — `components_covered` (poverty-graduation/20260905-1345's
+    // in-flight Learn spelling) is retired. Produced only by
+    // `buildCommcareProducts` (lib/commcare-products.ts), whose real output
+    // `test/lib/commcare-products.test.ts` validates against this schema.
+    components_built: z.array(z.string().min(1)).min(1).optional(),
   })
   .passthrough();
 
@@ -571,6 +579,10 @@ const SyntheticProducts = z
                 workflow_id: z.union([z.string(), z.number()]).optional(),
                 run_id: z.union([z.string(), z.number()]).optional(),
                 url: z.string().url().optional(),
+                // Who the Coach can start with on this report (`lib/coach-peer-watch.ts`,
+                // ace#3053). `none` is deliberately not a value: a report with nobody to
+                // coach has not had coaching put on it.
+                selection: z.enum(['band', 'peer_watch', 'named']).optional(),
               })
               .passthrough(),
           )
@@ -842,6 +854,9 @@ export const PRODUCT_PRODUCERS: Partial<Record<PhaseName, Record<string, string>
     'synthetic.walkthroughs': 'synthetic-data-and-workflows',
     'synthetic.promoted_template': 'synthetic-data-and-workflows',
     'synthetic.ddd_*': 'synthetic-data-and-workflows',
+    // Dashboard defects the loop found but could not apply (ace#2337,
+    // lib/ddd-unapplied-findings.ts) — written at finalize from the loop's ending.
+    'synthetic.unapplied_dashboard_findings': 'synthetic-data-and-workflows',
     ocs_coach: 'ocs-coach-setup',
   },
   'solicitation-management': {

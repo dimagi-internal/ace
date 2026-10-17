@@ -138,6 +138,16 @@ Per indicator `meta`:
 | `headline` | positions 1..5 for the PDD's primary metrics first, then the review signal the story turns on |
 | `flw_applicable`, `benchmarkable` | true for rates that mean something per worker / across partners |
 
+**No target does not mean no coaching — and never invent bands to get it.** A
+target-less registry grades every cell `unbanded`, so Labs alone finds no red or
+yellow worker for the Coach. Labs has no relative band to author instead (its
+`band_of` grades only fixed thresholds), so the Coach selects by PEER WATCH — a
+worker well outside the other workers on a coachable indicator — outside the
+registry (`skills/ocs-coach-setup` § 9, `lib/coach-peer-watch.ts`; ace#3053). What
+this step owes it: a correct `direction` and `flw_applicable` on every indicator, as
+those decide what peer watch may raise. A peer comparison is never written into
+`bands` / `target` / `targets_note` as if it were a programme target.
+
 `defaults.min_denominator`: the smallest entity count at which the figure means
 something **at the worker level**. When the PDD assigns one entity per worker
 (Spark: one community per CBF) that is `1` — anything higher blanks every worker

@@ -25,6 +25,7 @@ paraphrase the schema here — read the model / schema and validate.
 | Source | Artifact | Used for |
 |---|---|---|
 | Operator | `--brief <text or drive-path>` | the demo story (same brief `demo-data-setup` used) |
+| Operator | `style` — `explainer` (**default**) or `recorded` | the video shape. **Explainer is the default and stays the default.** Author `recorded` ONLY when it was explicitly requested: `/ace:demo --style recorded`, a `style: recorded` line in the dispatch, or a brief that asks in so many words for a recorded walkthrough / several short separate cuts with no music. Anything less explicit is explainer (operator decision, 2026-10-16, ace#2789). See Step 3r |
 | `demo-data-setup` | `<demo-run>/7-synthetic/realized.json` | the flat `${var}` map — `primary_par_url`, one `<key>_par_url` per dashboard, `<name>_url` drills — the scenes render |
 | `demo-data-setup` | `run_state…products.synthetic.source` | provider, labs opp id, deliver units, and `dashboards[]` (key/template/role/`interactive`) — one narrative arc per dashboard; `interactive: true` marks the only dashboard whose controls are live |
 | `demo-data-setup` | `run_state…products.synthetic.source.record_counts` + `.data_shape` | **the dataset's cardinality** — `record_counts` verbatim from the generator, and the three axes a demonstration can need (`rows` / `periods` / `groups`). Step 2b checks each demonstration against it BEFORE scenes are written (ace#1670). Absent on a pre-2026-08-26 run — then read `record_counts` from `<demo-run>/7-synthetic/demo-data-setup.md` and the week span from `demo-data-setup_manifest.yaml`, and say in the summary that you re-derived them |
@@ -670,6 +671,38 @@ paraphrase the schema here — read the model / schema and validate.
    `NOT RUN`, and never scan only the narrative because the renders were
    inconvenient to read.
 
+3r. **The recorded-walkthrough variant: opt-in only (ace#2789).** Skip this step
+   unless `style: recorded` was explicitly requested (§ Inputs). **The default is the
+   produced explainer**, everything above, unchanged. When it was requested, the
+   shape is canopy's, so read canopy's contract and do not paraphrase it here:
+   `skills/ddd-recorded-walkthrough/SKILL.md` in the installed canopy plugin
+   (`python3 -c "import json,os;print(json.load(open(os.path.expanduser('~/.claude/plugins/installed_plugins.json')))['plugins']['canopy@canopy'][0]['installPath'])"`).
+   In outline, and the canopy skill wins on any difference:
+   - Put `style: recorded` and a `cuts:` list (`{id, title, scenes: [<scene id>, …]}`,
+     every scene in at most one cut) in the **recipe**, never in the narration
+     posted to canopy-web. They are render decisions, not story.
+   - Each cut's first scene's `narrative` opens with **"This is a quick overview of
+     how we <do X>."** and opens on a live screen (a `url:` plus a leading `wait_for`).
+     Each cut runs about 65–80 words (30 s target, 40 s hard ceiling), first person,
+     one sentence per visible thing, with no welcome, summary or sign-off. Put a
+     `say:` on every action the narration names.
+   - No `role: overview` title-card opener is needed (Step 3's opener rule is for the
+     explainer; canopy's `ddd-spec-qa` waives it for a recorded spec), and no music,
+     title or end card, zoom, callout or lower-third. canopy's schema refuses them.
+   - **Lint before handing off**, from canopy's runtime (as in Step 4), and loop
+     until it exits 0:
+     ```bash
+     (cd "$CANOPY_RT" && uv run python -m scripts.ddd.recorded lint <demo-run>/7-synthetic/<demo-slug>.yaml)
+     ```
+   - After render (one mp4 per cut, canopy's `ddd-recorded-walkthrough` § 3), the
+     set must pass canopy's cut-length **gate**, `scripts.ddd.recorded gate --spec …
+     --cut <id>=<mp4> …`. A `fail` (a cut over 40 s) is fixed by trimming words or
+     splitting the cut, never by speeding the footage. Never render a recorded cut
+     through `/ace:video-render-local`: that vendored engine predates `style` and adds
+     the music bed back.
+   Record `steps.demo-narrative.style: recorded` (or `explainer`) and, for recorded,
+   `steps.demo-narrative.recorded_lint: {exit, cuts: [{id, words, est_seconds}]}`.
+
 4. **Validate — the gate.** Resolve canopy's runtime from its installed
    plugin, then run the validator from there (pass the artifact paths as
    absolute paths — the subshell's cwd is the runtime, not yours):
@@ -787,6 +820,7 @@ paraphrase the schema here — read the model / schema and validate.
 
 | Date | Change | Author |
 |------|--------|--------|
+| 2026-10-16 | **Opt-in recorded-walkthrough variant: Step 3r (ace#2789).** The skill could only author the produced explainer, so the chlorine-dispenser demo's short recorded cuts were hand-written outside ACE and could not be regenerated. Operator decision: explainer stays the default; `style: recorded` + `cuts:` is authored only on an explicit request (`/ace:demo --style recorded`, a dispatch `style: recorded`, or a brief that asks for it outright), per canopy's `ddd-recorded-walkthrough` contract, linted with `scripts.ddd.recorded lint` and gated with `scripts.ddd.recorded gate`. *Enforced:* `test/skills/demo-narrative-recorded-style.test.ts`. | ACE team |
 | 2026-10-16 | **Finale rules 2 and 3 are met on the page; a re-author posts, never pulls (ace#2347, ace#2254).** Rules 2 (show the rate) and 3 (a visible consequence) are page requirements a narrative-only scope could only meet by narrating what the page does not show (`spark-facilitator/20260910-0541`). Step 3 now says to patch the finale's dashboard (lint first, `workflow_update_render_code`), the same move `checkEscapedPayoffIsHonoured` already demands, and names an unshown rate as a `claim_reality_coherence` defect. New step 4b: after the DDD loop has run, publish with `narrative post`; `pull` would restore the pre-loop text. The loop's own write-back is Phase 7 Step 3.5. *Enforced:* `test/skills/phase7-narrative-writeback.test.ts`. | ACE team |
 | 2026-10-16 | **Step 3d: the gap-copy check runs HERE, after `why_brief.yaml` exists (ace#2244).** It was placed in `demo-data-setup` § 3c, one step before the brief that declares the gaps is authored, so it could never run — `spark-facilitator/20260907-1120` recorded it `NOT RUN`, and the dashboard-copy half of ace#1750 had been dead since it shipped. Now 3d reads each dashboard's uploaded render_code back with `workflow_get` and runs `scripts/check-gap-copy.ts` over it plus `narrativeSources(whyBrief, unifiedSpec)`; `demo-data-setup` § 3c only records the render sources and authors to the rules. *Enforced:* `test/skills/gap-copy-check-placement.test.ts`. | ACE team |
 | 2026-10-16 | **The labs sandbox frame is conditional, observed per scene, never read off the URL (ace#2885 reopened).** On `smallholder-seasonal/20261015-1402` the indicator programme report (workflow 10049), the worker review (10051) and the opp reports drew on the top page with no `/labs/sandbox/render/` iframe, and the URL-only check flagged all 14 targets of the spec. Following its rewrite would have made every one miss. `checkLabsReportFrameTargets` now takes the framing a capture observed (`framingFromCaptures` over `capture-scene-text.ts` output), flags in both directions (`labs-report-target-outside-frame` / the new `labs-report-target-in-absent-frame`, fixed with `outOfLabsReportFrame`), and says nothing for an unobserved scene. `narration-claims.ts --screen-text` runs it against its captures. `screen-text-outer-page-only` now fires only when a top-page-only capture is MISSING figures, because the capture of an unframed report holds them. | ACE team |

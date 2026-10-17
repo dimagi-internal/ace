@@ -26,7 +26,7 @@ interface ExpectedQA {
 }
 
 describe('ACE-PDD-Pass-001 (synthetic clean PDD)', () => {
-  test('passes all 14 idea-to-pdd-qa checks', async () => {
+  test('passes all 15 idea-to-pdd-qa checks', async () => {
     const pdd = loadFixtureText('ACE-PDD-Pass-001', 'pdd.md');
     const result = await runChecks({
       skill: 'idea-to-pdd-qa',
@@ -39,8 +39,8 @@ describe('ACE-PDD-Pass-001 (synthetic clean PDD)', () => {
       context: { artifactMimeType: 'application/vnd.google-apps.document', pddDescription: 'A plain-language overview of the programme.' },
     });
     expectQAPass(result);
-    expect(result.stats.checks_run).toBe(14);
-    expect(result.stats.checks_passed).toBe(14);
+    expect(result.stats.checks_run).toBe(15);
+    expect(result.stats.checks_passed).toBe(15);
     expect(result.skill).toBe('idea-to-pdd-qa');
   });
 });
@@ -163,7 +163,9 @@ describe('ace#1783 — a longitudinal PDD with no entity_state_taxonomy', () => 
   test('adding the row clears it — the remediation is reachable', async () => {
     const fixed = asLongitudinal().replace(
       '| entity_id_grain |',
-      '| entity_state_taxonomy | 1=Registered (steps 1-2); 2=Followed up (steps 3-4); 3=Closed | read: Intervention Design |\n| entity_id_grain |',
+      '| entity_state_taxonomy | 1=Registered (steps 1-2); 2=Followed up (steps 3-4); 3=Closed | read: Intervention Design |\n' +
+        // ace#2889 — a longitudinal PDD must also name its followed case type.
+        '| followed_entity_case_type | household | read: Intervention Design |\n| entity_id_grain |',
     );
     const result = await runChecks({
       skill: 'idea-to-pdd-qa',

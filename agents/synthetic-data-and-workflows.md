@@ -91,7 +91,48 @@ undefined (ace#1691). Adding an archetype stays purely additive, per
 `CLAUDE.md § Conventions`. See
 `docs/superpowers/specs/2026-05-15-focus-group-archetype-redefinition.md`.
 
-## Workflow (every archetype except focus-group)
+## Scale: a single-worker or no-partner design is a no-op (ace#2806)
+
+The cascade this phase builds needs partners, each with a roster of workers,
+followed over weeks (`lib/cascade-story.ts` `DEFAULT_FLOORS` and the four required
+signals). A design with **one worker**, or with **no partner organisation at
+all** (a platform test, a staff pilot), has nothing for that cascade to show, and
+every route to green would invent partners, workers or weeks (§ No inferred
+backstory). **Operator decision (Jonathan, 2026-10-16): skip the phase and record
+why. There is no reduced-floor mode** — do not lower a floor, declare a "scale"
+exemption or build a one-partner cascade to get around it.
+
+After the focus-group check, and before Step 0, write the PDD to a local file and run:
+
+```bash
+node "$ACE_ROOT/node_modules/tsx/dist/cli.mjs" "$ACE_ROOT/scripts/phase7-applicability.ts" <local-pdd.md>
+```
+
+Exit 0 means the phase applies, so proceed to § Workflow. Exit 3 means skip. The
+printed JSON carries `skip_reason` (`design-below-cascade-scale`), `reasons[]`
+(`single-worker` / `no-partner`, each with the PDD line it rests on, verbatim) and
+`detail`. The rule reads only what the PDD says: `§ FLW Requirements` "Number of
+FLWs" ≤ 1, or `§ LLO Preference` stating there is **no** partner / implementing
+organisation / LLO. "None pre-named" is not that (the LLO is simply unchosen, and
+Phase 8 picks one), so such a design keeps Phase 7. Logic:
+`lib/phase7-applicability.ts`. *Enforced:* `test/lib/phase7-applicability.test.ts`,
+against the real PDD of `group-payment-test/20261007-1700`.
+
+On exit 3:
+
+1. Write `7-synthetic/synthetic-data-and-workflows_summary.md` with frontmatter
+   `{status: skipped, reason: design-below-cascade-scale}`, then one paragraph: the
+   `detail` sentence followed by each `reasons[].evidence` line quoted.
+2. Patch `run_state.yaml.phases.synthetic-data-and-workflows` (`merge: 'deep'`) with
+   `status: skipped`, `verdict: skipped`, `completed_at: <iso>`,
+   `summary_artifact: <doc-id>`, `skip_reason: design-below-cascade-scale`,
+   `skip_detail: <detail>` and `skip_evidence: <reasons[]>`.
+3. Return cleanly. Do not create a synthetic opp, registry or Coach. Phase 8 then
+   starts. `skipped` is terminal everywhere downstream: `phase7DddStep` returns
+   `done`, so no DDD loop is dispatched; the boundary fence steps over it; the run
+   README marks Phase 7's rows `skipped`.
+
+## Workflow (every archetype except focus-group, at cascade scale)
 
 ### Step 0: Phase folder setup (FIRST)
 
@@ -214,6 +255,8 @@ records `steps.ocs-coach-setup: {status: done}` here.
 ### Step 2: Narrative — `demo-narrative`
 
 Invoke `demo-narrative` with `{brief: <PDD-derived>, realizedRef: 7-synthetic/realized.json, runId}`.
+That means `style: explainer`, the default. Pass `style: recorded` only when your dispatch
+explicitly carries it (ace#2789, `demo-narrative` Step 3r). Never infer it from the PDD.
 It authors a DDD `WhyBrief` + `UnifiedSpec` (scenes on `${…_par_url}`, honest gaps)
 and **validates both via canopy `scripts.ddd.validate`** — do not proceed until both
 validate. Writes `7-synthetic/why_brief.yaml` + `<slug>.yaml`.
@@ -499,6 +542,33 @@ an outside reader gets, since `ddd_terminal_status` renders to members only. A
 did not pass", which is true (ace#2995). `passed-with-deferred-evals` stays
 reserved for evals that genuinely did not run.
 
+**Dashboard defects the loop found but could not apply are their own outcome:
+`found_not_fixed` (ace#2337).** The labs report pages are pinned out of the
+loop's edit scope (`config/ddd-loop.yaml` `labs-report-template`), because the
+loop has no write path to their `render_code`. A defect on one of them is
+rediscovered every pass and never applied. Folded into `stopped_not_converged`,
+it reads as "the demo is bad" when the truth is "the fixer cannot reach that
+page". Those are opposite remedies. So, on EVERY ending, before the write-back, run:
+
+```bash
+node "$ACE_ROOT/node_modules/tsx/dist/cli.mjs" "$ACE_ROOT/scripts/ddd-unapplied-findings.ts" \
+  <runs_dir>/<ddd_run_id>/run_state.yaml --spec <demo-run>/7-synthetic/<slug>.yaml
+```
+
+It prints `{ddd_terminal_status, outcome, verdict, unapplied_dashboard_findings}`.
+Use its `verdict` as the phase verdict: `partial-ddd-found_not_fixed` when the loop
+did not converge clean AND left dashboard defects unapplied; otherwise
+`partial-ddd-<terminal_status>` as above, or `pass` on `converged_clean`. Write
+`products.synthetic.ddd_outcome: <outcome>` and
+`products.synthetic.unapplied_dashboard_findings: <the list>`. Each row names the
+dashboard (`dashboard_url`, `scene`), the defect, its `owner` / `issue`, and
+`pinned` (that row alone holds a below-bar cell). Keep `ddd_terminal_status`
+verbatim, since it is canopy's word, not ours. The phase summary gets a
+**Found, not fixed** section listing every row as `dashboard — defect`, separate
+from the open strategy findings. A `converged_clean` run records its rows too.
+Logic: `lib/ddd-unapplied-findings.ts`. *Enforced:*
+`test/lib/ddd-unapplied-findings.test.ts`, on the real findings of the 2026-10-15 runs.
+
 ### Step 3.5: Carry the converged narrative back to the artifacts of record (EVERY terminal status)
 
 **Runs after `Agent(canopy:ddd)` returns, whatever its `terminal_status` —
@@ -691,7 +761,7 @@ phases:
   synthetic-data-and-workflows:
     status: <done|partial>
     completed_at: <ISO>
-    verdict: <pass|partial-ddd-<terminal_status>|passed-with-deferred-evals>  # partial-ddd-… on a non-converged_clean DDD ending; deferred ONLY when an eval did not run (ace#2995)
+    verdict: <pass|partial-ddd-found_not_fixed|partial-ddd-<terminal_status>|passed-with-deferred-evals>  # partial-ddd-… on a non-converged_clean DDD ending (found_not_fixed when dashboard defects were left unapplied, ace#2337); deferred ONLY when an eval did not run (ace#2995)
     summary_artifact: <DDD package / summary doc id>
     products:
       synthetic:
@@ -718,6 +788,11 @@ phases:
         # converged_clean | converged_with_open_questions | stopped_not_converged | diverging
         ddd_terminal_status: <status>
         ddd_open_strategy_findings: <int>
+        # Phase 7's reading of that ending (scripts/ddd-unapplied-findings.ts, ace#2337):
+        # found_not_fixed when the loop left dashboard defects unapplied, else the terminal status
+        ddd_outcome: <found_not_fixed|<terminal_status>>
+        unapplied_dashboard_findings:      # found, not fixed — every ending, [] when none
+          - { finding_id: <id>, scene: "<n>", dimension: <dim>, dashboard_url: <url>, surface: labs-report-template, owner: <owner>, issue: <repo#n>, defect: "<what is wrong>", pinned: <bool> }
     steps:
       semantic-registry-author:    { status: done }
       semantic-registry-author-qa: { status: done }

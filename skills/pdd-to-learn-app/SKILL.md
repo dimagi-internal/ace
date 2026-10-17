@@ -568,7 +568,8 @@ Generate the Learn (training) app from the PDD using the Nova plugin
        that row names a source document, brief from THAT file out of the
        run's frozen `inputs/`. `declared: false` or non-empty `problems` is
        a **HALT** with a Phase-1 finding, never a licence to invent phase
-       names. Both apps deriving from the one declaration is what makes
+       names. `stateless: true` (row `stateless [source: …]`, ace#2774) is
+       a declaration, not a gap: teach no state vocabulary at all. Both apps deriving from the one declaration is what makes
        Learn and Deliver agree; a Learn app taught on an invented mapping
        sends a trained worker to a phase where the step they were taught
        does not exist (ace#1564).
@@ -1097,6 +1098,12 @@ Generate the Learn (training) app from the PDD using the Nova plugin
              # assessment score field, result labels). Not every field.
              fields:
                user_score: <fieldUuid>
+   # Componentized runs ONLY (Step 0): the component ids this app built a
+   # module for — `learnComponentsBuilt(plan)` from lib/commcare-products.ts
+   # over Step 0's `planLearnModules` result. app-deploy copies it into
+   # products.apps.learn.components_built (ace#2157). Omit on the synthesized
+   # path. Never spell it `components_covered`.
+   components_built: [<component_id>, ...]
    ---
    ```
 

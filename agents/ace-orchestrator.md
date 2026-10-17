@@ -1956,6 +1956,12 @@ normal. Name the missing asks at the Phase 1→2 pause. Do NOT widen
 
 On a resume, `phase7DddStep` on the loaded block says which of the three to run.
 
+**A design with one worker or no partner organisation skips the phase.** Dispatch 1
+returns `status: skipped`, `skip_reason: design-below-cascade-scale` with the PDD lines
+it rests on (`agents/synthetic-data-and-workflows.md § Scale`, ace#2806). `phase7DddStep`
+reads `skipped` as `done`, so dispatches 2 and 3 never run. Report the skip and its
+`skip_detail` in the run summary; it is not a failure, and no repair is needed.
+
 **Inputs (inline at handoff):** PDD, Phase-4 Connect identifiers (`4-connect/connect-opp-setup.md`), `run_state.yaml`.
 
 **Atoms / skills used (orchestrator-visible only):** none directly — the phase agent owns them. Internally: authors a story-coherent synthetic-data manifest from the PDD, generates fixture data via the connect-labs MCP, instantiates the LLO weekly review + program admin audit workflows, polishes them per-opp, and runs persona walkthroughs that produce stakeholder-ready HTML decks.

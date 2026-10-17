@@ -70,9 +70,22 @@ export interface ParsedTaxonomy {
   source: string | null;
   /** Every way the declaration itself is malformed. Non-empty => do not build. */
   problems: string[];
+  /**
+   * True when the PDD explicitly declares the followed entity STATELESS
+   * (`stateless [source: <doc>]`, ace#2774): a durable entity revisited
+   * repeatedly where every visit is the same activity and nothing progresses.
+   * That is `declared: true` with ZERO states — a positive declaration, not an
+   * absence — so `idea-to-pdd-qa` passes it and Phase 3 builds NO state field.
+   * Distinct from `none` / `n/a`, which stay ABSENT: an unfilled-looking value
+   * must not silently become a claim that the entity has no states.
+   */
+  stateless: boolean;
 }
 
 const ABSENT = new Set(['', 'n/a', 'na', 'none', 'tbd', 'unknown', '-', '—']);
+
+/** The explicit stateless declaration's keyword (ace#2774). */
+const STATELESS = 'stateless';
 
 /** Template placeholders read as `[...]`; an unfilled row is an absent row. */
 function isPlaceholder(raw: string): boolean {
@@ -122,12 +135,19 @@ function expandSteps(spec: string, problems: string[], where: string): number[] 
  *
  * The `(steps ...)` clause is optional per state; the trailing `[source: ...]`
  * clause is optional for the taxonomy.
+ *
+ * Or, for a repeated-visit entity with no state model at all (ace#2774):
+ *
+ *   `stateless [source: <doc>]`
+ *
+ * which parses as `declared: true, stateless: true, states: []`. Anything else
+ * written next to the keyword (`stateless; 1=Open`) is a problem, not a mix.
  */
 export function parseStateTaxonomy(raw: string | null | undefined): ParsedTaxonomy {
   const problems: string[] = [];
   const text = (raw ?? '').trim();
   if (ABSENT.has(text.toLowerCase()) || isPlaceholder(text)) {
-    return { declared: false, states: [], source: null, problems };
+    return { declared: false, states: [], source: null, problems, stateless: false };
   }
 
   let body = text;
@@ -136,6 +156,16 @@ export function parseStateTaxonomy(raw: string | null | undefined): ParsedTaxono
   if (src && src.index !== undefined) {
     source = src[1].trim();
     body = body.slice(0, src.index).trim();
+  }
+
+  if (body.toLowerCase() === STATELESS) {
+    return { declared: true, states: [], source, problems, stateless: true };
+  }
+  if (/^stateless\b/i.test(body)) {
+    problems.push(
+      `"stateless" must stand alone (optionally followed by [source: ...]); got "${body}"`,
+    );
+    return { declared: false, states: [], source, problems, stateless: false };
   }
 
   const states: DeclaredState[] = [];
@@ -162,7 +192,7 @@ export function parseStateTaxonomy(raw: string | null | undefined): ParsedTaxono
 
   if (states.length === 0) {
     problems.push('taxonomy is non-empty but declares no parseable states');
-    return { declared: false, states, source, problems };
+    return { declared: false, states, source, problems, stateless: false };
   }
 
   const seenValues = new Set<string>();
@@ -189,7 +219,7 @@ export function parseStateTaxonomy(raw: string | null | undefined): ParsedTaxono
     }
   }
 
-  return { declared: true, states, source, problems };
+  return { declared: true, states, source, problems, stateless: false };
 }
 
 /** One state as the app actually shipped it, read back from the blueprint. */

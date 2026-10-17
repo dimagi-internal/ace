@@ -426,6 +426,14 @@
                           "errored",
                           "pending"
                         ]
+                      },
+                      "components_built": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "minItems": 1
                       }
                     },
                     "additionalProperties": true
@@ -462,6 +470,14 @@
                           "errored",
                           "pending"
                         ]
+                      },
+                      "components_built": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "minItems": 1
                       }
                     },
                     "additionalProperties": true
@@ -1234,6 +1250,14 @@
                         "url": {
                           "type": "string",
                           "format": "uri"
+                        },
+                        "selection": {
+                          "type": "string",
+                          "enum": [
+                            "band",
+                            "peer_watch",
+                            "named"
+                          ]
                         }
                       },
                       "additionalProperties": true
@@ -1265,6 +1289,7 @@
         "synthetic.walkthroughs": "synthetic-data-and-workflows",
         "synthetic.promoted_template": "synthetic-data-and-workflows",
         "synthetic.ddd_*": "synthetic-data-and-workflows",
+        "synthetic.unapplied_dashboard_findings": "synthetic-data-and-workflows",
         "ocs_coach": "ocs-coach-setup"
       },
       "unattributedProductKeys": []

@@ -128,7 +128,16 @@ export function renderIndicatorCards(cards: IndicatorCard[]): string {
             (reviewLevel ? ' Never call the review level a goal or a target.' : ''),
         );
       } else if (!c.reviewFlag) {
-        lines.push('- No target is set for this one: explore it with the worker, do not call it good or bad.');
+        lines.push(
+          '- No target is set for this one: explore it with the worker, do not call it good or bad. ' +
+            "If the briefing marks it `peer-watch`, the figure is well outside most other workers' — say it as " +
+            '"different from most of your peers", never as missing a goal or a target (ace#3053).',
+        );
+      } else {
+        lines.push(
+          "- If the briefing marks it `peer-watch`, the figure is well outside most other workers': a reason to " +
+            'ask, as a comparison with peers, never a goal, a target or a mistake (ace#3053).',
+        );
       }
       const counted = c.scopeNote ? stripPddRefs(c.scopeNote) : '';
       if (counted) lines.push(`- How it is counted: ${counted}`);
@@ -167,6 +176,8 @@ export interface BriefingTopic {
   value?: number;
   unit?: string;
   band?: string;
+  /** A figure already written out (a peer comparison, ace#3053); wins over the counts. */
+  figure?: string;
   examples?: string[];
 }
 
@@ -177,6 +188,8 @@ export interface Briefing {
   language?: string;
   /** Set when a QA tester receives the conversation on the worker's behalf. */
   qaTester?: string;
+  /** Why this worker was chosen, when it was not a red/yellow grade (ace#3053). */
+  selection?: string;
 }
 
 export function renderBriefing(b: Briefing): string {
@@ -192,15 +205,17 @@ export function renderBriefing(b: Briefing): string {
         `the coach, who will reply as ${b.workerName}. Run it exactly as you would with ${b.workerName}.`,
     );
   }
+  if (b.selection) lines.push(b.selection);
   lines.push('Topics, most important first:');
   b.topics.forEach((t, i) => {
     const fig =
-      t.numerator !== undefined && t.denominator !== undefined
+      t.figure ??
+      (t.numerator !== undefined && t.denominator !== undefined
         ? `${t.numerator} of ${t.denominator}` +
           (t.value !== undefined ? ` (${Math.round(t.value)}${t.unit ?? ''})` : '')
         : t.value !== undefined
           ? `${Math.round(t.value)}${t.unit ?? ''}`
-          : 'figure not given';
+          : 'figure not given');
     lines.push(`${i + 1}. ${t.label} [${t.key}] — ${fig}${t.band ? `, band ${t.band}` : ''}`);
     for (const ex of t.examples ?? []) lines.push(`   - example: ${ex}`);
   });
