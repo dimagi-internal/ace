@@ -1,12 +1,9 @@
 ---
 name: cost-effectiveness
 description: >
-  Say what a round of spend BUYS in a place — deaths averted, cost per death,
-  the multiple of GiveWell's bar — and defend it, for any intervention Connect
-  Labs can value: ORS/zinc for diarrhoea, and perennial malaria chemoprevention
-  (PMC: which schedule, which states). Use when a funder asks "what is the
-  expected return", "does this clear GiveWell's bar", "which states and which
-  schedule", or "what does $X at $Y a visit buy in <area>", or before a BOTEC
+  Say and defend what a round of spend buys in a place — deaths averted, cost per
+  death, multiple of GiveWell's bar — for ORS/zinc or malaria PMC (which schedule,
+  which states). Use when a funder asks the expected return, or before a BOTEC
   goes into a pitch.
 disable-model-invocation: false
 ---
