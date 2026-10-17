@@ -88,9 +88,8 @@ loop:
     # regenerating the run's synthetic data. The dispatch block names every one
     # of those write paths. A figure that registry + pipeline + render can
     # express is NOT a Labs release — so there is no engine carve-out.
-    # (canopy's floor.py still treats [DATA]/[REGISTRY]/[SEED] tags and
-    # fix_scope data/registry/seed as OUT on its own; `loop.writable_scopes:
-    # [data, registry, seed]` turns that off once the canopy knob ships.)
+    # (canopy's floor.py treats [DATA]/[REGISTRY]/[SEED] tags and fix_scope
+    # data/registry/seed as OUT by default; `writable_scopes` below keeps them IN.)
     #
     # (c) What stays out: a GENUINE Connect Labs product bug or a missing Labs
     # feature — something no registry, pipeline, render or data edit can
@@ -101,6 +100,11 @@ loop:
       repo: dimagi-internal/connect-labs
       match: |-
         (?s)^(?!.*(?:(?-i:\b(?:RECIPE|NARRATION|SCRIPTING)\b)|\[SPEC|\b(?:rewrite|reword|restate|edit)\s+(?:the\s+)?(?:scene\s*\d*\s*(?:\Ws\s*)?)?(?:narration|voiceover|concept_claim)|\bfrom the narration|\bthe narration (?:to|so)\b|\bin the recipe|\bnarrate\b|\breword to\b|scroll_to|before-frame|\bcursor\b|\bpointer\b)).*?(\[LABS[- ]?(?:BUG|FEATURE)\]|\b(?:connect[- ])?labs (?:product )?bug\b|\bbug in (?:connect[- ])?labs\b|(?:new|missing) (?:connect[- ])?labs (?:feature|capability)|(?:connect[- ])?labs (?:does not|doesn't|cannot) (?:support|offer|provide)\b)
+
+  # The run's synthetic data, its semantic registry and its seed are Labs DATA
+  # this loop writes (Phase 7 dispatch-block § B–D), so canopy must not pin
+  # [DATA]/[REGISTRY]/[SEED] findings out (canopy#969, Jon 2026-10-16).
+  writable_scopes: [data, registry, seed]
 
   # Product-clarity findings (a judge tagged product_clarity) become a doc /
   # UI-copy issue here. Default would be the target repo's git origin — and ACE

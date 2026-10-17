@@ -44,7 +44,7 @@ const SURFACES: Surface[] = TEMPLATE.loop.fixed_surfaces;
 
 // Mirrors canopy scripts/ddd/loop_config.py (DDDConfig / LoopConfig / ProductConfig / LintConfig).
 const TOP_KEYS = ['loop', 'deploy_gate', 'inner_loop', 'inner_loop_off_reason', 'timeouts', 'product', 'fix_gate', 'auth_preflight', 'target_rubric'];
-const LOOP_KEYS = ['objective', 'mode', 'backlog_min_findings', 'full_rejudge_every', 'judge_tiering', 'inner_loop_hint_minutes', 'floor_first', 'fixed_surfaces', 'narrative_mode', 'scoped_capture', 'recurring_after', 'plateau_rounds', 'product_repo', 'max_new_issues'];
+const LOOP_KEYS = ['objective', 'mode', 'backlog_min_findings', 'full_rejudge_every', 'judge_tiering', 'inner_loop_hint_minutes', 'floor_first', 'fixed_surfaces', 'narrative_mode', 'scoped_capture', 'recurring_after', 'plateau_rounds', 'product_repo', 'max_new_issues', 'writable_scopes'];
 const SURFACE_KEYS = ['match', 'name', 'owner', 'issue', 'repo'];
 const PRODUCT_KEYS = ['floor', 'presentation_floor', 'block_severities', 'polish_pass', 'lint'];
 const LINT_KEYS = ['max_words_per_screen', 'max_long_lines_per_screen', 'long_line_words', 'max_new_long_lines', 'glossary', 'fonts', 'jargon'];
@@ -310,6 +310,33 @@ function canopyRuntime(): string | null {
 
 const RUNTIME = canopyRuntime();
 const HAS_UV = spawnSync('uv', ['--version'], { timeout: 15_000 }).status === 0;
+/** `loop.writable_scopes` shipped in canopy#969; an older installed runtime skips (visibly) rather than fails. */
+const HAS_WRITABLE_SCOPES = !!RUNTIME && fs.readFileSync(path.join(RUNTIME, 'scripts', 'ddd', 'loop_config.py'), 'utf8').includes('writable_scopes');
+
+describe.skipIf(!RUNTIME || !HAS_UV || !HAS_WRITABLE_SCOPES)('canopy loop_config.load reads writable_scopes (canopy#969)', () => {
+  it('round-trips [data, registry, seed] from the written config', () => {
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), 'ddd-loop-canopy-ws-'));
+    try {
+      const r = writeDddLoopConfig({ runsDir: path.join(home, 'runs', 'ace-kaduna-graduation-20261015-1411'), workspace: 'connect', home });
+      const script = [
+        'import json, sys',
+        `sys.path.insert(0, ${JSON.stringify(RUNTIME)})`,
+        'from scripts.ddd import loop_config',
+        'c = loop_config.load(json.load(sys.stdin)["dir"])',
+        'print(json.dumps(list(c.loop.writable_scopes)))',
+      ].join('\n');
+      const out = spawnSync('uv', ['run', '--quiet', '--project', RUNTIME!, 'python', '-c', script], {
+        input: JSON.stringify({ dir: r.dddDir }),
+        encoding: 'utf8',
+        timeout: 120_000,
+      });
+      expect(out.status, out.stderr).toBe(0);
+      expect(JSON.parse(out.stdout.trim().split('\n').pop()!)).toEqual(['data', 'registry', 'seed']);
+    } finally {
+      fs.rmSync(home, { recursive: true, force: true });
+    }
+  });
+});
 
 describe.skipIf(!RUNTIME || !HAS_UV)('canopy loop_config.load reads the written config', () => {
   it('parses every surface, product_repo and jargon, and pins the noora floor finding', () => {
