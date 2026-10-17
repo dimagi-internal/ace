@@ -1098,6 +1098,12 @@ Generate the Learn (training) app from the PDD using the Nova plugin
              # assessment score field, result labels). Not every field.
              fields:
                user_score: <fieldUuid>
+   # Componentized runs ONLY (Step 0): the component ids this app built a
+   # module for — `learnComponentsBuilt(plan)` from lib/commcare-products.ts
+   # over Step 0's `planLearnModules` result. app-deploy copies it into
+   # products.apps.learn.components_built (ace#2157). Omit on the synthesized
+   # path. Never spell it `components_covered`.
+   components_built: [<component_id>, ...]
    ---
    ```
 

@@ -2453,6 +2453,11 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
              # payable marker, image uploads). Not every field.
              fields:
                entity_key: <fieldUuid>
+   # Componentized runs ONLY (Phase 1 products.mode == componentized): the
+   # Phase-1 component ids this Deliver app built forms for, verbatim.
+   # app-deploy copies it into products.apps.deliver.components_built via
+   # buildCommcareProducts (ace#2157). Omit on the synthesized path.
+   components_built: [<component_id>, ...]
    option_source_gaps: []   # Step 4f — one entry per PDD-declared select
                             # that still shipped as free text, with the
                             # table + value column + label column it needs.

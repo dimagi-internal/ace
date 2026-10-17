@@ -162,6 +162,14 @@ const AppEntry = z
     hq_url: z.string().url().optional(),
     domain: z.string().optional(),
     build_status: z.enum(['success', 'errored', 'pending']).optional(),
+    // Componentized Phase 3 (ace#2157; operator decision 2026-10-16): the
+    // Phase-1 component ids THIS app built content for, recorded per app
+    // because Learn and Deliver build different sets. The one name for the
+    // concept — `components_covered` (poverty-graduation/20260905-1345's
+    // in-flight Learn spelling) is retired. Produced only by
+    // `buildCommcareProducts` (lib/commcare-products.ts), whose real output
+    // `test/lib/commcare-products.test.ts` validates against this schema.
+    components_built: z.array(z.string().min(1)).min(1).optional(),
   })
   .passthrough();
 

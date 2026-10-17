@@ -426,6 +426,14 @@
                           "errored",
                           "pending"
                         ]
+                      },
+                      "components_built": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "minItems": 1
                       }
                     },
                     "additionalProperties": true
@@ -462,6 +470,14 @@
                           "errored",
                           "pending"
                         ]
+                      },
+                      "components_built": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "minItems": 1
                       }
                     },
                     "additionalProperties": true

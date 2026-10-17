@@ -418,6 +418,19 @@ orchestrator from per-skill QA + eval verdicts. -->
              build_status: <success | errored | pending>
    ```
 
+   **Build the block with `buildCommcareProducts` (`lib/commcare-products.ts`),
+   not by hand** — it derives `nova_url` and owns the componentized key.
+   **Componentized run** (`phases.idea-to-design.products.mode ===
+   'componentized'`): pass Phase 1's `products.components[]` as `components`
+   and each summary frontmatter's `components_built:` list as that app's
+   `components_built`; the builder writes it per app
+   (`apps.learn.components_built`, `apps.deliver.components_built`) and THROWS
+   if an app records none or names a component Phase 1 never declared. That is
+   the ONE name for the fact — never `components_covered`, never a
+   products-level list, never `mode` on an app entry (ace#2157, operator
+   decision 2026-10-16). Synthesized run: omit both; the builder refuses a
+   stray `components_built`.
+
    Apply via `mcp__plugin_ace_ace-gdrive__update_yaml_file` with
    `merge: 'deep'` on the current run's `run_state.yaml`. This patch is
    rooted at `phases.commcare-setup.products` — a *partial* patch of the
