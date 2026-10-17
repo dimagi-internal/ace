@@ -10,6 +10,7 @@
  */
 
 import type { Confidence, DriveFolderInfo, LiveSet } from './sweep-types';
+import { loadReportTemplatesConfig, protectedTemplateIds } from './labs-report-templates.js';
 
 const CRISPR_PREFIX = /^CRISPR-/i;
 const KEBAB_OPP_NAME = /^[a-z][a-z0-9-]{2,39}$/;
@@ -299,8 +300,28 @@ export function sweepHandleField(
  * unless they reference an opportunity that's still in the live-set (which
  * would mean the caller mis-classified them as orphans).
  */
-export function scoreLabsItem(item: LabsItemInfo, liveSet: LiveSet): ScoreResult {
+/**
+ * ACE's Labs template workflows and their home program/opportunity
+ * (`config/labs-report-templates.yaml`). Every live Phase 7 report follows them
+ * and is frozen off them at run end; deleting one breaks every live run's pages
+ * and the DDD loop's write path. They are named "ACE …" and carry no run
+ * handle, so the default rule below would score them high-confidence orphans.
+ */
+function aceTemplateIds(): Set<string> {
+  try {
+    return new Set(protectedTemplateIds(loadReportTemplatesConfig()).map(String));
+  } catch {
+    return new Set();
+  }
+}
+
+export function scoreLabsItem(item: LabsItemInfo, liveSet: LiveSet, protectedIds: Set<string> = aceTemplateIds()): ScoreResult {
   const signals: string[] = [`labs ${item.type}`];
+
+  if (protectedIds.has(String(item.id))) {
+    signals.push('ACE Labs template workflow (or its home) — config/labs-report-templates.yaml; never an orphan');
+    return { confidence: 'low', signals };
+  }
 
   if (item.opportunityId && liveSet.identifiers.connectOpportunityIds.includes(item.opportunityId)) {
     signals.push(`references active opportunity ${item.opportunityId} — likely NOT an orphan`);

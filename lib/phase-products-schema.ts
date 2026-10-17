@@ -480,6 +480,37 @@ const CascadeProducts = z
       .passthrough()
       .optional(),
     story_verified: z.boolean().optional(),
+    /**
+     * The reports' relation to ACE's Labs template workflows
+     * (lib/labs-report-templates.ts): `following` from demo-data-setup § C7,
+     * `frozen` after Phase 7 Step 3.92 forks them at run end. Typed because a
+     * clone (lib/clone-run.ts) and a re-follow read it back.
+     */
+    report_templates: z
+      .object({
+        home: z.object({ program_id: z.number() }).passthrough(),
+        state: z.enum(['following', 'frozen', 'partial']),
+        reports: z.array(
+          z
+            .object({
+              role: z.enum(['programme_report', 'worker_review', 'opp_report']),
+              workflow_id: z.number(),
+              program_id: z.number().optional(),
+              opportunity_id: z.number().optional(),
+              template_workflow_id: z.number().nullable(),
+              state: z.enum(['following', 'frozen', 'skipped']),
+              followed_version: z.number().optional(),
+              frozen_version: z.number().optional(),
+              frozen_version_uncertain: z.boolean().optional(),
+              frozen_at: z.string().optional(),
+              reason: z.string().optional(),
+            })
+            .passthrough(),
+        ),
+        updated_at: z.string().optional(),
+      })
+      .passthrough()
+      .optional(),
   })
   .passthrough();
 

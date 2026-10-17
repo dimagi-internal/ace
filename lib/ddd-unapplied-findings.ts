@@ -5,8 +5,9 @@
  * Under `/ace:run` the canopy DDD loop's write path is the unified spec
  * (narration + recipe) only. The labs report pages ACE Phase 7 authors are
  * deployed templates whose `render_code` lives in the connect-labs database, so
- * `config/ddd-loop.yaml` pins them out of the loop's edit scope as the
- * `labs-report-template` fixed surface. A defect on one of those pages is
+ * `config/ddd-loop.yaml` pinned them out of the loop's edit scope as the
+ * `labs-report-template` fixed surface (until 2026-10-16; see DASHBOARD_SURFACES
+ * for what is still out). A defect on one of those pages is
  * rediscovered every pass and never applied, and before this module it reached
  * the write-back folded into `stopped_not_converged` — which a reader takes to
  * mean "the demo is bad", when it means "the fixer cannot reach that surface".
@@ -25,8 +26,15 @@
  * Pure.
  */
 
-/** The `config/ddd-loop.yaml` fixed surfaces that are ACE-authored labs dashboards. */
-export const DASHBOARD_SURFACES: readonly string[] = ['labs-report-template'];
+/**
+ * The `config/ddd-loop.yaml` fixed surfaces that hold a dashboard defect the
+ * loop cannot apply. Since 2026-10-16 the report PAGES are in scope (ACE's Labs
+ * template workflows, lib/labs-report-templates.ts); what stays out is a figure
+ * Labs does not compute (`labs-engine`) and the registry's own labels
+ * (`labs-semantic-registry`). `labs-report-template` stays listed so a DDD run
+ * stamped by the earlier config still reads correctly.
+ */
+export const DASHBOARD_SURFACES: readonly string[] = ['labs-engine', 'labs-semantic-registry', 'labs-report-template'];
 
 /** Phase 7's own outcome for a loop that ended with unapplied dashboard defects. */
 export const FOUND_NOT_FIXED = 'found_not_fixed';

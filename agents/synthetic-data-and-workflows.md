@@ -437,7 +437,7 @@ across. ace#2287.
   just judged. Read `products.synthetic.ddd_handoff` + `ddd_run_id` +
   `ddd_terminal_status`, export `CANOPY_DDD_RUNS_DIR` and `DDD_DIR` from the
   hand-off's `runs_dir` / `ddd_dir`, run `bin/ace-canopy-web --workspace "$WS" verify narrative <slug>`,
-  then Steps 3.9 → 4.5 against `<runs_dir>/<ddd_run_id>/`. Step 4 flips
+  then Steps 3.9 → 4.5 against `<runs_dir>/<ddd_run_id>/` (3.92 freezes the pages). Step 4 flips
   `status: done`.
 - **Any other dispatcher (no `ddd: orchestrator-owned` line).** Dispatch
   `Agent(canopy:ddd)` yourself, then **wait on its completion notification: end
@@ -466,6 +466,29 @@ with Step 3.1's two `export` lines** (`CANOPY_DDD_RUNS_DIR`, `DDD_DIR`) and requ
 every canopy command to run under them — without `DDD_DIR` the loop reads no
 `config.yaml` and every labs-template finding is re-declined by hand again.
 
+**Give the loop its write path to the report pages (2026-10-16).** The cascade
+reports follow ACE's Labs template workflows (`demo-data-setup` § C7,
+`config/labs-report-templates.yaml`), so a page finding is fixed IN the loop:
+edit the template draft, preview it on this run's page, publish only when the
+affected cells do not regress, otherwise discard. `config/ddd-loop.yaml` keeps
+only Labs chrome, engine-boundary findings (a figure Labs does not compute) and
+the registry out of scope. Generate the block for THIS run and paste it into the
+prompt verbatim, above the locked-claims ledger:
+
+```bash
+node "$ACE_ROOT/node_modules/tsx/dist/cli.mjs" "$ACE_ROOT/scripts/labs-report-templates.ts" dispatch-block \
+  --run-state <local run_state.yaml>
+```
+
+It names each page's template and the procedure — `draft-begin` (a lease: `busy`
+means another run holds the draft; the finding waits for the next pass, never a
+poll), render-only `workflow_template_update_draft` edits chained on
+`expected_revision`, `draft-capture` before/after on the affected scenes,
+`draft-decide`, then `draft-publish` or `draft-discard`. Deterministic parts are
+code (`lib/labs-template-draft.ts`); the judging of before/after stays the loop's.
+A publish reaches every OTHER run still following the template too — that is why
+nothing is published unproven, and why finished runs are frozen (Step 3.92).
+
 Do NOT substitute a bare `canopy:ddd-run` invocation as the phase's render step.
 `ddd-run` is ONE render+judge pass: it returns a verdict and a findings list and
 nothing else. It does not apply fixes, does not iterate, and does not decide when
@@ -493,10 +516,8 @@ deliberate single-pass smoke check, never as the phase's convergence step.
   carries the distribution, not just the floor.
 
 **A page edit under a LOCKED narration must keep every claim that page carries
-true (ace#2727).** `config/ddd-loop.yaml` now pins the labs report templates
-out of the loop's edit scope (ace#2337), so a page edit should not happen under
-`/ace:run` — but a finding its regexes miss can still reach a fixer with a write
-path, so keep this guard. The loop may fix report pages (labs template workflows) while
+true (ace#2727).** The loop now edits the report pages itself (the template
+write path above), so this guard is load-bearing on every page fix. The loop fixes report pages (labs template workflows) while
 the narration is locked, and canopy's fix direction is "when narration and
 product disagree, the narration moves" — but a locked narration cannot move
 silently. On `spark-facilitator/20261004-1706` a page fix merged two identical
@@ -543,10 +564,12 @@ did not pass", which is true (ace#2995). `passed-with-deferred-evals` stays
 reserved for evals that genuinely did not run.
 
 **Dashboard defects the loop found but could not apply are their own outcome:
-`found_not_fixed` (ace#2337).** The labs report pages are pinned out of the
-loop's edit scope (`config/ddd-loop.yaml` `labs-report-template`), because the
-loop has no write path to their `render_code`. A defect on one of them is
-rediscovered every pass and never applied. Folded into `stopped_not_converged`,
+`found_not_fixed` (ace#2337).** Page defects are now fixable in-loop (the
+template write path), but two kinds still are not: a figure Labs does not
+compute (`config/ddd-loop.yaml` `labs-engine`, a connect-labs change) and the
+registry's own labels/names (`labs-semantic-registry`). A defect on one of them is
+rediscovered every pass and never applied. (Runs before 2026-10-16 recorded
+`labs-report-template` here; it is still read.) Folded into `stopped_not_converged`,
 it reads as "the demo is bad" when the truth is "the fixer cannot reach that
 page". Those are opposite remedies. So, on EVERY ending, before the write-back, run:
 
@@ -611,9 +634,11 @@ evaluations while the corrected spec fails it. So, in order:
 
 ### Step 3.9: Promote a dashboard that EARNED it (the learning loop)
 
-**Not for the cascade.** The indicator trio FOLLOWS the deployed labs
-templates and a registry is programme data, so there is no ACE-authored render
-to promote; skip this step when `products.synthetic.cascade` is set.
+**Not for the cascade.** The indicator trio follows ACE's template workflows,
+so a page fix is already shared by publishing it (Step 3) — there is nothing to
+promote; skip this step when `products.synthetic.cascade` is set. (A template
+fix that should reach NEW template workflows too goes back to connect-labs via
+`workflow_template_export` + `tools/promote_template_workflow.py`.)
 
 **Only when the loop ended `converged_clean`.** Reuse in this phase currently
 flows one way — every run instantiates from the same fixed palette of
@@ -655,6 +680,35 @@ next run can find it and the promotion is auditable.
 judges found defects that were never fixed; promoting it propagates them to
 every future run of that shape, which is strictly worse than not learning. The
 gate is the loop's own `terminal_status`, not anyone's read of the screenshots.
+
+### Step 3.92: Freeze the report pages (EVERY terminal status)
+
+**Runs once the DDD loop has ended — whatever its `terminal_status` — before any
+preview, write-back or release.** While a run is live its reports follow ACE's
+template workflows, so a later run's publish would change this run's pages: the
+ones its narration was judged against and the ones a release or a clone copies.
+Fork every report off its template, recording the version each kept:
+
+```bash
+node "$ACE_ROOT/node_modules/tsx/dist/cli.mjs" "$ACE_ROOT/scripts/labs-report-templates.ts" freeze \
+  --run-state <local run_state.yaml> --out <patch.json>
+```
+
+`update_yaml_file({merge: 'deep', localFilePath: <patch.json>})` records
+`cascade.report_templates` with `state: frozen` and each report's
+`frozen_version` (`frozen_version_uncertain: true` when a publish raced the fork).
+It is idempotent — re-run it on a resume. The page does not change at the fork.
+`state: partial` (a report not on an ACE template, e.g. built before 2026-10-16)
+goes in the phase summary with the script's reason. A phase that skips this has
+not finished: its pages keep moving.
+
+`lib/clone-run.ts` (§ 4c) copies each frozen page onto the clone's reports, so a
+release or `/ace:clone-to-new-workspace` shows exactly the page the run froze.
+**To put a finished run back on the templates** (it then picks up every later
+publish — only for a run nobody relies on as a fixed record):
+`labs-report-templates.ts refollow --run-state <rs> [--apply]` prints (or makes)
+one `workflow_follow_template({workflow_id, <scope>, template_workflow_id,
+template_program_id, follow: true})` per report.
 
 ### Step 3.95: Dashboard previews — one or two render frames per dashboard (best effort)
 
@@ -777,6 +831,10 @@ phases:
           cohort_id: <int>
           history: { first_period_end: <date>, last_period_end: <date>, run_ids: [<int>, ...] }
           story_verified: true             # demo-data-setup-qa check 21
+          report_templates:                # demo-data-setup § C7 follow → Step 3.92 freeze (lib/labs-report-templates.ts)
+            home: { program_id: 10157 }
+            state: <following|frozen|partial>
+            reports: [{ role: programme_report, workflow_id: <int>, program_id: <int>, template_workflow_id: 11281, state: frozen, followed_version: <n>, frozen_version: <n>, frozen_at: <ISO> }, ...]
         source: { dashboards: [...], realized_vars_ref: 7-synthetic/realized.json }
         # ace-web's run summary renders this map — mirror the trio into it:
         # programme_report, worker_review, <partner>_opp_report
@@ -792,7 +850,7 @@ phases:
         # found_not_fixed when the loop left dashboard defects unapplied, else the terminal status
         ddd_outcome: <found_not_fixed|<terminal_status>>
         unapplied_dashboard_findings:      # found, not fixed — every ending, [] when none
-          - { finding_id: <id>, scene: "<n>", dimension: <dim>, dashboard_url: <url>, surface: labs-report-template, owner: <owner>, issue: <repo#n>, defect: "<what is wrong>", pinned: <bool> }
+          - { finding_id: <id>, scene: "<n>", dimension: <dim>, dashboard_url: <url>, surface: <labs-engine|labs-semantic-registry>, owner: <owner>, issue: <repo#n>, defect: "<what is wrong>", pinned: <bool> }
     steps:
       semantic-registry-author:    { status: done }
       semantic-registry-author-qa: { status: done }

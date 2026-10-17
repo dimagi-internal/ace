@@ -1071,6 +1071,101 @@
                       },
                       "story_verified": {
                         "type": "boolean"
+                      },
+                      "report_templates": {
+                        "type": "object",
+                        "properties": {
+                          "home": {
+                            "type": "object",
+                            "properties": {
+                              "program_id": {
+                                "type": "number"
+                              }
+                            },
+                            "required": [
+                              "program_id"
+                            ],
+                            "additionalProperties": true
+                          },
+                          "state": {
+                            "type": "string",
+                            "enum": [
+                              "following",
+                              "frozen",
+                              "partial"
+                            ]
+                          },
+                          "reports": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "role": {
+                                  "type": "string",
+                                  "enum": [
+                                    "programme_report",
+                                    "worker_review",
+                                    "opp_report"
+                                  ]
+                                },
+                                "workflow_id": {
+                                  "type": "number"
+                                },
+                                "program_id": {
+                                  "type": "number"
+                                },
+                                "opportunity_id": {
+                                  "type": "number"
+                                },
+                                "template_workflow_id": {
+                                  "type": [
+                                    "number",
+                                    "null"
+                                  ]
+                                },
+                                "state": {
+                                  "type": "string",
+                                  "enum": [
+                                    "following",
+                                    "frozen",
+                                    "skipped"
+                                  ]
+                                },
+                                "followed_version": {
+                                  "type": "number"
+                                },
+                                "frozen_version": {
+                                  "type": "number"
+                                },
+                                "frozen_version_uncertain": {
+                                  "type": "boolean"
+                                },
+                                "frozen_at": {
+                                  "type": "string"
+                                },
+                                "reason": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "role",
+                                "workflow_id",
+                                "template_workflow_id",
+                                "state"
+                              ],
+                              "additionalProperties": true
+                            }
+                          },
+                          "updated_at": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "home",
+                          "state",
+                          "reports"
+                        ],
+                        "additionalProperties": true
                       }
                     },
                     "additionalProperties": true

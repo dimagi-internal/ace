@@ -25,9 +25,8 @@
 
 loop:
   # What THIS loop may not edit. Under ACE the loop's write path is the unified
-  # spec (narration + recipe) only: the labs pages are deployed templates whose
-  # render_code lives in the connect-labs database, and the loop has no write
-  # path to it (ace#2337). A finding matching a surface is OUT of edit scope; a
+  # spec (narration + recipe) AND, since 2026-10-16, the report pages through
+  # ACE's Labs template workflows (see (a) below). A finding matching a surface is OUT of edit scope; a
   # cell whose findings are all out is PINNED and the loop optimizes the rest.
   # At run end canopy comments the evidence on `issue` (or finds/opens one in
   # `repo`). First matching surface wins, so the most specific owner goes first.
@@ -46,7 +45,8 @@ loop:
   # naming are matched (the 17 misses are mixed recipe+product findings, kept in
   # on purpose, or one-offs with no UI noun); 0 of 146 recipe/narration-scoped
   # findings are newly pinned (2 match, both already out by canopy's own
-  # [EXTERNAL]/[REGISTRY] tag rule).
+  # [EXTERNAL]/[REGISTRY] tag rule). Since 2026-10-16 the labs-template ones
+  # are IN scope (the fixture now expects `in` for them; see (a) below).
   fixed_surfaces:
     # (b) Connect Labs product chrome — not ACE's and not the template's: the
     # global floating 'Ask an agent' launcher drawn over report content (the
@@ -70,30 +70,38 @@ loop:
       repo: dimagi-internal/ace
       match: |-
         (?s)^(?!.*(?:(?-i:\b(?:RECIPE|NARRATION|SCRIPTING)\b)|\[SPEC|\b(?:rewrite|reword|restate|edit)\s+(?:the\s+)?(?:scene\s*\d*\s*(?:\Ws\s*)?)?(?:narration|voiceover|concept_claim)|\bfrom the narration|\bthe narration (?:to|so)\b|\bin the recipe|\bnarrate\b|\breword to\b|scroll_to|before-frame|\bcursor\b|\bpointer\b)).*?(\brun[- ]?id\b|\brun (?:slug|tag|identifier)|build slug|ace [\w-]+/(?:\d{8}-\d{4}|<run-id>))
-    # (a) The labs indicator / programme report templates and dashboards ACE
-    # Phase 7 authors (indicator_programme_report, worker review, opp report,
-    # their semantic registry). Three kinds of evidence, any one suffices:
-    #   1. the finding names the surface (render_code, a labs/deployed template,
-    #      an indicator_* template, the semantic registry, a [CODE] fix);
-    #   2. the judge tagged the fix PRODUCT: / PRODUCT change (case-sensitive —
-    #      the word "product" in prose is not a tag);
-    #   3. an imperative edit to a page element ("Drop the Attention column",
-    #      "remove the legend and hint", "thin the tick labels") — the verb must
-    #      open a clause, so a description ("the frame cannot show that …
-    #      chip") does not count.
+    # (a) The labs report PAGES are NOT a fixed surface any more (2026-10-16).
+    # Until then `labs-report-template` pinned every finding on the indicator
+    # programme report / worker review / opp report out of scope, because the
+    # pages followed the DEPLOYED connect-labs code template and only a release
+    # could change them (ace#2337, ace#3115/#3118). The cascade reports now
+    # follow ACE's Labs TEMPLATE WORKFLOWS (config/labs-report-templates.yaml):
+    # render as data, draft -> preview -> publish in seconds. The Phase 7
+    # dispatch hands the loop that write path (`scripts/labs-report-templates.ts
+    # dispatch-block`), so a page finding — layout, labels, legends, hints,
+    # chart scaling, a column that should not be there — is IN scope. Only the
+    # two kinds the template cannot fix stay out:
     #
-    # ACE owns these templates (built for ACE), but their SOURCE is
-    # connect-labs connect_labs/workflow/templates/ (indicator_*.py +
-    # indicator_report_render.js); each run deploys a copy. So the fix is a
-    # template-source PR in connect-labs — patching one run's render_code would
-    # not reach the next run. No `issue`: ace#2337 (the no-write-path issue) is
-    # closed, and an umbrella comment thread buries findings; canopy opens one
-    # issue per finding in `repo`, deduped by its ddd-finding marker.
-    - name: labs-report-template
-      owner: ACE (labs report templates, source in connect-labs)
+    # (c) The engine boundary: a figure Labs does not compute or the snapshot
+    # does not carry is a connect-labs change (snapshot builder / API) and a
+    # release; the page that shows it is a template edit again once it ships.
+    - name: labs-engine
+      owner: Connect Labs (snapshot builder / engine)
       repo: dimagi-internal/connect-labs
       match: |-
-        (?s)^(?!.*(?:(?-i:\b(?:RECIPE|NARRATION|SCRIPTING)\b)|\[SPEC|\b(?:rewrite|reword|restate|edit)\s+(?:the\s+)?(?:scene\s*\d*\s*(?:\Ws\s*)?)?(?:narration|voiceover|concept_claim)|\bfrom the narration|\bthe narration (?:to|so)\b|\bin the recipe|\bnarrate\b|\breword to\b|scroll_to|before-frame|\bcursor\b|\bpointer\b)).*?(render[_ ]?code|labs (?:[\w-]+ ){0,3}template|deployed (?:labs )?[\w ]{0,30}template|indicator_(?:programme_report|worker_review|opp_report)|semantic registry|in the registry|\[CODE\]|(?-i:\bPRODUCT\b)(?: change)?\s*[:(]|(?:^\s*|[.;:!?)\]]\s+|\b(?:and|or|then|either)\s+|\([a-z]\)\s*)(?:remove|make|use (?:one|a single)|drop|delete|collapse|merge|rename|retitle|relabel|shorten|replace|render|add|label|mark|show|state|tint|thin|narrow|draw|caption|define|redefine|compute|exclude|fit|change|print|plain-language)\b[^.;!?]{0,60}?\b(?:column header|columns?|legend|chips?|badges?|tick labels?|ticks|axis|swatch|subline|sparkline|tiles?|KPI|bubbles?|ⓘ|picker|panel(?: heading| title| header)?|chart(?: title)?|row label|own row|thresholds?|numerator|denominator|bulk (?:action|button)|hints?|footnote|breadcrumb|mini (?:bars|chart)|attention|peer (?:median|count)|labels?|deltas|rows))
+        (?s)^(?!.*(?:(?-i:\b(?:RECIPE|NARRATION|SCRIPTING)\b)|\[SPEC|\b(?:rewrite|reword|restate|edit)\s+(?:the\s+)?(?:scene\s*\d*\s*(?:\Ws\s*)?)?(?:narration|voiceover|concept_claim)|\bfrom the narration|\bthe narration (?:to|so)\b|\bin the recipe|\bnarrate\b|\breword to\b|scroll_to|before-frame|\bcursor\b|\bpointer\b)).*?(\[ENGINE\]|snapshot (?:builder|payload|schema)|semantic_snapshot|(?:labs|the engine|the snapshot|the API) (?:does not|doesn't|never|cannot) (?:compute|calculate|store|carry|serve|hold|return)|not (?:yet )?(?:computed|calculated|stored|carried) by (?:labs|the snapshot)|(?:needs?|requires?) (?:a )?(?:labs |connect-labs )?(?:deploy|release|engine change)|\bengine (?:change|boundary))
+    # (d) The semantic registry: indicator names, labels, value maps and targets
+    # are registry DATA ACE authors (`semantic-registry-author`), not page code,
+    # and the loop has no registry write path. A template edit keyed on one
+    # programme's label would be the rule-on-a-label hack the fix gate refuses.
+    # NOT "in the registry": a page finding says that too ("with no targets in
+    # the registry, the table still shows a legend" — connect-labs#2578 item 2,
+    # a render fix).
+    - name: labs-semantic-registry
+      owner: ACE Phase 7 (semantic registry)
+      repo: dimagi-internal/ace
+      match: |-
+        (?s)^(?!.*(?:(?-i:\b(?:RECIPE|NARRATION|SCRIPTING)\b)|\[SPEC|\b(?:rewrite|reword|restate|edit)\s+(?:the\s+)?(?:scene\s*\d*\s*(?:\Ws\s*)?)?(?:narration|voiceover|concept_claim)|\bfrom the narration|\bthe narration (?:to|so)\b|\bin the recipe|\bnarrate\b|\breword to\b|scroll_to|before-frame|\bcursor\b|\bpointer\b)).*?(semantic registry|registry (?:label|name|display|indicator|value)s?\b|\[REGISTRY\])
 
   # Product-clarity findings (a judge tagged product_clarity) become a doc /
   # UI-copy issue here. Default would be the target repo's git origin — and ACE

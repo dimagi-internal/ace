@@ -437,6 +437,8 @@ function fakeLabs(opts: {
   failMode?: 'unlanded' | 'lost' | 'error';
   workspaceOk?: boolean;
   figureDrift?: boolean;
+  /** The source run FROZE its reports at Phase 7's end: each renders a stored copy (lib/labs-report-templates.ts). */
+  frozen?: boolean;
 } = {}) {
   let next = 20000;
   const id = () => next++;
@@ -453,6 +455,14 @@ function fakeLabs(opts: {
   const registries: Array<{ id: number; name: string; program_id: number }> = [];
   const workflows: Array<{ id: number; name: string; template_type: string; program_id: number; pipeline_id: number; worker_review: { workflow_id: number; run_id: number } }> = [];
   const cohorts: Array<{ id: number; name: string; organization_id: string }> = [];
+  // Render state of every workflow the fake knows: source reports, then whatever the copy makes.
+  const SOURCE_REPORTS = [9686, 9688, 9691, 9693];
+  const renders = new Map<number, { render_source: Record<string, unknown>; render_code: string; version: number }>();
+  for (const w of SOURCE_REPORTS) renders.set(w, opts.frozen ? { render_source: { source: 'stored', version: 2 }, render_code: `FROZEN PAGE ${w}`, version: 2 } : { render_source: { source: 'template', template: 'x' }, render_code: 'DEPLOYED', version: 1 });
+  const renderOf = (w: number) => {
+    if (!renders.has(w)) renders.set(w, { render_source: { source: 'template', template: 'x' }, render_code: 'DEPLOYED', version: 1 });
+    return renders.get(w)!;
+  };
   const call = async (tool: string, args: any): Promise<any> => {
     calls.push({ tool, args });
     const failNow = opts.failOnce === tool && !failed.has(tool);
@@ -485,7 +495,36 @@ function fakeLabs(opts: {
         registries.push(r);
         return { id: r.id };
       }
-      case 'workflow_get':
+      case 'workflow_follow_template': {
+        const r = renderOf(args.workflow_id);
+        if (args.follow === false) {
+          r.render_source = { source: 'stored', version: r.version + 1 };
+          r.render_code = 'TEMPLATE v2';
+          r.version += 1;
+        } else {
+          r.render_source = { source: 'template_workflow', template_workflow: args.template_workflow_id, version: 2 };
+        }
+        return { workflow_id: args.workflow_id, follows: args.follow === false ? null : { workflow: args.template_workflow_id } };
+      }
+      case 'workflow_update_render_code': {
+        const r = renderOf(args.workflow_id);
+        if (args.expected_version !== r.version) throw new Error('VERSION_CONFLICT');
+        if (r.render_source.source !== 'stored') throw new Error('follows a template: edits refused');
+        r.render_code = args.component_code;
+        r.version += 1;
+        return { version: r.version };
+      }
+      case 'workflow_get': {
+        const rr = renderOf(args.workflow_id);
+        const render = { render_source: rr.render_source, render_code_version: rr.version, ...(args.include_render_code ? { render_code: rr.render_code } : {}) };
+        return { ...describeWorkflow(args), ...render };
+      }
+      default:
+        return answerMore(tool, args);
+    }
+  };
+  const describeWorkflow = (args: any): any => {
+    {
         if (args.workflow_id === 9686) return { id: 9686, name: 'Programme report', template_type: 'indicator_programme_report', config: { showFilters: true, worker_review: { workflow_id: 9688 } }, pipeline_sources: [{ pipeline_id: 9685, alias: 'visits' }] };
         if (args.workflow_id === 9691) return { id: 9691, template_type: 'indicator_opp_report', config: {} };
         {
@@ -493,6 +532,10 @@ function fakeLabs(opts: {
           if (w) return { id: w.id, name: w.name, template_type: w.template_type, config: { worker_review: w.worker_review }, pipeline_sources: [{ pipeline_id: w.pipeline_id, alias: 'visits' }] };
         }
         return { id: args.workflow_id, template_type: 'indicator_programme_report', config: {}, pipeline_sources: [{ pipeline_id: programReport + 1, alias: 'visits' }] };
+    }
+  };
+  const answerMore = async (tool: string, args: any): Promise<any> => {
+    switch (tool) {
       case 'workflow_create_from_template': {
         programReport = id();
         const pipe = id();
@@ -608,6 +651,40 @@ describe('rebuildLabs — the scripted § 4c copy (ace#3020)', () => {
     expect(String(r.reason)).toMatch(/labs-workspace-setup\.ts --program-id 20000/);
     const steps = (r as any).copy.steps;
     for (const s of ['records', 'registry', 'programme_report', 'pipeline', 'cohort', 'history', 'benchmarks', 'verify']) expect(steps[s]?.done).toBe(true);
+  });
+
+  it('a FROZEN source: every copied report shows the source page, and the clone records its own frozen block', async () => {
+    const labs = fakeLabs({ frozen: true });
+    const ctx = labsCtx(labs);
+    // The source recorded its freeze (lib/labs-report-templates.ts) — including ACE's template HOME id,
+    // which is not the run's and must not be reported as a leftover source id.
+    const syn = JSON.parse(JSON.stringify(SYN));
+    syn.cascade.report_templates = {
+      home: { program_id: 10157 },
+      state: 'frozen',
+      updated_at: '2026-10-16T00:00:00Z',
+      reports: [{ role: 'programme_report', workflow_id: 9686, program_id: 10137, template_workflow_id: 11281, state: 'frozen', frozen_version: 3 }],
+    };
+    (ctx.sourceRunState as any).phases['synthetic-data-and-workflows'].products.synthetic = syn;
+    const r = await rebuildLabs(ctx);
+    expect(r.status, String((r as any).reason)).toBe('done');
+    const updates = labs.calls.filter((c) => c.tool === 'workflow_update_render_code');
+    // programme report, worker review, both opp reports
+    expect(updates.map((u) => u.args.component_code).sort()).toEqual(['FROZEN PAGE 9686', 'FROZEN PAGE 9688', 'FROZEN PAGE 9691', 'FROZEN PAGE 9693']);
+    // Each was forked onto a stored copy first (a follower refuses render edits).
+    expect(labs.calls.filter((c) => c.tool === 'workflow_follow_template' && c.args.follow === false)).toHaveLength(4);
+    const block = (r as any).synthetic.cascade.report_templates;
+    expect(block.state).toBe('frozen');
+    expect(block.home).toEqual({ program_id: 10157 });
+    expect(block.reports.find((x: any) => x.role === 'programme_report')).toMatchObject({ state: 'frozen', frozen_version: 3, program_id: 20000 });
+    expect(block.reports.every((x: any) => x.workflow_id >= 20000)).toBe(true);
+  });
+
+  it('a source still on the deployed code template: no render is touched', async () => {
+    const labs = fakeLabs();
+    const r = await rebuildLabs(labsCtx(labs));
+    expect(r.status).toBe('done');
+    expect(labs.calls.some((c) => c.tool === 'workflow_update_render_code' || c.tool === 'workflow_follow_template')).toBe(false);
   });
 
   it('a copy whose figures differ from the source is NOT done', async () => {

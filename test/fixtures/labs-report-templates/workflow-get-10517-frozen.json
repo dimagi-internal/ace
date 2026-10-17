@@ -1,0 +1,96 @@
+{
+  "_captured": "Live labs workflow_get response as the ACE identity, 2026-10-16 (scripts/labs-report-templates.ts work; templates in program 10157; 10517 = kaduna-graduation/20261015-1411 opp report after its freeze).",
+  "id": 10517,
+  "name": "Indicator Opportunity Report",
+  "description": "One opportunity's own indicator report, saved weekly or handed down from its programme report: headline indicators, a row per field worker on the programme's scorecard, activity and trends, and a Benchmarks tab placing its organisation among the programme's others anonymously. Any semantic registry; no page code.",
+  "statuses": [],
+  "config": {
+    "agent": {
+      "share": true
+    },
+    "actions": [
+      {
+        "key": "initiate_ai_coach",
+        "type": "start_ocs_outreach",
+        "label": "Start coaching",
+        "defaults": {
+          "bot": "ac80a01d-56a5-407e-9a46-98f19de2808c"
+        }
+      }
+    ],
+    "sandbox": true,
+    "multi_opp": false,
+    "showFilters": false,
+    "templateType": "indicator_opp_report",
+    "worker_review": null,
+    "noPipelineStream": true,
+    "showSummaryCards": false,
+    "stale_after_days": 14,
+    "renderWhileLoading": true,
+    "source_workflow_id": 10512,
+    "warm_cache_on_read": true
+  },
+  "template_type": "indicator_opp_report",
+  "render_code_version": 2,
+  "render_source": {
+    "source": "stored",
+    "version": 2
+  },
+  "pipeline_sources": [
+    {
+      "pipeline_id": 10511,
+      "alias": "visits",
+      "home_scope": {
+        "opportunity_id": 10152
+      },
+      "load": "eager",
+      "name": "Routine home visits (Deliver app form paths)",
+      "schema_summary": {
+        "field_count": 9
+      }
+    }
+  ],
+  "registry": {
+    "source": "record",
+    "program_id": 10152,
+    "registry_id": 10510
+  },
+  "saved_runs": {
+    "supports_saved_runs": true,
+    "source": "definition",
+    "snapshot_inputs": {
+      "builder": "semantic_snapshot",
+      "workers": false
+    },
+    "snapshot_schema": {
+      "version": 3,
+      "keys": {
+        "state.snapshot.programInd": "Program-wide indicator results, keyed by indicator id, as published",
+        "state.snapshot.byLLO": "Per-LLO indicator results, with each LLO's opportunities nested",
+        "state.snapshot.byOpp": "Per-opportunity indicator results",
+        "state.snapshot.byFLW": "Per-FLW indicator results. `key` is (opportunity, username) joined by '::' and is the render's selection identity; `flw` is the name it displays; `reds`/`yellows` are its badge counts. `rows` carries INTEGER POSITIONS into `state.snapshot.cases`, not case records \u2014 a saved run has no live pipeline behind it, so an empty `rows` would end the drill at the worker, but holding the records here as well as in `cases` stored every case twice and put the payload over the 5 MB cap. The render rehydrates on load. `startMonth` (YYYY-MM, the month the worker first appeared) and `caseloadBand`/`caseloadLabel` are the peer-cohort keys: which workers this one is fairly compared against. Either can be null for a worker who cannot be placed \u2014 no dated case, or too few workers on the run to band at all \u2014 and such a worker is left OUT of that cohort rather than pooled into a catch-all",
+        "state.snapshot.cohortEdges": "The cut-points behind `byFLW[].caseloadBand`, as {caseload: [lo, hi]} \u2014 quantiles over the whole worker population, computed once here so no two readers band differently and so a run stays comparable to the run before it. Empty when there were too few workers to band",
+        "state.snapshot.cases": "Flat index of every case in the snapshot, and the ONLY copy of the case records \u2014 `byFLW[].rows` indexes into it. Referenced by position rather than `entity_id` because a synthetic cohort reuses entity ids across cloned opportunities. Slim by design: identity, dates, weights, visit count. The per-visit weight SERIES is deliberately absent \u2014 it would not fit the 5 MB cap, and the longitudinal workflow fetches it live for the one case a user opens",
+        "state.snapshot.caseStateCatalog": "The registry's CASE STATES as published (semantic/case_states.catalog): per state its property name, label, plain meaning, tone, priority, evidence columns, facts template, picture and coach guidance. Each case in `cases` carries every state (true/false) and its evidence columns, as of the run",
+        "state.snapshot.cMeasures": "The display contract these values were graded with \u2014 titles, units, directions, bands, min-denominators, gate inputs and coverage floors as published, so a later threshold change cannot silently re-grade a saved run. This is the same `measure_catalog` the live view grades with, so the two cannot diverge",
+        "state.snapshot.credibility": "indicator -> which LLOs record it credibly, as published. Resolved from the builder spec's `credibility` mapping onto the registry's settings tables. Replaces the single-purpose `mortalityCredible`, which could only carry mortality",
+        "state.snapshot.deployment": "The availability facts the gates graded with (`llo_map`, `app_asks`), so a saved run can explain WHY a cell reads 'not in this app' without the repo it was built from. These were static dicts in semantic/gates.py and are now registry data",
+        "state.snapshot.pooledOverCredible": "indicator -> {ind, llos, of}: for each credibility-gated indicator, the figure POOLED over the recorders the workbook accepts, which LLOs those were, and how many there were in total. The program row pools every LLO, so on mortality it reads lower than reality \u2014 non-recorders contribute denominator without deaths. A saved run cannot rebuild this from its graded cells: a row banded 'insufficient' still contributes to the pool while storing no value",
+        "state.snapshot.series": "Further indicator families graded from the same evaluation, keyed by series, each with its catalog and its program / LLO / opportunity / worker cells in the same {id, n, value, band} shape as the headline series. Empty for KMC, which has one family; runs saved before #2004 carry the old scorecard under `N`",
+        "state.snapshot.weekly": "Activity by ISO week per drill scope (all / llo:<name> / opp:<id>): visits that happened and babies registered, cut at the run's as-of date. The indicator lines of the trend are NOT in the snapshot -- they are the series of saved runs, one point per run computed as of its period end, served by the run-history API",
+        "state.snapshot.monthly": "Program monthly trend series: per cohort month, the graded indicators, cohort size, the count of visits that HAPPENED that month (activity, from the visit rows \u2014 a different grouping from the cohort month, so not derivable from the indicators), per credibility-gated indicator, the figure pooled over that month's credible recorders, and `counts`: every count indicator's raw figure (e.g. registered_cases), never suppressed under the min-denominator floor, which the enrollment-against-target section sums month by month",
+        "state.snapshot.daily": "Registrations by day for the as-of month and the month before it, per scope (all / llo:<name>): {months: [previous, current], as_of, byScope: {scope: {month: [count per day]}}}. The previous month runs its full length, the current one to the as-of day. Counts babies with a registration form, by their registry cohort date (reg_date, else first visit), so a month sums to its registered_cases",
+        "state.snapshot.monthlyByScope": "Monthly series precomputed per drill scope (all / llo:<name> / opp:<id>) so a saved run still supports the LLO and opportunity drill without live pipelines",
+        "state.snapshot.nSeries": "The SQL tab's rows when that tab was run; null otherwise",
+        "state.snapshot.schema": "Payload version, independent of this manifest's version",
+        "state.snapshot.generated_at": "When the snapshot was built",
+        "state.snapshot.meta": "Cohort size as published: cases, visits, opportunities, llos \u2014 plus `as_of`, the date every figure is reported as of (the run's period end), and `synthetic`, which the render reads to show the 'built on synthetic clones' disclaimer. Resolved from the SyntheticOpportunity registry, and ABSENT rather than false when that cannot be determined, since a confident false would claim real program data",
+        "state.snapshot.display": "How the report reads, resolved from the registry when the run was built (semantic/display.py): entity / worker / organisation nouns, headline indicator ids in tile order, category order, per-indicator label / plain / target / order / scorecard / credibility, the case table's columns, the reading series to chart, and the visit pipeline alias"
+      }
+    },
+    "has_build_snapshot_hook": false,
+    "snapshot_builder": "semantic_snapshot",
+    "snapshot_via_api": "server_side",
+    "snapshot_note": "workflow_save_snapshot builds this snapshot server-side via the 'semantic_snapshot' builder: create a run and complete it, no page visit needed. The builder's spec is this workflow's own snapshot_inputs, so it is patchable with workflow_update_definition \u2014 no deploy."
+  }
+}

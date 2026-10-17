@@ -1396,8 +1396,8 @@ follow are the legacy single-opportunity path, used only when the operator asks
 for it (`--legacy-dashboards`) or the archetype has no followed entity worth a
 cascade.
 
-What the viewer gets, all live in labs and all following the deployed templates
-(never forked):
+What the viewer gets, all live in labs and all following ACE's Labs template
+workflows while the run is live (§ C7; frozen off them when Phase 7 ends):
 
 | level | surface | who it is for |
 |---|---|---|
@@ -1708,9 +1708,9 @@ checks, each failing the build:
    table is reported — keep the narrative off it);
 4. **drill levels branch** — no level has exactly one child under every parent
    unless `single_child_levels` cites why (`checkDrillLevels`).
-A failure is fixed in the pool, roster, registry display or run-owned template
-and re-verified here — never handed to the DDD loop, which can only re-find it
-(ace#2337: it has no write path to fix a labs defect).
+A failure is fixed in the pool, roster or registry display and re-verified here —
+never handed to the DDD loop: these are DATA defects, and the loop's write path is
+the page (ACE's template workflows, § C7), so it could only re-find them.
 
 **C7. Handoff.** `realized.json` (flat) carries:
 
@@ -1769,6 +1769,30 @@ Write `products.synthetic.cascade` (`registry`, `program_id`,
 map is what ace-web's run summary renders. `labs_opp_id` = the first partner's
 opportunity. `dashboard-terms.yaml` enumerates the registry's labels (every
 indicator label is a column header; the definitions popup is at point of use).
+
+**Then point every report at ACE's template workflows** (2026-10-16). The trio is
+created following the DEPLOYED labs code template, which only a connect-labs
+release can change — so the DDD loop could never fix a page defect (ace#2337,
+connect-labs#2578). ACE keeps one Labs *template workflow* per report template
+(`config/labs-report-templates.yaml`: page render as data, draft → preview →
+publish, versions + rollback). Following it makes a page fix one publish, which
+the DDD loop does in-loop (`agents/synthetic-data-and-workflows.md` § Step 3):
+
+```bash
+node "$ACE_ROOT/node_modules/tsx/dist/cli.mjs" "$ACE_ROOT/scripts/labs-report-templates.ts" follow \
+  --run-state <local run_state.yaml> --out <patch.json>
+```
+
+Hand `patch.json` to `update_yaml_file({merge: 'deep', localFilePath})` — it
+records `products.synthetic.cascade.report_templates` (`state: following`, each
+report's template and the version it started on). The report's own config keys
+(companion links, the coach action) stay its own — labs keeps them as overrides —
+and the page renders the same until a template is published. A `skipped` report
+names why; `state: partial` is reported in the phase summary, never ignored.
+Never write render code onto a cascade report: a follower refuses it, and a fork
+would take that page off the template the loop fixes. Phase 7 freezes the reports
+off the template when it ends (§ Step 4 there). `ensure` (same script) checks the
+templates are live, public and editable when a follow fails.
 
 **Sweep handles.** Registries have no delete atom and synthetic opps are only
 disabled (`synthetic_disable`), so the ids in `products.synthetic.cascade` are the
@@ -2166,6 +2190,7 @@ nobody has enumerated yet. Run both — neither is a substitute for the other.
 
 | Date | Change | Author |
 |------|--------|--------|
+| 2026-10-16 | **§ C7: the cascade reports follow ACE's Labs template workflows (`scripts/labs-report-templates.ts follow`).** The trio used to follow the deployed code template, so a page defect needed a connect-labs release and the DDD loop pinned every one out of scope (ace#2337, connect-labs#2578). Template workflows (`config/labs-report-templates.yaml`, home program 10157) make a page fix one publish; the run records `cascade.report_templates`, and Phase 7 freezes the pages at its end. | ACE team |
 | 2026-10-16 | **§ C7 "Sweep handles": the handle lives only in a field no frame renders (ace#2733).** Programme report and opp reports carry it in `description`, the synthetic opportunity in `notes`; registry, cohort and org keep it in `name`. The run id in the programme report's breadcrumb was scored a trust defect by the DDD user-artifact judge on three runs, and on noora-health/20261015-1129 put a real organisation's name on an illustrative page. `sweep-labs` matches name, description or notes (`sweepHandleField`). | ACE team |
 | 2026-10-16 | **Step 3c no longer runs `checkGapCopy`; `demo-narrative` § 3d does (ace#2244).** The check needs the why-brief's `gaps[]`, which `demo-narrative` authors one step later, so at this position it could never run. 3c now records each dashboard's `workflow_id` + scope for 3d to read the uploaded render back, and keeps the authoring rules. | ACE team |
 | 2026-10-15 | **§ C3 names the labs request-size ceiling (ace#3007).** HTTP 413 at a 3.9 MB manifest (2.44 MB accepted) on `smallholder-seasonal/20261015-1402`; the mechanics now say how to slim a programme-length pool safely (dedupe only paths whose absence reads as their value; `_time_varying_paths` are not re-stamped), filter per-form values by form name, and send multi-MB manifests over direct JSON-RPC. | ACE team |
