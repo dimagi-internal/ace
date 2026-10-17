@@ -91,7 +91,48 @@ undefined (ace#1691). Adding an archetype stays purely additive, per
 `CLAUDE.md § Conventions`. See
 `docs/superpowers/specs/2026-05-15-focus-group-archetype-redefinition.md`.
 
-## Workflow (every archetype except focus-group)
+## Scale: a single-worker or no-partner design is a no-op (ace#2806)
+
+The cascade this phase builds needs partners, each with a roster of workers,
+followed over weeks (`lib/cascade-story.ts` `DEFAULT_FLOORS` and the four required
+signals). A design with **one worker**, or with **no partner organisation at
+all** (a platform test, a staff pilot), has nothing for that cascade to show, and
+every route to green would invent partners, workers or weeks (§ No inferred
+backstory). **Operator decision (Jonathan, 2026-10-16): skip the phase and record
+why. There is no reduced-floor mode** — do not lower a floor, declare a "scale"
+exemption or build a one-partner cascade to get around it.
+
+After the focus-group check, and before Step 0, write the PDD to a local file and run:
+
+```bash
+node "$ACE_ROOT/node_modules/tsx/dist/cli.mjs" "$ACE_ROOT/scripts/phase7-applicability.ts" <local-pdd.md>
+```
+
+Exit 0 means the phase applies, so proceed to § Workflow. Exit 3 means skip. The
+printed JSON carries `skip_reason` (`design-below-cascade-scale`), `reasons[]`
+(`single-worker` / `no-partner`, each with the PDD line it rests on, verbatim) and
+`detail`. The rule reads only what the PDD says: `§ FLW Requirements` "Number of
+FLWs" ≤ 1, or `§ LLO Preference` stating there is **no** partner / implementing
+organisation / LLO. "None pre-named" is not that (the LLO is simply unchosen, and
+Phase 8 picks one), so such a design keeps Phase 7. Logic:
+`lib/phase7-applicability.ts`. *Enforced:* `test/lib/phase7-applicability.test.ts`,
+against the real PDD of `group-payment-test/20261007-1700`.
+
+On exit 3:
+
+1. Write `7-synthetic/synthetic-data-and-workflows_summary.md` with frontmatter
+   `{status: skipped, reason: design-below-cascade-scale}`, then one paragraph: the
+   `detail` sentence followed by each `reasons[].evidence` line quoted.
+2. Patch `run_state.yaml.phases.synthetic-data-and-workflows` (`merge: 'deep'`) with
+   `status: skipped`, `verdict: skipped`, `completed_at: <iso>`,
+   `summary_artifact: <doc-id>`, `skip_reason: design-below-cascade-scale`,
+   `skip_detail: <detail>` and `skip_evidence: <reasons[]>`.
+3. Return cleanly. Do not create a synthetic opp, registry or Coach. Phase 8 then
+   starts. `skipped` is terminal everywhere downstream: `phase7DddStep` returns
+   `done`, so no DDD loop is dispatched; the boundary fence steps over it; the run
+   README marks Phase 7's rows `skipped`.
+
+## Workflow (every archetype except focus-group, at cascade scale)
 
 ### Step 0: Phase folder setup (FIRST)
 
