@@ -1265,6 +1265,7 @@
         "synthetic.walkthroughs": "synthetic-data-and-workflows",
         "synthetic.promoted_template": "synthetic-data-and-workflows",
         "synthetic.ddd_*": "synthetic-data-and-workflows",
+        "synthetic.unapplied_dashboard_findings": "synthetic-data-and-workflows",
         "ocs_coach": "ocs-coach-setup"
       },
       "unattributedProductKeys": []

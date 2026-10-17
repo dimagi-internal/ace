@@ -540,6 +540,33 @@ an outside reader gets, since `ddd_terminal_status` renders to members only. A
 did not pass", which is true (ace#2995). `passed-with-deferred-evals` stays
 reserved for evals that genuinely did not run.
 
+**Dashboard defects the loop found but could not apply are their own outcome:
+`found_not_fixed` (ace#2337).** The labs report pages are pinned out of the
+loop's edit scope (`config/ddd-loop.yaml` `labs-report-template`), because the
+loop has no write path to their `render_code`. A defect on one of them is
+rediscovered every pass and never applied. Folded into `stopped_not_converged`,
+it reads as "the demo is bad" when the truth is "the fixer cannot reach that
+page". Those are opposite remedies. So, on EVERY ending, before the write-back, run:
+
+```bash
+node "$ACE_ROOT/node_modules/tsx/dist/cli.mjs" "$ACE_ROOT/scripts/ddd-unapplied-findings.ts" \
+  <runs_dir>/<ddd_run_id>/run_state.yaml --spec <demo-run>/7-synthetic/<slug>.yaml
+```
+
+It prints `{ddd_terminal_status, outcome, verdict, unapplied_dashboard_findings}`.
+Use its `verdict` as the phase verdict: `partial-ddd-found_not_fixed` when the loop
+did not converge clean AND left dashboard defects unapplied; otherwise
+`partial-ddd-<terminal_status>` as above, or `pass` on `converged_clean`. Write
+`products.synthetic.ddd_outcome: <outcome>` and
+`products.synthetic.unapplied_dashboard_findings: <the list>`. Each row names the
+dashboard (`dashboard_url`, `scene`), the defect, its `owner` / `issue`, and
+`pinned` (that row alone holds a below-bar cell). Keep `ddd_terminal_status`
+verbatim, since it is canopy's word, not ours. The phase summary gets a
+**Found, not fixed** section listing every row as `dashboard — defect`, separate
+from the open strategy findings. A `converged_clean` run records its rows too.
+Logic: `lib/ddd-unapplied-findings.ts`. *Enforced:*
+`test/lib/ddd-unapplied-findings.test.ts`, on the real findings of the 2026-10-15 runs.
+
 ### Step 3.5: Carry the converged narrative back to the artifacts of record (EVERY terminal status)
 
 **Runs after `Agent(canopy:ddd)` returns, whatever its `terminal_status` —
@@ -732,7 +759,7 @@ phases:
   synthetic-data-and-workflows:
     status: <done|partial>
     completed_at: <ISO>
-    verdict: <pass|partial-ddd-<terminal_status>|passed-with-deferred-evals>  # partial-ddd-… on a non-converged_clean DDD ending; deferred ONLY when an eval did not run (ace#2995)
+    verdict: <pass|partial-ddd-found_not_fixed|partial-ddd-<terminal_status>|passed-with-deferred-evals>  # partial-ddd-… on a non-converged_clean DDD ending (found_not_fixed when dashboard defects were left unapplied, ace#2337); deferred ONLY when an eval did not run (ace#2995)
     summary_artifact: <DDD package / summary doc id>
     products:
       synthetic:
@@ -759,6 +786,11 @@ phases:
         # converged_clean | converged_with_open_questions | stopped_not_converged | diverging
         ddd_terminal_status: <status>
         ddd_open_strategy_findings: <int>
+        # Phase 7's reading of that ending (scripts/ddd-unapplied-findings.ts, ace#2337):
+        # found_not_fixed when the loop left dashboard defects unapplied, else the terminal status
+        ddd_outcome: <found_not_fixed|<terminal_status>>
+        unapplied_dashboard_findings:      # found, not fixed — every ending, [] when none
+          - { finding_id: <id>, scene: "<n>", dimension: <dim>, dashboard_url: <url>, surface: labs-report-template, owner: <owner>, issue: <repo#n>, defect: "<what is wrong>", pinned: <bool> }
     steps:
       semantic-registry-author:    { status: done }
       semantic-registry-author-qa: { status: done }
