@@ -43,7 +43,7 @@ calibration TBD until 3+ shipped quick-references produce ground truth.
 ## Process
 
 1. Read inputs from Drive. Read the artifact under judgment from its PUBLISHED file, never your local draft, and re-read it after any republish — see `skills/_eval-template.md § Grade the published revision (stock)` (an empty published artifact is a BLOCKER, ace#2592).
-1b. **Run the published-render gate before grading anything:** `scripts/check-published-doc-render.ts <published Doc URL>` — see `skills/_eval-template.md § Published-render gate (stock)`. A non-zero exit (raw markdown on the page, or a doc an anonymous reader cannot open) makes this eval's verdict `fail`, whatever the prose would score (ace#2213).
+1b. **Run the published-render gate before grading anything:** `scripts/check-published-doc-render.ts <published Doc URL>` — see `skills/_eval-template.md § Published-render gate (stock)`. A non-zero exit (raw markdown on the page, or a doc an anonymous reader cannot open) makes this eval's verdict `fail`, whatever the prose would score (ace#2213). Write the Doc URL you checked to the verdict as top-level `published_url`, and the result as `published_render` — `capture_path` keeps naming the run-folder source, so the verdict records both what was composed and what a reader opened.
 
 2. Build a "must-include numbers" checklist from the PDD: daily-visit
    cap, payment per visit (or per session/stage by archetype), payment

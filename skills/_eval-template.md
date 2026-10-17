@@ -295,8 +295,21 @@ It reads the Doc's anonymous txt + html exports (what a reader outside ACE
 gets), and exits non-zero on raw markdown on the page (`##` headings, `**bold**`,
 pipe tables, fences, frontmatter, unresolved `![]()`), on a doc it cannot read
 anonymously, and, with `--expect-images` (for `illustrated` artifacts), on a
-render with zero images. **Non-zero exit ⇒ verdict `fail`.** Record the result in
-the verdict as `published_render: {ok, literal_markdown_hits, rendered_image_count}`.
+render with zero images. **Non-zero exit ⇒ verdict `fail`.** Record, at the top
+level of the verdict:
+
+- `published_url: <the Doc URL you just checked>` — what a reader opens.
+  `capture_path` is unchanged and keeps naming the run-folder source the Doc was
+  composed from (release-readiness and `lib/gate-artifact-hash.ts` read it); the
+  two together say what was composed AND what was published. Without this field a
+  verdict cannot show which surface it judged — every ace#2213 verdict named only
+  the `.md`.
+- `published_render: {ok, literal_markdown_hits, rendered_image_count}` — the
+  script's result (`--json` prints it).
+
+`validateVerdict` (`lib/verdict-schema.ts`) rejects a `published_url` that is not
+a URL and a `published_render.ok: false` verdict that still says `pass`/`warn`,
+and warns when an eval of a published Doc omits `published_url`.
 The detectors are the same ones the surface auditor uses
 (`lib/published-doc-render-check.ts`), so an eval and the auditor cannot disagree
 about whether a page renders.

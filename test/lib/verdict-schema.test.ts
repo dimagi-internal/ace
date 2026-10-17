@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { validateVerdict } from '../../lib/verdict-schema.js';
+import { validateVerdict, PUBLISHED_DOC_EVALS } from '../../lib/verdict-schema.js';
 
 const validVerdict = {
   skill: 'ocs-chatbot-eval',
@@ -218,5 +218,76 @@ describe('checks[] — the advisory unable-disclosure channel (ace#1634)', () =>
     // One un-runnable check does not make a whole verdict un-runnable, and
     // `incomplete` already covers the whole-artifact case.
     expect(validateVerdict({ ...validVerdict, verdict: 'unable' }).ok).toBe(false);
+  });
+
+  // ace#2213 — a verdict on a published Doc names the page a reader opened.
+  describe('published_url (ace#2213)', () => {
+    // Shape of the incident verdict (poverty-graduation/20260905-1345,
+    // 6-qa-and-training/training-flw-guide-eval_verdict.yaml): capture_path is
+    // the run-folder .md and nothing names the published Doc.
+    const flw = {
+      ...validVerdict,
+      skill: 'training-flw-guide-eval',
+      target: 'training-flw-guide',
+      capture_path: '6-qa-and-training/training-flw-guide.md',
+      overall_score: 8.6,
+      verdict: 'pass',
+    };
+    const DOC = 'https://docs.google.com/document/d/1AbCdEfGhIjKlMnOpQrStUv/edit';
+
+    it('the published-Doc eval set is derived from the manifest and holds the incident evals', () => {
+      for (const n of ['training-flw-guide-eval', 'training-llo-guide-eval', 'training-faq-eval',
+        'training-quick-reference-eval', 'training-onboarding-email-eval']) {
+        expect(PUBLISHED_DOC_EVALS.has(n)).toBe(true);
+      }
+      expect(PUBLISHED_DOC_EVALS.has('ocs-chatbot-eval')).toBe(false);
+    });
+
+    it('warns (does not reject) when a published-Doc eval names only the source .md', () => {
+      const r = validateVerdict(flw);
+      expect(r.ok).toBe(true); // historic verdicts must still parse for opp-eval
+      expect(r.warnings.join(' ')).toMatch(/published_url/);
+    });
+
+    it('is silent once published_url is recorded, and capture_path is untouched', () => {
+      const r = validateVerdict({
+        ...flw,
+        published_url: DOC,
+        published_render: { ok: true, literal_markdown_hits: [], rendered_image_count: 26 },
+      });
+      expect(r.errors).toEqual([]);
+      expect(r.warnings).toEqual([]);
+    });
+
+    it('does not warn for an eval that grades no published Doc', () => {
+      expect(validateVerdict(validVerdict).warnings).toEqual([]);
+    });
+
+    it("rejects a run-folder path in published_url — that is capture_path's job", () => {
+      const r = validateVerdict({ ...flw, published_url: '6-qa-and-training/training-flw-guide.md' });
+      expect(r.ok).toBe(false);
+      expect(r.errors.join(' ')).toMatch(/published_url/);
+    });
+
+    it('rejects a failed render gate that still passes — the incident in one field', () => {
+      const r = validateVerdict({
+        ...flw,
+        published_url: DOC,
+        published_render: { ok: false, literal_markdown_hits: ['ATX headings (`## ...`)'], rendered_image_count: 0 },
+      });
+      expect(r.ok).toBe(false);
+      expect(r.errors.join(' ')).toMatch(/published_render\.ok is false/);
+      expect(validateVerdict({
+        ...flw,
+        verdict: 'fail',
+        overall_score: 0,
+        published_url: DOC,
+        published_render: { ok: false, rendered_image_count: 0 },
+      }).ok).toBe(true);
+    });
+
+    it('rejects a render result with no URL to say which Doc it describes', () => {
+      expect(validateVerdict({ ...flw, published_render: { ok: true } }).ok).toBe(false);
+    });
   });
 });
