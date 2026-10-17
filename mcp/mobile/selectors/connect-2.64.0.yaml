@@ -34,6 +34,11 @@
 # spark-facilitator/20261004-1706 /ace:qa-deep Stage B (ui dumps captured by
 # mobile_run_recipe, cited per row). Annotation only; no type/value changed.
 # TOTAL 92 rows: 61 verified, 31 unverified.
+# UPDATED 2026-10-17 (dimagi-internal/ace#2785): new row
+# form-date-picker-step-back-fling (a one-row DOWNWARD day-column fling,
+# measured 16 -> 15 -> 14 on spark-facilitator/20261004-1706), and
+# form-date-picker-step-fling re-observed at a second screen position.
+# TOTAL 103 rows: 73 verified, 30 unverified (counted from the file).
 #
 # WHAT ACTUALLY CHANGED IN 2.64.0
 # -----------------------------------------------------------------------------
@@ -509,8 +514,12 @@ selectors:
   form-date-picker-step-fling:
     type: doc
     value: "a one-row upward swipe on the DAY column: next-value cell centre -> current-value cell centre, duration 600"
-    purpose: "How to advance the date one day on 2.64.0 — the only one of four candidates that worked (ace#2518). Measured live on spark-facilitator/20260926-1413 Phase 6, 2026-09-27, 1080x2400: `swipe: {start: 529, 968, end: 529, 818, duration: 600}` moved the day 27 -> 28 (ui-dump read-back) and cleared the form's `. > today()` constraint. Maestro 2.5.1 cannot anchor a BOUNDED swipe on an element (`swipe: {from: <selector>, direction: UP}` flings to 10% of screen height — many rows, the ace#1300 hazard), so the recipe carries coordinates derived at authoring time by `lib/date-picker-drive.ts dayStepFling` from the day column's cell bounds; `DATE_PICKER_2_64_0_OBSERVED` reproduces the device pixels exactly. OBSERVED: direction, one-row distance, column, duration, +1 result. GENERALISED (not re-observed): the same derivation for a picker at a different screen position, and more than one fling in a row. Falsified by a derived fling that leaves the day unchanged or moves it by more than one."
+    purpose: "How to advance the date one day on 2.64.0 — the only one of four candidates that worked (ace#2518). Measured live on spark-facilitator/20260926-1413 Phase 6, 2026-09-27, 1080x2400: `swipe: {start: 529, 968, end: 529, 818, duration: 600}` moved the day 27 -> 28 (ui-dump read-back) and cleared the form's `. > today()` constraint. Maestro 2.5.1 cannot anchor a BOUNDED swipe on an element (`swipe: {from: <selector>, direction: UP}` flings to 10% of screen height — many rows, the ace#1300 hazard), so the recipe carries coordinates derived at authoring time by `lib/date-picker-drive.ts dayStepFling` from the day column's cell bounds; `DATE_PICKER_2_64_0_OBSERVED` reproduces the device pixels exactly. OBSERVED: direction, one-row distance, column, duration, +1 result. GENERALISED (not re-observed): the same derivation for a picker at a different screen position, and more than one fling in a row. Falsified by a derived fling that leaves the day unchanged or moves it by more than one. RE-OBSERVED at a second screen position (ace#2785, spark-facilitator/20261004-1706 'Other Meeting Record', 2026-10-17, local AVD emulator-5554, worker-1): with the day cells measured at current [445,906][613,1032] / next [445,1032][613,1206], the derived `swipe: {start: 529, 1119, end: 529, 969, duration: 600}` moved 14 -> 15 (ui-dump read-back) — the element-relative derivation now holds at two positions."
 
+  form-date-picker-step-back-fling:
+    type: doc
+    value: "a one-row DOWNWARD swipe on the DAY column: current-value cell centre -> next-value cell centre, duration 600"
+    purpose: "How to set the date one day BACK on 2.64.0 (ace#2785) — `form-date-picker-step-fling` reversed. Measured live on spark-facilitator/20261004-1706 'Other Meeting Record' (date_of_meeting at the top of the form's first screen), 2026-10-17, local AVD emulator-5554, ace-mobile 0.13.1933, worker-1, 1080x2400. Day column cells from the same dump: previous [445,733][613,906], current [445,906][613,1032], next [445,1032][613,1206]. `swipe: {start: 529, 969, end: 529, 1119, duration: 600}` moved the day 16 -> 15, and the same swipe again 15 -> 14 — exactly one day each, month and year columns untouched (ui-dump read-back on form-date-picker-input; Maestro recipes back-fling-1 / back-fling-2, dispatches 1792212830968-932811 and 1792212870756-2lzbs5). Pass 3 on a re-opened form, same cells: `assertVisible {id: numberpicker_input, text: '16'}` -> the swipe -> `assertVisible {id, text: '15'}` + `assertNotVisible {id, text: '16'}` all COMPLETED (dispatch 1792214028951-eagegw) — the id+text read-back idiom works. Derive the coordinates with `lib/date-picker-drive.ts dayStepBackFling` from the live cell bounds (`DATE_PICKER_2_64_0_OTHER_MEETING` reproduces these pixels). The form's own `. >= today() - N` rule cannot catch a wrong backward step (a wrong step still lands inside the window), so a recipe that backdates MUST `assertVisible` the expected day on form-date-picker-input after the fling. OBSERVED: direction, one-row distance, column, duration, -1 result, two in a row. NOT observed: crossing a month boundary (day 1 -> last of previous month), and a picker below the fold."
 
   form-date-picker-input:
     type: id

@@ -10,7 +10,10 @@ import { describe, it, expect } from 'vitest';
 import { parse } from 'yaml';
 import {
   DATE_PICKER_2_64_0_OBSERVED,
+  DATE_PICKER_2_64_0_OTHER_MEETING,
   datePickerDriveFor,
+  dayStepBackFling,
+  dayStepBackFlingYaml,
   dayStepFling,
   dayStepFlingYaml,
   nextCellTapIsNoop,
@@ -52,6 +55,52 @@ describe('dayStepFling', () => {
   it('emits a Maestro swipe step that parses to the observed values', () => {
     const doc = parse(dayStepFlingYaml()) as Array<{ swipe: Record<string, unknown> }>;
     expect(doc).toEqual([{ swipe: { start: '529, 968', end: '529, 818', duration: 600 } }]);
+  });
+});
+
+describe('dayStepBackFling (ace#2785)', () => {
+  // The load-bearing pin: fed the cells measured on spark-facilitator/
+  // 20261004-1706 "Other Meeting Record" (2026-10-17), it must reproduce the
+  // swipe that moved the day 16 -> 15 and then 15 -> 14 on-device.
+  it('reproduces the on-device 2.64.0 back swipe from the measured cells', () => {
+    expect(dayStepBackFling(DATE_PICKER_2_64_0_OTHER_MEETING)).toEqual({
+      start: '529, 969',
+      end: '529, 1119',
+      duration: 600,
+    });
+  });
+
+  it('the forward fling derived from the same cells is the one that moved 14 -> 15 there', () => {
+    expect(dayStepFling(DATE_PICKER_2_64_0_OTHER_MEETING)).toEqual({
+      start: '529, 1119',
+      end: '529, 969',
+      duration: 600,
+    });
+  });
+
+  it('is exactly one row DOWNWARD: current-cell centre to next-cell centre', () => {
+    const s = dayStepBackFling(DATE_PICKER_2_64_0_OTHER_MEETING);
+    const [x0, y0] = s.start.split(',').map(Number);
+    const [x1, y1] = s.end.split(',').map(Number);
+    expect(x0).toBe(x1);
+    expect(y1 - y0).toBe(150);
+  });
+
+  it('is the exact reverse of dayStepFling for any valid layout', () => {
+    for (const cells of [DATE_PICKER_2_64_0_OBSERVED, DATE_PICKER_2_64_0_OTHER_MEETING]) {
+      const f = dayStepFling(cells);
+      expect(dayStepBackFling(cells)).toEqual({ start: f.end, end: f.start, duration: f.duration });
+    }
+  });
+
+  it('refuses the same impossible geometry dayStepFling refuses', () => {
+    const { current, next } = DATE_PICKER_2_64_0_OTHER_MEETING;
+    expect(() => dayStepBackFling({ current: next, next: current })).toThrow(/not below/);
+  });
+
+  it('emits a Maestro swipe step that parses to the measured values', () => {
+    const doc = parse(dayStepBackFlingYaml()) as Array<{ swipe: Record<string, unknown> }>;
+    expect(doc).toEqual([{ swipe: { start: '529, 969', end: '529, 1119', duration: 600 } }]);
   });
 });
 

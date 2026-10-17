@@ -44,6 +44,24 @@
  *     cell's bounds are measured.
  *   - Falsified by: a fling built this way on a 2.64.0 picker at another screen
  *     position that leaves the day unchanged or moves it by more than one.
+ *   - RE-OBSERVED at another screen position (dimagi-internal/ace#2785): on
+ *     spark-facilitator/20261004-1706 "Other Meeting Record", 2026-10-17,
+ *     local AVD, worker-1, 1080x2400, all three day cells MEASURED
+ *     (`DATE_PICKER_2_64_0_OTHER_MEETING`): the derived forward fling
+ *     `529, 1119 -> 529, 969` moved 14 -> 15.
+ *
+ * GOING BACK A DAY (dimagi-internal/ace#2785). The mirror gesture: a one-row
+ * DOWNWARD fling on the day column, current-cell centre -> next-cell centre.
+ * Measured on the same screen, read back from `numberpicker_input` each time:
+ *
+ * ```
+ * swipe start 529,969 end 529,1119 duration 600     16 -> 15
+ * the same swipe again                              15 -> 14
+ * ```
+ *
+ * The form's own rule cannot catch a wrong backward step (a wrong step still
+ * lands inside a `. >= today() - N` window), so a recipe that backdates must
+ * assert the expected day on `form-date-picker-input` after the fling.
  */
 
 import type { Bounds } from './fieldlist-gestures';
@@ -92,6 +110,18 @@ export const DATE_PICKER_2_64_0_OBSERVED: Readonly<DayColumnCells> = {
   next: { left: 445, top: 881, right: 613, bottom: 1055 },
 };
 
+/**
+ * The day column measured on APK 2.64.0, spark-facilitator/20261004-1706
+ * "Other Meeting Record" (date question at the top of the form's first
+ * screen), 2026-10-17, 1080x2400 (dimagi-internal/ace#2785). All three cells
+ * measured from one ui dump: previous [445,733][613,906], current
+ * [445,906][613,1032], next [445,1032][613,1206].
+ */
+export const DATE_PICKER_2_64_0_OTHER_MEETING: Readonly<DayColumnCells> = {
+  current: { left: 445, top: 906, right: 613, bottom: 1032 },
+  next: { left: 445, top: 1032, right: 613, bottom: 1206 },
+};
+
 /** Measured on-device; do not change without a new read-back. */
 export const ROW_FLING_DURATION_MS = 600;
 
@@ -127,6 +157,23 @@ export function dayStepFling(cells: DayColumnCells): MaestroSwipe {
     );
   }
   return { start: `${cur.x}, ${nxt.y}`, end: `${cur.x}, ${cur.y}`, duration: ROW_FLING_DURATION_MS };
+}
+
+/**
+ * The one-day BACK fling for a 2.64.0 day column: current-cell centre ->
+ * next-cell centre, same x — `dayStepFling` reversed (dimagi-internal/ace#2785,
+ * measured 16 -> 15 -> 14). Same geometry guards, because a fling built from
+ * wrong bounds spins the date silently (ace#1300).
+ */
+export function dayStepBackFling(cells: DayColumnCells): MaestroSwipe {
+  const fwd = dayStepFling(cells);
+  return { start: fwd.end, end: fwd.start, duration: fwd.duration };
+}
+
+/** The recipe step for a one-day step back, as Maestro YAML lines. */
+export function dayStepBackFlingYaml(cells: DayColumnCells = DATE_PICKER_2_64_0_OTHER_MEETING): string {
+  const s = dayStepBackFling(cells);
+  return ['- swipe:', `    start: ${s.start}`, `    end: ${s.end}`, `    duration: ${s.duration}`].join('\n');
 }
 
 /** The recipe step for a one-day advance, as Maestro YAML lines. */

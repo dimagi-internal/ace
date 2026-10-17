@@ -14,8 +14,9 @@
 //     and (#form/enrolment_date_ref = '' or . >= date(#form/enrolment_date_ref))
 //     and (#form/prev_meeting_date = '' or . > date(#form/prev_meeting_date))
 //
-// Back-dating cannot rescue it: the 2.64.0 picker has only a calibrated +1-day
-// forward drive (lib/date-picker-drive.ts, ace#2518). And faking the days by
+// Back-dating does not rescue it: a one-day backward drive is calibrated
+// (lib/date-picker-drive.ts dayStepBackFling, ace#2785), but whether
+// /ace:qa-deep may back-date to reach these is undecided, and faking the days by
 // moving the device clock is forbidden (commands/qa-deep.md Stage B step 4).
 //
 // The chain:
