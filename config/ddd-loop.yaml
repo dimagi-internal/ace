@@ -79,29 +79,28 @@ loop:
     # render as data, draft -> preview -> publish in seconds. The Phase 7
     # dispatch hands the loop that write path (`scripts/labs-report-templates.ts
     # dispatch-block`), so a page finding — layout, labels, legends, hints,
-    # chart scaling, a column that should not be there — is IN scope. Only the
-    # two kinds the template cannot fix stay out:
+    # chart scaling, a column that should not be there — is IN scope.
     #
-    # (c) The engine boundary: a figure Labs does not compute or the snapshot
-    # does not carry is a connect-labs change (snapshot builder / API) and a
-    # release; the page that shows it is a template edit again once it ships.
-    - name: labs-engine
-      owner: Connect Labs (snapshot builder / engine)
+    # The REGISTRY and the PIPELINES are Labs data too (Jon, 2026-10-16): the
+    # per-run semantic registry (semantic_registry_update / set_indicator_meta /
+    # validate) and the run's pipelines (pipeline_update_schema) are written by
+    # the loop like the render, and a [DATA]/[SEED] finding is fixed by
+    # regenerating the run's synthetic data. The dispatch block names every one
+    # of those write paths. A figure that registry + pipeline + render can
+    # express is NOT a Labs release — so there is no engine carve-out.
+    # (canopy's floor.py still treats [DATA]/[REGISTRY]/[SEED] tags and
+    # fix_scope data/registry/seed as OUT on its own; `loop.writable_scopes:
+    # [data, registry, seed]` turns that off once the canopy knob ships.)
+    #
+    # (c) What stays out: a GENUINE Connect Labs product bug or a missing Labs
+    # feature — something no registry, pipeline, render or data edit can
+    # express. Matched only on explicit language, so a finding that merely
+    # mentions the snapshot, the registry or a template stays IN.
+    - name: labs-product-gap
+      owner: Connect Labs (product bug or missing feature)
       repo: dimagi-internal/connect-labs
       match: |-
-        (?s)^(?!.*(?:(?-i:\b(?:RECIPE|NARRATION|SCRIPTING)\b)|\[SPEC|\b(?:rewrite|reword|restate|edit)\s+(?:the\s+)?(?:scene\s*\d*\s*(?:\Ws\s*)?)?(?:narration|voiceover|concept_claim)|\bfrom the narration|\bthe narration (?:to|so)\b|\bin the recipe|\bnarrate\b|\breword to\b|scroll_to|before-frame|\bcursor\b|\bpointer\b)).*?(\[ENGINE\]|snapshot (?:builder|payload|schema)|semantic_snapshot|(?:labs|the engine|the snapshot|the API) (?:does not|doesn't|never|cannot) (?:compute|calculate|store|carry|serve|hold|return)|not (?:yet )?(?:computed|calculated|stored|carried) by (?:labs|the snapshot)|(?:needs?|requires?) (?:a )?(?:labs |connect-labs )?(?:deploy|release|engine change)|\bengine (?:change|boundary))
-    # (d) The semantic registry: indicator names, labels, value maps and targets
-    # are registry DATA ACE authors (`semantic-registry-author`), not page code,
-    # and the loop has no registry write path. A template edit keyed on one
-    # programme's label would be the rule-on-a-label hack the fix gate refuses.
-    # NOT "in the registry": a page finding says that too ("with no targets in
-    # the registry, the table still shows a legend" — connect-labs#2578 item 2,
-    # a render fix).
-    - name: labs-semantic-registry
-      owner: ACE Phase 7 (semantic registry)
-      repo: dimagi-internal/ace
-      match: |-
-        (?s)^(?!.*(?:(?-i:\b(?:RECIPE|NARRATION|SCRIPTING)\b)|\[SPEC|\b(?:rewrite|reword|restate|edit)\s+(?:the\s+)?(?:scene\s*\d*\s*(?:\Ws\s*)?)?(?:narration|voiceover|concept_claim)|\bfrom the narration|\bthe narration (?:to|so)\b|\bin the recipe|\bnarrate\b|\breword to\b|scroll_to|before-frame|\bcursor\b|\bpointer\b)).*?(semantic registry|registry (?:label|name|display|indicator|value)s?\b|\[REGISTRY\])
+        (?s)^(?!.*(?:(?-i:\b(?:RECIPE|NARRATION|SCRIPTING)\b)|\[SPEC|\b(?:rewrite|reword|restate|edit)\s+(?:the\s+)?(?:scene\s*\d*\s*(?:\Ws\s*)?)?(?:narration|voiceover|concept_claim)|\bfrom the narration|\bthe narration (?:to|so)\b|\bin the recipe|\bnarrate\b|\breword to\b|scroll_to|before-frame|\bcursor\b|\bpointer\b)).*?(\[LABS[- ]?(?:BUG|FEATURE)\]|\b(?:connect[- ])?labs (?:product )?bug\b|\bbug in (?:connect[- ])?labs\b|(?:new|missing) (?:connect[- ])?labs (?:feature|capability)|(?:connect[- ])?labs (?:does not|doesn't|cannot) (?:support|offer|provide)\b)
 
   # Product-clarity findings (a judge tagged product_clarity) become a doc /
   # UI-copy issue here. Default would be the target repo's git origin — and ACE

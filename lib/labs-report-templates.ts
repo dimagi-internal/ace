@@ -489,18 +489,32 @@ export function cloneReportTemplatesBlock(
 }
 
 /**
- * The block Phase 7 pastes into the `canopy:ddd` dispatch prompt: which page
- * follows which ACE template, and the exact draft → preview → publish/discard
- * procedure. Generated (not hand-copied into the prompt) so the ids, home
+ * The block Phase 7 pastes into the `canopy:ddd` dispatch prompt: the loop's
+ * write paths into the labs build — the page render (which page follows which
+ * ACE template, and the draft → preview → publish/discard procedure), the
+ * run's own semantic registry, its pipelines, and its synthetic data. Registry,
+ * pipelines and data are Labs DATA like the render (Jon, 2026-10-16): only a
+ * genuine Labs product bug or missing feature needs a connect-labs release. Generated (not hand-copied into the prompt) so the ids, home
  * program and commands are this run's and this config's, every time.
  */
 export function dddDispatchBlock(cfg: ReportTemplatesConfig, block: ReportTemplatesBlock | null, cascade: unknown): string {
   const reports = block?.reports.length ? block.reports : runReports(cascade).map((r) => ({ ...r, template_workflow_id: cfg.templates[ROLE_TEMPLATE_TYPE[r.role]]?.template_workflow_id ?? null, state: 'following' as const }));
   const live = reports.filter((r) => r.state === 'following');
   const H = cfg.home.program_id;
+  const c = obj(cascade);
+  const registryId = int(obj(c.registry).registry_id);
+  const programId = int(c.program_id) ?? int(obj(c.registry).program_id);
+  const visitsPipeline = int(c.visits_pipeline_id);
   const CLI = 'node "$ACE_ROOT/node_modules/tsx/dist/cli.mjs" "$ACE_ROOT/scripts/labs-report-templates.ts"';
   const lines = [
-    '## Report pages are IN scope — fix them in ACE\'s template workflows',
+    '## The labs build is IN scope — render, registry, pipelines and data are all Labs data you write',
+    '',
+    'Nothing in this demo needs a connect-labs deploy except a genuine Labs product bug or a missing Labs feature.',
+    'Fix a finding where it lives: the page render (A), the run\'s semantic registry (B), its pipelines (C), or its',
+    'synthetic data (D). Same discipline everywhere: the narrowest edit, locked claims kept true (ledger below), and',
+    'no rule keyed on one programme\'s label or record.',
+    '',
+    '### A. Page render — ACE\'s template workflows',
     '',
     'The labs report pages this demo films FOLLOW ACE\'s Labs template workflows (config/labs-report-templates.yaml).',
     'A page finding — layout, labels, what is shown or hidden, chart scaling, legends, hints — is fixed in the',
@@ -508,8 +522,8 @@ export function dddDispatchBlock(cfg: ReportTemplatesConfig, block: ReportTempla
     'page load). If canopy asks for a fix sha, record `template <id> v<published version>`.',
     '',
     'Still OUT of scope (config/ddd-loop.yaml fixed surfaces): Labs chrome (the "Ask an agent" launcher, the run',
-    'page shell, the opportunity picker) → Connect Labs; a figure Labs does not compute (needs the snapshot',
-    'builder / an engine change) → connect-labs; the semantic registry\'s own labels and indicator names → ACE.',
+    'page shell, the opportunity picker) and a genuine Labs product bug or missing feature (`labs-product-gap`) →',
+    'Connect Labs. A figure that registry + pipeline + render can express is NOT one of those — build it (B–C, A).',
     '',
     `Pages → templates (template home: program ${H}):`,
     ...live.map((r) => `- ${r.role} workflow ${r.workflow_id} (${r.program_id ? `program ${r.program_id}` : `opportunity ${r.opportunity_id}`}) → template ${r.template_workflow_id} (${ROLE_TEMPLATE_TYPE[r.role]})`),
@@ -534,6 +548,31 @@ export function dddDispatchBlock(cfg: ReportTemplatesConfig, block: ReportTempla
     '   Never end a batch with the draft dirty: publish or discard.',
     '6. The next ddd-run pass re-films as after any product batch. If it regresses a cell the publish touched, roll',
     `   back: \`workflow_template_rollback({template_workflow_id, program_id: ${H}, to_version: <the version before>, reset_draft: true})\`.`,
+    '',
+    '### B. The run\'s semantic registry (labels, value maps, indicator names and definitions, targets, display)',
+    '',
+    `Registry ${registryId ?? '<cascade.registry.registry_id>'} in program ${programId ?? '<cascade.program_id>'} belongs to THIS run only — no other run reads it.`,
+    '1. Edit with `semantic_registry_set_indicator_meta` (one indicator\'s label / plain text / target / order) or',
+    '   `semantic_registry_update` (the documents, with its expected version); `semantic_registry_validate` first and',
+    '   after — a failed validate is never saved. Reader-facing text is plain language (`semantic-registry-author` § 3).',
+    '2. Saved runs keep the definitions AND display they were built with, so a registry edit shows on the filmed pages',
+    '   only after `workflow_rebuild_history` — which mints NEW run ids. Follow `semantic-registry-author` § After a',
+    '   registry edit exactly: listings before/after, `scripts/relink-rebuilt-history.ts` over run_state AND over this',
+    '   loop\'s unified spec (`--in <spec> --out <spec>`, so every scene URL names a live run), re-publish benchmarks',
+    '   oldest first (`lib/benchmark-republish.ts`). Then the next pass re-films.',
+    '',
+    '### C. The run\'s pipelines (which fields reach the registry and the page)',
+    '',
+    `Visits pipeline ${visitsPipeline ?? '<cascade.visits_pipeline_id>'} is this run\'s own. \`pipeline_preview\` first (read \`fields_all_null\`), then`,
+    '`pipeline_update_schema` with the version you read. A schema change feeds saved runs only after a rebuild: same',
+    'rebuild → relink → republish as B.',
+    '',
+    '### D. The synthetic data ([DATA] / [SEED] findings)',
+    '',
+    'A defect in what the records SAY (a flat column, a story signal that did not land, a review route the PDD',
+    'requires) is fixed in the pool and regenerated — never narrated around and never patched in the render:',
+    '`demo-data-setup` § C3 (edit the pool / manifest; regenerate through `scripts/run-labs-synthetic-generate.ts`),',
+    '§ C5 (rebuild history), § C6 (`verifyCascadeStoryLanded` + `cascadeBuildOutcomes` must pass), then relink as B.',
   ];
   return lines.join('\n') + '\n';
 }

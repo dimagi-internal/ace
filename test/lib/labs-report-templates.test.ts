@@ -15,6 +15,7 @@ import * as fs from 'node:fs';
 import {
   cascadeOf,
   checkTemplates,
+  dddDispatchBlock,
   followRunReports,
   followedTemplateWorkflow,
   freezeRunReports,
@@ -342,5 +343,18 @@ describe('checkTemplates against the captured live responses (test/fixtures/labs
 
   it('a frozen report (captured after the kaduna freeze) reads as not following any template', () => {
     expect(followedTemplateWorkflow(FIX('workflow-get-10517-frozen.json').render_source)).toBeNull();
+  });
+});
+
+describe('dddDispatchBlock — every write path, this run\'s ids', () => {
+  it('names the render templates, the registry, the visits pipeline and the data path; no engine carve-out', () => {
+    const text = dddDispatchBlock(CFG, null, { ...KADUNA, registry: { registry_id: 10510, program_id: 10152 }, visits_pipeline_id: 10511 });
+    expect(text).toMatch(/programme_report workflow 10512 \(program 10152\) → template 11281/);
+    expect(text).toMatch(/Registry 10510 in program 10152 belongs to THIS run only/);
+    expect(text).toMatch(/semantic_registry_set_indicator_meta[\s\S]*semantic_registry_validate/);
+    expect(text).toMatch(/Visits pipeline 10511[\s\S]*pipeline_update_schema/);
+    expect(text).toMatch(/\[DATA\] \/ \[SEED\][\s\S]*run-labs-synthetic-generate/);
+    expect(text).toMatch(/relink-rebuilt-history/);
+    expect(text).not.toMatch(/a figure Labs does not compute/);
   });
 });

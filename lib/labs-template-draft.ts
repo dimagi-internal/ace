@@ -32,7 +32,8 @@
  * editor). Config defaults and the snapshot spec have no such read, so an edit
  * to them could not be cleanly undone — and a config default changes the page
  * of every follower that does not override it. The loop edits the render only;
- * a fix that needs config or a figure Labs does not compute is out of its scope.
+ * a fix that needs a config default goes through the run's own registry or
+ * pipeline instead (`dddDispatchBlock` § B–C), never the shared template.
  */
 import type { LabsCall } from './labs-rpc.js';
 import type { ReportTemplatesConfig } from './labs-report-templates.js';

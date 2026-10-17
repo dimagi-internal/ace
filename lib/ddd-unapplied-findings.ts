@@ -28,13 +28,13 @@
 
 /**
  * The `config/ddd-loop.yaml` fixed surfaces that hold a dashboard defect the
- * loop cannot apply. Since 2026-10-16 the report PAGES are in scope (ACE's Labs
- * template workflows, lib/labs-report-templates.ts); what stays out is a figure
- * Labs does not compute (`labs-engine`) and the registry's own labels
- * (`labs-semantic-registry`). `labs-report-template` stays listed so a DDD run
- * stamped by the earlier config still reads correctly.
+ * loop cannot apply. Since 2026-10-16 the render (ACE's Labs template
+ * workflows), the per-run registry, the pipelines and the synthetic data are all
+ * Labs data the loop writes; what stays out is a GENUINE Connect Labs product
+ * bug or missing feature (`labs-product-gap`). The older names stay listed so a
+ * DDD run stamped by an earlier config still reads correctly.
  */
-export const DASHBOARD_SURFACES: readonly string[] = ['labs-engine', 'labs-semantic-registry', 'labs-report-template'];
+export const DASHBOARD_SURFACES: readonly string[] = ['labs-product-gap', 'labs-engine', 'labs-semantic-registry', 'labs-report-template'];
 
 /** Phase 7's own outcome for a loop that ended with unapplied dashboard defects. */
 export const FOUND_NOT_FIXED = 'found_not_fixed';

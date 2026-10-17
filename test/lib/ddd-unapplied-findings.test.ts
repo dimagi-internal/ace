@@ -63,9 +63,9 @@ describe('found, not fixed (ace#2337)', () => {
     expect(rows.every((r) => isDashboard(r.surface))).toBe(true);
     expect(rows.every((r) => r.defect.length > 0 && r.defect.length <= 240)).toBe(true);
     expect(rows.every((r) => r.issue === 'dimagi-internal/ace#2337')).toBe(true);
-    const byScene = Object.fromEntries(rows.map((r) => [r.scene, r.dashboard_url]));
-    expect(byScene['2']).toBe('https://labs/p/1'); // follow-on scene inherits the page
-    expect(byScene['4']).toBe('https://labs/p/3');
+    expect(urls['2']).toBe('https://labs/p/1'); // follow-on scene inherits the page
+    expect(urls['4']).toBe('https://labs/p/3');
+    for (const r of rows) expect(r.dashboard_url).toBe(urls[String(r.scene)]);
     expect(rows.filter((r) => r.pinned)).toHaveLength(1);
   });
 

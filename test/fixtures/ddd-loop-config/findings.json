@@ -1,5 +1,5 @@
 {
- "_doc": "Real findings from the 2026-10-15 ACE DDD runs (noora-health/20261015-1129, smallholder-seasonal/20261015-1402, kaduna-graduation/20261015-1411). expect = the config/ddd-loop.yaml fixed surface it must match, or 'in' (a recipe/narration finding the loop can fix). Out rows were declined by the loops as out of scope; in rows had fix_scope recipe|narrative. Built by sampling; see test/lib/ddd-loop-config.test.ts. 2026-10-16: the labs report pages follow ACE's template workflows, so the 14 rows the loops declined as labs-report-template are now expected IN (kept with was: labs-report-template); constructed rows cover the two surfaces that remain out (labs-engine, labs-semantic-registry).",
+ "_doc": "Real findings from the 2026-10-15 ACE DDD runs (noora-health/20261015-1129, smallholder-seasonal/20261015-1402, kaduna-graduation/20261015-1411). expect = the config/ddd-loop.yaml fixed surface it must match, or 'in' (a recipe/narration finding the loop can fix). Out rows were declined by the loops as out of scope; in rows had fix_scope recipe|narrative. Built by sampling; see test/lib/ddd-loop-config.test.ts. 2026-10-16: the labs report pages follow ACE's template workflows, so the 14 rows the loops declined as labs-report-template are now expected IN (kept with was: labs-report-template); constructed rows cover the two surfaces that remain out (labs-engine, labs-semantic-registry). Later 2026-10-16 (Jon): registry, pipelines and synthetic data are Labs DATA the loop writes too, so the registry/engine rows are IN (was: kept); only a genuine Labs product bug or missing feature (labs-product-gap) stays out.",
  "findings": [
   {
    "run": "noora-health/20261015-1129",
@@ -579,25 +579,41 @@
    "run": "constructed 2026-10-16 from connect-labs#2578 (registry 10510 items)",
    "detail": "The visit list prints the raw stored value 'not_home', and the indicator 'Money not hers' reads oddly to a programme manager.",
    "fix_recommendation": "[REGISTRY] Add a values map for visit_outcome in the semantic registry and rename the indicator there.",
-   "expect": "labs-semantic-registry"
+   "expect": "in",
+   "was": "labs-semantic-registry"
   },
   {
    "run": "constructed 2026-10-16 (registry label finding)",
    "detail": "Tile labels use internal programme terms ('At payment floor').",
    "fix_recommendation": "Change the registry labels to plain language so every page that reads them shows the plain term.",
-   "expect": "labs-semantic-registry"
+   "expect": "in",
+   "was": "labs-semantic-registry"
   },
   {
    "run": "constructed 2026-10-16 (engine-boundary finding)",
    "detail": "The enrolment card cannot show registrations by day for the as-of week.",
    "fix_recommendation": "Show daily registrations; the snapshot does not store per-day counts, so this needs a snapshot builder change in connect-labs.",
-   "expect": "labs-engine"
+   "expect": "in",
+   "was": "labs-engine"
   },
   {
    "run": "constructed 2026-10-16 (engine-boundary finding)",
    "detail": "Benchmarks show no peer median for exits.",
    "fix_recommendation": "[ENGINE] compute a peer median for unranked indicators and serve it with the benchmark payload.",
-   "expect": "labs-engine"
+   "expect": "in",
+   "was": "labs-engine"
+  },
+  {
+   "run": "constructed 2026-10-16 (genuine Labs product bug)",
+   "detail": "Clicking 'Benchmarks' twice blanks the tab until reload.",
+   "fix_recommendation": "[LABS-BUG] the tab state resets on a second click; fix in connect-labs.",
+   "expect": "labs-product-gap"
+  },
+  {
+   "run": "constructed 2026-10-16 (missing Labs feature)",
+   "detail": "The supervisor cannot export the partner table.",
+   "fix_recommendation": "This is a missing Labs feature: add a CSV export to report tables in connect-labs.",
+   "expect": "labs-product-gap"
   }
  ]
 }
