@@ -769,6 +769,11 @@ const ExecutionProducts = z
         quote_ids: z.array(z.union([z.string(), z.number()])).optional(),
         award_ids: z.array(z.union([z.string(), z.number()])).optional(),
         contract_ids: z.array(z.union([z.string(), z.number()])).optional(),
+        /** skills/supply-chain-fulfil Step 9. */
+        shipment_ids: z.array(z.union([z.string(), z.number()])).optional(),
+        receipt_ids: z.array(z.union([z.string(), z.number()])).optional(),
+        invoice_ids: z.array(z.union([z.string(), z.number()])).optional(),
+        payment_ids: z.array(z.union([z.string(), z.number()])).optional(),
       })
       .passthrough()
       .optional(),

@@ -202,6 +202,8 @@ const UNCLAIMED_BASELINE = new Set<string>([
   // 2026-10-18 (optional labs track, plan PR7): same reason as supply-chain-setup;
   // PR10's simulated-mode block in agents/execution-manager.md dispatches it.
   'supply-chain-procure',
+  // 2026-10-18 (optional labs track, plan PR8): same reason; dispatched by PR10.
+  'supply-chain-fulfil',
   'synthetic-narrative-plan',
   'synthetic-data-generate',
   'synthetic-workflow-seed',

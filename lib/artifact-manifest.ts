@@ -2220,7 +2220,7 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     path: '9-execution-manager/supply-chain-procure_record.md',
     producedBy: 'supply-chain-procure',
     role: 'record',
-    consumedBy: ['supply-chain-procure-eval'],
+    consumedBy: ['supply-chain-procure-eval', 'supply-chain-fulfil'],
     phase: 'execution-management',
     required: false,
     description: "Optional track (supply_chain): the tender, quote, award and contract ids, each award's rationale, labs' frozen comparison per line, the landed cost, and the labs page links.",
@@ -2244,6 +2244,33 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     description: "Optional track (supply_chain): LLM-judge verdict on the procurement. 4 dimensions: award follows labs' frozen comparison (0.30), quantities traced to the PDD (0.25), quote spread realism (0.25), rationale quality (0.20).",
   },
   // [optional-track:PR8 supply-chain-fulfil]
+  {
+    path: '9-execution-manager/supply-chain-fulfil_plan.yaml',
+    producedBy: 'supply-chain-fulfil',
+    role: 'manifest',
+    consumedBy: ['supply-chain-fulfil-qa'],
+    phase: 'execution-management',
+    required: false,
+    description: 'Optional track (supply_chain): per contract, the shipment, receipt (with the planned partial rejection), invoice (with the planned over-billing) and payments supply-chain-fulfil means to record, written BEFORE any write.',
+  },
+  {
+    path: '9-execution-manager/supply-chain-fulfil_record.md',
+    producedBy: 'supply-chain-fulfil',
+    role: 'record',
+    consumedBy: [],
+    phase: 'execution-management',
+    required: false,
+    description: "Optional track (supply_chain): shipment, receipt, invoice and payment ids, each contract's three-way match as labs computed it after each stage, and the invoice dispute and its resolution.",
+  },
+  {
+    path: '9-execution-manager/supply-chain-fulfil-qa_result.yaml',
+    producedBy: 'supply-chain-fulfil-qa',
+    role: 'qa-result',
+    consumedBy: [],
+    phase: 'execution-management',
+    required: false,
+    description: "Optional track (supply_chain): structural QA of fulfilment against labs' three-way match. 8 static checks in skills/supply-chain-fulfil-qa/checks.ts: received equals accepted, rejections as planned with reasons, shipments delivered and receipted, no invoice left queried, not over-invoiced, paid within what arrived, advances recorded, no conflict or payment_unconfirmed.",
+  },
   // [optional-track:PR9 supply-chain-operate]
   // [optional-track:PR10 simulated-execution + simulated-weekly-review]
 
