@@ -10,6 +10,25 @@ disable-model-invocation: false
 
 Activate the opportunity and notify LLOs that they are live.
 
+## Inputs
+
+| Parameter | Used for | Resolver |
+|---|---|---|
+| `opportunity_id`, `organization_slug` | the opportunity to activate (`connect_activate_opportunity`) | explicit arg; default: `runs/<run-id>/4-connect/connect-opp-setup.md` / run_state `selected_llo.opportunity_id`; else the program context doc |
+| `llo_contacts[]` | who is told it is live | explicit arg; default: run_state `phases.solicitation-management.products.selected_llo` |
+| `uat_results` | Step 3 sign-off gate | explicit arg (Drive id); default: `runs/<run-id>/9-execution-manager/llo-uat_results.md` |
+| `release_summary` | Step 4 app-verdict freshness (released `build_id` / `version`) | explicit arg; default: `runs/<run-id>/3-commcare/app-release_summary.md`; live: `commcare_list_apps` on the released builds |
+| `deep_verdicts` (`ocs`, `app`) | Step 4 deep-QA gate | explicit arg (Drive ids); default: `5-ocs/ocs-chatbot-eval_verdict-deep.yaml`, `6-qa-and-training/app-ux-eval_verdict-deep.yaml` |
+| `archetype` | go-live semantics (§ Archetypes) | explicit arg; default: UAT results, then PDD |
+| `run_id` | run-bound mode: comms-log, decisions rows | optional; absent = live-program mode |
+
+**Live-program mode keeps every gate.** Without a run the skill still requires
+a UAT sign-off and both deep verdicts, passed explicitly, and still checks
+each verdict's freshness against the live bot version and released build.
+A missing input is a halt, never a skip: activation starts deliveries
+counting toward payment. The only way past a missing verdict is the owner's
+explicit, recorded waiver in the program context doc's Decisions.
+
 ## Process
 
 1. **Read inputs from GDrive:**
@@ -393,6 +412,7 @@ binding on this skill's output.
 
 | Date | Change | Author |
 |------|--------|--------|
+| 2026-10-18 | Add `## Inputs` as parameters (opportunity, LLO contacts, UAT results, release summary, deep verdicts, archetype) with run defaults. Live-program mode keeps every gate: missing inputs halt; only a recorded owner waiver passes a missing verdict. ace#3148. | ACE (build-vs-maintain audit) |
 | 2026-08-26 | **Step 4's app-verdict-freshness gate reads the artifact that OWNS release state (ace#1636).** It read `3-commcare/app-deploy_summary.md`'s `releases:` block — a cross-reference `app-release` appended into `app-deploy`'s artifact at its Step 7. That step was skipped on 2 of 2 observed runs (`bednet-check-2-visit/20260820-0832`, `/20260825-1310`) while the release itself was clean and `app-release_summary.md` carried the full declared frontmatter, so this gate had nothing to compare against: it either halted with a factually false `[BLOCKER]` on a current build, or silently skipped the staleness check — which is worse, because it lets a stale deep app-UX verdict authorize a go-live. Now reads `3-commcare/app-release_summary.md`'s `apps.<app>.build_id`, the frontmatter contract `app-release § Products` declares (ace#1439), and a MISSING release summary is a genuine `[BLOCKER]` because `app-release` contractually owns it. `app-release` Step 7 is deleted with the block; `app-release-eval`'s corroborating leg and its every-run `[WARN]` go with it. Fourth instance of the ace#1010/#1439/#1567 class and the first where the reader was a producer skill, not an `-eval`. *Enforced:* `test/skills/deploy-summary-owns-no-release-state.test.ts`. | ACE team |
 | 2026-05-05 | **Path-scheme migration on the deep-QA gate.** Step 4 verdict reads, error messages, and gate-brief BLOCKER rows now reference `5-ocs/ocs-chatbot-eval_verdict-deep.yaml` and `6-qa-and-training/app-ux-eval_verdict-deep.yaml` (per the manifest); freshness check pulls build IDs from `3-commcare/app-deploy_summary.md`. Wiring fix — the prior `verdicts/...` paths no longer exist on disk, so the gate would always fail with "verdict missing" against current main. No behavior change beyond paths. | ACE team |
 | 2026-05-08 | Add `## Decisions Log` section: 4 anchor rows mapped 1:1 to `llo-launch-eval`'s viability axis (llo-capacity-actual, day-one-readiness, downstream-handoff-alignment, stop-loss-planning) + bar-criterion reference. Pairs with decisions-log PR #4 (Phase 3-10 writes). | ACE team (decisions-log PR #4) |

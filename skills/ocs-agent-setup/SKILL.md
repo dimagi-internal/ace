@@ -1,8 +1,8 @@
 ---
 name: ocs-agent-setup
 description: >
-  Create a program's OCS support chatbot: clone the ACE template, attach a RAG collection built
-  from the PDD and app docs, publish, return embed credentials. Needs an approved PDD.
+  Create or re-prompt an OCS chatbot: clone the ACE template, attach a RAG collection, publish,
+  return embed credentials. Needs content and a prompt, or a PDD.
 disable-model-invocation: false
 ---
 
@@ -22,11 +22,54 @@ no inline self-eval.
 
 ## Inputs
 
+This skill has two halves. **Create** (clone, collection, upload, index,
+patch, publish, embed) is a general platform action. **Derive** (choose the
+RAG files and compose the prompt from a PDD) is the pipeline's way of filling
+the create half's inputs. A caller who already has the content (a live program
+ACE didn't build, an operator-supplied prompt) passes it directly and the
+derive half is skipped.
+
+**Create-half parameters**
+
+| Parameter | Used for | Resolver |
+|---|---|---|
+| `bot_name` | chatbot name (Step 3) | explicit arg; default: `ACE - <opp-name> (<run-id>)` (naming contract below) |
+| `content_files[]` | RAG content (Step 5) | explicit arg (Drive ids or local paths); default: derived, below |
+| `system_prompt` | the prompt (Step 8) | explicit arg; default: composed in Step 7 from the PDD |
+| `description` | chatbot description | explicit arg; default: from the PDD summary |
+| `experiment_id` (`--prompt-patch` only) | the existing bot to re-prompt | explicit arg; default: `runs/<run-id>/5-ocs/ocs-agent-setup.md` |
+| `run_id` | run-bound mode: Step 0 state file + Steps 11-12 write-back | optional; absent = live-program mode |
+
+**Derive-half sources (run defaults)**
+
 | Source | Artifact | Used for |
 |---|---|---|
 | Phase 1 | `1-design/idea-to-pdd.md` | RAG content + system prompt framing |
 | Phase 3 | `runs/<run-id>/3-commcare/pdd-to-{learn,deliver}-app_summary.md` (app summaries, by name — ace#2869) | RAG content (app structure for the chatbot to answer "where do I find X" questions) |
 | Phase 4 | `4-connect/connect-opp-setup.md` | opp framing for system prompt |
+
+**Live-program mode** (no `run_id`): Step 0 reads no state file (Step 2's
+`ocs_list_chatbots` name check is the idempotency guard); Steps 1, 5's file
+selection and 7 are skipped when `content_files[]` and `system_prompt` are
+passed; **Step 7.5's standing-domain gate still runs on a supplied prompt**,
+because a hand-written prompt drops a standing domain as easily as a composed
+one; Steps 11-12 record the identifiers in the program context doc instead of
+the run. The no-fabricated-identifiers rule below binds in both modes.
+
+## Existing objects
+
+- **`--prompt-patch` on a live bot changes it for everyone who embeds it.**
+  Publishing makes the new prompt the default the public widget serves. The
+  public link serves ONLY the published version, so an unpublished patch
+  changes nothing users see. On a live program get owner approval for the
+  new prompt first, and record the before and after `version_number`.
+- **The collection may be shared.** `--prompt-patch` keeps the existing
+  collection list; it never re-uploads. To change what the bot knows, use
+  `ocs-knowledge-refresh` (uploads append; it owns the de-duplication).
+- **Never re-clone to "update" a live bot.** A new clone is a new
+  `experiment_id`, `public_id` and `embed_key`, so every embed of the old bot
+  keeps serving the old one. Connect has no per-opportunity widget field to
+  re-point (CCC-301), so a re-clone silently forks the program's bot.
 
 ## Products
 
@@ -1416,6 +1459,7 @@ Each row this skill writes uses `phase: 5-ocs` and
 
 | Date | Change | Author |
 |------|--------|--------|
+| 2026-10-18 | **Create vs derive split in `## Inputs` (ace#3148).** The create half (clone, collection, upload, patch, publish, embed) takes `bot_name`, `content_files[]`, `system_prompt`, `description` and, for `--prompt-patch`, `experiment_id` as parameters; the PDD/app-summary reads are the derive half's run defaults. Live-program mode records identifiers in the program context doc. New `## Existing objects`: a published patch is live for every embedder, never re-clone to update a live bot. | ACE (build-vs-maintain audit) |
 | 2026-10-15 | **The contacts page's opportunity row reads the partner's opportunity, not Phase 4's (ace#3000).** The Phase 4 opportunity is held by ACE's NM org (ace#2419) and is unreachable to the LLOs and workers the bot answers; the row now sources `selected_llo.opportunity_url` and is omitted, like the other LLO rows, until Phase 9 records it. | ACE team |
 | 2026-10-16 | **`ocs_publish_chatbot_version` polls its post-publish read-back; Step 11.5 names the race (dimagi-internal/ace#1828 recurrence).** OCS creates the version asynchronously after the publish POST's 302, so the composite backend's single post-publish API read returned the PRE-publish default labelled `source: 'api'`. Repro: `smallholder-seasonal/20261015-1402` Phase 5, experiment 14296 — the publish returned `{version_number: 1, source: 'api'}` while `ocs_inspect_chatbot(version: 'default')` straight afterwards showed v2 with this publish's description, so Step 11.5's "api mismatch → fail loudly" would have halted a healthy phase. `mcp/ocs/backends/composite.ts` now reads the default BEFORE the publish and polls (1s interval, 20s bound) until it is strictly greater (or, with no pre-publish read, until the default carries the posted description); a poll that never moves is never returned as `api` — it falls through to the labelled badge / typed throw. Step 11.5 gains the interim exception for sessions still on the old MCP child. *Enforced:* `test/mcp/ocs/composite.test.ts` (race, timeout, #823 throw, no-prior-default, description-match cases; red against pre-fix code). | ACE team |
 | 2026-10-15 | **Step 7 states the payment rule and Learn structure from the BUILT apps (closes dimagi-internal/ace#2968).** On `dimagi-team/noora-health/20261015-1129` (experiment 14288) the composed prompt made three mistakes. It took the payable rule from the PDD requirement sentence, which gave two conditions, while the built app computes `payable_class` = consent yes AND >=3 caregiver rows AND danger signs ticked. It listed Connect's duration and submission-hour flags under "not paid". It folded the final assessment into a count of "six modules" when there are five `learn_module` forms plus one assessment. The bot repeated all three in the quick eval, and an operator `--prompt-patch` fixed them. Step 7 now has a bullet with three parts. Copy the payable predicate from the Deliver summary's computed field, gating conditions included, and check it against the PDD. Describe verification flags as review flags, never as payment rules. Count Learn modules from the Learn summary and name the assessment separately. *Enforced:* `test/skills/ocs-prompt-payment-and-learn-structure.test.ts` pins that the bullet carries all three parts, placed before Step 7.5. The composed prompt is authored at run time, so the behavioural proof is the next run's quick/deep eval. | ACE team |

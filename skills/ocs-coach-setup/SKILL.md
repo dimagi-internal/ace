@@ -34,12 +34,37 @@ residual to record — we know the Coach builds (Spark Coach 13972).
 
 ## Inputs
 
-| Source | Used for |
-|---|---|
-| `phases.ocs-setup.products.ocs_chatbot.experiment_id` | clone source (model, collection) |
-| `phases.synthetic-data-and-workflows.products.synthetic.cascade.registry.registry_id` | indicator cards (`semantic_registry_get` → `indicators_doc.measures`) |
-| `3-commcare/pdd-to-deliver-app_summary.md` | the short "how the app works" section |
-| PDD § worker noun, languages | `--worker`, `--workers`, `--language` |
+| Parameter | Used for | Resolver |
+|---|---|---|
+| `source_experiment_id` | clone source (model, collection) | explicit arg; default: run_state `phases.ocs-setup.products.ocs_chatbot.experiment_id`; no Q&A bot → `$OCS_GOLDEN_TEMPLATE_ID` (Step 1) |
+| `registry_id` | indicator cards (`semantic_registry_get` → `indicators_doc.measures`) | explicit arg; default: run_state `phases.synthetic-data-and-workflows.products.synthetic.cascade.registry.registry_id`; else program context doc |
+| `app_summary` | the short "how the app works" section | explicit arg (Drive id / local file, or 5-8 bullets); default: `3-commcare/pdd-to-deliver-app_summary.md` |
+| `worker`, `workers`, `language` | `--worker`, `--workers`, `--language` | explicit arg; default: PDD § worker noun, languages |
+| `collection_id` | opp collection the Coach searches (`--collections`) | explicit arg, or `none`; default: the Q&A bot's opp collection |
+| `report_workflow_ids[]` | reports that get the coaching action (Step 9) | explicit arg; default: run_state `products.synthetic.cascade.programme_report` + `cascade.opp_reports[]` |
+| `run_id` | run-bound mode: run-scoped bot names + Step 8 write-back | optional; absent = live-program mode |
+
+**Live-program mode** (no `run_id`; e.g. a coach for a live programme with its
+own registry and reports): the bot names in Steps 1 and 5 use the programme
+name plus a date in place of `<run-id>` (OCS still refuses a reused Connect bot
+name on a team, ace#3006); Step 8 records the `ocs_coach` block in the program
+context doc instead of `run_state.yaml`. Every other step, including the QA in
+Step 7 and the selection rule in Step 9, is unchanged. Never take a registry,
+report or bot id from another run's state.
+
+## Existing objects
+
+- **Step 9 changes a live report for everyone who opens it.**
+  `workflow_update_definition` adds the coaching button and the canopy panel
+  to the page every supervisor sees. `config` shallow-merges, so the report's
+  other keys survive, but confirm with `workflow_run_context` and get owner
+  approval on a live programme's reports before writing.
+- **Rebuilding the Coach is a new `public_id`.** Every report that names the
+  old bot keeps starting sessions with it until it is patched again (Step 9's
+  last line). Record which reports were patched.
+- **A clone keeps its source's collections.** Cloning a live programme's bot
+  without `--collections` hands the Coach that programme's documents
+  (ace#2779). `--collections` is required for this reason.
 
 ## Steps
 
@@ -219,3 +244,9 @@ both sides: nothing changes for a session that does not ask for one.
 ## Terminology
 
 Worker-facing text follows `skills/_terminology.md` — the platform is "Connect".
+
+## Change Log
+
+| Date | Change | Author |
+|---|---|---|
+| 2026-10-18 | Inputs are parameters (`source_experiment_id`, `registry_id`, `app_summary`, `collection_id`, `report_workflow_ids[]`) with the run's Phase 5/7 state as defaults; live-program mode names and records outside the run; `## Existing objects` for live-report patching and rebuilds. ace#3148. | ACE (build-vs-maintain audit) |
