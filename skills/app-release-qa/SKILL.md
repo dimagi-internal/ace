@@ -52,7 +52,7 @@ re-release, and tell the owner which opportunities were exposed and for how long
 
 ## Products
 
-- `<output folder>/app-release-qa_result.yaml` (in a run: `3-commcare/`) — structural verdict (see § Output schema below)
+- `3-commcare/app-release-qa_result.yaml` — structural verdict (see § Output schema below). Outside a run, the same file goes into `output_folder`.
 
 No screenshots, no per-app summaries — the structural deltas live in
 the verdict YAML.

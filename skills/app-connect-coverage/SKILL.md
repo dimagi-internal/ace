@@ -45,7 +45,7 @@ app, then `app-release`), or the fix never reaches workers.
 
 ## Products
 
-- `<report folder>/app-connect-coverage_<app-type>.md` (in a run: `3-commcare/`; `_learn.md` / `_deliver.md`) — per-form marker coverage report and any Nova edits applied. The app-type suffix is REQUIRED: Phase 3 runs this skill twice into the same folder and `drive_create_file` is find-or-update by name, so an undiscriminated name makes the second pass silently overwrite the first (ace#1528).
+- `3-commcare/app-connect-coverage_<app-type>.md` (`_learn.md` / `_deliver.md`; outside a run, in `report_folder_id`) — per-form marker coverage report and any Nova edits applied. The app-type suffix is REQUIRED: Phase 3 runs this skill twice into the same folder and `drive_create_file` is find-or-update by name, so an undiscriminated name makes the second pass silently overwrite the first (ace#1528).
 
 ## Why this skill exists
 

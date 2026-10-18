@@ -47,7 +47,7 @@ working FLWs run, and some of what it touches is shared:
 
 ## Products
 
-- `<summary folder>/app-release_summary.md` (in a run: `3-commcare/app-release_summary.md`) — released build IDs + version numbers per app.
+- `3-commcare/app-release_summary.md` — released build IDs + version numbers per app. Outside a run the same file goes into `summary_folder_id` (§ Inputs).
 
   **Frontmatter contract (ace#1439).** `app-release-eval § both_apps_released`
   reads these keys, so they are declared here rather than left to whatever the
