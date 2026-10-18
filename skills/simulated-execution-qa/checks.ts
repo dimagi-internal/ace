@@ -39,8 +39,8 @@ export interface SimulationDoc {
   weeks: Array<{ w: number; operate_qa: string | null; review_file_id: string | null }>;
   /** `workflow_history_runs(..., generated_only: true)` on the weekly workflow, read fresh. */
   history: { definition_id: number | null; runs: HistoryRun[] };
-  /** The opportunity the simulated visits live on, as labs describes it. */
-  synthetic_opportunity: { id: number | null; labs_only: boolean | null; org_name: string | null };
+  /** The opportunity the simulated visits live on, as `labs_context` describes it (its org's slug and name). */
+  synthetic_opportunity: { id: number | null; org_slug: string | null; org_name: string | null };
   /** The ACE winner org's display name (run_state `selected_llo` / `connect_orgs.llo_org`). */
   winner_org_name: string;
   /** run_state `phases.solicitation-management.products.selected_llo`, verbatim. */
@@ -62,6 +62,13 @@ export const REAL_HANDOVER_FIELDS = [
 
 /** Labs files labs-only opportunities from this id range (synthetic_clone_to_labs_only). */
 export const LABS_ONLY_ID_FLOOR = 10_000;
+
+/**
+ * Labs mints a labs-only org's slug as this prefix + the name
+ * (`synthetic_org_slug`); `labs_context` carries no labs_only flag, so the
+ * prefix and the id range are how a labs-only opportunity is recognised.
+ */
+export const LABS_ONLY_ORG_PREFIX = 'labs-synthetic-';
 
 function withDoc(artifact: string, fn: (d: SimulationDoc) => QACheckResult): QACheckResult {
   let doc: SimulationDoc;
@@ -156,7 +163,7 @@ export function checkSyntheticOpportunityIsolated(artifact: string): QACheckResu
     const bad: string[] = [];
     if (o.id === null) bad.push('no synthetic opportunity recorded');
     else if (o.id < LABS_ONLY_ID_FLOOR) bad.push(`opportunity ${o.id} is below ${LABS_ONLY_ID_FLOOR}: a real Connect opportunity, not a labs-only copy`);
-    if (o.labs_only !== true) bad.push(`labs_only is ${o.labs_only}`);
+    if (!(o.org_slug ?? '').startsWith(LABS_ONLY_ORG_PREFIX)) bad.push(`org ${o.org_slug} is not a labs-only org (${LABS_ONLY_ORG_PREFIX}…)`);
     if ((o.org_name ?? '').trim() !== doc.winner_org_name.trim()) {
       bad.push(`filed under "${o.org_name}", not the ACE winner "${doc.winner_org_name}"`);
     }
@@ -223,7 +230,7 @@ export const CHECKS: QACheck[] = [
   { id: 'week0_supply_chain', type: 'static', description: "Week 0's procurement and fulfilment QA passed (supply_chain only)", run: checkWeek0SupplyChain },
   { id: 'every_week_operated', type: 'static', description: "Every delivery week's stock QA passed (supply_chain only)", run: checkEveryWeekOperated },
   { id: 'history_one_run_per_week', type: 'static', description: 'Labs holds exactly one completed saved run per delivery week, on its Monday-Sunday period', run: checkHistoryOneRunPerWeek },
-  { id: 'synthetic_opportunity_isolated', type: 'static', description: 'The visits live on a labs-only copy filed under the ACE winner, never the real opportunity', run: checkSyntheticOpportunityIsolated },
+  { id: 'synthetic_opportunity_isolated', type: 'static', description: 'The visits live on a labs-only copy (id ≥ 10000, labs-synthetic- org) filed under the ACE winner, never the real opportunity', run: checkSyntheticOpportunityIsolated },
   { id: 'review_per_week', type: 'static', description: 'Every delivery week has a weekly review', run: checkReviewPerWeek },
   { id: 'no_real_llo_contact', type: 'static', description: 'The winner is synthetic, no real handover field is set, and Phase 9 sent nothing', run: checkNoRealLloContact },
   { id: 'summary_links_every_week', type: 'static', description: "The summary links every week's review", run: checkSummaryLinksEveryWeek },

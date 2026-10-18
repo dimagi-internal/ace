@@ -41,7 +41,7 @@ The functions live in `skills/simulated-execution-qa/checks.ts`. Each takes one 
 | 2 | `week0_supply_chain` | static | procure and fulfil QA passed (supply_chain only) | finish week 0 first |
 | 3 | `every_week_operated` | static | every delivery week's `supply-chain-operate-qa` passed (supply_chain only) | re-run the week; it replays by `source.ref` |
 | 4 | `history_one_run_per_week` | static | exactly one completed saved run per delivery week, on its Monday-Sunday period | `workflow_rebuild_history` over the window |
-| 5 | `synthetic_opportunity_isolated` | static | visits on a labs-only copy (id ≥ 10000, `labs_only`) filed under the ACE winner | clone to labs-only; repoint the report |
+| 5 | `synthetic_opportunity_isolated` | static | visits on a labs-only copy (id ≥ 10000, a `labs-synthetic-` org) whose org name is the ACE winner's | clone to labs-only; repoint the report |
 | 6 | `review_per_week` | static | a weekly review per delivery week | run `simulated-weekly-review` |
 | 7 | `no_real_llo_contact` | static | `synthetic_winner: true`, no real handover field set, no Phase 9 send | stop and report: a real step ran |
 | 8 | `summary_links_every_week` | static | the summary links every review | rewrite the summary |
@@ -49,8 +49,8 @@ The functions live in `skills/simulated-execution-qa/checks.ts`. Each takes one 
 ## Process
 
 1. **Read fresh:** `workflow_history_runs({definition_id, opportunity_id: <synthetic opp>, generated_only: true})`
-   (page with `start_at` until `done`); `labs_context` for the synthetic opportunity (labs-only and
-   its organisation); each week's `supply-chain-operate-qa_week-<w>_result.yaml`, the week-0 QA
+   (page with `start_at` until `done`); `labs_context({search: <winner org name>})` for the synthetic opportunity's org (slug and
+   name; labs carries no labs_only flag, so the `labs-synthetic-` slug and the id range say it); each week's `supply-chain-operate-qa_week-<w>_result.yaml`, the week-0 QA
    results and the review files from the folder; run_state's `selected_llo` and `optional_steps`;
    Phase 9's outbound sends from the run's comms-log.
 2. **Build `SimulationDoc`** and run `CHECKS` over `JSON.stringify(doc)`; write the result with
