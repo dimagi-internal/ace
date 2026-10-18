@@ -499,3 +499,36 @@ export class VerificationDurationNotPersistedError extends ConnectError {
     };
   }
 }
+
+/**
+ * Connect re-rendered `/register/organization/` (200) instead of redirecting,
+ * i.e. `OrganizationCreateForm` rejected the POST. Nothing was created. The
+ * common case is `name`: "An organization with this name already exists." —
+ * an org of that name exists that the caller is NOT a member of, since a
+ * same-named org the caller belongs to is returned as `created: false` before
+ * any POST (dimagi-internal/ace#3170).
+ */
+export class OrganizationCreateRejectedError extends ConnectError {
+  retryable = false;
+  constructor(
+    public organization_name: string,
+    public validationErrors: string[],
+    public fieldErrors: Record<string, string[]>,
+  ) {
+    super(
+      `Connect refused to create organization "${organization_name}": ${validationErrors.join('; ') || 'form re-rendered with no parsable error'}. ` +
+        'Nothing was created (dimagi-internal/ace#3170).',
+    );
+  }
+
+  toJSON() {
+    return {
+      error: 'organization_create_rejected' as const,
+      message: this.message,
+      organization_name: this.organization_name,
+      errors: this.validationErrors,
+      fields: this.fieldErrors,
+      retryable: false as const,
+    };
+  }
+}

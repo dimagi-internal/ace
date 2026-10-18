@@ -460,6 +460,7 @@ export class RestBackend implements ConnectClient {
   addOrgMember = stub('addOrgMember') as ConnectClient['addOrgMember'];
   removeOrgMember = stub('removeOrgMember') as ConnectClient['removeOrgMember'];
   listOrgMembers = stub('listOrgMembers') as ConnectClient['listOrgMembers'];
+  createOrganization = stub('createOrganization') as ConnectClient['createOrganization'];
   listDeliverUnits = stub('listDeliverUnits') as ConnectClient['listDeliverUnits'];
   listPaymentUnits = stub('listPaymentUnits') as ConnectClient['listPaymentUnits'];
   listInvites = stub('listInvites') as ConnectClient['listInvites'];

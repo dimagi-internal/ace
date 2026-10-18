@@ -17,6 +17,7 @@ import {
   VerificationPagePmOnlyError,
   VerificationRuleDeliverUnitChangedError,
   VerificationDurationNotPersistedError,
+  OrganizationCreateRejectedError,
 } from '../errors.js';
 import { assertFundsAtLeastOneUser } from '../opportunity-capacity.js';
 import { parseReceivedInvitations } from '../../../lib/connect-orgs.js';
@@ -52,6 +53,9 @@ import {
   parsePaymentUnitTable,
   parseWorkerLearnTable,
   parseWorkerDeliverTable,
+  djangoSlugify,
+  parseHeaderMemberships,
+  parseOrgSlugFromCreateRedirect,
 } from './html-scrape.js';
 
 /**
@@ -1555,6 +1559,99 @@ export class PlaywrightBackend implements ConnectClient {
     organization_slug,
     ...(await this.readOrgTables(organization_slug)),
   });
+
+  /**
+   * Create an organization via `/register/organization/` — contract on
+   * `ConnectClient.createOrganization` (dimagi-internal/ace#3170). Endpoint
+   * read from dimagi/commcare-connect `organization/views.py::organization_create`
+   * + `forms.py::OrganizationCreateForm`: only `name` is required; every
+   * profile field is optional (model `blank=True`), and omitting a checkbox /
+   * multi-select posts it empty, exactly as a browser does.
+   */
+  createOrganization: ConnectClient['createOrganization'] = async ({
+    name,
+    short_name,
+    contact_emails,
+    notes,
+    dry_run,
+  }) => {
+    const wanted = name.trim();
+    if (!wanted) throw new ConnectValidationError(['name is required']);
+    const slug_predicted = djangoSlugify(wanted);
+    const formPath = '/register/organization/';
+
+    // 1. GET the form: CSRF token + the header's membership list.
+    const getRes = await this.request.get(formPath, { maxRedirects: 0 });
+    if (getRes.status() !== 200) throw await httpErrorFor(getRes, formPath);
+    const formHtml = await getRes.text();
+    const csrf = extractFormCsrfToken(formHtml) ?? this.opts.csrfToken;
+    let match: { slug: string } | undefined = parseHeaderMemberships(formHtml).find(
+      (m) => m.name.toLowerCase() === wanted.toLowerCase(),
+    );
+    // The selector omits the CURRENT org (`request.org`), which Connect's
+    // middleware sets from the last org visited — measured 2026-10-18: the
+    // form page rendered with request.org = the caller's personal org. So also
+    // probe the predicted slug's admin-only member table: a 200 means the
+    // caller already administers an org at exactly that slug.
+    if (!match && slug_predicted) {
+      const probe = await this.request.get(`/a/${slug_predicted}/organization/member_table?page_size=100`, {
+        maxRedirects: 0,
+      });
+      if (probe.status() === 200) match = { slug: slug_predicted };
+    }
+
+    const readBack = async (slug: string) => {
+      const { members } = await this.readOrgTables(slug);
+      const rows = members.map((m) => ({ email: m.email, role: m.role }));
+      return { members: rows, admin_verified: rows.some((m) => m.role === 'admin') };
+    };
+
+    // Refuse-before-write: an org of this name the caller already belongs to
+    // is the answer, not a reason to POST. There is no delete.
+    if (match) {
+      return {
+        name: wanted,
+        created: false,
+        dry_run: Boolean(dry_run),
+        existing: true,
+        slug: match.slug,
+        slug_predicted,
+        ...(dry_run ? {} : await readBack(match.slug)),
+      };
+    }
+    if (dry_run) {
+      return { name: wanted, created: false, dry_run: true, existing: false, slug_predicted };
+    }
+
+    // 2. POST the form; never follow the redirect — its Location is the slug.
+    const form: Record<string, string> = { csrfmiddlewaretoken: csrf, name: wanted };
+    if (short_name) form.short_name = short_name;
+    if (contact_emails?.length) form.contact_emails = contact_emails.join('\n');
+    if (notes) form.notes = notes;
+    const postRes = await this.request.post(formPath, {
+      form,
+      maxRedirects: 0,
+      headers: { Referer: `${this.opts.baseUrl}${formPath}`, 'X-CSRFToken': csrf },
+    });
+    if (postRes.status() === 200) {
+      const html = await postRes.text();
+      const fields = parseFormErrorsByField(html);
+      const flat = parseFormErrors(html);
+      throw new OrganizationCreateRejectedError(wanted, flat.length ? flat : Object.values(fields).flat(), fields);
+    }
+    if (postRes.status() < 300 || postRes.status() >= 400) throw await httpErrorFor(postRes, formPath, 'POST');
+    const location = postRes.headers()['location'];
+    const slug = parseOrgSlugFromCreateRedirect(location);
+    if (!slug) {
+      throw new ConnectError(
+        `POST ${formPath} redirected to ${location ?? '(no Location)'}, which is not an organization URL; ` +
+          'the org may or may not exist — check the Connect org selector before retrying (dimagi-internal/ace#3170).',
+      );
+    }
+
+    // 3. Read back: the creator must be the new org's admin.
+    return { name: wanted, created: true, dry_run: false, existing: false, slug, slug_predicted, ...(await readBack(slug)) };
+  };
 
   /**
    * Invite a human user to a Connect workspace (organization) by email.

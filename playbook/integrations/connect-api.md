@@ -23,7 +23,7 @@ This document covers `ace-connect`. For `connect-labs`, see that repo's docs.
 
 ## What ace-connect exposes today
 
-**32 `connect_*` atoms** (31 routed through `mcp/connect/capability-map.ts`, plus the
+**33 `connect_*` atoms** (32 routed through `mcp/connect/capability-map.ts`, plus the
 server-local `connect_preflight_learn_app_user`), and the `commcare_*` HQ atoms covered in
 [`commcare-api.md`](commcare-api.md). Exact signatures are in [`docs/atom-schemas.md`
 § ace-connect](../../docs/atom-schemas.md). That file is generated and authoritative; the
@@ -75,6 +75,7 @@ build-only: each acts on whatever program or opportunity id it is given.
 | `connect_send_flw_invite` | REST | `connect-opp-setup` Step 7, `llo-launch` |
 | `connect_list_flw_invites` / `connect_delete_unaccepted_flw_invites` | Playwright | `test-worker-pool`, `connect-opp-setup` |
 | `connect_add_org_member` / `connect_list_org_members` / `connect_remove_org_member` | Playwright (HTML form; no REST) | `add-org-member`, `share-run-access`, `release` |
+| `connect_create_organization` | Playwright (`/register/organization/` HTML form; no REST) | ACE-owned orgs only (the `llo_org` winner); see § The ACE-owned orgs |
 
 ### Progress and invoices
 
@@ -601,7 +602,7 @@ failure, because only a run requesting `ace_winner` needs it. *Enforced:*
 slug of every `ACE_CONNECT_*_ORG` key in `.env.tpl` as a literal in skills, agents,
 commands, templates and CLAUDE.md. Prose says `connect_orgs.llo_org`.
 
-**Creating the winner org (one-time, operator step today).**
+**Creating the winner org (one-time).** ACE does it with `connect_create_organization` (ace#3170); the mechanics below are what that atom drives.
 - Connect has no REST route for creating an org.
 - The only path is the HTML wizard at `GET/POST /register/organization/` (`organization_create`, `@login_required`; `dimagi/commcare-connect` `config/urls.py:41`, `commcare_connect/organization/views.py:31`).
 - Any signed-in user may create one and becomes its **admin**.
@@ -613,11 +614,15 @@ commands, templates and CLAUDE.md. Prose says `connect_orgs.llo_org`.
 - `is_test` is not on the form.
 - Success redirects to `/a/<slug>/opportunity/`.
 
+- **The current org is not in the header's org list.** Connect's middleware sets `request.org` from the last org visited, and the selector omits it, so a name check against the selector alone can miss an org the caller is already in. The atom also reads the admin-only `member_table` at the predicted slug (200 = the caller administers an org there; 404 = none). Measured live 2026-10-18.
+
 Steps:
-1. Create the org in the Connect UI as ace@.
-2. Put its slug in the installed `.env` as `ACE_CONNECT_LLO_ORG` (a local-only key).
-3. Run `/ace:setup --force-env`, then fully restart Claude.
+1. `connect_create_organization({name, notes, dry_run: true})`, then the same without `dry_run`. Re-running is safe: an org of that name the caller belongs to comes back as `existing: true` and nothing is posted. There is no delete.
+2. Put the returned slug in the installed `.env` as `ACE_CONNECT_LLO_ORG`, inside the `# --- ACE local-only secrets` block (never a raw `op inject`).
+3. Fully restart Claude so the MCP subprocesses re-read `.env`.
 4. Register it on the labs side through `supply_chain_org_upsert` with `connect_organization_id`. `supply-chain-setup` does this.
+
+This instance's winner org: `ACE Test LLO (Synthetic)`, created 2026-10-18 by ace@ (sole member, admin). Its slug is in `.env`, not here (see the hardcoded-org rail above).
 
 ### PM→NM org-URL matrix (live, 2026-09-26)
 
