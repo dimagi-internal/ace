@@ -75,7 +75,7 @@ These can run in parallel once PR1 has merged: PR2, PR3, PR5 and PR6. PR4 needs 
   - the award record captures `awardee_notified`;
   - add `program_id` on every read;
   - with `synthetic_winner`, write `selected_llo.synthetic_winner: true`.
-- `test/skills/solicitation-visibility.test.ts` (new): every `get_solicitation`/`list_responses` call block in these three skills carries `program_id`, and no `award_response` block contains `amount:`.
+- `test/skills/solicitation-visibility.test.ts` (new): the inverted assertion. The live schema refuted "readers must pass `program_id`" (spec § B, amended), so the test fails if any of these skills (or `connect-labs.md`) claims a private call needs `program_id` to be read. It also checks that `solicitation-create` gates `is_public: false` and the demonstration banner on `private_solicitation`, that it records `visibility`, and that no `award_response` block contains `amount:`.
 
 **Residual named in the PR:** spec § K2.
 

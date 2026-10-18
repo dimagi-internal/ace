@@ -99,9 +99,14 @@ program, opportunity, solicitation or workflow id it is given.
 | `create_review` / `update_review` / `list_reviews` / `get_review` | `solicitation-review`, `eoi-round-review` |
 | `award_response` | `solicitation-review` (HITL-gated). Requires `response_id`, `reward_budget`, `org_id`; **emails the awardee when labs email is on**; refuses a second award (ace#3146) |
 
-`is_public: false` hides a call from the logged-in listing, but reads then need its
-`program_id` or they 404 (`skills/solicitation-create`). Even `is_public: true` is
-login-only. See CLAUDE.md § Phases on why "public" is a misnomer.
+`is_public: false` hides a call from the logged-in listing. Its owning org's members
+(and anyone who responded) still read it by `solicitation_id` alone. Since
+connect-labs#2567, labs authorizes solicitation reads and writes by owning-org
+membership, and the live schema marks `program_id` "Accepted for compatibility; not
+needed" on `get_solicitation`, `list_responses`, `get_response`,
+`update_solicitation` and `award_response` (2026-10-18). A private call that reads as
+"not found" is an ownership problem, not a missing `program_id`. Even `is_public: true`
+is login-only. See CLAUDE.md § Phases on why "public" is a misnomer.
 
 ### Marketplace (EOI rounds)
 
