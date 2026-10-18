@@ -92,6 +92,67 @@ function isChangeLogRow(lines: string[], i: number): boolean {
   return false;
 }
 
+// ── The instance's own orgs (PM / NM / the ACE-owned winner) ──────────────
+// `.env.tpl` documents each org key with a COMMENTED example value
+// (`# ACE_CONNECT_<ROLE>_ORG=<slug>`). Those examples are this instance's real
+// orgs, so a skill that names one is hardcoding configuration exactly like the
+// legacy default above — and for the winner org (`ACE_CONNECT_LLO_ORG`, the
+// optional `ace_winner` step) it would award a call, bind a seeded response and
+// run a procurement in one instance's org. Read from `.env.tpl` rather than
+// listed here so a new org key is covered the moment it is documented. Scoped
+// to the prose surfaces an agent acts from; playbook/lib/mcp carry recorded
+// measurements in these orgs and stay under the legacy-slug rail only.
+const INSTANCE_SCAN_DIRS = ['skills', 'agents', 'commands', 'templates'];
+const INSTANCE_ORG_EXAMPLES: string[] = [
+  ...readFileSync(join(ROOT, '.env.tpl'), 'utf8').matchAll(/^#\s*ACE_CONNECT_[A-Z]+_ORG=([A-Za-z0-9][A-Za-z0-9_-]*)\s*$/gm),
+].map((m) => m[1]);
+
+/** [file, verbatim snippet, reason] — an instance-org slug that is an example, not an instruction to act in it. */
+const INSTANCE_ALLOWLIST: ReadonlyArray<readonly [string, string, string]> = [
+  ['skills/demo-data-setup/SKILL.md', '(`connect_orgs.nm_org`, e.g. `ace-nm-org`)', 'names the configured key first; the slug is an illustration'],
+];
+
+describe("no skill or agent names one of the instance's own Connect orgs (pm / nm / winner)", () => {
+  it('every occurrence is allowlisted with a reason', () => {
+    const offenders: string[] = [];
+    const used = new Set<number>();
+    const out: string[] = [];
+    for (const d of INSTANCE_SCAN_DIRS) walk(join(ROOT, d), out);
+    out.push(join(ROOT, 'CLAUDE.md'));
+    for (const rel of out.map((abs) => relative(ROOT, abs))) {
+      const lines = readFileSync(join(ROOT, rel), 'utf8').split('\n');
+      lines.forEach((line, i) => {
+        const slug = INSTANCE_ORG_EXAMPLES.find((s) => new RegExp(`(^|[^A-Za-z0-9_-])${s}([^A-Za-z0-9_-]|$)`).test(line));
+        if (!slug) return;
+        if (isChangeLogRow(lines, i)) return;
+        const hit = INSTANCE_ALLOWLIST.findIndex(([f, snippet]) => f === rel && line.includes(snippet));
+        if (hit >= 0) {
+          used.add(hit);
+          return;
+        }
+        offenders.push(`${rel}:${i + 1}: [${slug}] ${line.trim().slice(0, 160)}`);
+      });
+    }
+    expect(
+      offenders,
+      'An instance org slug in a skill/agent. Refer to the configured key instead — `connect_orgs.pm_org`, ' +
+        '`connect_orgs.nm_org`, or `connect_orgs.llo_org` (the ACE-owned winner) — or, if the line is only an ' +
+        `illustration, add it to INSTANCE_ALLOWLIST with a reason:\n  ${offenders.join('\n  ')}`,
+    ).toEqual([]);
+    const stale = INSTANCE_ALLOWLIST.filter((_, k) => !used.has(k)).map(([f, s]) => `${f}: ${s}`);
+    expect(stale, `INSTANCE_ALLOWLIST entries that no longer match — delete them:\n  ${stale.join('\n  ')}`).toEqual([]);
+  });
+
+  it('reads the winner org example from .env.tpl, so the rail covers ACE_CONNECT_LLO_ORG (control)', () => {
+    const tpl = readFileSync(join(ROOT, '.env.tpl'), 'utf8');
+    const llo = /^#\s*ACE_CONNECT_LLO_ORG=(\S+)\s*$/m.exec(tpl);
+    expect(llo, '.env.tpl must document ACE_CONNECT_LLO_ORG with a commented example').not.toBeNull();
+    expect(INSTANCE_ORG_EXAMPLES).toContain(llo![1]);
+    const line = `- award the response to \`${llo![1]}\``;
+    expect(INSTANCE_ORG_EXAMPLES.some((s) => new RegExp(`(^|[^A-Za-z0-9_-])${s}([^A-Za-z0-9_-]|$)`).test(line))).toBe(true);
+  });
+});
+
 describe('no hardcoded Connect org slug outside lib/connect-orgs.ts', () => {
   it('every occurrence is the resolver default, an allowlisted historical citation, or a Change Log row', () => {
     const offenders: string[] = [];
@@ -128,6 +189,7 @@ describe('no hardcoded Connect org slug outside lib/connect-orgs.ts', () => {
   });
 
   it('the rail can see a new literal (control)', () => {
+    expect(INSTANCE_ORG_EXAMPLES.length).toBeGreaterThanOrEqual(3);
     const lines = ['## Process', `- organization_slug: \`${SLUG}\``];
     expect(lines[1].includes(SLUG) && !isChangeLogRow(lines, 1)).toBe(true);
     const log = ['## Change Log', '| Date | Change |', `| 2026-01-01 | measured on ${SLUG} |`];

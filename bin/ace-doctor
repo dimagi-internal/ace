@@ -670,16 +670,22 @@ if [ "$PREFLIGHT" = "1" ]; then
   # ACE_CONNECT_PM_ORG / ACE_CONNECT_NM_ORG, preserved by /ace:setup --force-env),
   # with the shell env as a fallback. Static — no network. The orchestrator
   # passes this block into every phase dispatch that acts in Connect.
+  # ACE_CONNECT_LLO_ORG is the ACE-owned winner org (optional `ace_winner`
+  # step); unset adds `llo_org_status: warn` to the block, never a fail — only
+  # a run requesting ace_winner needs it.
   PF_CONNECT_ORGS_YAML="$(cd "$ROOT" && \
     PF_PM_SHELL="${ACE_CONNECT_PM_ORG:-}" PF_NM_SHELL="${ACE_CONNECT_NM_ORG:-}" \
+    PF_LLO_SHELL="${ACE_CONNECT_LLO_ORG:-}" \
     ACE_CONNECT_PM_ORG="$(pf_get_env ACE_CONNECT_PM_ORG)" \
     ACE_CONNECT_NM_ORG="$(pf_get_env ACE_CONNECT_NM_ORG)" \
+    ACE_CONNECT_LLO_ORG="$(pf_get_env ACE_CONNECT_LLO_ORG)" \
     node "$TSX_CLI" -e "
       import { renderConnectOrgsYaml } from './lib/connect-orgs.ts';
       const e = process.env;
       console.log(renderConnectOrgsYaml({
         ACE_CONNECT_PM_ORG: e.ACE_CONNECT_PM_ORG || e.PF_PM_SHELL,
         ACE_CONNECT_NM_ORG: e.ACE_CONNECT_NM_ORG || e.PF_NM_SHELL,
+        ACE_CONNECT_LLO_ORG: e.ACE_CONNECT_LLO_ORG || e.PF_LLO_SHELL,
       }));
     " 2>/dev/null || true)"
   if [ -z "$PF_CONNECT_ORGS_YAML" ]; then

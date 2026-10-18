@@ -271,11 +271,22 @@ function defaultWorkspaceOrgs(input: {
   const orgs: ConnectOrgs = {
     pm_org: pmFromTenancy ? tPm! : local.pm_org,
     nm_org: nmFromTenancy ? tHold! : local.nm_org,
+    // The winner org is instance config only — a tenancy never names one.
+    llo_org: local.llo_org,
     source: {
       pm_org: pmFromTenancy ? 'tenancy' : local.source.pm_org,
       nm_org: nmFromTenancy ? 'tenancy' : local.source.nm_org,
+      llo_org: local.source.llo_org,
     },
   };
+  if (orgs.llo_org !== null && (orgs.llo_org === orgs.pm_org || orgs.llo_org === orgs.nm_org)) {
+    throw new RunWorkspaceError(
+      'CONNECT_ORG_CONFLICT',
+      `ACE_CONNECT_LLO_ORG=${orgs.llo_org} is also this run's ${orgs.llo_org === orgs.pm_org ? 'PM' : 'holding'} org (from ace-web's tenancy); the ACE-owned winner org must be a distinct org`,
+      'set ACE_CONNECT_LLO_ORG in the installed .env to an org that is neither the PM nor the holding org',
+      ['ACE_CONNECT_LLO_ORG'],
+    );
+  }
   if (pmFromTenancy) warnings.push(`ACE_CONNECT_PM_ORG is unset; pm_org=${tPm} comes from ace-web's tenancy for ${opp}`);
   if (nmFromTenancy) warnings.push(`ACE_CONNECT_NM_ORG is unset; nm_org=${tHold} comes from ace-web's tenancy for ${opp}`);
   if (orgs.source.pm_org === 'legacy-default') {

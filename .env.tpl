@@ -190,11 +190,17 @@ ACE_HQ_PASSWORD=op://${AGENT_VAULT}/ACE - CommCareHQ/password
 #                        Unset → lib/connect-orgs.ts's legacy default.
 #   ACE_CONNECT_NM_ORG — network-manager org slug. Unset → not configured.
 #                        Not consumed yet (the PM→NM flow change is a follow-up).
+#   ACE_CONNECT_LLO_ORG — the ACE-OWNED winner org: a Connect org ace@ belongs
+#                        to, which plays the awarded LLO in runs that request the
+#                        optional `ace_winner` step (/ace:run --with ace_winner or
+#                        labs_e2e). Must differ from the PM and NM orgs. Unset →
+#                        not configured; /ace:doctor --preflight WARNs.
 # Resolved in ONE place (lib/connect-orgs.ts); surfaced as `connect_orgs:` by
 # /ace:doctor --preflight. See playbook/integrations/connect-api.md
 # § Which Connect orgs ACE acts in.
 # ACE_CONNECT_PM_ORG=ace-pm-org
 # ACE_CONNECT_NM_ORG=ace-nm-org
+# ACE_CONNECT_LLO_ORG=ace-llo-org
 
 # ── Nova (CommCare app builder MCP) ──────────────────────────────────
 #
