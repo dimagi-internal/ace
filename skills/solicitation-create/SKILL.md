@@ -66,6 +66,28 @@ contract.
 
 ## Inputs
 
+The skill publishes a solicitation for a Connect program from a brief. Inside
+`/ace:run` every parameter resolves from the run; outside a run (a live program,
+a program project) pass them explicitly. No `run_state.yaml` is required when the
+parameters are given.
+
+| Parameter | Used for | Resolver |
+|---|---|---|
+| `--work-order <doc id>` | primary content source (scope, verification, payment band, timeline) | default: the run's `1-design/pdd-to-work-order.gdoc`; outside a run, any work-order-shaped brief the caller supplies |
+| `--pdd <doc id>` | archetype, problem narrative, geographic scope | default: the run's `1-design/idea-to-pdd.md`; optional outside a run |
+| `--program-uuid` / `--labs-program-id` | the Connect program the call is for (UUID + ConnectProd integer id) | default: `opp.yaml.connect.program.{id, connect_int_id}`; else the program context doc; else the `labs_context` lookup in Step 5 |
+| `--org-slug` | the owning (PM) org that publishes and owns the call | default: the run's Phase 4 PM org (`runConnectOrgs()`); else the program context doc |
+| `--decisions <file>` | decisions that change scope, band or ethics | default: the run's `decisions.yaml`; outside a run, the program context doc's Decisions |
+| `--out-folder-id` | where the draft/published records are written | default: the run's `8-solicitation-management/` |
+| `optional_steps.private_solicitation` | publish `is_public: false` + the demonstration banner | default: the run's `optional_steps` block (PR2 #3166); outside a run, `--private` |
+
+**Write-back.** Step 9's `run_state.yaml` write happens only when a run is
+bound. Outside a run, record the solicitation id, URL, visibility and deadline
+in the program context doc's Decisions (per `partner-on-connect-program`
+§ Changing a live program) instead.
+
+Default sources inside a run, in detail:
+
 - `ACE/<opp-name>/runs/<run-id>/1-design/pdd-to-work-order.gdoc` —
   **primary content source.** The Phase 1 work order is the
   comprehensive, opinionated program brief: scope (will / will not),
@@ -1137,7 +1159,8 @@ contract.
    most of their body, and re-emitting it is exactly the cost this rule exists
    to avoid.
 
-9. **Write the consolidated solicitation outputs block** to the
+9. **Write the consolidated solicitation outputs block** (only when a run is
+   bound; outside a run see § Inputs → Write-back) to the
    current run's `run_state.yaml.phases.solicitation-management.products.solicitation`
    via `update_yaml_file` + `merge: 'deep'`:
 

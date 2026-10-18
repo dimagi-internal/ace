@@ -49,14 +49,11 @@ const PARAM_MARKER =
 
 /**
  * Skills whose `## Inputs` were run-only when the rule landed (2026-10-18), and
- * are still. 80 at the start; batches 1-4 (#3156, #3157, #3180, batch 4b)
- * paid the rest down. These six were left for the optional-labs-E2E track,
- * whose PRs own `solicitation-*` while it is in flight (#3148).
+ * are still. 80 at the start; paid to zero by #3156, #3157, #3180, #3183,
+ * #3185 and the solicitation batch (#3148). Kept as an empty ledger so the
+ * ratchet's shape stays obvious: nothing may be added back.
  */
-const LEDGER = new Set<string>([
-  'solicitation-create', 'solicitation-create-eval', 'solicitation-monitor',
-  'solicitation-review', 'solicitation-review-eval', 'solicitation-review-qa',
-]);
+const LEDGER = new Set<string>([]);
 
 const repoRoot = new URL('../..', import.meta.url).pathname;
 const skillsDir = join(repoRoot, 'skills');

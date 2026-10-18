@@ -36,6 +36,10 @@ exemplar this skill mirrors.
 
 ## Inputs
 
+Pipeline-only: structural checks over the `solicitation-review` artifacts the
+same run just wrote, before the HITL award gate; there is no live object to
+point it at.
+
 | Source | Artifact | Used for |
 |---|---|---|
 | Phase 8 producer | `8-solicitation-management/solicitation-review_recommendation.md` | the recommendation under structural check |
