@@ -1,7 +1,7 @@
 ---
 name: supply-chain-fulfil-qa
 description: >
-  Pass/fail check, from labs' three-way match, that each contract was received and paid for what arrived.
+  Pass/fail check of fulfilment against labs' three-way match. Static.
 disable-model-invocation: false
 ---
 
