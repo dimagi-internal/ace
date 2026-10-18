@@ -633,6 +633,12 @@ const SolicitationProducts = z
         public_url: z.string().url().optional(),
         deadline: z.string().optional(),
         status: z.string().optional(),
+        /**
+         * `private` when the run's `optional_steps.private_solicitation` is on
+         * (`is_public: false`). Absent = public, the legacy and default shape
+         * (spec 2026-10-18 § B).
+         */
+        visibility: z.enum(['public', 'private']).optional(),
       })
       .passthrough()
       .optional(),
@@ -667,6 +673,12 @@ const SolicitationProducts = z
         contact_name: z.string().optional(),
         /** How this LLO was chosen. Absent is read as `solicitation` (legacy). */
         source: z.enum(['solicitation', 'operator']).optional(),
+        /**
+         * The ACE-owned winner of the optional simulated track (spec 2026-10-18
+         * § C), never a real LLO. Every later consumer (opp-closeout,
+         * llo-feedback, timeline-monitor) skips external comms when this is true.
+         */
+        synthetic_winner: z.boolean().optional(),
         /** Set only when `source: 'solicitation'`. */
         response_id: z.union([z.string(), z.number()]).optional(),
         awarded_at: z.string().optional(),
@@ -687,6 +699,34 @@ const SolicitationProducts = z
 
 const ExecutionProducts = z
   .object({
+    /**
+     * Optional simulated track (spec 2026-10-18 § F, § H), written only when
+     * `phases.execution-management.mode: simulated`. The ids of labs
+     * supply-chain records. None of them can be deleted (§ F6), so each is
+     * written in the step that mints it.
+     */
+    supply_chain: z
+      .object({
+        program_id: z.union([z.string(), z.number()]).optional(),
+        labs_org_ids: z
+          .object({ pm: z.union([z.string(), z.number()]).optional(), llo: z.union([z.string(), z.number()]).optional() })
+          .passthrough()
+          .optional(),
+        commodities: z.array(z.string()).optional(),
+        tender_id: z.union([z.string(), z.number()]).optional(),
+      })
+      .passthrough()
+      .optional(),
+    /** The backdated calendar and outputs of `simulated-execution` (spec § G). */
+    simulation: z
+      .object({
+        calendar: z.object({ sim_start: z.string().optional() }).passthrough().optional(),
+        synthetic_opportunity_id: z.union([z.string(), z.number()]).optional(),
+        workflow_id: z.union([z.string(), z.number()]).optional(),
+        weekly_reviews: z.array(z.string()).optional(),
+      })
+      .passthrough()
+      .optional(),
     launch: z
       .object({
         went_live_at: z.string().optional(),
@@ -945,6 +985,21 @@ export const UNATTRIBUTED_PRODUCT_KEYS: Partial<
         'it the day a writer appears.',
     },
   ],
+  'execution-management': [
+    {
+      key: 'supply_chain',
+      reason:
+        'Declared up front by the optional-steps framework (plan 2026-10-18 PR1) so the strict() root ' +
+        'accepts it; its writers (supply-chain-setup / -procure / -fulfil / -operate) land in PR6-PR9. ' +
+        'Attribute it in the PR that adds the first writer.',
+    },
+    {
+      key: 'simulation',
+      reason:
+        'Declared up front by the optional-steps framework (plan 2026-10-18 PR1); its writer, ' +
+        'simulated-execution, lands in PR10. Attribute it there.',
+    },
+  ],
   'idea-to-design': [
     {
       key: 'decisions_log',
@@ -1069,6 +1124,10 @@ function boundAt(phase: string, key: string, completedAt?: string): boolean {
  */
 export const REQUIRED_PRODUCT_KEYS_BY_MODE: Record<PhaseMode, Partial<Record<PhaseName, string[]>>> = {
   'app-QA-only': { 'qa-and-training': [] },
+  // Phase 9's simulated block (spec 2026-10-18 § G) requires no REAL-execution
+  // product (`launch`). Its own keys are not required here yet: each lands with
+  // its producer skill (plan PR6–PR10), which also sets the requirement.
+  simulated: { 'execution-management': [] },
 };
 
 /**

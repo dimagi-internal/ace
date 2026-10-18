@@ -77,10 +77,18 @@ export type Phase =
  * reported 11 "healable" misses that re-dispatching Phase 6 could never produce
  * (dimagi-internal/ace#1069, live on bednet-spot-check/20260729-1239).
  *
+ * `simulated` — `agents/execution-manager.md`'s optional simulated block (spec
+ * `docs/superpowers/specs/2026-10-18-optional-labs-e2e-steps.md` § G). A run
+ * that opted into `simulate_weeks` / `supply_chain` (`run_state.optional_steps`,
+ * `lib/optional-steps.ts`) runs Phase 9 against an ACE-owned winner with no real
+ * LLO, so the real onboarding / UAT / launch artifacts are never produced. Only
+ * `execution-management` writes this mode; `lib/run-state-validator.ts` refuses
+ * any other value there.
+ *
  * Adding a mode is deliberately two edits — this list, plus the entries it
  * exempts — so an exemption cannot be introduced by a typo'd string alone.
  */
-export const PHASE_MODES = ['app-QA-only'] as const;
+export const PHASE_MODES = ['app-QA-only', 'simulated'] as const;
 export type PhaseMode = (typeof PHASE_MODES)[number];
 
 /**
@@ -2012,6 +2020,14 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     description: 'Phase 8 (solicitation-management) end-of-phase summary written by the solicitation-management subagent. Captures published solicitation URL, invitation count, and gate disposition handed back to the orchestrator.',
   },
 
+  // ── Optional track, Phase 8 (spec 2026-10-18 § B, D, E) ─────────
+  // Entries for the optional steps land WITH their producer skill (each PR in
+  // docs/superpowers/plans/2026-10-18-optional-labs-e2e-steps.md), always
+  // `required: false`, so the fence never demands them on a run that did not
+  // opt in. One anchor per PR keeps parallel PRs in separate hunks:
+  // [optional-track:PR4 solicitation-seed-responses]
+  // [optional-track:PR5b solicitation-google-form]
+
   // ── Execution Management phase (Phase 9) ───────────────────────
   // Renamed from llo-manager (was Phase 7) in 0.12.0; renumbered to Phase 8 in 0.13.0.
 
@@ -2022,6 +2038,7 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     consumedBy: ['learnings-summary'],
     phase: 'execution-management',
     required: true,
+    notRequiredInModes: ['simulated'],
     description: 'Onboarding email records with recipients, subject, body, timestamp',
   },
   {
@@ -2031,6 +2048,7 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     consumedBy: ['llo-launch'],
     phase: 'execution-management',
     required: true,
+    notRequiredInModes: ['simulated'],
     description: 'Per-LLO sign-off status, issues found, overall UAT verdict',
   },
   {
@@ -2040,6 +2058,7 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     consumedBy: ['timeline-monitor'],
     phase: 'execution-management',
     required: true,
+    notRequiredInModes: ['simulated'],
     description: 'Activation timestamp, LLO notifications, app URLs, outstanding issues',
   },
   {
@@ -2120,6 +2139,14 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     required: true,
     description: 'Phase 9 (execution-manager) end-of-phase summary written by the execution-manager subagent. Captures activation status, monitoring config, and gate disposition handed back to the orchestrator.',
   },
+
+  // ── Optional track, Phase 9 `mode: simulated` (spec 2026-10-18 § F, G) ──
+  // Same rule as the Phase 8 block above: required: false, one anchor per PR.
+  // [optional-track:PR6 supply-chain-setup]
+  // [optional-track:PR7 supply-chain-procure]
+  // [optional-track:PR8 supply-chain-fulfil]
+  // [optional-track:PR9 supply-chain-operate]
+  // [optional-track:PR10 simulated-execution + simulated-weekly-review]
 
   // ── Closeout phase (Phase 10) ──────────────────────────────────
 

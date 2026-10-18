@@ -1,6 +1,6 @@
 ---
 description: Run the full ACE lifecycle for an opportunity
-argument-hint: [[<ws>/]<opp>[/<run-id>]] [--mode default|review|auto] [--ace-web-url URL] [--dry-run] [--sandbox] [--no-evals]
+argument-hint: [[<ws>/]<opp>[/<run-id>]] [--mode default|review|auto] [--with <step>[,<step>…]] [--ace-web-url URL] [--dry-run] [--sandbox] [--no-evals]
 allowed-tools: [Read, Write, Edit, Bash, Glob, Grep, Agent, AskUserQuestion]
 ---
 
@@ -56,6 +56,32 @@ Run the full ACE lifecycle for a Connect opportunity.
     approval. Use for high-touch operations or training.
   - `auto` — never pause for any gate. For unattended batch runs
     (e.g. eval calibration). `[BLOCKER]` concerns still escalate.
+- `--with <step>[,<step>…]` adds optional steps for this run. **Every optional
+  step is OFF by default**, so a run without `--with` behaves exactly as it
+  did before the flag existed. The steps:
+
+  | Step | What it adds |
+  |---|---|
+  | `private_solicitation` | Phase 8 publishes the solicitation with `is_public: false`, with a demonstration banner. |
+  | `google_form` | Phase 8 also mirrors the questions into a **public** Google Form. This is per-run, never the norm. |
+  | `seed_responses[=N]` | Phase 8 seeds N synthetic responses from fictional orgs (default 5) plus the ACE winner. |
+  | `ace_winner` | The award goes to ACE's own winner org (`ACE_CONNECT_LLO_ORG`), never a real LLO. |
+  | `supply_chain` | Phase 9 (simulated) runs the labs supply-chain flow: setup → procure → fulfil. |
+  | `simulate_weeks[=N]` | Phase 9 (simulated) runs N backdated delivery weeks (default 4) with a weekly review. |
+  | `labs_e2e` | Alias for all six, with `simulate_weeks=4`. |
+
+  Resolution rules (`lib/optional-steps.ts`):
+  - `seed_responses`, `ace_winner` and `supply_chain` force `private_solicitation`.
+  - `supply_chain` and `simulate_weeks` require `ace_winner`.
+  - `seed_responses` together with `--invite-candidates` is refused.
+  - An unknown name halts Pre-flight.
+
+  A standing per-opp default can also live in `opp.yaml.optional_steps:`,
+  either as a list of the same tokens or as a mapping; the operator writes
+  it. The run fixes the result into `run_state.yaml.optional_steps` at
+  Pre-flight and never re-resolves it on resume. Spec:
+  `docs/superpowers/specs/2026-10-18-optional-labs-e2e-steps.md`.
+  Example: `/ace:run connect-fi --with labs_e2e`.
 - `--ace-web-url URL` — on run exit, invoke the `upload-transcript`
   skill to POST the run's stream-json transcript to
   `<URL>/api/ingest/upload`.
