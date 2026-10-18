@@ -1,0 +1,175 @@
+{
+  "_provenance": {
+    "captured": "2026-10-18",
+    "by": "ace@dimagi-ai.com via the connect-labs MCP, READ-ONLY calls only",
+    "program_id": 10605,
+    "calls": [
+      "supply_chain_tender_list({program_id: 10605})",
+      "supply_chain_quote_list({program_id: 10605, tender_id: 60})",
+      "supply_chain_award_list({program_id: 10605, tender_id: 60})",
+      "supply_chain_contract_list({program_id: 10605, tender_id: 60})",
+      "supply_chain_tender_compare({program_id: 10605, tender_id: 60, commodity_slug: 'chlorine-test-kit'})"
+    ],
+    "edits": "tender_list, quote_list and contract_list are verbatim. In the compare reply and the award's comparison_snapshot: the `all_rows` arrays are dropped (they duplicate `comparable` row-for-row in this capture), and each `comparable` row keeps only its ids, supplier, `figures`, `specification` (outcome/summary/failures), item name and, in compare, `received_on` / `as_quoted`. The dropped row fields (compliance, questions, composition, delivery prose) are not read by any check. Every kept value is unaltered.",
+    "why_it_is_a_good_control": "A real award to the NON-cheapest quote (quote 166 at USD 38 vs 167 at USD 29.50) with a stated reason: the cheaper kit fails the item specification's 2 mg/L range. The contract carries the awarded quote's supplier, item, quantity and price. The tender's status is 'awarded' (never closed)."
+  },
+  "tender_list": {
+    "value": [
+      {
+        "id": 60,
+        "label": "Chlorine test kits — Q4 2026",
+        "status": "awarded",
+        "lines": [{ "quantity": "20", "quantity_unit": "kit", "commodity_slug": "chlorine-test-kit" }],
+        "delivery_points": [{ "key": "main", "city": "Kano", "name": "Harmattan warehouse, Kano", "country": "NG", "country_name": "Nigeria" }],
+        "delivery_point": { "key": "main", "city": "Kano", "name": "Harmattan warehouse, Kano", "country": "NG", "country_name": "Nigeria" },
+        "pickup_accepted": false,
+        "incoterm_requested": "DAP",
+        "owner_org_id": null,
+        "slug": null,
+        "brief": "",
+        "hue": "",
+        "invited_org_ids": [],
+        "response_deadline": "2026-10-09",
+        "reminder_interval_days": null,
+        "shelf_life_months_minimum": null,
+        "notes_to_supplier": "Kits to Aqualytic specification AQ-TK-1. Quote per kit, delivered Kano.",
+        "visibility": "public",
+        "duty_terms": "",
+        "duty_estimate_percent": null,
+        "duty_terms_set_on": null,
+        "clearing_estimate_per_unit": null,
+        "freight_estimate_per_unit": null,
+        "import_estimates_set_on": null
+      }
+    ]
+  },
+  "quote_list": {
+    "value": [
+      {
+        "id": 167, "tender_id": 60, "supplier_id": 147, "item_id": 221, "commodity_slug": "chlorine-test-kit",
+        "as_quoted_amount": "29.5", "as_quoted_unit": "per_pack", "as_quoted_currency": "USD",
+        "quantity_basis": "20", "quantity_basis_unit": "kit", "pack_spec_source": "trade_item_confirmed",
+        "base_per_pack_stated": 50, "base_unit_grams_stated": null, "freight_basis": "included", "freight_amount": null,
+        "duties_basis": "included", "duties_amount": null, "fx_rate_to_usd": null, "shelf_life_months_stated": 24,
+        "moq": null, "moq_unit": "", "lead_time_days": 21, "validity_until": null, "incoterm": "DAP", "stated_spec": {},
+        "received_on": "2026-09-18", "supplier_reference": "", "payment_terms": "", "voided": false, "void_reason": "",
+        "version": 1, "superseded_by_quote_id": null, "supersedes_quote_id": null, "correction_reason": "", "notes": "",
+        "entered_by": "program", "delivery_mode": "delivered", "delivery_point_keys": [], "pickup_location": "",
+        "buyer_transport_amount": null
+      },
+      {
+        "id": 166, "tender_id": 60, "supplier_id": 147, "item_id": 220, "commodity_slug": "chlorine-test-kit",
+        "as_quoted_amount": "38", "as_quoted_unit": "per_pack", "as_quoted_currency": "USD",
+        "quantity_basis": "20", "quantity_basis_unit": "kit", "pack_spec_source": "trade_item_confirmed",
+        "base_per_pack_stated": 50, "base_unit_grams_stated": null, "freight_basis": "included", "freight_amount": null,
+        "duties_basis": "included", "duties_amount": null, "fx_rate_to_usd": null, "shelf_life_months_stated": 24,
+        "moq": null, "moq_unit": "", "lead_time_days": 21, "validity_until": null, "incoterm": "DAP", "stated_spec": {},
+        "received_on": "2026-09-18", "supplier_reference": "", "payment_terms": "", "voided": false, "void_reason": "",
+        "version": 1, "superseded_by_quote_id": null, "supersedes_quote_id": null, "correction_reason": "", "notes": "",
+        "entered_by": "program", "delivery_mode": "delivered", "delivery_point_keys": [], "pickup_location": "",
+        "buyer_transport_amount": null
+      }
+    ]
+  },
+  "award_list": {
+    "value": [
+      {
+        "id": 95, "tender_id": 60, "quote_id": 166, "supplier_id": 147, "commodity_slug": "chlorine-test-kit",
+        "decided_on": "2026-09-24", "decided_by": "Hauwa",
+        "rationale": "Only kit that reads the 2 mg/L dispenser dose",
+        "comparison_snapshot": {
+          "blocked": [],
+          "columns": [
+            { "key": "usd_per_base_unit", "label": "USD per test", "rankable": true, "blocked_by": [] },
+            { "key": "usd_per_pack_normalized", "label": "USD per kit", "rankable": true, "blocked_by": [] },
+            { "key": "landed_total_as_quoted", "label": "Landed total (as quoted)", "rankable": true, "blocked_by": [] },
+            { "key": "landed_total_for_round_quantity", "label": "Landed total (this round)", "rankable": true, "blocked_by": [] }
+          ],
+          "round_id": 60,
+          "ranked_by": "landed_total_for_round_quantity",
+          "comparable": [
+            {
+              "figures": {
+                "usd_per_base_unit": { "amount": "0.59", "currency": "USD" },
+                "landed_total_as_quoted": { "amount": "590", "currency": "USD" },
+                "usd_per_pack_normalized": { "amount": "29.5", "currency": "USD" },
+                "landed_total_for_round_quantity": { "amount": "590", "currency": "USD" }
+              },
+              "quote_id": 167, "item_name": "Brightwell PoolCheck-50 kit", "supplier_id": 147, "is_comparable": true,
+              "specification": { "outcome": "fail", "summary": "1 of 3 fail", "failures": ["Range maximum 1.5 mg/L fails: it must be at least 2.0 mg/L (per the item specification) — must still read at the 2 mg/L dispenser dose"] },
+              "supplier_name": "Harmattan Health Supplies", "composition_unit": "kit"
+            },
+            {
+              "figures": {
+                "usd_per_base_unit": { "amount": "0.76", "currency": "USD" },
+                "landed_total_as_quoted": { "amount": "760", "currency": "USD" },
+                "usd_per_pack_normalized": { "amount": "38", "currency": "USD" },
+                "landed_total_for_round_quantity": { "amount": "760", "currency": "USD" }
+              },
+              "quote_id": 166, "item_name": "Lumen FC-50 free chlorine kit", "supplier_id": 147, "is_comparable": true,
+              "specification": { "outcome": "pass", "summary": "Meets all 3", "failures": [] },
+              "supplier_name": "Harmattan Health Supplies", "composition_unit": "kit"
+            }
+          ],
+          "provisional": false, "total_count": 2, "unavailable": {}, "generated_at": "2026-09-24T17:45:41.296724+00:00",
+          "commodity_name": "Free chlorine test kit", "not_comparable": [], "round_contents": null, "comparable_count": 2
+        },
+        "open_at_decision": {},
+        "provisional": false,
+        "assumed_buyer_of_record": ""
+      }
+    ]
+  },
+  "contract_list": {
+    "value": [
+      {
+        "id": 187, "tender_id": 60, "award_id": 95, "supplier_id": 147, "item_id": 220, "commodity_slug": "chlorine-test-kit",
+        "buyer_of_record": "programme_org", "buyer_org_id": 2, "reference": "PO-TK-2026-01", "signed_on": "2026-09-24",
+        "status": "received", "currency": "USD", "quantity": "20", "quantity_unit": "kit", "unit_price": "38",
+        "unit_price_unit": "per_pack", "freight_basis": "included", "freight_amount": null, "duties_basis": "included",
+        "duties_amount": null, "vat_basis": "included", "vat_amount": null, "duty_relief_claimed": false,
+        "duty_relief_document_id": null, "duty_relief_evidenced": false, "incoterm": "DAP", "delivery_supply_point_id": 149,
+        "promised_lead_time_days": 21, "consideration": "priced", "payment_terms": "on_delivery", "covers_shortfall_of_id": null,
+        "source": "we_recorded", "recorded_by_org_id": 2, "witnessed": true, "note": ""
+      }
+    ]
+  },
+  "tender_compare": {
+    "chlorine-test-kit": {
+      "tender_id": 60, "commodity_name": "Free chlorine test kit", "generated_at": "2026-10-18T20:06:09.388933+00:00",
+      "comparable_count": 2, "total_count": 2, "priced_count": 2, "ranked_by": "landed_total_for_tender_quantity",
+      "unavailable": {}, "provisional": false,
+      "columns": [
+        { "key": "usd_per_base_unit", "label": "USD per test", "rankable": true, "blocked_by": [] },
+        { "key": "usd_per_pack_normalized", "label": "USD per kit", "rankable": true, "blocked_by": [] },
+        { "key": "landed_total_as_quoted", "label": "Landed total (as quoted)", "rankable": true, "blocked_by": [] },
+        { "key": "landed_total_for_tender_quantity", "label": "Landed total (this tender)", "rankable": true, "blocked_by": [] }
+      ],
+      "comparable": [
+        {
+          "quote_id": 167, "supplier_id": 147, "supplier_name": "Harmattan Health Supplies", "is_comparable": true,
+          "figures": {
+            "usd_per_base_unit": { "amount": "0.59", "currency": "USD" },
+            "usd_per_pack_normalized": { "amount": "29.5", "currency": "USD" },
+            "landed_total_as_quoted": { "amount": "590", "currency": "USD" },
+            "landed_total_for_tender_quantity": { "amount": "590", "currency": "USD" }
+          },
+          "specification": { "outcome": "fail", "summary": "1 of 3 fail", "failures": ["Range maximum 1.5 mg/L fails: it must be at least 2.0 mg/L (per the item specification) — must still read at the 2 mg/L dispenser dose"] },
+          "item_name": "Brightwell PoolCheck-50 kit", "received_on": "2026-09-18", "as_quoted": "USD 29.50 per kit"
+        },
+        {
+          "quote_id": 166, "supplier_id": 147, "supplier_name": "Harmattan Health Supplies", "is_comparable": true,
+          "figures": {
+            "usd_per_base_unit": { "amount": "0.76", "currency": "USD" },
+            "usd_per_pack_normalized": { "amount": "38", "currency": "USD" },
+            "landed_total_as_quoted": { "amount": "760", "currency": "USD" },
+            "landed_total_for_tender_quantity": { "amount": "760", "currency": "USD" }
+          },
+          "specification": { "outcome": "pass", "summary": "Meets all 3", "failures": [] },
+          "item_name": "Lumen FC-50 free chlorine kit", "received_on": "2026-09-18", "as_quoted": "USD 38.00 per kit"
+        }
+      ],
+      "blocked": [], "not_comparable": [], "tender_contents": null, "like_for_like": true
+    }
+  }
+}

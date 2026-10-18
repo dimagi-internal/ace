@@ -1,8 +1,7 @@
 ---
 name: app-ux-eval
 description: >
-  Grade the frontline-worker experience of CommCare apps from captured screenshots (LLM-as-judge).
-  Needs app screenshots and the PDD's user journeys. Also run by /ace:qa-deep.
+  Grade the frontline-worker experience of CommCare apps from screenshots against the PDD's user journeys (LLM judge).
 disable-model-invocation: false
 ---
 

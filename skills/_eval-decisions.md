@@ -141,6 +141,7 @@ Most ACE evals are companion `-eval` skills today. `inline self-eval` is rare bu
 | `flw-data-review` | **has eval** | `flw-data-review-eval`. Grades FLW data review quality (issue detection rate, recommendation actionability, prioritization). Recurring during active opp. |
 | `timeline-monitor` | **NO eval** | Recurring state-tracking. No artifact to grade. |
 | `supply-chain-setup` | **NO eval** | Registry build: the runner, team, commodities, items, supply points and suppliers are either right or wrong against the plan, which `supply-chain-setup-qa` checks. The plan's judgement calls (commodity quantities from the PDD, the quote spread) are graded where they bite, by `supply-chain-procure-eval` (PR7). **Revisit if:** setup starts choosing quantities or suppliers on its own judgement rather than transcribing the PDD. |
+| `supply-chain-procure` | **has eval** | `supply-chain-procure-eval`. 4 dimensions: award_follows_comparison (0.30, anchored on the comparison LABS computed and froze into each award, outside ACE's chain), quantity_traceability (0.25, anchored on the PDD), quote_spread_realism (0.25, null outside a simulation), rationale_quality (0.20). Hard-deducts: a quantity with no PDD source, a rationale that contradicts the frozen comparison, a dearer award with no reason. Gated on `supply-chain-procure-qa` passing. Provisional; positive control is labs program 10605 award 95. |
 
 ### Phase 10 — closeout
 

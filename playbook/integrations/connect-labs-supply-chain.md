@@ -66,13 +66,26 @@ returns `{org_id, org_name, your_standing}`, and `org_id: null` means nobody has
     members.
   - **A labs-only org's slug never counts**, because anyone able to register a synthetic opp can
     name one.
-- **Declaring.** `supply_chain_programme_runner_set` currently says "Platform support only: …
-  no member of any organisation, including the one that runs it, may change it". Live on
-  2026-10-18: `programme_runner_get(program_id=353)` returned `{org_id: null, your_standing: "partner"}`
-  for ACE. A self-serve first declaration by the programme's managing org was requested
-  upstream in connect-labs the same day. `supply-chain-setup` Step 1 tries the call and
-  classifies any refusal (`classifyRunnerRefusal`, `lib/supply-chain-runner.ts`); it never works
-  around a support-only refusal.
+- **Declaring.** Until 2026-10-18 `supply_chain_programme_runner_set` was "Platform support
+  only", and ACE read `programme_runner_get(program_id=353)` → `{org_id: null, your_standing: "partner"}`.
+  connect-labs PR #2605 (merged 2026-10-18; check it is deployed before relying on it) made it
+  self-serve:
+  - **On an undeclared programme**, a member of the programme's **Connect managing org** may
+    declare: that managing org, Dimagi, an org delivering an opportunity in the programme, or an
+    org **awarded a call** for the programme (the winning LLO).
+  - **Changing an existing runner** is for the runner's own members/admins, or support.
+  - **Once an org runs a programme its LabsOrg row becomes support-edit-only.** Get its
+    `supply_chain_org_upsert` (name, `connect_organization_id`, `connect_organization_slug`)
+    right BEFORE declaring it.
+  - **Members of a declared runner hold the programme**, so an awarded LLO's people can open it.
+  - Every supply write (registry upserts, the tender lifecycle, quotes, awards, contracts,
+    shipments, receipts, invoices, payments, update links) goes through one programme-standing
+    check.
+  The sequence is `supply_chain_org_upsert({data: {slug, name, connect_organization_id, connect_organization_slug}})`
+  → `supply_chain_programme_runner_set({program_id, org_id: <labs id>})` → expect
+  `your_standing: "programme"`. `supply-chain-setup` Step 1 classifies any refusal
+  (`classifyRunnerRefusal`, `lib/supply-chain-runner.ts`) and still halts on the old
+  support-only text, which is what an undeployed labs returns.
 - **Declaring revokes every live update link issued to the declared org** in that programme
   (`revoke_links_to_runner`). The setter also refuses a non-Dimagi runner on a labs-only
   programme that is open to every email domain, because that org's quotes and prices would
@@ -81,7 +94,8 @@ returns `{org_id, org_name, your_standing}`, and `org_id: null` means nobody has
 - **Never move an existing runner.** Every record is attributed to it, and none of them can be
   deleted (§ What cannot be undone).
 - **The team.** `supply_chain_programme_team_list` / `_add` / `_remove`. "Platform support, or
-  an existing admin of that organisation, only". The person must have signed in to labs once;
+  an existing admin of that organisation, only"; since connect-labs #2605, also the Connect
+  members of a Connect-known runner. The person must have signed in to labs once;
   the last admin cannot be removed. **A Dimagi-run programme has no team list:**
   `programme_team_list` refuses with "Dimagi's team is everyone with a Dimagi address; it is not
   kept as a list" (live, program 10602, 2026-10-18).
@@ -251,3 +265,4 @@ label every invented name and excerpt "simulated" (`syntheticName`, `buildSource
 | Date | Change |
 |---|---|
 | 2026-10-18 | Initial reference, from the live schemas (optional-track PR6) |
+| 2026-10-18 | Runner declaration is self-serve per connect-labs #2605 (who may declare, LabsOrg frozen once it runs, members hold the programme); a live award to a non-cheapest quote with a stated reason (program 10605 award 95) is the procure control (optional-track PR7) |

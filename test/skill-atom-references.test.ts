@@ -81,6 +81,8 @@ const ATOM_PREFIXES = [
 const ALLOWLIST = new Set([
   // labs `supply_chain_org_upsert` data field binding a LabsOrg to its Connect org (solicitation-create Step 5a, ace#3049) — a field, not an atom.
   'connect_organization_id',
+  // its sibling data field on the same upsert (playbook/integrations/connect-labs-supply-chain.md, runner sequence) — a field, not an atom.
+  'connect_organization_slug',
   // labs supply-chain `data.source` enum values ("who told you"; playbook/integrations/connect-labs-supply-chain.md) — values, not atoms.
   'commcare_form',
   'connect_visit',
