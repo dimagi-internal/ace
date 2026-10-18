@@ -697,7 +697,7 @@ server.tool(
     opportunity: z
       .string()
       .min(1)
-      .describe('Opportunity slug (e.g. `bednet-spot-check`). Must match an existing log\'s `opportunity` if one is already in place.'),
+      .describe('Opportunity slug (e.g. `bednet-check-2-visit`). Must match an existing log\'s `opportunity` if one is already in place.'),
     run_id: z
       .string()
       .min(1)

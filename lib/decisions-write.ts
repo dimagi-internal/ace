@@ -100,7 +100,7 @@ export class DecisionsWriteError extends Error {
 export interface ComposeArgs {
   /** Existing decisions.yaml contents. Empty / whitespace seeds a new log. */
   existingYamlText: string | null;
-  /** Opp slug (e.g. `bednet-spot-check`). */
+  /** Opp slug (e.g. `bednet-check-2-visit`). */
   opportunity: string;
   /** Run id (e.g. `20260525-2013`). */
   run_id: string;

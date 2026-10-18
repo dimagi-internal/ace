@@ -35,7 +35,7 @@ its frozen-version streak is superseded).
 ```
 
 ## Arguments
-- `<opp>` — opportunity slug (e.g. `bednet-spot-check`).
+- `<opp>` — opportunity slug (e.g. `bednet-check-2-visit`).
 - `--new-golden` — mint a fresh golden prefix, validate it against **today's**
   rubrics, archive any existing state, and write a clean `iterate-state.yaml`.
   Runs **zero** iterations; it sets up the campaign and stops. **This is also

@@ -76,9 +76,9 @@ Written and read ONLY by this procedure. The server-side run never touches it.
 Validated by `validateIterateState` (`lib/run-state-validator.ts`).
 
 ```yaml
-opp: bednet-spot-check
+opp: bednet-check-2-visit
 target_phases: [3, 6]          # 4 rides along as a dependency
-golden_run_id: 20260601-1252
+golden_run_id: 20260908-1544
 golden_validated_at_version: 0.13.772   # VERSION whose rubrics the golden PASSED
 golden_validated_at: <ISO>              # absent/stale => treat as never validated
 runner: web                    # web | local
