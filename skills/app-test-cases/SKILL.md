@@ -21,14 +21,15 @@ Phase 6 needs them.
 
 ## Inputs
 
-| Source | Artifact | Used for |
+| Parameter | Used for | Resolver |
 |---|---|---|
-| Phase 1 | `2-scenarios/pdd-to-app-journeys.md` | journey list + persona + per-journey pass criteria |
-| Phase 3 | `3-commcare/pdd-to-learn-app_summary.md` and `pdd-to-deliver-app_summary.md` | nova_app_id per app |
-| Nova MCP | `get_app({app_id: <nova_app_id>})` | authoritative form/field IDs to resolve into real Maestro selectors |
-| Static | `mcp/mobile/recipes/static/` | recipe palette / templates |
-| **Selector map** | `mcp/mobile/selectors/connect-<apkVersion>.yaml` (default `2.63.2`) | **the authoritative, live-calibrated source for screen IDs and selector behavior.** Rows carry `unverified: true` or a `Live-verified` note, so the map states its own confidence per row — DO NOT improvise selectors that contradict it. |
-| **Atlas** (partial) | `docs/mobile-atlas/connect-2.63.2.md` | narrative transition/side-effect notes only — sequence and side-effects, never identity. Its `## Provenance and coverage` table tags every surface `calibrated-2.63.2`, `carried-from-2.62.0-unverified`, or `uncovered`; read that tag before relying on a section. Where the atlas and the selector map disagree, **the selector map wins**; where the atlas says a surface is uncovered, check the palette recipes in `mcp/mobile/recipes/static/` before believing it. The carried-over surfaces are reproduced by reference from the older 2.62.0 atlas (its §§ 1-11) rather than restated. |
+| `journeys_doc` | journey list + persona + per-journey pass criteria | explicit arg (a Drive file id); default: `2-scenarios/pdd-to-app-journeys.md`. On a live program with no journeys doc, write one first (`pdd-to-app-journeys` takes the same shape) |
+| `learn_nova_app_id`, `deliver_nova_app_id` | the Nova apps to bind selectors against (either may be omitted to cover one app) | explicit arg; default: `3-commcare/pdd-to-learn-app_summary.md` and `pdd-to-deliver-app_summary.md` |
+| `out_folder_id` | where the catalog and `recipes/` are written | explicit arg; default: the run's `3-commcare` folder |
+| Nova MCP | authoritative form/field IDs to resolve into real Maestro selectors | read live: `get_app({app_id: <nova_app_id>})` |
+| Static | recipe palette / templates | `mcp/mobile/recipes/static/` |
+| **Selector map** | **the authoritative, live-calibrated source for screen IDs and selector behavior.** Rows carry `unverified: true` or a `Live-verified` note, so the map states its own confidence per row — DO NOT improvise selectors that contradict it. | `mcp/mobile/selectors/connect-<apkVersion>.yaml` (default `2.63.2`) |
+| **Atlas** (partial) | narrative transition/side-effect notes only — sequence and side-effects, never identity. Its `## Provenance and coverage` table tags every surface `calibrated-2.63.2`, `carried-from-2.62.0-unverified`, or `uncovered`; read that tag before relying on a section. Where the atlas and the selector map disagree, **the selector map wins**; where the atlas says a surface is uncovered, check the palette recipes in `mcp/mobile/recipes/static/` before believing it. The carried-over surfaces are reproduced by reference from the older 2.62.0 atlas (its §§ 1-11) rather than restated. | `docs/mobile-atlas/connect-2.63.2.md` |
 
 ## Products
 

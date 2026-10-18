@@ -24,11 +24,17 @@ pipeline schemas populated with KPI fields. The polish step
 
 ## Inputs
 
-| Source | Artifact | Used for |
+| Parameter | Used for | Resolver |
 |---|---|---|
-| Phase 7 | `7-synthetic/synthetic-narrative-plan.yaml` (preferred) or `synthetic-data-generate_manifest.yaml` (fallback) | `kpi_config`, `coaching_arcs`, `flw_personas` |
-| Current run's `run_state.yaml` | `phases.synthetic-data-and-workflows.products.synthetic.labs_opp_id` (required) | `synthetic_generate_from_manifest` opp scope |
-| Drive | `ACE/<opp>/opp.yaml` | `display_name` |
+| `manifest` | `kpi_config`, `coaching_arcs`, `flw_personas` | explicit arg (a Drive file id); default: `7-synthetic/synthetic-narrative-plan.yaml` (preferred), else `synthetic-data-generate_manifest.yaml` |
+| `labs_opp_id` | the opportunity every workflow, run and task is scoped to | explicit arg (`--labs-opp-id`); default: the current run's `phases.synthetic-data-and-workflows.products.synthetic.labs_opp_id` |
+| `display_name` | workflow titles | explicit arg; default: `ACE/<opp>/opp.yaml` `display_name` |
+| `out_folder_id` | where the summary is written | explicit arg; default: the run's `7-synthetic` folder |
+
+Outside a run (workflows for an existing labs opportunity that already has
+data), pass all four. Steps 10–11's `run_state.yaml` writes are then
+skipped; record the workflow ids in the caller's record (a program
+project's context doc).
 
 ## Products
 
@@ -50,9 +56,9 @@ pipeline schemas populated with KPI fields. The polish step
 
 1. **Read inputs.** Load the active manifest (prefer
    `synthetic-narrative-plan.yaml` over the Stage 1 default manifest).
-   Resolve `labs_opp_id` from the current run's
+   Resolve `labs_opp_id`: the explicit `--labs-opp-id`, else the current run's
    `phases.synthetic-data-and-workflows.products.synthetic.labs_opp_id`.
-   Halt if missing — this skill needs synthetic mode enabled
+   Halt if neither resolves — inside a run this skill needs synthetic mode enabled
    (`synthetic-data-generate` should have run first in this same run).
 
 ### Build-path decision — examine templates, then adapt or author (do this before steps 2 and 7)
@@ -857,6 +863,7 @@ labs PR at first ship; that gap closed in 0.13.64 once labs shipped
 
 | Date | Change | Author |
 |---|---|---|
+| 2026-10-18 | `## Inputs` are parameters with resolvers; `--labs-opp-id` overrides run_state, and the run_state writes are skipped outside a run. | ACE (#3148 batch 3) |
 | 2026-05-06 | Initial Stage 3a skill — workflow seeding via SEED templates + config wiring + coaching tasks. Saved-runs deferred to labs PR. | ACE team (Plan B Stage 3) |
 | 2026-05-07 | Step 8 wires the full Week 1 + Week 2 saved-runs loop via `workflow_create_run` + `workflow_save_snapshot` (now scoped to `opportunity_id` per labs PR #168). Removes the last `[WAITING ON LABS]` deferral in Phase 7. Live-smoked against turmeric (workflow 2847, run_ids 2859 + 2860, both snapshots saved cleanly). | ACE team (Plan B Stage 3b) |
 | 2026-05-28 | **Adapt-or-author build path.** Added the Build-path decision step (examine `list_templates` → ADAPT closest template or BUILD FROM SCRATCH via `workflow_create`), ADAPT/SCRATCH branches on steps 2 + 7, the fetch-`workflow_authoring_guide`-before-scratch rule, and the alias-consistency guardrail (pipeline alias == render key == `snapshot_inputs` key — the blank-KPI failure from `bednet-spot-check/20260528-0556`). Unblocked by connect-labs#300 (`workflow_create` + `workflow_authoring_guide`). Also resolves the stale `program_admin_audit` template_key — the live key is `program_admin_report`, and the examine step now reads live keys. | ACE team |

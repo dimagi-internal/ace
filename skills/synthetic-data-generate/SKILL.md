@@ -23,16 +23,22 @@ deferred to later stages. This skill is the data plumbing only.
 
 ## Inputs
 
-| Source | Artifact | Used for |
+| Parameter | Used for | Resolver |
 |---|---|---|
-| Operator (CLI) | `--opp <slug>` | opp folder under `ACE/` |
-| Operator (CLI, optional) | `--opp-int-id <integer>` | ConnectProd integer opportunity id — **defaults to `phases.connect-setup.products.connect.opportunity.connect_int_id`** in the current run's `run_state.yaml` (captured by `connect-opp-setup` from the Connect create response). Pass explicitly to override. |
-| Operator (CLI, optional) | `--manifest <drive-path>` | pre-authored manifest YAML; if omitted, the skill writes a default and pauses |
-| Operator (CLI, optional) | `--no-pause` | skip the manifest-review pause when accepting the default |
-| Phase 1 | `inputs/pdd.md` | (default-manifest mode) primary measurement field for the KPI |
-| Phase 4 | `4-connect/connect-opp-setup.md` | (default-manifest mode) payment unit + deliver unit hints |
-| Drive | `ACE/<opp>/opp.yaml` | `program_id`, opp display name, `organization_slug` |
-| Drive | `ACE/<opp>/runs/` | current `run_id` discovered via `mcp__plugin_ace_ace-gdrive__resolve_current_run_id({slug})` (newest folder name; run-ids are `YYYYMMDD-HHMM` so lex == chronological). Used to scope the run-folder paths below. |
+| `--opp <slug>` | opp folder under `ACE/` | explicit arg; optional when `--out-folder-id` is passed |
+| `--opp-int-id <integer>` (`connect_int_id`) | the ConnectProd integer opportunity id the data is generated for | explicit arg; default: the current run's `phases.connect-setup.products.connect.opportunity.connect_int_id` (captured by `connect-opp-setup` from the Connect create response) |
+| `--opportunity-uuid <uuid>` | the step 1a payment-units pre-flight | explicit arg; default: `opp.yaml` (`connect.opportunity.id`, flat `opportunity_id`, then `solicitation.connect_opportunity_id`); absent → step 1a is skipped with a `[WARN]` |
+| `--organization-slug <slug>` | the org for Connect reads | explicit arg; default: the run's `phases.connect-setup.products.connect.pm_org_slug`; else `connect_orgs.pm_org` (never typed) |
+| `--manifest <drive-path>` | pre-authored manifest YAML | explicit arg; if omitted, the skill writes a default from the PDD (`inputs/pdd.md`: primary measurement field for the KPI) and Phase 4's `4-connect/connect-opp-setup.md` (payment unit + deliver unit hints), then pauses |
+| `--no-pause` | skip the manifest-review pause when accepting the default | explicit arg |
+| `--out-folder-id <id>` | where the summary and manifest are written | explicit arg; default: the current run's `7-synthetic/` folder (run discovered via `resolve_current_run_id({slug})`) |
+| `opp.yaml` | `program_id`, opp display name | `ACE/<opp>/opp.yaml` when `--opp` is passed |
+
+**Outside a run** (an existing opportunity, no run folder): pass
+`--opp-int-id`, `--manifest` and `--out-folder-id`. Step 1 then skips the
+run-id resolution and its halt, and steps 5–6 (the `run_state.yaml`
+writes) are skipped; record `labs_opp_id` and the fixture counts in the
+caller's record (a program project's context doc).
 
 ## Products
 
@@ -62,7 +68,7 @@ deferred to later stages. This skill is the data plumbing only.
      `connect_orgs:` when run standalone). Never type a slug.
    - `connect.opportunity.url` if present — informational
 
-   **Resolve the current run-id.** Call
+   **Resolve the current run-id** (skipped when `--out-folder-id` is passed; see § Inputs › Outside a run). Call
    `mcp__plugin_ace_ace-gdrive__resolve_current_run_id({slug: '<opp>'})`
    — returns `{run_id, run_folder_id}` (newest folder under
    `<opp>/runs/`; run-ids are `YYYYMMDD-HHMM` so lex == chronological).
@@ -480,5 +486,6 @@ The fixture folder is retained labs-side for forensics. Stage 4 may add a
 
 | Date | Change | Author |
 |---|---|---|
+| 2026-10-18 | `## Inputs` are parameters with resolvers. New `--opportunity-uuid`, `--organization-slug`, `--out-folder-id`; with `--opp-int-id`, `--manifest` and `--out-folder-id` the skill runs without a run folder and skips the run_state writes. | ACE (#3148 batch 3) |
 | 2026-05-06 | Initial Stage 1 MVP skill — default manifest + labs MCP call + opp.yaml update | ACE team (Plan B Stage 1) |
 | 2026-05-06 | Post-smoke fixes: payment-unit pre-flight (step 1a), fixture verification (step 3a), read-merge-write run_state update (step 6 — replaces naïve `update_yaml_file` patch that would clobber sibling phases), warning banner in run summary for payment-unit/schema/share gaps. | ACE team (Plan B Stage 1.1) |

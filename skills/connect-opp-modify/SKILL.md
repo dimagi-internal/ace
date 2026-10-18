@@ -71,17 +71,24 @@ Refuse these up front, with the reason, before any write.
      funds for at least one worker (ace#729).
    - **`short_description` and slug:** both are truncated at 50 characters without warning.
      Refuse anything longer.
-5. **Write, one change at a time**, each followed by its read-back:
-   - **Verification flags:** `connect_set_verification_flags`. Its response carries
-     `form_field_rules_saved` and the persisted rules. A deliver-unit move or a duration floor
-     that did not persist is a typed error, not a success.
-   - **Add payment units:** `connect_create_payment_units`, an atomic batch, using the
-     `server_id` values from `connect_list_deliver_units`.
+5. **Write, one change at a time**, each followed by its read-back. The payload rules for the
+   first two live in one place, `connect-opp-setup` § Operations on an existing opportunity;
+   follow them there rather than from memory:
+   - **Verification flags:** `connect_set_verification_flags`, per `connect-opp-setup` Step 5
+     (JSONPath `question_path` read from the released CCZ, the stored option value, the deliver
+     unit's `server_id`, names of 25 characters or fewer, the refused dead flags). Its response
+     carries `form_field_rules_saved` and the persisted rules. A deliver-unit move or a duration
+     floor that did not persist is a typed error, not a success.
+   - **Add payment units:** `connect_create_payment_units`, an atomic batch, per
+     `connect-opp-setup` Step 6 (whole-currency integers, never cents; a non-empty
+     `required_deliver_units` of `server_id`s; `total_budget` passed; the create response, not
+     the listing, is the read-back).
    - **Dates, name, description, active:** `connect_update_opportunity`. Use it to deactivate
      only; activate with `connect_activate_opportunity`, which carries the activation
      preconditions.
    - **Learn passing score:** `connect_set_learn_passing_score`. Keep its
-     `previous_passing_score` in the record.
+     `previous_passing_score` in the record. To diagnose a read-back that disagrees, use
+     `connect-opp-setup` Step 4's `passing_score` check (`classifyPassingScoreReadback`).
 6. **Read back and compare.** Run step 2's reads again and diff them against the requested values.
    Any mismatch is a failed change: report it. Retry only once, and only when the cause is
    understood.
@@ -115,4 +122,5 @@ When `--dry-run` is active, run steps 2–4 and write the proposal. Make no writ
 
 | Date | Change | Author |
 |------|--------|--------|
+| 2026-10-18 | Step 5 points at `connect-opp-setup` § Operations on an existing opportunity for the flag, payment-unit and passing-score mechanics, so they are written down once (#3148 batch 3) | ACE |
 | 2026-10-18 | Initial version: change a live opportunity, with explicit "cannot" rows and shared-state warnings (audit item 6) | ACE (build-vs-maintain audit) |
