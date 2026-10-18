@@ -62,10 +62,11 @@ only when a run is bound.
      - refused, and `classifyRunnerRefusal(message)` is `not_eligible` → try the next candidate
        (the PM org). Record `fallback_reason` with the refusal text;
      - refused as `support_only` → **halt** with
-       `[BLOCKER] program <id> has no running organisation and labs lets only platform support declare one. Needed: supply_chain_programme_runner_set({program_id: <id>, org_id: <labs org id>}) by labs platform support, or the self-serve declaration change in connect-labs (dispatched 2026-10-18).`
-       This was the live state on 2026-10-18 (`programme_runner_get(program_id=353)` →
-       `{org_id: null, your_standing: "partner"}`; the setter's own description reads "Platform
-       support only"). Never work around it;
+       `[BLOCKER] program <id> has no running organisation and labs lets only platform support declare one. Needed: supply_chain_programme_runner_set({program_id: <id>, org_id: <labs org id>}) by labs platform support (labs is answering with the pre-#2605 support-only gate).`
+       That gate was the live state until connect-labs #2605 deployed on 2026-10-18; since then a
+       member of the programme's managing org declares it (verified live on program 308:
+       `your_standing: "programme"` after the call). A support-only refusal today means labs
+       regressed or the caller does not manage the programme. Never work around it;
      - refused for any other reason → halt, quoting the message.
    - **A runner already exists → never move it.** Records already attributed to it cannot be
      deleted (§ F6). Proceed under it if ACE's standing is `programme` or `operator`; otherwise halt

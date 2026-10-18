@@ -204,6 +204,8 @@ const UNCLAIMED_BASELINE = new Set<string>([
   'supply-chain-procure',
   // 2026-10-18 (optional labs track, plan PR8): same reason; dispatched by PR10.
   'supply-chain-fulfil',
+  // 2026-10-18 (optional labs track, plan PR9): same reason; simulated-execution (PR10) calls it per week.
+  'supply-chain-operate',
   'synthetic-narrative-plan',
   'synthetic-data-generate',
   'synthetic-workflow-seed',

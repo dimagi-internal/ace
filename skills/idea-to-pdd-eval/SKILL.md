@@ -1,8 +1,7 @@
 ---
 name: idea-to-pdd-eval
 description: >
-  Grade a PDD independently against its source material: re-runs the stress test and checks
-  reviewer comments were honored. Needs the PDD and its idea pack.
+  Grade a PDD against its source material: re-run the stress test and check reviewer comments were honoured.
 disable-model-invocation: false
 ---
 
