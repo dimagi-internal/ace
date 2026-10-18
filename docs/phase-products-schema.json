@@ -1419,6 +1419,34 @@
                       "public",
                       "private"
                     ]
+                  },
+                  "seeded_responses": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "response_id": {
+                          "type": "integer"
+                        },
+                        "org_name": {
+                          "type": "string"
+                        },
+                        "synthetic": {
+                          "type": "boolean",
+                          "const": true
+                        },
+                        "intended_profile": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "response_id",
+                        "org_name",
+                        "synthetic",
+                        "intended_profile"
+                      ],
+                      "additionalProperties": true
+                    }
                   }
                 },
                 "additionalProperties": true
@@ -1490,6 +1518,7 @@
       "productProducers": {
         "solicitation": "solicitation-create",
         "solicitation.awarded": "solicitation-review",
+        "solicitation.seeded_responses": "solicitation-seed-responses",
         "selected_llo": "solicitation-review",
         "selected_llo.program_application_id": "llo-onboarding",
         "selected_llo.opportunity_id": "llo-onboarding",

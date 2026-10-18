@@ -14,6 +14,8 @@ phase_ordinal: 8
 skills:
   - { name: solicitation-create, has_judge: true,  eval_skill: solicitation-create-eval }
   - { name: llo-invite,          has_judge: false }
+  # Optional (spec 2026-10-18 § D): runs only when the run's optional_steps enables seed_responses.
+  - { name: solicitation-seed-responses, has_judge: false, qa_skill: solicitation-seed-responses-qa, optional: true }
 recurring_skills:
   - { name: solicitation-monitor, has_judge: false }
 manual_skills:
@@ -73,6 +75,28 @@ Invoke the `solicitation-create` skill.
   `8-solicitation-management/solicitation-create-eval_verdict.yaml`.
 - Halts the phase on a non-pass verdict — Step 2 doesn't send invites
   pointing at a solicitation that's failing rubric checks.
+
+### Steps 1b and 1c: optional steps (only when enabled)
+
+Read the dispatch prompt's `optional_steps` block (the orchestrator copies
+the run's top-level `run_state.yaml.optional_steps`). **No block, or the step
+set to `false`, means skip it** and write `skipped (not enabled)` for it in the
+phase summary. Never infer a step from anything else.
+
+- **Step 1b: Google Form (`google_form`).** Invoke `solicitation-google-form`
+  once it ships (optional-track PR5b). Until then, record
+  `google_form: not available in this ACE version` in the summary rather
+  than skipping silently.
+- **Step 1c: Seed synthetic responses (`seed_responses`).** Invoke
+  `solicitation-seed-responses` with `count` from
+  `optional_steps.seed_responses.count`, then `solicitation-seed-responses-qa`.
+  The resolver already forced `private_solicitation` on, so Step 1 published
+  `is_public: false`; the skill halts if it did not. When `ace_winner` is on,
+  one response is the ACE-owned winner bound to `llo_org`. A failing QA halts
+  the phase: `solicitation-review` must not rank a broken seed.
+
+`seed_responses` and `--invite-candidates` are refused together at Pre-flight,
+so Step 2 is always a no-op on a seeded run.
 
 ### Step 2: LLO Invite (to the solicitation)
 

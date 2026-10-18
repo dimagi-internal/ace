@@ -639,6 +639,24 @@ const SolicitationProducts = z
          * (spec 2026-10-18 § B).
          */
         visibility: z.enum(['public', 'private']).optional(),
+        /**
+         * One row per synthetic respondent, when the run's
+         * `optional_steps.seed_responses` is on (spec 2026-10-18 § D, § H).
+         * Written whole by `solicitation-seed-responses` (arrays are replaced
+         * wholesale by every merge mode).
+         */
+        seeded_responses: z
+          .array(
+            z
+              .object({
+                response_id: z.number().int(),
+                org_name: z.string(),
+                synthetic: z.literal(true),
+                intended_profile: z.string(),
+              })
+              .passthrough(),
+          )
+          .optional(),
       })
       .passthrough()
       .optional(),
@@ -960,6 +978,9 @@ export const PRODUCT_PRODUCERS: Partial<Record<PhaseName, Record<string, string>
     // create because monitor gates on `status == open` reading the created
     // value; `awarded.*` exists only after review.
     'solicitation.awarded': 'solicitation-review',
+    // Optional `seed_responses` step (spec 2026-10-18 § D): the synthetic
+    // respondent list, written whole by its producer.
+    'solicitation.seeded_responses': 'solicitation-seed-responses',
     // `selected_llo` has TWO writers, one per `source` (ace, 2026-09-16):
     //   - `source: 'solicitation'` -> `solicitation-review` (the award path;
     //     still the ONLY skill that may call `award_response`).

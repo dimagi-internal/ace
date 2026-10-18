@@ -1,9 +1,8 @@
 ---
 name: run-surface-audit
 description: >
-  Audit a run's public run-summary page anonymously before anyone outside is sent
-  it, sorting findings into broken, misleading and improvement. Use before
-  handing anyone a run-summary URL.
+  Audit a run's public run-summary page anonymously (broken, misleading,
+  improvement). Use before handing anyone a run-summary URL.
 ---
 
 # Run-surface audit — what an outsider actually gets

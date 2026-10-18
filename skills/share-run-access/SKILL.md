@@ -1,10 +1,8 @@
 ---
 name: share-run-access
 description: >
-  Grant named people the access they need to work on an ACE run, across every surface the
-  run-summary links: ace-web + labs dashboards, the Connect opportunity, the CommCare HQ apps,
-  and the OCS chatbot. Editor by default (runs are co-created). Idempotent; approval-gated on
-  every outbound invite.
+  Grant named people access to review an ACE run on every surface it links (ace-web, labs,
+  Connect, HQ, OCS). Editor by default; approval-gated per invite.
 disable-model-invocation: false
 ---
 

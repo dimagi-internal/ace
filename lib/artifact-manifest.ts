@@ -2026,6 +2026,24 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
   // `required: false`, so the fence never demands them on a run that did not
   // opt in. One anchor per PR keeps parallel PRs in separate hunks:
   // [optional-track:PR4 solicitation-seed-responses]
+  {
+    path: '8-solicitation-management/solicitation-seed-responses_roster.md',
+    producedBy: 'solicitation-seed-responses',
+    role: 'roster',
+    consumedBy: ['solicitation-seed-responses-qa', 'solicitation-review', 'solicitation-review-eval'],
+    phase: 'solicitation-management',
+    required: false,
+    description: 'Optional `seed_responses` step: one row per synthetic respondent (key, org name, intended profile, flags, labs response_id, winner mark) plus the deny list in force and its sources. Only on a run that opted in.',
+  },
+  {
+    path: '8-solicitation-management/solicitation-seed-responses-qa_result.yaml',
+    producedBy: 'solicitation-seed-responses-qa',
+    role: 'qa-result',
+    consumedBy: ['opp-eval', 'solicitation-review'],
+    phase: 'solicitation-management',
+    required: false,
+    description: 'Static QA of the seeded responses against live labs reads: count, required answers, winner bound to llo_org (llo_entity_id + Connect org_id), no real-org impersonation, no deny-listed party, call still private, ACE-only submitter addresses.',
+  },
   // [optional-track:PR5b solicitation-google-form]
 
   // ── Execution Management phase (Phase 9) ───────────────────────
