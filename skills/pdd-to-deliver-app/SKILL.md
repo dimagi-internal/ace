@@ -522,14 +522,24 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
      own paragraph, prefixed `REQUIRED:`:
 
      > REQUIRED: Nova's `add_fields` has a partial-persistence quirk.
-     > After EVERY `add_fields` call, immediately call `get_form` and
-     > count the persisted fields. If the count is less than what you
-     > requested, re-issue `add_fields` for the missing fields and
-     > re-verify. Repeat until counts match. For forms with >10
+     > After EVERY `add_fields` call, count the entries in the result's
+     > `fields` array (Nova returns one `{id, uuid}` per field it
+     > persisted) against the number you sent. If fewer came back, or
+     > the call errored, call `get_form` on that form, re-issue
+     > `add_fields` for the missing fields, and re-verify. Repeat until counts match. For forms with >10
      > fields plan on 2–5 `add_fields` invocations. Do not move on to
      > the next form before counts match — silent partial persistence
      > on form N becomes invisible once you start working on form
      > N+1.
+
+     The count comes from the `add_fields` result, not a `get_form` read:
+     in a fresh single-agent kaduna-graduation build (ace#3078 arm A,
+     2026-10-17) all 25 successful calls returned exactly as many
+     `fields` entries as were sent, while the old "call `get_form` after
+     every call" wording contradicted the app-test economy rule below and
+     the architect dropped the check entirely (0 `get_form` calls,
+     ace#3124). Step 4a's full `get_form` read-back after the build is
+     still the backstop.
 
      > For the full failure analysis, see reference.md § add_fields partial persistence.
 
@@ -824,7 +834,8 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
      > only the step you need), not a fresh journey. Test each distinct
      > journey once per saved revision, then re-test only the journeys a
      > later edit touched. Do not call `get_form` on a form you just
-     > authored to confirm it — the save result already says what was saved.
+     > authored to confirm it — the `add_fields` and save results already
+     > say what was saved; `get_form` is for a count that came back short.
 
      Why: Nova has no compact/delta result mode (`continue_app_test` and
      `get_form` take no size control — voidcraft-labs/nova-plugin#71), and
