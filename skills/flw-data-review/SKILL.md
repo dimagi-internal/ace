@@ -9,6 +9,17 @@ disable-model-invocation: false
 
 Analyze FLW data and recommend improvements to communicate to LLOs.
 
+## Inputs
+
+| Parameter | Used for | Resolver |
+|---|---|---|
+| `opportunity_ids` (+ `program_org`) | the opportunities whose submissions are reviewed | explicit arg; default: the current run's run_state opportunity (or `selected_llo.opportunity_id`); else the program context doc's Scope |
+| `archetype` + Evidence Model / success metrics | quantitative vs qualitative review, and what each delivery is judged on | explicit arg; default: the PDD; else the context doc |
+| `experiment_id` | the program's chatbot, for § OCS Integration | explicit arg; default: `5-ocs/ocs-agent-setup.md`; else the context doc |
+| `report_folder` | where reviews land | default `ACE/<opp-name>/data-reviews/`; on a program project, the project's folder |
+
+No `run_state.yaml` is needed when the ids are passed.
+
 ## Process (runs periodically)
 
 1. **Read opportunity context** from GDrive:

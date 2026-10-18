@@ -25,6 +25,8 @@ narrative-plan output; this skill grows to bundle them then.
 
 ## Inputs
 
+Pipeline-only: summarises a run's Phase 7 synthetic demo from that run's artifacts.
+
 | Source | Artifact | Used for |
 |---|---|---|
 | Phase 7 | `7-synthetic/synthetic-data-generate.md` | labs URL, GDrive folder ID, record counts |

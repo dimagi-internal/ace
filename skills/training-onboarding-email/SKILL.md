@@ -23,6 +23,8 @@ personalization tokens at send time.
 
 ## Inputs (read from Drive)
 
+Pipeline-only: drafts the onboarding email from a run's PDD and training materials.
+
 | Source | Artifact | Used for |
 |---|---|---|
 | Phase 1 | `ACE/<opp>/runs/<run-id>/1-design/idea-to-pdd.md` | one-paragraph opp framing for the email body |

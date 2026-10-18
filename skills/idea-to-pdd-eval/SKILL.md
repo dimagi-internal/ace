@@ -28,6 +28,8 @@ calibration methodology.
 
 ## Inputs
 
+Pipeline-only: grades a run's PDD against its idea pack, which exists only in a run.
+
 | Source | Artifact | Used for |
 |---|---|---|
 | Phase 1 source | `inputs-manifest.yaml` + each `file_id` in it | source idea pack (the full pack is what the PDD is graded against) |

@@ -24,6 +24,8 @@ format, auto-fix protocol).
 
 ## Inputs
 
+Pipeline-only: checks a video run's spec, which exists only in a run.
+
 | Source | Artifact | Used for |
 |---|---|---|
 | ace-web Drive | `videos/<slug>/runs/<run-id>/spec.yaml` | the spec under structural check |

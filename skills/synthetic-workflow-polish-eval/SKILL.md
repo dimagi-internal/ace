@@ -39,6 +39,8 @@ a `verdict: blocked` from the visual-judge now hard-caps the whole eval to
 
 ## Inputs
 
+Pipeline-only: grades a run's Phase 7 workflow polish, which exists only in a run.
+
 - `ACE/<opp-name>/runs/<run-id>/7-synthetic/synthetic-workflow-polish.md`
 - `ACE/<opp-name>/runs/<run-id>/7-synthetic/synthetic-narrative-plan.{md,yaml}` — anchor for FLW names + anomaly descriptions that should appear in patches
 - `ACE/<opp-name>/runs/<run-id>/7-synthetic/synthetic-workflow-seed.md` — `scaffold_unsuitable` flag, baseline render-code version, **and the saved-run ids (`Week 1 run_id` / `Week 2 run_id`) — required for the render deep-link in step 6** (the polished completed-run view only mounts when a `run_id` is in the URL; see step 6)

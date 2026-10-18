@@ -12,6 +12,8 @@ Source one or more short (~20-30s) proof clips that credibly show the picked ang
 
 ## Inputs
 
+Pipeline-only: a step of a `/ace:partnership-video` run; it reads that run's chosen angle.
+
 | Source | Artifact | Used for |
 |---|---|---|
 | `partnership-angles` | `ACE/partnerships/<slug>/runs/<run-id>/angles.yaml` | Selected angle's `product` beat intent and `primary_capability` |

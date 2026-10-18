@@ -31,6 +31,8 @@ calibration TBD until 3+ shipped deck specs produce ground truth.
 
 ## Inputs
 
+Pipeline-only: grades a run's training deck spec, which exists only in a run.
+
 | Source | Artifact | Used for |
 |---|---|---|
 | Phase 6 | `6-qa-and-training/training-deck-spec.yaml` | artifact under judgment |

@@ -13,6 +13,8 @@ See `skills/_eval-template.md` for shared contracts (verdict YAML shape, severit
 
 ## Inputs
 
+Pipeline-only: grades a partnership-video run's angles, which exists only in a run.
+
 | Source | Artifact | Used for |
 |---|---|---|
 | `partnership-angles` | `ACE/partnerships/<slug>/runs/<run-id>/angles.yaml` | Primary artifact under judgment |

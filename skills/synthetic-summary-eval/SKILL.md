@@ -37,6 +37,8 @@ is contradicted by what a stakeholder would see on the linked page.
 
 ## Inputs
 
+Pipeline-only: grades a run's Phase 7 synthetic summary, which exists only in a run.
+
 - `ACE/<opp-name>/runs/<run-id>/7-synthetic/synthetic-summary.md`
 - `ACE/<opp-name>/runs/<run-id>/7-synthetic/synthetic-data-generate.md` — labs URL + fixture folder ground truth
 - `ACE/<opp-name>/runs/<run-id>/7-synthetic/synthetic-narrative-plan.{md,yaml}` (when present) — narrative ground truth

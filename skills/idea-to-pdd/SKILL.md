@@ -11,6 +11,8 @@ Take an initial idea and iterate on it to produce a complete Program Design Doc 
 
 ## Inputs
 
+Pipeline-only: authors a run's PDD from that run's frozen `inputs-manifest.yaml`; designing a program is a build. To change a live program, use `partner-on-connect-program`.
+
 | Source | Artifact | Used for |
 |---|---|---|
 | Operator | `ACE/<opp-name>/runs/<run-id>/inputs-manifest.yaml` | frozen pointer-set to source material captured at run-start |

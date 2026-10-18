@@ -20,13 +20,14 @@ fires only for the awardee.
 
 ## Inputs
 
-- `ACE/<opp-name>/inputs/pdd.md` (specifically `## LLO Preference` →
-  Preferred LLOs)
-- `phases.solicitation-management.products.solicitation.public_url` —
-  current run's `run_state.yaml`
-- `phases.solicitation-management.products.solicitation.deadline` —
-  current run's `run_state.yaml`
-- `opp.yaml` (opp display name)
+| Parameter | Used for | Resolver |
+|---|---|---|
+| `candidates` | the named candidate LLOs (name + contact email) | explicit arg; default: the PDD's `## LLO Preference` → Preferred LLOs (`ACE/<opp-name>/inputs/pdd.md`) |
+| `solicitation_url` | the link each candidate receives | explicit arg; default: the current run's run_state `phases.solicitation-management.products.solicitation.public_url` |
+| `deadline` | the response deadline named in the email | explicit arg; default: run_state `…products.solicitation.deadline` |
+| `program_name` | the opp display name in the email | explicit arg; default: `opp.yaml` |
+
+The opt-in gate (Step 0) applies however the inputs arrive: an explicit `candidates` list is not consent to send.
 
 ## Default: publish-only (standing operator directive 2026-05-31)
 

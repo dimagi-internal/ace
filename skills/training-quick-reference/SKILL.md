@@ -19,6 +19,8 @@ of other training skills.
 
 ## Inputs (read from Drive)
 
+Pipeline-only: derives the card from a run's PDD. For a live program's materials, run it in a run on that program.
+
 | Source | Artifact | Used for |
 |---|---|---|
 | Phase 1 | `ACE/<opp>/runs/<run-id>/1-design/idea-to-pdd.md` | per-visit step list, daily caps, key safety rules, support contact + escalation triggers |

@@ -16,6 +16,8 @@ There is **no companion QA skill** for this artifact — see `skills/_qa-decisio
 
 ## Inputs
 
+Pipeline-only: grades a run's app journeys against its PDD, which exists only in a run.
+
 | Source | Artifact | Used for |
 |---|---|---|
 | Phase 2 producer (this phase) | `2-scenarios/pdd-to-app-journeys.md` | the journeys doc under judgment |

@@ -16,6 +16,8 @@ If `pdd-to-work-order-qa` returned `verdict: incomplete`, this skill is **skippe
 
 ## Inputs
 
+Pipeline-only: grades a run's work order against its PDD, which exists only in a run.
+
 | Source | Artifact | Used for |
 |---|---|---|
 | Phase 1 producer | `1-design/pdd-to-work-order.gdoc` (latest) | the artifact under quality re-grade |

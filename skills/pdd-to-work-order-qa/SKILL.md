@@ -14,6 +14,8 @@ See `skills/_qa-template.md` for the shared QA contract (verdict YAML format, au
 
 ## Inputs
 
+Pipeline-only: checks a run's work order, which exists only in a run.
+
 | Source | Artifact | Used for |
 |---|---|---|
 | Phase 1 producer | `1-design/pdd-to-work-order.gdoc` (latest) | the work order under structural check |

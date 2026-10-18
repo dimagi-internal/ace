@@ -23,6 +23,8 @@ which grades the activation step that follows. See
 
 ## Inputs
 
+Pipeline-only: grades a run's Phase 9 UAT compilation, which exists only in a run.
+
 | Source | Artifact | Used for |
 |---|---|---|
 | Phase 1 | `1-design/idea-to-pdd.md` | source PDD; Success Metrics + Evidence Model define UAT coverage expectation |

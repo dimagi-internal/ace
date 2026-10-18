@@ -13,6 +13,8 @@ See `skills/_eval-template.md` for shared contracts (verdict YAML shape, severit
 
 ## Inputs
 
+Pipeline-only: grades a partnership-video run's video build, which exists only in a run.
+
 | Source | Artifact | Used for |
 |---|---|---|
 | `partnership-video-build` | `ACE/partnerships/<slug>/runs/<run-id>/video_spec.yaml` | Primary artifact under judgment — the as-POSTed spec |

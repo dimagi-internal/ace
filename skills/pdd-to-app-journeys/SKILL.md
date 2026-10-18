@@ -16,6 +16,8 @@ truth here.
 
 ## Inputs
 
+Pipeline-only: derives journeys from a run's approved PDD, which exists only in a run.
+
 | Source | Artifact | Used for |
 |---|---|---|
 | Phase 1 | `1-design/idea-to-pdd.md` | source PDD; archetype + Target FLW persona drive journey generation |

@@ -21,6 +21,8 @@ testing are the ones that get funded.
 
 ## Inputs
 
+Every row except the optional Phase 1 PDD is an explicit argument or a live labs read; no run is needed.
+
 | Source | Artifact | Used for |
 |---|---|---|
 | Upstream | the selection and its totals | the headline figures |

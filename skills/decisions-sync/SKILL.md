@@ -15,6 +15,8 @@ runs honor the human's edits.
 
 ## Inputs
 
+Pipeline-only: syncs a run's decisions Doc back into its `decisions.yaml`; both exist only in a run.
+
 | Source | Artifact | Used for |
 |---|---|---|
 | Per-run state | `ACE/<opp-name>/runs/<run-id>/decisions.gdoc` | human-edited prose Doc — source of overrides |

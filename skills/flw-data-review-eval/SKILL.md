@@ -19,6 +19,10 @@ the producing skill runs recurring (typically 4–8 times per opp),
 this rubric naturally accumulates a trend signal: a calibration-drift
 flag that gets caught early scores higher than one caught late.
 
+## Inputs
+
+Pipeline-only: grades a run's FLW data review report, which exists only in a run. Its inputs are listed in § Process.
+
 ## Process
 
 1. **Read inputs from GDrive:**

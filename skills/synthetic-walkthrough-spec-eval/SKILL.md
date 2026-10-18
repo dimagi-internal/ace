@@ -33,6 +33,8 @@ inflation guard (removed in an earlier pass) is restored.
 
 ## Inputs
 
+Pipeline-only: grades a run's Phase 7 walkthrough specs, which exists only in a run.
+
 For EACH `synthetic-walkthrough-spec_<persona>.yaml` produced (one eval
 verdict per persona):
 

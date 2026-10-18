@@ -31,6 +31,8 @@ and `skills/eval-calibration/SKILL.md` for calibration methodology.
 
 ## Inputs
 
+Pipeline-only: grades a run's Nova-built Deliver app against its PDD, which exists only in a run.
+
 | Source | Artifact | Used for |
 |---|---|---|
 | Phase 1 | `1-design/idea-to-pdd.md` | source PDD; archetype + Deliver App Specification + delivery unit drive expectation |

@@ -34,6 +34,8 @@ dimension.
 
 ## Inputs
 
+Pipeline-only: grades a run's Phase 7 narrative plan, which exists only in a run.
+
 - `ACE/<opp-name>/runs/<run-id>/7-synthetic/synthetic-narrative-plan.md`
 - `ACE/<opp-name>/runs/<run-id>/7-synthetic/synthetic-narrative-plan.yaml`
 - `ACE/<opp-name>/inputs/pdd.md` — anchor for archetype + intervention design

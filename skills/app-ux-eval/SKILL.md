@@ -20,6 +20,8 @@ contracts.
 
 ## Inputs
 
+Pipeline-only: grades a run's Phase 6 screenshots against its Phase 2 journeys, which exist only in a run.
+
 | Source | Artifact | Used for |
 |---|---|---|
 | Phase 1 | `2-scenarios/pdd-to-app-journeys.md` | UX-intent ground truth (goal, happy-path narrative, edge cases, pass criteria, `pdd_time_budget_seconds`) |

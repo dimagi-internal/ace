@@ -10,6 +10,10 @@ disable-model-invocation: false
 
 Synthesize all information from the completed opportunity into actionable learnings.
 
+## Inputs
+
+Pipeline-only: summarises one completed run from that run's artifacts (§ Process).
+
 ## Process
 
 1. **Read all opportunity artifacts from GDrive:**

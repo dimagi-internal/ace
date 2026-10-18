@@ -16,6 +16,8 @@ If QA verdict is `fail` or `incomplete`, this eval is skipped (`verdict: incompl
 
 ## Inputs
 
+Pipeline-only: grades a run's test-prompt suite, which exists only in a run.
+
 | Source | Artifact | Used for |
 |---|---|---|
 | Phase 2 producer (this phase) | `2-scenarios/pdd-to-test-prompts.md` | the prompts file under judgment |

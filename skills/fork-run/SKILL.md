@@ -22,6 +22,10 @@ names the human it is acting for in `requested_by` (see
 > that phase's earlier artifacts and re-run from that skill onward. Exactly one
 > is required; both resolve to the same internal `ForkPoint`.
 
+## Inputs
+
+Pipeline-only: forks an existing run at a phase boundary; the source run is the object (§ Process).
+
 ## When to use
 
 - **Validate a code change against a prior run's upstream artifacts.** After

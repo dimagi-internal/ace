@@ -19,6 +19,10 @@ and skill names, for a reader who has met neither) were never checked at all.
 
 Consumer: whoever is about to send the link, and `opp-eval`.
 
+## Inputs
+
+Pipeline-only: judges one run's review page; the run is the object (§ Process).
+
 ## Process
 
 1. **Read the QA verdict first.** If `run-surface-audit` reported any `broken`

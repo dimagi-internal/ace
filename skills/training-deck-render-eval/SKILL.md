@@ -27,6 +27,8 @@ calibration TBD until 3+ graded decks produce ground truth.
 
 ## Inputs
 
+Pipeline-only: grades a run's rendered training deck, which exists only in a run.
+
 | Source | Artifact | Used for |
 |---|---|---|
 | Phase 6 | the rendered deck — `run_state` `phases.qa-and-training.products.training.deck` (its Slides file id) | artifact under judgment |

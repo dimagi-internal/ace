@@ -25,6 +25,10 @@ See `skills/README.md § QA vs Eval — the two-phase pattern` for the
 framework rationale and the uniform verdict-YAML shape that this
 aggregator reads.
 
+## Inputs
+
+Pipeline-only: rolls up the per-skill `-eval` verdicts of one run; its inputs are that run's verdict files (§ Process).
+
 ## Modes
 
 All paths below are run-scoped under

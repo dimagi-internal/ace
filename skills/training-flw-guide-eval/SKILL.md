@@ -31,6 +31,8 @@ calibration TBD until 3+ shipped FLW guides produce ground truth.
 
 ## Inputs
 
+Pipeline-only: grades a run's FLW guide, which exists only in a run.
+
 | Source | Artifact | Used for |
 |---|---|---|
 | Phase 6 | `6-qa-and-training/training-flw-guide.md` | artifact under judgment |

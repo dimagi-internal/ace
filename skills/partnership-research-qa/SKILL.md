@@ -13,6 +13,8 @@ See `skills/_qa-template.md` for the shared QA contract (verdict YAML format, au
 
 ## Inputs
 
+Pipeline-only: checks a partnership-video run's research artifacts, which exist only in a run.
+
 | Source | Artifact | Used for |
 |---|---|---|
 | `partnership-research` | `ACE/partnerships/<slug>/research/deep-research.md` | Existence, non-empty, citations check |
