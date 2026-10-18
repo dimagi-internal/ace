@@ -98,9 +98,9 @@ what was considered and dropped and why, and who approved.
      either becomes a minor weight or is dropped.
 
 4. **Profile the pool: what actually varies.** Go question by question through the form,
-   then across answers. For large pools, split the reading into batches of ~10 and give
-   each to a subagent that returns, per question, a tally and short paraphrased examples
-   (no names). Look for spreads like:
+   then across answers. Beyond ~12 responses, split the reading into batches of ~9 and
+   give the batches to subagents in parallel (§ Pool profile shape below has the brief and
+   the shape they return), then merge. Look for spreads like:
    - geography: named districts or sites vs a country or "nationwide";
    - access: a documented link to the actors the call needs vs a general claim;
    - delivery: team size and named staff vs capacity resting on one person;
@@ -110,6 +110,8 @@ what was considered and dropped and why, and who approved.
    - answer quality: specific vs generic or AI-drafted text (a flag, usually not a
      criterion).
    Write each spread as counts with one or two paraphrased examples at each end.
+   `judgeable_from_form`, `everyone_passes` and `form_limits` from the batches feed steps
+   5 and 8 directly; `cost_quotes` gives the price range in the call's units.
 
 5. **Choose the criteria.**
    - Keep a candidate when it (a) traces to what the call needs, (b) varies across the
@@ -181,6 +183,60 @@ what was considered and dropped and why, and who approved.
       https://labs.connect.dimagi.com/labs/marketplace/rounds/<slug>/.
     - Run `agent-turn-review` before replying.
 
+## Pool profile shape
+
+What worked on a 44-response round (2026-10-18 dry run): batches of ~9 responses, one
+subagent each, run in parallel, each returning the same structure, then a merge.
+
+Give each subagent its batch of responses (answers exactly as labs returned them, no
+contacts), the call facts from step 2 (work, roles, units and rates, currency, priority
+geographies), the candidate dimensions from step 4 (it may add one it sees), and these
+rules: paraphrase, never quote; no organisation, person, programme or partner names, and
+no place below the call's priority sites or regions; counts are for this batch only.
+
+Each subagent returns:
+
+```json
+{
+  "batch": 2,
+  "responses_read": 9,
+  "dimensions": [
+    {
+      "dimension": "geography",
+      "tally": {"names districts or sites": 4, "region only": 3, "country or nationwide": 2},
+      "strong_example": "names three districts and the markets it already visits weekly there",
+      "weak_example": "says it can work anywhere in the country, with no site named",
+      "separates": true,
+      "judgeable_from_form": true
+    }
+  ],
+  "everyone_passes": ["has used a mobile data-collection app"],
+  "cost_quotes": [
+    {"response": 3, "as_quoted": "a lump sum in local currency for the whole study",
+     "converted": 940, "unit": "USD per site", "note": "lump sum divided by the 4 sites it names"}
+  ],
+  "form_limits": ["the call asks for a sampling plan; no question asks for one"]
+}
+```
+
+- `dimension`: one per spread looked at, including ones that turned out not to separate
+  (the requester should see what was considered).
+- `tally`: counts in this batch, summing to `responses_read` (or name an `unclear` bucket).
+- `strong_example` / `weak_example`: paraphrased, no names, one sentence each.
+- `separates`: does this dimension split this batch; `judgeable_from_form`: can it be
+  scored from the answers, rather than needing something the form never asked.
+- `everyone_passes`: things every response in the batch meets.
+- `cost_quotes`: every price given, converted to the call's currency and unit, with how it
+  was converted; `"converted": null` when it cannot be. `response` is the position in the
+  batch, not a name.
+- `form_limits`: what the form made impossible to judge, or asked everyone to no effect.
+
+**Merge:** add the tallies per dimension across batches; a dimension separates the pool
+when it separates in the merged tally, not when one batch says so. Keep the clearest strong
+and weak example. An item is in `everyone_passes` only if every batch lists it. Pool the
+cost quotes and report the range and median in the call's unit, with the count that gave
+no usable price. Union the `form_limits`.
+
 ## Terminology
 
 The proposal is prose a person reads. Follow `skills/_terminology.md`: the platform is
@@ -210,5 +266,6 @@ The proposal is prose a person reads. Follow `skills/_terminology.md`: the platf
 
 | Date | Change | Author |
 |------|--------|--------|
+| 2026-10-18 | Pool profiling from the 44-response dry run: batches of ~9 to parallel subagents, each returning a structured profile per dimension (tally, strong/weak example, separates, judgeable from form) plus `everyone_passes`, `cost_quotes` and `form_limits`, then merged | ACE team |
 | 2026-10-17 | Anchors written so a score's reason can quote the passage it rests on (AI reviews now cite evidence) | ACE team |
 | 2026-10-17 | Initial version: criteria written after submissions, grounded in the pool's spread, saved on the round in labs (`marketplace_round_criteria_set`) after approval | ACE team |
