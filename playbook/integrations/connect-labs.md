@@ -70,74 +70,172 @@ node scripts/labs-auth-headers.mjs   # prints {"Authorization":"Bearer …"} or 
 
 Required env: `LABS_MCP_TOKEN` (per-user PAT from
 `/ace:labs-token-mint`). 1Password is the source of truth; rotate
-there and re-inject `.env` via
-`op inject -i .env.tpl -o $CLAUDE_PLUGIN_DATA/.env --force`.
+there and refresh `.env` with `/ace:setup --force-env` (never a raw
+`op inject -o <plugin-data>/.env`: that drops the local-only keys, and a
+`config/gating.json` rail blocks it).
 
 `bin/ace-doctor`'s `[Auth liveness]` block runs a one-shot
 `labs_context` against the live PAT; failure points at the rotation
 command above. After any change to plugin.json's `connect-labs` wiring,
 a **full Claude Code restart** is needed for it to take effect.
 
-## Capability map (atoms used by ACE)
+## Capability map
 
-### Solicitations + responses (Phase 8)
+Labs atoms are served by connect-labs itself, so they are **not** in
+`docs/atom-schemas.md` (that file catalogues ACE's own MCPs). The live contract is the
+server's `tools/list`; load a schema in-session with `ToolSearch "select:mcp__connect_labs__<atom>"`
+before calling it. The families below are grouped by resource. "Typical callers" names
+the ACE skills using an atom today. None of them is build-only; each acts on whatever
+program, opportunity, solicitation or workflow id it is given.
 
-| Atom | Used by |
+### Solicitations, responses, reviews, awards
+
+| Atom | Typical callers |
 |---|---|
-| `create_solicitation` | `solicitation-create` (pass `org_slug` — since connect-labs#2567 the call must be owned by a registered labs org the caller belongs to; ace#3049) |
-| `supply_chain_org_upsert` | `solicitation-create` Step 5a (registers the run's Connect PM org as the owning labs org, bound by `connect_organization_id`) |
-| `get_solicitation` | `solicitation-create` (reuse-detection), `solicitation-monitor` |
-| `update_solicitation` | `solicitation-create` (re-publish path), `solicitation-review` |
-| `list_solicitations` | `solicitation-create` (program-scoped reuse check) |
-| `list_responses` | `solicitation-monitor`, `solicitation-review` |
-| `get_response` | `solicitation-review` |
-| `create_review` / `update_review` / `list_reviews` / `get_review` | `solicitation-review` |
-| `award_response` | `solicitation-review` (HITL-gated; only path that populates `opp.yaml.selected_llo`) |
+| `create_solicitation` | `solicitation-create` (pass `org_slug`; since connect-labs#2567 the call must be owned by a registered labs org the caller belongs to, ace#3049) |
+| `get_solicitation` / `list_solicitations` / `update_solicitation` / `delete_solicitation` | `solicitation-create`, `solicitation-monitor`, `solicitation-review`, `sweep-labs` |
+| `list_responses` / `get_response` | `solicitation-monitor`, `solicitation-review` |
+| `create_response` | (no skill yet) seeds a response on a firm's behalf when the caller owns the call; built for demo/synthetic responses |
+| `create_review` / `update_review` / `list_reviews` / `get_review` | `solicitation-review`, `eoi-round-review` |
+| `award_response` | `solicitation-review` (HITL-gated). Requires `response_id`, `reward_budget`, `org_id`; **emails the awardee when labs email is on**; refuses a second award (ace#3146) |
 
-### Synthetic data (Phase 7)
+`is_public: false` hides a call from the logged-in listing, but reads then need its
+`program_id` or they 404 (`skills/solicitation-create`). Even `is_public: true` is
+login-only. See CLAUDE.md § Phases on why "public" is a misnomer.
 
-| Atom | Used by |
+### Marketplace (EOI rounds)
+
+| Atom | Typical callers |
 |---|---|
-| `synthetic_generate_from_manifest` | `synthetic-data-generate` |
-| `synthetic_register` | `synthetic-data-generate` |
-| `synthetic_disable` | reversal command (no skill; operator-driven) |
-| `task_create_synthetic` | (v2) |
-| `get_sample_ids` | (v2) |
+| `marketplace_rounds_list` / `marketplace_round_responses` / `marketplace_orgs_get` | `eoi-criteria-proposal`, `eoi-round-review`, `marketplace-outreach-doc`, `llo-directory-add` |
+| `marketplace_round_criteria_set` | `eoi-criteria-proposal` |
 
-### Workflows (Phase 7)
+### Funds
 
-| Atom | Used by |
+| Atom | Typical callers |
 |---|---|
-| `list_templates` | `workflows-instantiate` |
-| `workflow_create_from_template` | `workflows-instantiate` |
-| `workflow_clone` | (v2) |
-| `workflow_get` / `workflow_list` | `workflows-instantiate` (verify-after-create), `program_admin_audit` |
-| `workflow_update_definition` | `workflows-instantiate` (per-opp polish) |
-| `workflow_patch_render_code` / `workflow_update_render_code` | `workflows-instantiate` (per-opp polish) |
-| `workflow_save_snapshot` / `workflow_set_template_flag` | (v2) |
-| `workflow_create_run` | `llo_weekly_review`, `program_admin_audit` |
-| `workflow_update_opportunity_ids` | (v2) |
-| `workflow_delete` | reversal command (no skill; operator-driven) |
+| `create_fund` / `update_fund` / `get_fund` / `list_funds` / `add_fund_allocation` / `remove_fund_allocation` | (no skill yet). `award_response` takes an optional `fund_id` that appends an allocation |
 
-### Funds (Phase 8 / 8 future)
+### Synthetic data
 
-| Atom | Used by |
+| Atom | Typical callers |
 |---|---|
-| `create_fund` / `update_fund` / `get_fund` / `list_funds` | (v2; budget-tier funding) |
-| `add_fund_allocation` / `remove_fund_allocation` | (v2) |
+| `synthetic_generate_from_manifest` / `synthetic_register` / `synthetic_create_labs_only` | `synthetic-data-generate`, `demo-data-setup` |
+| `synthetic_env_ensure` / `synthetic_env_get` / `synthetic_env_list` | `demo-data-setup` (packaged envs, e.g. 4 completed weeks with weekly runs) |
+| `synthetic_clone_opp` / `synthetic_clone_profile` / `synthetic_clone_generate` / `synthetic_clone_to_labs_only` / `synthetic_profile_*` / `synthetic_fidelity_*` | `clone-to-new-workspace`, `demo-data-setup` (clone mode), `demo-fidelity-check` |
+| `synthetic_repoint_by_source` / `synthetic_reload_fixtures` / `synthetic_set_allowed_domains` / `synthetic_set_my_visibility` | operator tasks (see auto-memory's KMC notes) |
+| `synthetic_disable` | reversal (no skill; operator-driven) |
 
-### Pipelines (Phase 9 / 9 future)
+### Workflows and templates
 
-| Atom | Used by |
+| Atom | Typical callers |
 |---|---|
-| `pipeline_get` / `pipeline_list` / `pipeline_preview` / `pipeline_sql` / `pipeline_update_schema` / `pipeline_delete` | (v2; flw-data-review pipelines) |
+| `workflow_create_from_template` / `workflow_create` / `workflow_clone` / `list_templates` | `synthetic-workflow-seed`, `demo-data-setup`, `clone-to-new-workspace` |
+| `workflow_get` / `workflow_list` / `workflow_update_definition` / `workflow_patch_render_code` / `workflow_update_render_code` | `synthetic-workflow-seed`, `demo-data-setup` |
+| `workflow_create_run` / `workflow_run_action` / `workflow_save_snapshot` | `synthetic-workflow-seed`, `ocs-coach-setup`, `coach-session-capture` |
+| `workflow_update_opportunity_ids` | (no skill yet) re-points a workflow at other opportunities |
+| `workflow_template_*` / `workflow_follow_template` / `workflow_sync_from_*` | `lib/labs-report-templates.ts` (§ Workflow template lifecycle) |
+| `workflow_delete` | `sweep-labs` |
 
-### Context / dashboards
+### History (simulated time)
 
-| Atom | Used by |
+| Atom | Typical callers |
 |---|---|
-| `labs_context` | `bin/ace-doctor` (auth liveness probe) |
-| `mbw_dashboard_v1` / `mbw_dashboard_v3` / `mbw_dashboard_diff` | (v2; Phase 9 monitoring views) |
+| `workflow_ensure_visit_cache` → `workflow_preview_as_of` → `workflow_rebuild_history` / `workflow_history_runs` / `workflow_prune_history` | `demo-data-setup` (cascade C5), `semantic-registry-author`, `clone-to-new-workspace` |
+
+There is no clock to move. To simulate N weeks, generate backdated data, preview one date
+with `workflow_preview_as_of` (writes nothing), then `workflow_rebuild_history`
+(`cadence: weekly`, `semantic_snapshot` workflows only), which writes one completed run
+per Monday–Sunday week.
+
+### Semantic registry, explorer, benchmarks
+
+| Atom | Typical callers |
+|---|---|
+| `semantic_registry_create` / `_update` / `_validate` / `_get` / `_explain` / `_set_indicator_meta` | `semantic-registry-author`, `clone-to-new-workspace`, `ocs-coach-setup` |
+| `explorer_describe` / `explorer_query` / `explorer_validate` | `flw-data-review`, `timeline-monitor`. Called through canopy, `explorer_query` returns rows for SYNTHETIC opportunities only; on a real one validate the SQL and hand it to the labs page |
+| `benchmarks_publish` / `benchmarks_create_opp_reports` / `benchmarks_cohort_*` | `demo-data-setup`, `semantic-registry-author` |
+
+### Pipelines
+
+| Atom | Typical callers |
+|---|---|
+| `pipeline_create` / `pipeline_get` / `pipeline_list` / `pipeline_preview` / `pipeline_sql` / `pipeline_update_schema` / `pipeline_delete` / `pipeline_set_shared` | `synthetic-workflow-seed`, `demo-data-setup`, `flw-data-review` |
+
+### Targeting, microplans, campaigns
+
+| Atom | Typical callers |
+|---|---|
+| `targeting_*` | `target-geographies`, `cost-effectiveness`, `defend-a-figure`, `scan-data-sources`, `build-targeting-model` (agent: `targeting-analyst`) |
+| `microplans_*` / `campaign_build_national` | (no skill yet) |
+
+### Supply chain
+
+`supply_chain_*` is a full procurement and stock surface. The only ACE call today is
+`supply_chain_org_upsert` in `solicitation-create` Step 5a, which registers the PM org as
+the owning labs org. **Supply-chain skills are being added.** Until then, read the live
+schemas. Every write takes `program_id` and a `source.ref` used for idempotency, and its
+evidence dates (`received_on`, `sent_on`) can be backdated. The families, in lifecycle
+order:
+
+| Stage | Atoms |
+|---|---|
+| Programme setup | `supply_chain_programme_runner_set` (platform-support only) / `_get`, `supply_chain_programme_team_*`, `supply_chain_org_upsert` / `_list` / `_merge`, `supply_chain_commodity_upsert` / `_list`, `supply_chain_item_upsert` / `_get` / `_list`, `supply_chain_supply_point_*`, `supply_chain_supplier_create` / `_update` / `_get` / `_list` / `_mark_reviewed` |
+| Sourcing | `supply_chain_tender_create` / `_update` / `_invite_org` / `_open` / `_compare` / `_close` / `_get` / `_list` / `_outstanding_questions`, `supply_chain_quote_record` / `_correct` / `_void` / `_get` / `_list`, `supply_chain_award_create` / `_list` |
+| Contract | `supply_chain_contract_create` / `_update` / `_get` / `_list` / `_landed_cost` / `_match` / `_holds` |
+| Logistics | `supply_chain_shipment_record` / `_update` / `_get` / `_list`, `supply_chain_consignment_dispatch` / `_receive` / `_list`, `supply_chain_receipt_record` / `_list` (a receipt is what creates stock) |
+| Finance | `supply_chain_invoice_record` / `_update` / `_dispute` / `_list`, `supply_chain_payment_record` / `_confirm` / `_list`, `supply_chain_charge_*`, `supply_chain_approval_*` |
+| Stock & distribution | `supply_chain_stock_on_hand` / `_position` / `_forecast` / `_flow` / `_by_batch`, `supply_chain_resupply_plan`, `supply_chain_distribution_*`, `supply_chain_worker_stock*`, `supply_chain_dispensing_rule_*`, `supply_chain_stock_count_*`, `supply_chain_movement_*`, `supply_chain_network_*` |
+| Partner access & comms | `supply_chain_update_link_issue` / `_list` / `_revoke` (signed link for an org with no labs login), `supply_chain_request_render` / `_reminder_render` / `_followup_render` / `_tender_drafts_render`, `supply_chain_commitment_*`, `supply_chain_outreach_*`, `supply_chain_alert_*`, `supply_chain_document_*`, `supply_chain_view_*` |
+
+### Context and config
+
+| Atom | Typical callers |
+|---|---|
+| `labs_context` / `page_context` | `bin/ace-doctor` (auth liveness), `solicitation-create`, `connect-opp-setup`, `validate-release-readiness` |
+| `get_opportunity_apps` | `semantic-registry-author`, `demo-data-setup`, `flw-data-review`, `timeline-monitor` |
+| `labs_config_*`, `job_status` / `job_cancel`, `custom_analysis_run`, `program_admin_demo_seed` | `synthetic-workflow-seed` (`program_admin_demo_seed`), `lib/clone-run.ts` (`job_status`) |
+
+## A solicitation is not tied to a Connect opportunity
+
+A labs solicitation is scoped to a labs `program_id`, not to a Connect opportunity. Labs
+has no foreign key to the opportunity. The `connect_opportunity_id` ACE records next to a
+solicitation (`phases.solicitation-management.products.solicitation` in a run) is ACE-side
+bookkeeping. Deleting and recreating the Connect opportunity therefore leaves the
+solicitation alone: its URL keeps working, the deadline keeps running, and candidates'
+views and applications continue. Recovery is to recreate the opportunity and update
+the bookkeeping field. Multiple open solicitations on one program are expected (one per
+run; `skills/solicitation-create § Per-run solicitations are expected, not a bug`).
+
+## Workflow template lifecycle: follow, freeze, refollow
+
+ACE's labs report pages are workflows that **follow a template workflow**. While a page
+follows its template, every later publish of that template changes the page, including
+pages a finished run was judged against or a release copies. Three states:
+
+- **Following** (`workflow_follow_template({workflow_id, <scope>, template_workflow_id,
+  template_program_id, follow: true})`): the page picks up each template publish.
+- **Frozen**: the page is forked off its template at a recorded version. It stops moving
+  and does not change at the moment of the fork. `scripts/labs-report-templates.ts freeze`
+  does this for a run's reports and records `cascade.report_templates` with each
+  `frozen_version` (`frozen_version_uncertain: true` when a publish raced the fork).
+- **Refollow**: put a frozen page back on its template. `labs-report-templates.ts refollow
+  [--apply]` prints or applies one `workflow_follow_template(follow: true)` per report.
+  Only do this for a page nobody relies on as a fixed record.
+
+`lib/clone-run.ts` copies each frozen page onto a clone's reports. Phase 7's use of this
+is `agents/synthetic-data-and-workflows.md § Step 3.92`.
+
+## Changing live labs objects
+
+| Change | How | Limits |
+|---|---|---|
+| Solicitation deadline, text, visibility, close | `update_solicitation` | No ACE skill composes this yet; read back with `get_solicitation` (+ `program_id` when non-public) |
+| Award a response | `award_response` | Irreversible and refused on a second try; may email the awardee |
+| Point a workflow at other opportunities | `workflow_update_opportunity_ids` | No skill yet. Rebuild history afterwards (`workflow_rebuild_history`), since past runs were computed on the old set |
+| Change a report page's layout | Edit the template and publish, so following pages update; or `workflow_patch_render_code` on one page | A timed-out `workflow_patch_render_code` does not apply (§ Troubleshooting) |
+| Change an indicator | `semantic_registry_update` → `_validate` | Saved runs freeze the registry, so a wording change needs a new run |
+| Delete | `delete_solicitation`, `workflow_delete`, `pipeline_delete`, `synthetic_disable` | `sweep-labs` is the approval-gated path |
 
 ## Synthetic-manifest schema gotchas
 
@@ -431,9 +529,9 @@ Auth is the labs **UI session** (`~/.ace/labs-session.json`, via
   Workbench dashboard is empty.** The workflow needs a per-opp polish
   pass via `workflow_update_definition` /
   `workflow_patch_render_code` before its dashboard renders. The
-  template is a generic skeleton; ACE's `workflows-instantiate` skill
-  applies the polish pass automatically — don't expect a useful
-  dashboard from a raw `create_from_template`.
+  template is a generic skeleton; `synthetic-workflow-seed` applies the
+  polish pass — don't expect a useful dashboard from a raw
+  `create_from_template`.
 
 - **A timed-out `workflow_patch_render_code` does NOT apply — re-fetch,
   do not assume a partial write.** Observed on
@@ -487,13 +585,15 @@ Auth is the labs **UI session** (`~/.ace/labs-session.json`, via
   we can re-use"; the explorer's first cut was hand-styled because neither the
   authoring guide nor these skills mentioned the library.
 
-- **`award_response` succeeded but `opp.yaml.selected_llo` is null.**
+- **`award_response` succeeded but the run's `selected_llo` is null.**
   The labs `award_response` call is server-side authoritative for the
-  award, but the ACE-side write to `opp.yaml.selected_llo` is the
-  `solicitation-review` skill's job. If labs shows the response as
-  awarded and `opp.yaml` doesn't, re-run `/ace:step solicitation-review
-  <opp>/<run-id>` — it's idempotent and writes the selected_llo block
-  defensively.
+  award; the ACE-side write to the run's
+  `run_state.yaml.phases.solicitation-management.products.selected_llo` is
+  the `solicitation-review` skill's job. If labs shows the response as
+  awarded and the run doesn't, re-run `/ace:step solicitation-review
+  <opp>/<run-id>`. A second `award_response` is refused
+  (FAILED_PRECONDITION), so the re-run must write `selected_llo` from the
+  existing award rather than award again.
 
 - **JSON-RPC notifications mysteriously break tool discovery.** This was
   a *proxy-era* hazard (now historical): the old stdio shim had to
@@ -514,17 +614,17 @@ Auth is the labs **UI session** (`~/.ace/labs-session.json`, via
 ## Cross-reference
 
 - Spec: `docs/superpowers/specs/2026-04-26-connect-labs-mcp-design.md`.
-- Skills using these atoms:
-  - Phase 7: `synthetic-data-manifest`, `synthetic-data-generate`,
-    `workflows-instantiate`, `persona-walkthroughs`.
-  - Phase 8: `solicitation-create`, `solicitation-monitor`,
-    `solicitation-review`, `llo-invite`.
+- Skills using these atoms: see § Capability map (grouped by resource).
+- Index of every surface: [`playbook/README.md`](../README.md).
+- Related learnings: `docs/learnings/2026-06-13-labs-workflow-run-deeplink.md`,
+  `docs/learnings/2026-07-20-demo-workflow-ddd-native.md`.
 - Token rotation: `commands/labs-token-mint.md`.
 
 ## Change log
 
 | Date | Change |
 |------|--------|
+| 2026-10-18 | Capability map regrouped by resource, not phase; removed the never-built `workflows-instantiate` skill and `mbw_dashboard_*` atoms; added registry/explorer/history/supply-chain families, § A solicitation is not tied to a Connect opportunity, § Workflow template lifecycle, § Changing live labs objects |
 | 2026-04-26 | Initial connect-labs MCP shipped as stdio proxy (9 atoms, Phase 8 only) |
 | 2026-05-02 | Synthetic + workflows atoms added (Phase 7) |
 | 2026-05-09 | `## Synthetic-manifest schema gotchas` added — captures the 5-retry tax observed on `leep-paint-collection` run `20260509-1448`; conform on first attempt to skip it |

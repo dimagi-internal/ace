@@ -104,9 +104,10 @@ help-widget field group sends a reader hunting for a UI element this repo
 elsewhere states is absent — that shipped on
 `hh-poverty-targeting/20260828-0702` and is ace#1811.
 
-**Why there is no API call:** Connect's `update_opportunity` has no widget-config
-parameter (tracked under CCC-301). When it ships, this step becomes a single API
-call and the credentials above become the payload.
+**Why there is no API call:** Connect has no per-opportunity widget field
+(platform fact: `playbook/integrations/connect-api.md § There is no
+per-opportunity OCS widget field (CCC-301)`). When it ships, this step becomes a
+single API call and the credentials above become the payload.
 
 ### Step 4: Widget-handoff eval
 Unless `--no-evals` was passed, invoke the `ocs-widget-handoff-eval` skill.

@@ -7,13 +7,15 @@
 
 ## Overview
 
-The ACE↔OCS integration layer is a composite MCP backend that exposes 22
-atomic OCS capabilities. See the design spec at
+The ACE↔OCS integration layer is a composite MCP backend (`ace-ocs`) exposing 39
+atomic OCS capabilities. Exact signatures: [`docs/atom-schemas.md` § ace-ocs](../../docs/atom-schemas.md)
+(generated, authoritative). See the design spec at
 `docs/superpowers/specs/2026-04-08-ace-ocs-chatbot-buildout-design.md` for
 architecture and rationale.
 
-This doc is the operational reference: which atoms exist, which skill uses
-each, and how to run the MCP server.
+This doc is the operational reference: which atoms exist, which skills use them
+today, how to change a live bot, and how to run the MCP server. None of the atoms is
+build-only — each acts on whatever `experiment_id` / `collection_id` it is given.
 
 ## Running the MCP server
 
@@ -25,37 +27,71 @@ Required environment: see `.env.tpl` (1Password-injectable; the canonical templa
 
 ## Capability map
 
-### Authoring atoms (10) — Playwright backend today, REST targets documented
+Backend per atom: `mcp/ocs/capability-map.ts`. "Typical callers" names skills using the
+atom today, not the only place it may be used.
 
-| Atom | Used by |
+### Chatbots
+
+| Atom | Typical callers |
 |---|---|
-| `ocs_clone_chatbot` | `ocs-agent-setup` |
-| `ocs_set_chatbot_system_prompt` | `ocs-agent-setup` |
-| `ocs_create_collection` | `ocs-agent-setup` |
-| `ocs_upload_collection_files` | `ocs-agent-setup` |
-| `ocs_wait_for_collection_indexing` | `ocs-agent-setup` |
-| `ocs_attach_knowledge` | `ocs-agent-setup` |
-| `ocs_set_chatbot_tools` | `ocs-agent-setup` (optional) |
-| `ocs_set_source_material` | (v2; no v1 skill uses this) |
-| `ocs_publish_chatbot_version` | `ocs-agent-setup` |
-| `ocs_get_chatbot_embed_info` | `ocs-agent-setup` (hybrid: REST + Playwright) |
+| `ocs_clone_chatbot` / `ocs_create_chatbot` | `ocs-agent-setup`, `ocs-coach-setup`, `interview-domain-bootstrap` |
+| `ocs_list_chatbots` / `ocs_get_chatbot` / `ocs_inspect_chatbot` | `ocs-agent-setup`, `ocs-chatbot-qa`, `interview-opp-verify`, `sweep-ocs` |
+| `ocs_set_chatbot_system_prompt` / `ocs_set_chatbot_description` / `ocs_set_chatbot_tools` | `ocs-agent-setup` |
+| `ocs_set_source_material` | (no current caller) |
+| `ocs_publish_chatbot_version` | `ocs-agent-setup`, `ocs-knowledge-refresh`, `ocs-coach-setup` |
+| `ocs_ensure_public_link` / `ocs_get_chatbot_embed_info` | `ocs-agent-setup`, `ocs-widget-handoff-eval`, `ocs-chatbot-qa` |
+| `ocs_delete_chatbot` | `sweep-ocs` |
 
-### Observation atoms (12) — REST backend
+### Pipelines, actions and events
 
-| Atom | Used by |
+| Atom | Typical callers |
 |---|---|
-| `ocs_list_chatbots` | `ocs-agent-setup` (idempotency check) |
-| `ocs_get_chatbot` | `ocs-agent-setup` |
-| `ocs_list_sessions` | `timeline-monitor`, `flw-data-review` |
-| `ocs_get_session` | `timeline-monitor`, `flw-data-review` |
-| `ocs_end_session` | (v2) |
-| `ocs_add_session_tags` | `timeline-monitor`, `flw-data-review` |
-| `ocs_remove_session_tags` | (v2) |
-| `ocs_update_session_state` | (v2) |
-| `ocs_send_test_message` | `ocs-agent-setup` (self-eval) |
+| `ocs_get_chatbot_pipeline_id` / `ocs_set_chatbot_pipeline` / `ocs_add_pipeline_node` / `ocs_delete_pipeline` | `ocs-agent-setup`, `interview-cohort-create`, `sweep-ocs` |
+| `ocs_add_custom_action` / `ocs_link_action_to_node` / `ocs_add_chatbot_event` | (no current caller) |
+
+### Knowledge (collections)
+
+| Atom | Typical callers |
+|---|---|
+| `ocs_create_collection` / `ocs_attach_knowledge` | `ocs-agent-setup` |
+| `ocs_upload_collection_files` / `ocs_wait_for_collection_indexing` | `ocs-agent-setup`, `ocs-knowledge-refresh` |
+| `ocs_list_collection_files` / `ocs_remove_collection_file` | `ocs-knowledge-refresh`, `ocs-chatbot-qa`, `ocs-chatbot-eval` |
+| `ocs_delete_collection` | `sweep-ocs`, `ocs-knowledge-refresh` |
+
+### Sessions and participants
+
+| Atom | Typical callers |
+|---|---|
+| `ocs_send_test_message` | `ocs-agent-setup`, `ocs-chatbot-qa` |
+| `ocs_list_sessions` / `ocs_get_session` / `ocs_add_session_tags` | `timeline-monitor`, `flw-data-review` |
 | `ocs_trigger_bot_message` | `timeline-monitor` (nudges) |
-| `ocs_update_participant_data` | (v2) |
-| `ocs_download_file` | (v2) |
+| `ocs_end_session` | `sweep-ocs` |
+| `ocs_remove_session_tags` / `ocs_update_session_state` / `ocs_update_participant_data` / `ocs_download_file` | (no current caller) |
+
+### Team
+
+| Atom | Typical callers |
+|---|---|
+| `ocs_get_me` | `interview-opp-verify` |
+| `ocs_add_team_member` | `share-run-access` |
+
+## Changing a live bot
+
+A bot readers already use is changed in place; what they see is always the **published**
+version.
+
+| Change | How | Limits |
+|---|---|---|
+| Add / replace knowledge | `ocs_upload_collection_files` → `ocs_wait_for_collection_indexing` → `ocs_publish_chatbot_version` (procedure: `skills/ocs-knowledge-refresh`) | Readers see nothing until the publish |
+| Remove a knowledge file | `ocs_remove_collection_file` → publish | — |
+| Prompt, description, tools | `ocs_set_chatbot_system_prompt` / `_description` / `_tools` → publish | Re-run a quick `ocs-chatbot-qa` after; a prompt edit can regress answers the eval passed |
+| Share the bot | `ocs_ensure_public_link` (idempotent — returns the existing link) | **Never "Regenerate link" in the OCS UI** — it revokes the old URL instantly |
+| Put the bot inside a Connect opportunity | **Not possible** — Connect has no per-opportunity widget field (CCC-301, [`connect-api.md`](connect-api.md#there-is-no-per-opportunity-ocs-widget-field-ccc-301)); share the public link | — |
+| Move the bot to another OCS team | **No atom.** An `ace-ocs` session's team is fixed at server start (`OCS_TEAM_SLUG`) | Clone into the other team instead |
+
+**The public link and the widget serve the PUBLISHED version only.** An edit without
+`ocs_publish_chatbot_version` changes nothing a reader sees — and an unpublished bot
+shows a "not published yet" banner.
 
 ## Troubleshooting
 
@@ -77,10 +113,16 @@ Required environment: see `.env.tpl` (1Password-injectable; the canonical templa
 See spec section "Open verification items" for the 12 items that need
 resolution during implementation. Update this section as each is resolved.
 
+## Related learnings
+
+- `docs/learnings/2026-06-09-ocs-provider-key-revocation-misread-as-outage.md` — the generic "intermittent error" fallback that was a revoked provider key
+- `docs/learnings/2026-05-19-ocs-upload-b64-context-wedge.md` — never pass file bytes inline through a tool argument
+
 ## Change log
 
 | Date | Change |
 |------|--------|
+| 2026-10-18 | Capability map regrouped by resource (39 atoms, was a stale 22); added § Changing a live bot |
 | 2026-08-29 | Corrected the explanation under the widget chat API status-code bullet: the absent-`X-Embed-Key` 201 is explained by `start_session_public` resolving published-or-working and gating on the team WEB channel (OCS #4230), not by the `participant_allowlist` gate OCS deleted in #4275 / ADR-0057. Measured status codes unchanged. ace#1812 |
 | 2026-04-03 | Initial "open questions" doc |
 | 2026-04-08 | Rewritten as operational reference after composite backend ships |

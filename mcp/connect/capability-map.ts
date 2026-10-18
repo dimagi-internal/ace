@@ -6,7 +6,9 @@ export interface CapabilityRoute {
 }
 
 /**
- * The 21 atoms exposed by `ace-connect`.
+ * The 30 capability-routed atoms exposed by `ace-connect` (16 authoring,
+ * 14 observation). `connect_preflight_learn_app_user` is server-local and not
+ * routed here; `commcare_*` atoms route through `backends/commcare.ts`.
  *
  * History:
  * - 0.8.0 shipped 14 atoms (Programs CRUD, Opportunities CRUD, activate,
@@ -39,7 +41,7 @@ export interface CapabilityRoute {
  * yet; the session is still established via OAuth-with-CommCareHQ.
  */
 export type Capability =
-  // Authoring (10)
+  // Authoring (16)
   | 'create_program'
   | 'update_program'
   | 'create_opportunity'
@@ -56,7 +58,7 @@ export type Capability =
   | 'list_flw_invites'
   | 'add_org_member'
   | 'remove_org_member'
-  // Observation (11)
+  // Observation (14)
   | 'list_programs'
   | 'get_program'
   | 'list_delivery_types'

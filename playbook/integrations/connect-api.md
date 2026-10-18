@@ -23,66 +23,124 @@ This document covers `ace-connect`. For `connect-labs`, see that repo's docs.
 
 ## What ace-connect exposes today
 
-Twenty atomic capabilities. Eight of the authoring atoms now go through the
-**REST automation API** that commcare-connect PR #1135 shipped on
-2026-04-30; the remaining atoms still drive HTML form pages via Playwright
-(reads, edits, verification flags, invoices). Both backends share the same
-authenticated session (OAuth-via-CommCareHQ as `ace@dimagi-ai.com`) — REST
-endpoints accept the Django `sessionid` cookie + CSRF token DRF's
-`SessionAuthentication` enforces.
+**31 `connect_*` atoms** (30 routed through `mcp/connect/capability-map.ts`, plus the
+server-local `connect_preflight_learn_app_user`), and the `commcare_*` HQ atoms covered in
+[`commcare-api.md`](commcare-api.md). Exact signatures are in [`docs/atom-schemas.md`
+§ ace-connect](../../docs/atom-schemas.md). That file is generated and authoritative; the
+tables below are a map, not a schema. Write atoms covered by commcare-connect PR #1135's
+**REST automation API** go through it; everything else drives HTML pages via Playwright.
+Both backends share one authenticated session (OAuth-via-CommCareHQ as
+`ace@dimagi-ai.com`). REST endpoints accept the Django `sessionid` cookie + CSRF token that
+DRF's `SessionAuthentication` enforces. `capability-map.ts` gives the backend for each atom.
 
-### Programs (4)
+The "Typical callers" column names skills that use the atom today. None of these atoms is
+build-only: each acts on whatever program or opportunity id it is given.
 
-| Atom | Backend | Used by |
+### Programs
+
+| Atom | Backend | Typical callers |
 |---|---|---|
-| `connect_create_program` | REST `POST /api/programs/` | `connect-program-setup` |
-| `connect_update_program` | Playwright (no REST yet) | `connect-program-setup` |
-| `connect_list_programs` | Playwright | `connect-program-setup` (idempotency check) |
-| `connect_get_program` | Playwright | `connect-program-setup` |
+| `connect_create_program` | REST | `connect-program-setup` |
+| `connect_update_program` | Playwright | `connect-program-setup` |
+| `connect_list_programs` / `connect_get_program` | Playwright | `connect-program-setup` |
 | `connect_list_delivery_types` | Playwright | `connect-program-setup` (resolve "Nutrition" → slug/FK) |
 
-### Opportunities (4)
+### Opportunities
 
-| Atom | Backend | Used by |
+| Atom | Backend | Typical callers |
 |---|---|---|
-| `connect_create_opportunity` | REST `POST /api/programs/<id>/opportunities/` | `connect-opp-setup` |
-| `connect_update_opportunity` | Playwright (no REST yet) | `connect-opp-setup`, `llo-launch` |
-| `connect_list_opportunities` | Playwright | `connect-opp-setup` (idempotency check) |
-| `connect_get_opportunity` | Playwright | `connect-opp-setup`, `llo-launch` |
+| `connect_create_opportunity` | REST | `connect-opp-setup`, `llo-onboarding`, `clone-to-new-workspace` |
+| `connect_update_opportunity` | Playwright | `connect-opp-setup`, `llo-launch` |
+| `connect_list_opportunities` / `connect_get_opportunity` | Playwright | `connect-opp-setup`, `llo-launch`, `timeline-monitor` |
+| `connect_activate_opportunity` | REST | `llo-launch` |
 
-### Per-opp configuration (4)
+### Per-opportunity configuration
 
-| Atom | Backend | Used by |
+| Atom | Backend | Typical callers |
 |---|---|---|
-| `connect_set_verification_flags` | Playwright (no REST yet) | `connect-opp-setup` |
+| `connect_set_verification_flags` | Playwright | `connect-opp-setup` |
+| `connect_set_learn_passing_score` / `connect_get_learn_passing_score` | Playwright (program-scoped init-edit form) | `connect-opp-setup` (repair path); see § Learn `passing_score` below |
 | `connect_list_deliver_units` | Playwright | `connect-opp-setup` (also returned inline by `create_opportunity`) |
-| `connect_create_payment_unit` | REST `POST /api/opportunities/<id>/payment_units/` | `connect-opp-setup` (singular wrapper) |
-| `connect_create_payment_units` | REST same endpoint | `connect-opp-setup` (atomic batch — preferred) |
-| `connect_list_payment_units` | Playwright | `connect-opp-setup` (verify after create) |
+| `connect_create_payment_units` / `connect_create_payment_unit` | REST | `connect-opp-setup` (batch preferred) |
+| `connect_list_payment_units` | Playwright | `connect-opp-setup`, `flw-data-review` (real `max_daily` / `max_total`) |
 
-### Lifecycle (1)
+### Invites, applications and org membership
 
-| Atom | Backend | Used by |
+| Atom | Backend | Typical callers |
 |---|---|---|
-| `connect_activate_opportunity` | REST `POST /api/opportunities/<id>/activate/` | `llo-launch` |
+| `connect_send_llo_invite` | REST | `llo-onboarding` |
+| `connect_accept_program_application` | REST | `connect-opp-setup` (ACE's NM org), `llo-onboarding`; gated, ace#2954 |
+| `connect_list_invites` | Playwright | `llo-onboarding` (status only; it returns an integer row id, so capture the application UUID from the invite POST) |
+| `connect_send_flw_invite` | REST | `connect-opp-setup` Step 7, `llo-launch` |
+| `connect_list_flw_invites` / `connect_delete_unaccepted_flw_invites` | Playwright | `test-worker-pool`, `connect-opp-setup` |
+| `connect_add_org_member` / `connect_list_org_members` / `connect_remove_org_member` | Playwright (HTML form; no REST) | `add-org-member`, `share-run-access`, `release` |
 
-### Invites (4)
+### Progress and invoices
 
-| Atom | Backend | Used by |
+| Atom | Backend | Typical callers |
 |---|---|---|
-| `connect_send_llo_invite` | REST `POST /api/programs/<id>/applications/` | `llo-onboarding` |
-| `connect_accept_program_application` | REST `POST .../accept/` | `connect-opp-setup` (Phase 4, ACE's NM org), `llo-onboarding` (once the partner reads `APPLIED`) — gated, ace#2954 |
-| `connect_send_flw_invite` | REST `POST /api/opportunities/<id>/invite_users/` | `connect-opp-setup` Step 7 / `llo-launch` |
-| `connect_list_invites` | Playwright | `llo-onboarding` (status check) |
-
-### Invoices (2)
-
-| Atom | Backend | Used by |
-|---|---|---|
-| `connect_list_invoices` | Playwright (stub — page shape not yet probed) | `opp-closeout` |
-| `connect_get_invoice` | Playwright (stub) | `opp-closeout` |
+| `connect_get_learn_progress` / `connect_get_deliver_progress` | Playwright | `timeline-monitor`, `flw-data-review`, `app-screenshot-capture` |
+| `connect_preflight_learn_app_user` | server-local | `connect-opp-setup` (checks the Learn-app user before create) |
+| `connect_list_invoices` / `connect_get_invoice` | Playwright (stub; page shape not yet probed) | `opp-closeout` |
 
 ## Data model gotchas
+
+### Connect reads deliver units from the RELEASED build: no release, no payment unit
+
+Connect's `Sync Deliver Units` reads the Connect markers (`<learn:deliver>` /
+`learn_module` / `assessment` blocks) from the app's **released** CCZ on CommCare HQ, not
+from the draft or from Nova. It runs inside `connect_create_opportunity` and from the
+opportunity wizard. If an app has no released build, or its released forms lack markers,
+the deliver-unit list comes back empty. With no deliver units there is no payment unit to
+create, so the opportunity is left half-configured and no error is raised. Markers are set
+in Nova before upload (`skills/app-connect-coverage`). Release mechanics are in
+[`commcare-api.md` § Builds and releases](commcare-api.md#builds-and-releases--the-mechanics).
+
+### One `DeliverUnit` per (holding org, released Deliver app), so reuse cannot create payment units (ace#573)
+
+`DeliverUnit.get_or_create(app=deliver_app, slug)` hangs off the holding org's
+`CommCareApp` row for that `cc_app_id`. Within one holding org, every opportunity wired to
+the same released Deliver app therefore gets the **same `DeliverUnit` PK**, and that unit
+stays bound to the first opportunity's payment unit for good. A second opportunity on the
+same release cannot create its payment unit (`Invalid or already-assigned deliver unit
+IDs`). The fix is a fresh Deliver release (a new `cc_app_id`) for the new opportunity.
+No ACE atom deletes a payment unit, so the old binding cannot be freed. The constraint does
+not cross orgs; see § PM→NM org-URL matrix below.
+
+### Learn `passing_score` lives on the shared `CommCareApp` row, and a create DISCARDS it (ace#1350)
+
+The score is not a field on the opportunity. `CommCareApp` is
+`get_or_create(cc_app_id, cc_domain, organization, hq_server, defaults=...)` with
+`update_existing=False` on the create path
+(`commcare_connect/opportunity/forms.py:556-587`). Two consequences:
+
+- Every opportunity in the holding org that is wired to the same HQ Learn app reads one
+  score, so changing it for one opportunity changes the Learn gate for all of them.
+- A `connect_create_opportunity` against an existing row throws the posted
+  `passing_score` away without raising an error.
+
+`connect_set_learn_passing_score` is the repair. `classifyPassingScoreReadback`
+(`lib/passing-score-readback.ts`) names the cause when a read-back doesn't match. ACE's
+builds avoid this only because every `/ace:run` builds a fresh Learn app. A fork, a
+hand-wired opportunity, or a partner opportunity on a copied app does not.
+
+### Learn completion is one-way per (worker, opportunity)
+
+Connect shows the Deliver app only after the worker completes the Learn modules and passes
+the assessment, and that pass syncs. From then on, "Continue Learning" goes to the Deliver
+gate, so that worker cannot walk the Learn flow again on that opportunity. A consumed
+(worker, opportunity) pair cannot be recovered; the only restore is a fresh opportunity or
+a different worker. Never complete Learn out of band to "diagnose" something. The full
+flow is in `docs/learnings/2026-05-18-connect-gates-deliver-on-learn-completion.md`
+(jjackson/ace#568/#570); the device side is in [`mobile-integration.md`](mobile-integration.md).
+
+### There is no per-opportunity OCS widget field (CCC-301)
+
+`connect_update_opportunity` has no widget or chatbot parameter, and Connect has no
+per-opportunity field for an OCS widget's credentials. Never tell anyone to paste a widget
+key into a Connect field. ACE hands the widget off by link
+([`ocs-integration.md` § Changing a live bot](ocs-integration.md#changing-a-live-bot)).
+Once CCC-301 ships, this becomes a single `update_opportunity` call.
 
 ### An unfinished opportunity has NO dashboard — Connect 302s it to the payment-unit wizard
 
@@ -350,6 +408,45 @@ org: `member_table` (pins `page_size=100`, no page loop), `payment_unit_table`,
 `deliver_unit_table`, `workers/learn`, `workers/deliver`. Reuse
 `parseTablePagination` when one of them starts mattering.
 
+## Changing a live opportunity
+
+This section covers what can be changed on an opportunity that already exists, whether or
+not ACE built it. **Read the current value, make the change, then read it back.**
+Playwright-backed writes report the POST status, not the saved state.
+
+| Change | How | Limits / not possible |
+|---|---|---|
+| Name, description, dates, budget, `active` | `connect_update_opportunity` (Playwright; no REST endpoint yet) | `short_description` and slug are truncated at 50 chars without warning (`docs/learnings/2026-05-12-connect-opp-short-description-50-char-trap.md`). **`target_organization_slug` (the holding org) can only be set at create time**, so a wrong holding org cannot be repaired; recreate the opportunity. |
+| Verification flags | `connect_set_verification_flags` (Playwright) | PM-only page, served only when the request org ≠ the holding org (§ PM→NM org-URL matrix) |
+| Learn passing score | `connect_set_learn_passing_score` | Shared by every opportunity in the holding org on the same Learn app (§ above), so changing it for one changes it for all |
+| Add a payment unit | `connect_create_payment_units` | Needs an unbound deliver unit, and a reused Deliver release has none (ace#573) |
+| **Change or delete a payment unit (amount, caps, deliver units)** | **No atom; ACE cannot do this.** | Do it in the Connect UI, or create a new opportunity on a fresh Deliver release. |
+| **Delete an opportunity** | **No atom.** | Deactivate it (`connect_update_opportunity` `active: false`) or delete it in the Connect UI. A deactivated opportunity is still listed (§ above). |
+| Invite / remove workers | `connect_send_flw_invite`, `connect_delete_unaccepted_flw_invites` | The opportunity must be `active` for `/invite_users/` |
+| Add an LLO to the program | `connect_send_llo_invite` → `connect_accept_program_application`, then a new opportunity held by that org | Capture the application UUID from the invite POST; `connect_list_invites` never returns it |
+| Ship a new app version to a live opportunity | Re-release the app (`commcare-api.md` § Builds and releases) | **UNVERIFIED; see below** |
+
+**UNVERIFIED residual: does a live opportunity pick up a re-released app?** Nothing in this
+repo has observed it.
+
+Known:
+- Connect reads markers from the released build (§ above).
+- The HQ app id stays the same across re-uploads.
+
+Not known:
+- Whether an existing opportunity re-syncs its deliver units on a new release, or only
+  when someone clicks `Sync Deliver Units` in the wizard.
+- Whether a new marker or module creates a new deliver unit that then needs its own
+  payment unit.
+- Whether workers' devices update to the new build before their next visit.
+
+Until someone observes this on a real opportunity:
+- After a release that changes Connect markers (forms, modules, deliver-unit slugs),
+  check `connect_list_deliver_units` and `connect_list_payment_units`.
+- A release that changes only form content is low risk.
+
+Record what you observe here.
+
 ## Operator runbook
 
 ### Required env vars (all 1Password-backed in `.env.tpl`)
@@ -512,7 +609,7 @@ released Learn `cc3aaedcfa9a47729873d4915e12d226` / Deliver
 | `connect_get_learn_passing_score` | HTML, program-scoped | ✅ 80 | ❌ 404 | the init-edit form lives under the program's org |
 | `connect_list_opportunities` | HTML | ✅ lists it (`holding_organization_name: ace-nm-org`) | ✅ lists it | the two orgs render different table classes (`OpportunityList.get_table_class`); until ace#2506 the parser read only the PM one — 0 rows at the NM org, and the PM table's holding-org subtitle mislabelled `short_description` |
 
-**Rule for ACE: act at the PM org's URL for everything in Phases 4–6.** Every
+**Rule for ACE: act at the PM org's URL for every opportunity operation**, both in Phases 4–6 of a build and for any later change to a live opportunity. Every
 surface above serves there, including the ones that do not serve at the NM org.
 The holding org matters for WHERE the opportunity lives (its canonical URL,
 reviewer membership — `share-run-access` grants viewer in the holding org, which
@@ -562,3 +659,11 @@ be provisioned for this kind of dogfood.
 
 If a real staging URL becomes available, set `CONNECT_BASE_URL` in `.env`
 to point at it; no other code changes needed.
+
+## Related learnings
+
+- `docs/learnings/2026-05-12-connect-opp-short-description-50-char-trap.md` — `short_description` silently truncated at 50
+- `docs/learnings/2026-05-17-connect-slug-length-50-char-trap.md` — `LearnModule` / `DeliverUnit` slug 50-char 500
+- `docs/learnings/2026-05-12-connect-uncaught-domain-exceptions.md` — view-handler exceptions surface as opaque 500s
+- `docs/learnings/2026-05-18-connect-gates-deliver-on-learn-completion.md` — Learn completion gates Deliver (one-way)
+- `docs/learnings/2026-05-14-invite-verification-deferred.md` — the invite-verification atom that was designed, not shipped

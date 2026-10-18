@@ -693,6 +693,9 @@ gate is the loop's own `terminal_status`, not anyone's read of the screenshots.
 
 ### Step 3.92: Freeze the report pages (EVERY terminal status)
 
+Platform mechanics of follow / freeze / refollow:
+`playbook/integrations/connect-labs.md § Workflow template lifecycle`.
+
 **Runs once the DDD loop has ended — whatever its `terminal_status` — before any
 preview, write-back or release.** While a run is live its reports follow ACE's
 template workflows, so a later run's publish would change this run's pages: the

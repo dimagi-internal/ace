@@ -612,3 +612,14 @@ Both files land in the failing dispatch's own output dir (`<screenshotDir>/<reci
 - `commands/mobile-bootstrap.md` — operator-facing one-time setup
 - `docs/superpowers/specs/2026-04-28-ace-mobile-emulation-design.md` — design rationale
 - `docs/atom-schemas.md` — canonical Zod-schema catalog (regenerate via `npx tsx scripts/dump-atom-schemas.ts`)
+
+## Related learnings
+
+- `docs/learnings/2026-05-21-parallel-session-adb-leak.md`
+- `docs/learnings/2026-05-22-commcare-2.63.0-backup-code-cells.md`
+- `docs/learnings/2026-05-26-deliver-atlas-coverage.md`
+- `docs/learnings/2026-05-26-phase6-debug-arc-corrected.md`
+- `docs/learnings/2026-05-27-bednet-permission-dialog-misdiagnosis.md`
+- `docs/learnings/2026-05-27-demo-user-rotation.md`
+- `docs/learnings/2026-06-01-selector-map-calibration-framework.md`
+- `docs/learnings/2026-07-30-recording-validation-and-injected-seam-blindness.md`
