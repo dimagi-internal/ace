@@ -2045,6 +2045,24 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     description: 'Static QA of the seeded responses against live labs reads: count, required answers, winner bound to llo_org (llo_entity_id + Connect org_id), no real-org impersonation, no deny-listed party, call still private, ACE-only submitter addresses.',
   },
   // [optional-track:PR5b solicitation-google-form]
+  {
+    path: '8-solicitation-management/solicitation-google-form_record.md',
+    producedBy: 'solicitation-google-form',
+    role: 'record',
+    consumedBy: ['solicitation-google-form-qa'],
+    phase: 'solicitation-management',
+    required: false,
+    description: 'The public Google Form mirroring the solicitation, only on a run with optional_steps.google_form (off by default). Frontmatter: form_id, edit_url, responder_url, status, question_map (form question id -> solicitation question id), deny_list_source, imported[] (form_response_id -> labs_response_id, the import idempotency key).',
+  },
+  {
+    path: '8-solicitation-management/solicitation-google-form-qa_result.yaml',
+    producedBy: 'solicitation-google-form-qa',
+    role: 'qa-result',
+    consumedBy: ['opp-eval'],
+    phase: 'solicitation-management',
+    required: false,
+    description: 'Static check of the live form against the live solicitation: 8 checks (record complete, every question mirrored, live items carry their refs, banner on a private call, no deny-listed party, responder link open to an anonymous fetch, run_state products match, no duplicate imports).',
+  },
 
   // ── Execution Management phase (Phase 9) ───────────────────────
   // Renamed from llo-manager (was Phase 7) in 0.12.0; renumbered to Phase 8 in 0.13.0.

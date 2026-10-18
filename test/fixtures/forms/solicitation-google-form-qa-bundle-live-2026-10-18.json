@@ -1,0 +1,144 @@
+{
+  "_source": "Live round trip 2026-10-18 as ace-service-account@connect-labs.iam.gserviceaccount.com: buildFormSpec(solicitation 1000001 fixture, visibility private, deny_list GiveDirectly/Give Directly/GD) -> forms_create_from_spec into ACE/_scratch -> forms_set_publish_settings(anyoneWithLinkCanRespond) -> anonymous fetch -> one anonymous POST to formResponse -> forms_list_responses -> get_google_form_definition. The form was then closed and trashed (1ba4bB4okSMYHxH5l_VYJBTAGPdB4vYKeiTDMHJOyf9o). This is the QA evidence bundle exactly as assembled from those reads; solicitation.is_public is false because the form was built as a private (demonstration) call.",
+  "record": {
+    "solicitation_id": 1000001,
+    "form_id": "1ba4bB4okSMYHxH5l_VYJBTAGPdB4vYKeiTDMHJOyf9o",
+    "edit_url": "https://docs.google.com/forms/d/1ba4bB4okSMYHxH5l_VYJBTAGPdB4vYKeiTDMHJOyf9o/edit?usp=drivesdk",
+    "responder_url": "https://docs.google.com/forms/d/e/1FAIpQLSfqhQQSudBVF1Om_vyEF6T3ZynSnTdIYxwXmpfqbuwYLBZfeQ/viewform",
+    "status": "open",
+    "question_map": {
+      "54149149": "timeline",
+      "74a3a778": "__org_name",
+      "5a1b4df1": "__contact_name",
+      "027b6fef": "__contact_email",
+      "592ab88d": "org-profile",
+      "2868d709": "experience",
+      "67a25815": "facility-access",
+      "0a1fdb4a": "staffing",
+      "3c778091": "supervision",
+      "5d06ff81": "safeguarding",
+      "044eadb0": "budget"
+    },
+    "imported": []
+  },
+  "solicitation": {
+    "id": 1000001,
+    "is_public": false,
+    "questions": [
+      {
+        "id": "org-profile"
+      },
+      {
+        "id": "experience"
+      },
+      {
+        "id": "facility-access"
+      },
+      {
+        "id": "staffing"
+      },
+      {
+        "id": "supervision"
+      },
+      {
+        "id": "safeguarding"
+      },
+      {
+        "id": "budget"
+      },
+      {
+        "id": "timeline"
+      }
+    ]
+  },
+  "form": {
+    "title": "[Demonstration example — not a live call] Newborn Care Companion Classes, Kano State, Nigeria",
+    "description": "[Demonstration — not a live call.] Created by ACE to exercise the Labs workflow; responses are synthetic.\n\nThis is a demonstration, not a live call for proposals. This listing is an illustrative example prepared by Dimagi from public information only, to show how a caregiver-education program could be solicited and run through Connect. It is not a call for proposals from Noora Health. Noora Health has not issued, requested, reviewed or endorsed it, has not announced any program in Nigeria, and has no stated relationship with Dimagi or Connect. No implementing organization has been selected or contacted, no funds are committed, and no award will be made from this listing.\nWhy this matters\n\nNewborn deaths in Nigeria are high and have not fallen. The 2023–24 Nigeria Demographic and Health Survey reports neonatal mortality of 41 per 1,000 live births, about one newborn in 25, and officials at the report launch described it as almost unchanged from 2018. The burden is heaviest in the north: 48 per 1,000 in the North West zone, and 59 per 1,000 in Kano State, the highest state estimate in the survey, measured on a large sample of births.\n\nApplications close 2026-10-29.",
+    "items": [
+      {
+        "item_id": "34da5859",
+        "title": "Organisation name",
+        "description": "The organisation applying. Write \"Individual\" if you are applying on your own.\n\n[ref: __org_name]",
+        "kind": "short_answer",
+        "required": true
+      },
+      {
+        "item_id": "7cdddb5b",
+        "title": "Your name",
+        "description": "The person we should contact about this application.\n\n[ref: __contact_name]",
+        "kind": "short_answer",
+        "required": true
+      },
+      {
+        "item_id": "6cdf7a91",
+        "title": "Your email",
+        "description": "[ref: __contact_email]",
+        "kind": "short_answer",
+        "required": true
+      },
+      {
+        "item_id": "77e84562",
+        "title": "Tell us about your organization: its legal registration in Nigeria, where it is based and where it works, its size, and the health programs it currently runs.",
+        "description": "We want to know who would hold this work: a registered Nigerian organization with a base in or near Kano State.\n\n[ref: org-profile]",
+        "kind": "paragraph",
+        "required": true
+      },
+      {
+        "item_id": "0424f46a",
+        "title": "Describe your maternal and newborn health work in Kano State or the North West in the last three years, including any work in public facilities and any group education for mothers or families.",
+        "description": "A strong answer names specific maternal and newborn health projects in Kano or the North West, with their scale, their funder or partner, and what was delivered.\n\n[ref: experience]",
+        "kind": "paragraph",
+        "required": true
+      },
+      {
+        "item_id": "608a6f02",
+        "title": "Which public secondary-level facilities in Kano State would you work in (up to 20, across Kano metropolitan and other Local Government Areas where possible), and what written permission do you already hold or expect from the Kano State Ministry of Health or facility management? How long would securing the remaining permissions take?",
+        "description": "Classes can only run in facilities where written permission is in hand, so this is the single biggest determinant of whether the pilot can start on time.\n\n[ref: facility-access]",
+        "kind": "paragraph",
+        "required": true
+      },
+      {
+        "item_id": "30cde0ac",
+        "title": "How would you recruit, contract and supervise 16–20 caregiver educators who meet the qualifications and speak Hausa? Who in your team would review the Hausa text of the Learn and Deliver apps before classes start, and how would you support educators through the Learn app?",
+        "description": "Educators must be qualified (nurse, midwife or licensed community health extension worker), fluent in Hausa and confident with groups; we also need a native Hausa speaker to review the app text.\n\n[ref: staffing]",
+        "kind": "paragraph",
+        "required": true
+      },
+      {
+        "item_id": "2db1d50f",
+        "title": "How would you run the monthly phone checks with caregivers who agreed to be called (including oversampling classes recorded at 3 or 4 caregivers) and the in-person class observations? Who would do them, how many educators would each supervisor cover, and what would you do when a check does not confirm a class?",
+        "description": "Attendance is the claim most open to inflation, so the monthly phone checks and class observations are what make each paid class trustworthy.\n\n[ref: supervision]",
+        "kind": "paragraph",
+        "required": true
+      },
+      {
+        "item_id": "24646bbc",
+        "title": "How would you make sure educators obtain group consent, never record names or photograph faces, collect phone numbers only with consent, and take any caregiver reporting a danger sign to ward staff immediately? How would you store and restrict access to phone-check lists, and what data protection obligations would you expect to meet in Nigeria?",
+        "description": "Families are recorded without names, phone numbers only with consent, and photos never show faces; a caregiver who reports a danger sign must reach ward staff at once.\n\n[ref: safeguarding]",
+        "kind": "paragraph",
+        "required": true
+      },
+      {
+        "item_id": "1e3e60aa",
+        "title": "Propose your all-in rate per verified class: the educator's amount (within NGN 4,000–6,000) and your organization's amount. State how much of the all-in rate is paid to the worker vs. commodity and delivery costs (supervision, phone checks, observations, transport, dolls and materials, reporting), and show briefly how your organization's share covers those costs for 20 facilities over about six months. Is a fixed start-up payment of NGN 1,600,000 adequate for recruitment, permissions and demonstration dolls? If not, what would you need and why?",
+        "description": "The per-class rate is all-in. We want to see what reaches the educator and what covers your organization's costs, and whether the proposed start-up payment is enough.\n\n[ref: budget]",
+        "kind": "paragraph",
+        "required": true
+      },
+      {
+        "item_id": "25784ae6",
+        "title": "When could you start, given mobilization from late November 2026 and paid classes from 11 January to 2 May 2027? Name the main risks to that timeline and how you would manage them.",
+        "description": "The planned delivery window is 11 January to 2 May 2027, after about six weeks of mobilization and training.\n\n[ref: timeline]",
+        "kind": "paragraph",
+        "required": true
+      }
+    ]
+  },
+  "anonymous_http_status": 200,
+  "deny_list": [
+    "GiveDirectly",
+    "Give Directly",
+    "GD"
+  ],
+  "run_products_google_form": null
+}
