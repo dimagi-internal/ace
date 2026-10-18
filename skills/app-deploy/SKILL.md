@@ -202,7 +202,31 @@ orchestrator from per-skill QA + eval verdicts. -->
      the same change is already saved in Nova (so the next successful Nova
      upload is a content no-op). Anything structural waits for the upload.
 
-4. **Upload Deliver app.** Same shape — `/nova:upload_to_hq <deliver_app_id> <ACE_HQ_DOMAIN>` — including the `domain_not_authorized` and `project_space_incompatible` handling.
+   **Handle `hq_confirmation_needed` — verify against HQ, then confirm
+   (ace#3164).** Some things an app needs from the space cannot be read with
+   any API key, so the upload refuses BEFORE any remote write and lists them in
+   `confirmations_needed[]` (each `{kind, subject, label, consequence,
+   reasons}`). Every Connect app hits this once per app — the confirmation is
+   then stored on the deployment (`deployment.confirmations`). Seen live on
+   `bednet-check-2-visit/20261018-0554`: `plan-feature: data-forwarding` and
+   `connect-forwarder`, on both apps. **Never confirm blind** — the
+   consequence of a false "yes" is that HQ forwards no forms to Connect and no
+   Learn or Deliver progress is ever recorded. Verify each item with ACE's own
+   HQ session first:
+
+   | `kind` / `subject` | Verify with | Confirm when |
+   |---|---|---|
+   | `plan-feature` / `data-forwarding` | `commcare_get_subscription({domain})` | `edition` is Pro, Advanced or Enterprise |
+   | `connect-forwarder` | `commcare_list_connections({domain})` | a connection's `url` is `https://connect.dimagi.com/api/receiver/` and `used_by` includes Data Forwarding |
+   | anything else (`flat_location_fixture`, another plan feature) | no ACE probe yet | do NOT confirm — `[BLOCKER]` naming the item for the operator |
+
+   Then re-call the upload with `confirm_plan_features: [<subject>, …]` and/or
+   `confirm_connect_forwarder: true`, and record each confirmation with its
+   evidence (edition; connection id + url) under `nova_confirmations` in the
+   Step 5 summary. A failed verification is a `[BLOCKER]` naming what the space
+   lacks — do not confirm to get past it.
+
+4. **Upload Deliver app.** Same shape — `/nova:upload_to_hq <deliver_app_id> <ACE_HQ_DOMAIN>` — including the `domain_not_authorized`, `project_space_incompatible` and `hq_confirmation_needed` handling.
 
 4.5. **Verify the target space can run each app** (ace#1048). Some
    CommCare capabilities only work when the project space supports them (a
@@ -565,3 +589,4 @@ When `--dry-run` is active:
 | 2026-08-18 | **Step 4.6 — HQ uploads UPDATE IN PLACE; the fresh-app-id premise is retired.** The 2026-08-13 entry above rested on "CCHQ has no atomic app-update API, so every `upload_app_to_hq` mints a fresh application document." That is no longer true, and the whole orphan-per-re-upload model went with it. Verified live against `connect-ace-prod` on 2026-08-18: Nova app `4dd0325b…` re-uploaded twice returned `hq_app_action: "updated"` both times, held `hq_app_id: c0d7027316bc46f8b4fdf4b47fd8d90b` constant, advanced `deployment.remote_revision` 6 → 8, and returned `left_behind: []` each time. So a mid-run re-upload no longer changes the id Phase 4 wires into the Connect opportunity, and no longer strands an orphan for `/ace:sweep hq`. The `left_behind` cleanup and its guard rails STAY — Nova still returns the field, and the id can still change via `remote_app_missing` (the linked HQ app was deleted there, so the next upload creates a fresh one). Adds `{learn,deliver}_hq_app_action` to the summary frontmatter; the loud callout now fires on an id that actually CHANGED (non-empty `left_behind`, or `hq_app_action: created` for an app already uploaded this run) rather than on every re-upload. | ACE team |
 | 2026-09-06 | **Stop routing concerns to a gate brief that does not exist (dimagi-internal/ace#1884).** 0.13.116 removed the per-skill gate-brief file class and the ace#1880 sweep removed the remaining `*.md` PATHS, but prose directives naming the gate brief as a DESTINATION survived in 15 files — a concern "surfaced in the gate brief" is surfaced nowhere. Repointed at the verdict YAML's `auto_surfaced` block, which is what the orchestrator actually renders the pause summary from. Gated by the new destination check in `test/skills/gate-brief-removal-complete.test.ts`. | ACE team |
 | 2026-09-28 | **Private-work edits and an unsaved-work gate (voidcraft-labs/commcare-nova#693).** Nova now stages every mutation until `save_work`, and `upload_app_to_hq` reads only the SAVED app — so an unsaved ACE edit ships nowhere with no error. Step 2.5's `edit_field` fixes run in `begin_work` / `save_work` and must answer `saved: true` before upload; new Step 2.9 checks `list_work({app_id})` for pending changes and halts `unsaved-nova-work` rather than uploading past them. | ACE team |
+| 2026-10-18 | **Handle `hq_confirmation_needed` (ace#3164).** Nova's upload now refuses before any remote write until the caller confirms what no API key can read — on `bednet-check-2-visit/20261018-0554` the Data Forwarding plan feature and a Connect forwarder, on both apps. The skill had no branch for it, so an unattended run had to halt or guess. Steps 3/4 now verify each item against HQ (`commcare_get_subscription` edition; `commcare_list_connections` for the connect.dimagi.com receiver) before re-calling with `confirm_plan_features` / `confirm_connect_forwarder`, record the evidence in the summary, and BLOCK on anything unverifiable. | ACE team |
