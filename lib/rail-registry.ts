@@ -289,6 +289,7 @@ export const RAILS: Readonly<Record<string, RailProvenance>> = {
   'test/skills/phase7-cascade-contract.test.ts': { issues: ['ace#2510'], observed: 'spark-facilitator/20260925-1536' },
   'test/skills/phase4-pm-nm-holding-org.test.ts': { issues: ['ace#2419'], observed: 'spark-facilitator/20260925-1536' },
   'test/skills/post-build-components-not-briefed.test.ts': { issues: ['ace#1632'], observed: 'bednet-check-2-visit/20260825-1310' },
+  'test/skills/inputs-parameterized.test.ts': { issues: ['ace#3148'] },
   'test/skills/predictive-guard-citation.test.ts': { issues: ['ace#1238'], observed: 'turmeric-market-study/20260914-1742' },
   'test/skills/qa-check-count-drift.test.ts': { issues: ['ace#2272', 'ace#1420', 'ace#1783'], observed: 'bednet-check-2-visit/20260908-1544' },
   'test/skills/qa-export-format.test.ts': { issues: ['ace#1609', 'ace#1617', 'ace#2169', 'ace#2178', 'ace#952'] },
