@@ -19,6 +19,8 @@ auto-fix protocol, static-vs-LLM rules).
 
 ## Inputs
 
+Pipeline-only: checks a `demo-data-setup` handoff, which exists only inside a demo or Phase 7 run.
+
 | Source | Artifact | Used for |
 |---|---|---|
 | `demo-data-setup` | `<demo-run>/7-synthetic/realized.json` | the handoff under check |

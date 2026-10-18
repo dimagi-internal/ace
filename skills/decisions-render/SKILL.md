@@ -14,6 +14,8 @@ write the result to `decisions.gdoc` at one stable URL.
 
 ## Inputs
 
+Pipeline-only: renders a run's `decisions.yaml`, which exists only in a run.
+
 | Source | Artifact | Used for |
 |---|---|---|
 | Per-run state | `ACE/<opp-name>/runs/<run-id>/decisions.yaml` | the structured log to render |

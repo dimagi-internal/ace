@@ -35,6 +35,8 @@ sibling, `skills/_eval-template.md` for shared contracts, and
 
 ## Inputs
 
+Pipeline-only: grades the opportunity a run's Phase 4 configured against that run's PDD; to check a live opportunity, read it with `connect-opp-modify`'s before-read.
+
 | Source | Artifact | Used for |
 |---|---|---|
 | Phase 1 | `1-design/idea-to-pdd.md` | source PDD; Evidence Model + Operational caps drive expectation |

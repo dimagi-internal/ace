@@ -12,6 +12,8 @@ Fill the ace-web `partnership-pitch` video template with the run's produce-phase
 
 ## Inputs
 
+Pipeline-only: a step of a `/ace:partnership-video` run; it reads that run's research, angles and micro-demo.
+
 | Source | Artifact | Used for |
 |---|---|---|
 | Phase 1 profile | `ACE/partnerships/<slug>/prospect.yaml` | Prospect name, logo ref, region, sector, program URL, slug |

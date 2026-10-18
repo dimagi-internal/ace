@@ -47,31 +47,15 @@ const RUN_ARTIFACT =
 const PARAM_MARKER =
   /Resolver|explicit|--[a-z][a-z-]+|\bargument|\bparameter|\bcaller[- ]supplied|\bpassed in|\bpipeline-only/i;
 
-/** Skills whose `## Inputs` were run-only when the rule landed (2026-10-18). */
+/**
+ * Skills whose `## Inputs` were run-only when the rule landed (2026-10-18), and
+ * are still. 80 at the start; batches 1-4 (#3156, #3157, #3180, batch 4b)
+ * paid the rest down. These six were left for the optional-labs-E2E track,
+ * whose PRs own `solicitation-*` while it is in flight (#3148).
+ */
 const LEDGER = new Set<string>([
-  'app-ux-eval', 'build-targeting-model', 'connect-opp-setup-eval',
-  'connect-program-setup-eval', 'decisions-render', 'decisions-sync', 'demo-data-setup-qa',
-  'demo-fidelity-check', 'feedback-ledger', 'idea-to-pdd', 'idea-to-pdd-eval',
-  'learnings-summary-eval', 'llo-invite', 'llo-uat-eval', 'ocs-widget-handoff-eval',
-  'partnership-angles', 'partnership-angles-eval', 'partnership-deck-build',
-  'partnership-deck-build-eval', 'partnership-microdemo', 'partnership-microdemo-eval',
-  'partnership-research-eval', 'partnership-research-qa', 'partnership-video-build',
-  'partnership-video-build-eval', 'pdd-to-app-journeys', 'pdd-to-app-journeys-eval',
-  'pdd-to-deliver-app-eval', 'pdd-to-learn-app', 'pdd-to-learn-app-eval',
-  'pdd-to-test-prompts', 'pdd-to-test-prompts-eval', 'pdd-to-test-prompts-qa',
-  'pdd-to-work-order-eval', 'pdd-to-work-order-qa', 'share-run-access',
   'solicitation-create', 'solicitation-create-eval', 'solicitation-monitor',
   'solicitation-review', 'solicitation-review-eval', 'solicitation-review-qa',
-  'synthetic-data-generate-eval', 'synthetic-narrative-plan-eval',
-  'synthetic-narrative-plan-qa', 'synthetic-summary', 'synthetic-summary-eval',
-  'synthetic-walkthrough-spec', 'synthetic-walkthrough-spec-eval',
-  'synthetic-walkthrough-spec-qa', 'synthetic-workflow-polish-eval',
-  'synthetic-workflow-seed-eval', 'target-geographies', 'training-deck-generate',
-  'training-deck-generate-eval', 'training-deck-render-eval', 'training-faq',
-  'training-faq-eval', 'training-flw-guide', 'training-flw-guide-eval',
-  'training-llo-guide', 'training-llo-guide-eval', 'training-onboarding-email',
-  'training-onboarding-email-eval', 'training-quick-reference',
-  'training-quick-reference-eval', 'video-spec-eval', 'video-spec-qa',
 ]);
 
 const repoRoot = new URL('../..', import.meta.url).pathname;

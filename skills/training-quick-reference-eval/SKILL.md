@@ -29,6 +29,8 @@ calibration TBD until 3+ shipped quick-references produce ground truth.
 
 ## Inputs
 
+Pipeline-only: grades a run's quick-reference card, which exists only in a run.
+
 | Source | Artifact | Used for |
 |---|---|---|
 | Phase 6 | `6-qa-and-training/training-quick-reference.md` | artifact under judgment |

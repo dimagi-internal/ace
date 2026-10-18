@@ -14,6 +14,8 @@ The companion `pdd-to-test-prompts-eval` grades quality (specificity of expected
 
 ## Inputs
 
+Pipeline-only: checks a run's test-prompt suite, which exists only in a run.
+
 | Source | Artifact | Used for |
 |---|---|---|
 | Phase 1 producer | `2-scenarios/pdd-to-test-prompts.md` | the test prompts file under structural check |

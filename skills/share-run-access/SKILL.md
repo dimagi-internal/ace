@@ -125,6 +125,8 @@ grants membership and tells the person the one sign-in they must do themselves.
 
 ## Inputs
 
+Pipeline-only: grants access to ONE run's products, so the run is the object (`run_state.yaml` resolves its org, domain, team and opportunity). Every row below is an explicit argument. To give someone access to a live program's objects outside a run, grant them through `partner-on-connect-program` § Changing a live program.
+
 | Input | Required | Notes |
 |---|---|---|
 | `opp` (slug) + `run_id` | yes | Resolves `run_state.yaml` for the org/domain/team/opp identifiers below. |

@@ -20,6 +20,10 @@ This is the most load-bearing of the operate-category rubrics. See
 `docs/eval-calibration-learnings.md` for patterns observed building
 the first 4 strongly-calibrated rubrics.
 
+## Inputs
+
+Pipeline-only: grades a run's go-live record, which exists only in a run. Its inputs are listed in § Process.
+
 ## Process
 
 1. **Read inputs from GDrive:**

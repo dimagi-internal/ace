@@ -14,6 +14,10 @@ the definitions are **right** and whether a person who runs the programme would
 recognise them as theirs. Shared contract: [`skills/_eval-template.md`](../_eval-template.md).
 Skipped when `semantic-registry-author-qa` failed irrecoverably.
 
+## Inputs
+
+Pipeline-only: grades a run's PDD-authored semantic registry, which exists only in a run. Its inputs are listed in § Process.
+
 ## Process
 
 1. Read `7-synthetic/semantic-registry-author_registry.json`,

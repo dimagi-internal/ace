@@ -34,6 +34,8 @@ methodology, different dimensions tuned to Learn-app concerns. See
 
 ## Inputs
 
+Pipeline-only: grades a run's Nova-built Learn app against its PDD, which exists only in a run.
+
 | Source | Artifact | Used for |
 |---|---|---|
 | Phase 1 | `1-design/idea-to-pdd.md` | source PDD; archetype + Learn App Specification drive expectation |

@@ -14,6 +14,8 @@ right after `idea-to-pdd`.
 
 ## Inputs
 
+Pipeline-only: derives the chatbot test prompts from a run's approved PDD, which exists only in a run.
+
 | Source | Artifact | Used for |
 |---|---|---|
 | Phase 1 | `1-design/idea-to-pdd.md` | source PDD; archetype field drives category branching |

@@ -21,6 +21,8 @@ questions.
 
 ## Inputs (read from Drive)
 
+Pipeline-only: derives the FAQ from a run's PDD and app summaries. For a live program's materials, run it in a run on that program.
+
 | Source | Artifact | Used for |
 |---|---|---|
 | Phase 1 | `ACE/<opp>/runs/<run-id>/1-design/idea-to-pdd.md` | escalation triggers, evidence model rules, opp framing, support contact |

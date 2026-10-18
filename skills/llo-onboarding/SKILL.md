@@ -62,6 +62,18 @@ immediately. Branch the message on whether Phase 8 ran:
 Either way the skill onboards exactly one org — the single-awardee
 model that replaced the multi-LLO roster in `connect-setup/invites.md`.
 
+## Inputs
+
+| Parameter | Used for | Resolver |
+|---|---|---|
+| `llo` (`org_slug`, `contact_email`, `contact_name`) | the one org onboarded | explicit arg; default: the current run's run_state `phases.solicitation-management.products.selected_llo`; else the PDD § Program Parameters (operator path, see above) |
+| `program_id`, `program_org`, `source_apps`, opportunity and payment-unit parameters | handed to `connect-partner-opp-create` (Step 2) | explicit arg; defaults as in that skill's § Inputs |
+| `training_folder` | the training pack linked in the email | explicit arg; default: `6-qa-and-training/` in the current run |
+| `widget` (`public_id`, `embed_key`) | the chatbot link in the email | explicit arg; default: `5-ocs/ocs-agent-setup.md` |
+| `award_record` | award amount and context for the email (solicitation path only) | explicit arg; default: `8-solicitation-management/solicitation-review_award-record.md` |
+
+Inside a run, the Phase 9 entry guard above applies. Outside one (a new partner on a live program), pass `llo` and the rest explicitly; the results go to the program context doc instead of `selected_llo`.
+
 ## Process
 
 1. **Read inputs from GDrive:**

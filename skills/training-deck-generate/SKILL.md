@@ -20,6 +20,8 @@ Upstream of `training-deck-render`.
 
 ## Inputs (read from Drive)
 
+Pipeline-only: derives the deck spec from a run's PDD, app summaries and screenshots. For a live program's materials, run it in a run on that program.
+
 | Source | Artifact | Used for |
 |---|---|---|
 | Phase 1 | `ACE/<opp>/runs/<run-id>/1-design/idea-to-pdd.md` | Opportunity description, requirements, targets |

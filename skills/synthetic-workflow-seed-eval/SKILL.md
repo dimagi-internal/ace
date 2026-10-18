@@ -31,6 +31,8 @@ populated fields.
 
 ## Inputs
 
+Pipeline-only: grades the workflows a run's Phase 7 seeded, which exists only in a run.
+
 - `ACE/<opp-name>/runs/<run-id>/7-synthetic/synthetic-workflow-seed.md`
 - `ACE/<opp-name>/runs/<run-id>/7-synthetic/synthetic-narrative-plan.yaml` OR `synthetic-data-generate_manifest.yaml` — anchor for KPI count + coaching arc count expected
 - `ACE/<opp-name>/opp.yaml` — `synthetic.workflows.{llo_weekly_review_id, program_admin_audit_id}`

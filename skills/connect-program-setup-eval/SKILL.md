@@ -36,6 +36,8 @@ and anti-patterns from the first calibrated rubrics.
 
 ## Inputs
 
+Pipeline-only: grades the program a run's Phase 4 set up against that run's PDD.
+
 | Source | Artifact | Used for |
 |---|---|---|
 | Phase 1 | `1-design/idea-to-pdd.md` | source PDD; Evidence Model + verification spec drive expectation |

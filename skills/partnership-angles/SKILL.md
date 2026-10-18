@@ -12,6 +12,8 @@ Ground every one of the three library narrative templates (`day-in-the-life`, `t
 
 ## Inputs
 
+Pipeline-only: a step of a `/ace:partnership-video` run; it reads that run's research.
+
 | Source | Artifact | Used for |
 |---|---|---|
 | `partnership-research` | `ACE/partnerships/<slug>/research/deep-research.md` | Cited org profile: scale, model, geography, expansion thesis |

@@ -19,10 +19,12 @@ protocol, static-vs-LLM rules).
 
 ## Inputs
 
-| Source | Artifact | Used for |
+| Parameter | Used for | Resolver |
 |---|---|---|
-| `demo-data-setup` (clone) | the profile bundle dir (from `synthetic_profile_from_prod` / `synthetic_clone_profile`) | the fixtures under fidelity check |
-| `demo-data-setup` (clone) | `run_state…products.synthetic.source` | provider must be `clone` (skip otherwise) |
+| `bundle_dir` | the profile bundle under fidelity check (from `synthetic_profile_from_prod` / `synthetic_clone_profile`) | explicit arg; default: the `demo-data-setup` (clone) handoff |
+| `provider` | must be `clone`; anything else skips | explicit arg; default: run_state `…products.synthetic.source` |
+
+Given `bundle_dir`, this runs on any cloned dataset, with or without a demo run.
 
 ## Products
 

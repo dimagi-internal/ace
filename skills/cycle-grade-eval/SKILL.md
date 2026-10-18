@@ -23,6 +23,10 @@ See `skills/eval-calibration/SKILL.md` for the methodology and
 `docs/eval-calibration-learnings.md` for patterns observed across
 the first 4 strongly-calibrated rubrics.
 
+## Inputs
+
+Pipeline-only: grades a run's cycle-grade report, which exists only in a run. Its inputs are listed in § Process.
+
 ## Process
 
 1. **Read inputs from GDrive:**

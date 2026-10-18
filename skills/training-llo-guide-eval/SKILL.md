@@ -29,6 +29,8 @@ calibration TBD until 3+ shipped LLO guides produce ground truth (see
 
 ## Inputs
 
+Pipeline-only: grades a run's LLO guide, which exists only in a run.
+
 | Source | Artifact | Used for |
 |---|---|---|
 | Phase 6 | `6-qa-and-training/training-llo-guide.md` | artifact under judgment |

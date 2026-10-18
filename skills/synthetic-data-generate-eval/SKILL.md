@@ -33,6 +33,8 @@ conformant run.
 
 ## Inputs
 
+Pipeline-only: grades a run's Phase 7 synthetic dataset, which exists only in a run.
+
 - `ACE/<opp-name>/runs/<run-id>/7-synthetic/synthetic-data-generate.md`
 - `ACE/<opp-name>/runs/<run-id>/7-synthetic/synthetic-data-generate_manifest.yaml` OR `synthetic-narrative-plan.yaml` (whichever was the source)
 - `ACE/<opp-name>/opp.yaml` — `synthetic.fixture_record_counts`, `synthetic.labs_opp_id`

@@ -171,6 +171,8 @@ a future private-edit surface would change.
 
 ## Inputs
 
+The record slug and the reviewer source are explicit arguments. The `Run` rows are read only when the reviewed artifact belongs to a run; feedback on a live program's artifact needs none.
+
 | Source | Artifact | Used for |
 |---|---|---|
 | Reviewer | gdoc comments / email / meeting notes | the verbatim items |

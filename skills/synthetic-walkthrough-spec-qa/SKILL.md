@@ -28,6 +28,8 @@ format, auto-fix protocol, static-vs-LLM rules).
 
 ## Inputs
 
+Pipeline-only: checks a run's Phase 7 walkthrough specs, which exist only in a run.
+
 | Source | Artifact | Used for |
 |---|---|---|
 | Phase 7 producer | `7-synthetic/synthetic-walkthrough-spec_<persona>.yaml` | the spec under structural check |

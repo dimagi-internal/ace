@@ -21,6 +21,8 @@ the `synthetic-walkthrough-run` skill.
 
 ## Inputs
 
+Pipeline-only: builds walkthrough specs from a run's Phase 7 narrative plan and dataset.
+
 | Source | Artifact | Used for |
 |---|---|---|
 | Phase 7 | `7-synthetic/synthetic-narrative-plan.md` | the data story — informs scene narration |

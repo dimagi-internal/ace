@@ -19,6 +19,8 @@ response-rate telemetry.
 
 ## Inputs
 
+Pipeline-only: grades a run's onboarding-email draft, which exists only in a run.
+
 | Source | Artifact | Used for |
 |---|---|---|
 | Phase 6 | `6-qa-and-training/training-onboarding-email.md` | artifact under judgment |

@@ -28,6 +28,8 @@ See `skills/_eval-template.md` for shared contracts and
 
 ## Inputs
 
+Pipeline-only: grades a closed run's learnings summary, which exists only in a run.
+
 | Source | Artifact | Used for |
 |---|---|---|
 | Phase 10 | `10-closeout/learnings-summary.md` | the synthesis under judgment |

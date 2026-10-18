@@ -11,6 +11,8 @@ Builds a `connect-pitch-partnership` Google Slides pitch deck for a prospect org
 
 ## Inputs
 
+Pipeline-only: a step of a `/ace:partnership-video` run; it reads that run's research, angles and micro-demo.
+
 | Source | Artifact | Used for |
 |---|---|---|
 | Phase 1 profile | `ACE/partnerships/<slug>/prospect.yaml` | Prospect name, slug, logo ref, region, sector |

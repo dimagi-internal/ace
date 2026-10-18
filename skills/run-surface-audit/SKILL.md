@@ -21,6 +21,10 @@ Defaults: `ACE_WEB_BASE_URL=https://labs.connect.dimagi.com/ace`,
 `ACE_WEB_WORKSPACE=dimagi-team`. It is un-authed — the URL is the secret —
 which is exactly why what it shows an anonymous visitor has to be right.
 
+## Inputs
+
+Pipeline-only: audits one run's public run-summary page; the run is the object (§ Process).
+
 ## Why this skill exists, and what it replaces
 
 **It supersedes `run-summary-qa`.** That skill drove

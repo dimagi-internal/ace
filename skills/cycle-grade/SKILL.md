@@ -10,6 +10,10 @@ disable-model-invocation: false
 
 Produce a final grade and assessment of the complete ACE cycle.
 
+## Inputs
+
+Pipeline-only: grades one closed run end to end from that run's artifacts (§ Process).
+
 ## Process
 
 1. **Read all opportunity artifacts from GDrive**, including learnings summary, the PDD's `archetype:` field, and the PDD's `## Evidence Model` section. The archetype determines which dimensions and rubric to use (see `## Archetypes` below). The Evidence Model determines what "the work was done" actually means: every Layer A entry should appear as an explicit pass/fail in the FLW Performance grade evidence; Layer B/C entries should appear in the Intervention Effectiveness / Research Quality (focus-group) evidence.

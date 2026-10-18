@@ -12,6 +12,8 @@ Generate the Learn (training) app from the PDD using the Nova plugin
 
 ## Inputs
 
+Pipeline-only: builds a new Learn app from a run's approved PDD. To change a live app, use `app-modify`.
+
 | Source | Artifact | Used for |
 |---|---|---|
 | Phase 1 | `1-design/idea-to-pdd.md` | source PDD; archetype + Learn App Specification drive the Nova brief |

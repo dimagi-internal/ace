@@ -32,6 +32,8 @@ produce ground truth.
 
 ## Inputs
 
+Pipeline-only: grades a run's training FAQ, which exists only in a run.
+
 | Source | Artifact | Used for |
 |---|---|---|
 | Phase 6 | `6-qa-and-training/training-faq.md` | artifact under judgment |

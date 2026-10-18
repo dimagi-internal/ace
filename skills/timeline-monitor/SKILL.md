@@ -10,6 +10,18 @@ disable-model-invocation: false
 
 Check LLO progress against expected timeline and prompt action if behind.
 
+## Inputs
+
+| Parameter | Used for | Resolver |
+|---|---|---|
+| `opportunity_id` + `program_org` | the opportunity whose progress is checked, read at the program's org | explicit arg; default: the current run's run_state `selected_llo.opportunity_id` (the LLO's own opportunity, once Phase 9 created it); else the program context doc's Scope |
+| `milestones` | the expected timeline | explicit arg; default: the PDD; else the context doc |
+| `experiment_id` | the program's chatbot, for the OCS session signals | explicit arg; default: `5-ocs/ocs-agent-setup.md`; else the context doc |
+| `llo_contact_email` | where a nudge goes | explicit arg; default: run_state `selected_llo.contact_email`; else the context doc |
+| `report_folder` | where reports land | default `ACE/<opp-name>/monitoring/`; on a program project, the project's folder |
+
+No `run_state.yaml` is needed when the ids are passed (a program project, `partner-on-connect-program`).
+
 ## Process (runs periodically)
 
 1. **Read opportunity state** from GDrive:

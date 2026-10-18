@@ -28,6 +28,8 @@ CCC-301).
 
 ## Inputs
 
+Pipeline-only: grades a run's Phase 5 widget handoff, which exists only in a run.
+
 | Source | Artifact | Used for |
 |---|---|---|
 | Phase 5 | `5-ocs/ocs-setup_widget-handoff.md` | staging artifact under judgment |

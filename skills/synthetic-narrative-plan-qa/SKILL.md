@@ -26,6 +26,8 @@ format, auto-fix protocol, static-vs-LLM rules).
 
 ## Inputs
 
+Pipeline-only: checks a run's Phase 7 narrative plan, which exists only in a run.
+
 | Source | Artifact | Used for |
 |---|---|---|
 | Phase 7 producer | `7-synthetic/synthetic-narrative-plan.yaml` | the manifest under structural check |
