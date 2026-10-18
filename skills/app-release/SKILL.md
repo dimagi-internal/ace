@@ -411,10 +411,29 @@ procedure below to rediscover.
 
 7. **Trigger Connect's deliver-unit sync.** Connect caches per-opp
    deliver units; after a release, the next opp create or wizard step
-   will pick up the new schema. If an opp ALREADY exists (re-running
-   this skill mid-cycle), tell the operator to either re-run
-   `connect-opp-setup` (it will re-sync) or visit the opp wizard and
-   click `Sync Deliver Units` manually.
+   will pick up the new schema. **If an opp ALREADY exists** (a re-release
+   of an app that a live or earlier opportunity already uses), sync THAT
+   opportunity. **Do not re-run `connect-opp-setup`**: it creates a new
+   opportunity rather than re-syncing the existing one. A new opportunity
+   on the same release also cannot get a payment unit, because deliver
+   units are shared (ace#573).
+
+   No atom syncs deliver units on its own. `connect_list_deliver_units`
+   and `connect_create_payment_unit(s)` fire the sync only as a side
+   effect, and only when the create-payment-unit form's checkbox list is
+   EMPTY (`mcp/connect/backends/playwright.ts` `listDeliverUnits` /
+   `createPaymentUnit`). So on an opp that already has deliver units,
+   neither one re-syncs a changed schema. Instead:
+   1. POST the sync route below for the existing opportunity, at the
+      holding org's URL (`runConnectOrgs()`; the deliver-unit pages are
+      served at both the holding and PM org, per `connect-api.md` § PM→NM
+      org-URL matrix). Or click `Sync Deliver Units` in that opp's
+      payment-unit form.
+   2. Read back with `connect_list_deliver_units` on the same opp, and
+      confirm every deliver-unit slug in the new release's
+      `projected_connect_state` is listed.
+   3. If an expected slug is still missing after the sync, halt and report
+      it. Do not create a new opportunity to work around it.
 
    Sync URL pattern:
    ```

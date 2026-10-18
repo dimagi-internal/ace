@@ -118,25 +118,51 @@ Read from the current run's `run_state.yaml.phases.solicitation-management.produ
    skill. A `recommended-confirmation` ask never blocks the award. Contract:
    `docs/decisions-contract.md § Open asks`.
 
-6. **HITL gate.** Present `recommendation.md` to the human and ask:
+6. **HITL gate.** First resolve the **awardee's Connect organisation id**
+   (`org_id`). This is the Connect org that will hold the partner's
+   opportunity in Phase 9. Labs stores it on the response as "the Connect
+   organisation id the awarder named for the contract". It is an
+   owner-only field, so `get_response` returns it to the call's owner, and it
+   is usually empty unless the response was created with one. Use the
+   response's `org_id` when it is set. Otherwise propose the org from the
+   response (`llo_entity_id` / `org_name`) and have the human confirm or
+   supply the id in the same reply. Never invent one: Phase 9's
+   `connect_send_llo_invite` needs a real Connect org.
 
-   > "Confirm awarding response_id=<top> ($<amount>) to <org_name>? Reply
-   > with `award <response_id> $<amount>` to confirm, or `cancel` to
-   > halt."
+   Present `recommendation.md` to the human and ask:
+
+   > "Confirm awarding response_id=<top> (reward_budget <amount>
+   > <currency>) to <org_name>, Connect org `<org_id>`? Labs will email the
+   > awardee if labs email is on, and an award cannot be undone or repeated.
+   > Reply with `award <response_id> <amount> <org_id>` to confirm, or
+   > `cancel` to halt."
 
    Wait for an explicit reply. **Do not call `award_response` without
-   one.** If the human picks a different response_id or amount, use
-   those — and if they pick a different response, re-run step 5b with
+   one.** If the human picks a different response_id, amount or org, use
+   those. If they pick a different response, re-run step 5b with
    THAT response's answered question ids first.
 
-7. **Call `award_response`.** On confirm:
+7. **Call `award_response`.** On confirm (the live schema requires
+   `response_id`, `reward_budget` and `org_id`; there is no `amount`
+   field, and extra keys are rejected — ace#3146):
 
    ```
    mcp__connect-labs__award_response(
      response_id: <chosen>,
-     amount: <chosen_amount>
+     reward_budget: <approved amount, integer, in the call's currency>,
+     org_id: <confirmed Connect organisation id>,
+     fund_id: <labs fund id>   # optional: only when the award should append a fund allocation
    )
    ```
+
+   The call marks the response `awarded`, and moves an `active` or `closed`
+   solicitation to `awarded` itself. It emails the awardee only when labs
+   email is on (`awardee_notified` in the result says whether it was sent).
+   A response that is already awarded is refused with `FAILED_PRECONDITION`,
+   and you get no second email or allocation. With `fund_id`, the fund is
+   checked first; if the allocation then fails, the award still stands and
+   the result carries `allocation_error`. Do NOT retry, because a retry is
+   refused as already awarded.
 
 8. **Write `award-record.md`.**
 
@@ -145,10 +171,14 @@ Read from the current run's `run_state.yaml.phases.solicitation-management.produ
    ```
 
    Body: `response_id`, `awarded_at`, `awarded_org_slug`,
-   `awarded_org_name`, `awarded_contact_email`, `award_amount`. On
-   labs-side error: `status: failed` + the error envelope.
+   `awarded_org_name`, `awarded_contact_email`, `award_amount` (the
+   `reward_budget` sent), `org_id`, `awardee_notified` (from the result, so a
+   reader knows whether labs emailed the awardee), and `allocation_error`
+   when present. On labs-side error: `status: failed` + the error envelope.
 
-9. **Flip the labs-side status to `awarded`.** Call:
+9. **Confirm the labs-side status is `awarded`.** `award_response` already
+   flips an `active`/`closed` solicitation to `awarded`. Read it back with
+   `get_solicitation`, and only if it does not say `awarded` call:
 
    ```
    mcp__connect-labs__update_solicitation(
@@ -238,8 +268,9 @@ Read from the current run's `run_state.yaml.phases.solicitation-management.produ
 ## MCP Tools Used
 
 - `connect-labs`: `list_responses`, `get_response`, `list_reviews`,
-  `create_review`, `award_response`, `update_solicitation` (status flip
-  to `awarded` — pass `program_id`)
+  `create_review`, `award_response` (`response_id` + `reward_budget` +
+  `org_id`, optional `fund_id`), `get_solicitation`, `update_solicitation`
+  (fallback status flip to `awarded` — pass `program_id`)
 - `ace-gdrive`: `drive_create_file`, `drive_update_file`,
   `drive_read_file`, `drive_list_folder`
 - `ace-decisions`: `decisions_open_asks` (step 5b — the required-before
