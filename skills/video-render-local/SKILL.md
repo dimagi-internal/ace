@@ -1,10 +1,7 @@
 ---
 name: video-render-local
 description: >
-  Use when you need an ace-web connect-videos program rendered to MP4
-  locally and fast (bare-metal Mac), instead of the slow server-side
-  ace-web "Re-render" — including rendering a DDD connect-ddd-walkthrough
-  from a local spec + master clip with no Drive and no Django container.
+  Render an ace-web connect-videos program or DDD walkthrough to MP4 locally on a Mac, faster than ace-web's server re-render.
 ---
 
 # Video Render — Local (Mac-metal)

@@ -128,12 +128,23 @@ Reading and answering are not changes.
    verified. The owner approves any outbound or shared act (manual-mode turns), and a change to
    a live opportunity or a released app is one. Program-team members can direct the work, but
    approval follows § Guardrails, Who steers.
-4. **Make the change through the existing skills and atoms.** Don't hand-roll a procedure a
-   skill already owns. Examples: `nova:edit` then `app-deploy` / `app-hq-settings` /
-   `app-release` / `app-release-qa` for an app; the `connect_*` update atoms for an
-   opportunity; `ocs-knowledge-refresh` or the `ocs_set_chatbot_*` atoms for a bot;
-   `app-case-sharing` for case sharing. Where a skill still reads its IDs only from a run's
-   artifacts, pass the IDs from the context doc and note the gap on the task.
+4. **Make the change through the modify skill for that object.** Each one takes explicit IDs
+   (from the context doc), refuses what the platform cannot do, and reads back:
+
+   | Object | Skill |
+   |---|---|
+   | An app's forms, fields, logic or case config, shipped to its live opportunity | `app-modify` |
+   | An opportunity's verification flags, payment units, dates, budget, Learn passing score | `connect-opp-modify` |
+   | A bot's prompt, description, tools or pipeline | `ocs-bot-update` |
+   | A bot's knowledge | `ocs-knowledge-refresh` |
+   | A solicitation's deadline, text, questions, criteria, visibility or status | `solicitation-edit` |
+   | A labs report's opportunity list, or freezing / refollowing its template | `labs-workflow-repoint` |
+   | Case sharing between workers | `app-case-sharing` |
+
+   Don't hand-roll a procedure one of these owns. These skills cannot ask the human (a
+   dispatched copy has no `AskUserQuestion`), so hand each one the approval from step 3 in
+   the dispatch. Where a skill still reads its IDs only from a run's artifacts, pass the IDs
+   from the context doc and note the gap on the task.
 5. **Verify against a fresh read.** Never trust the write's status alone: re-read the object
    and compare it with the agreed after state.
 6. **Log it.** Append a dated line to the context doc's Decisions: what changed, the before

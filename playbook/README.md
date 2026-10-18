@@ -37,23 +37,23 @@ verified, so check it before promising a change.
 | Task | Surfaces | Where | Atoms | Limits / issue |
 |---|---|---|---|---|
 | Build a new program end to end | all | `/ace:run` (`agents/ace-orchestrator.md`) | — | — |
-| Edit a deployed app and ship the new version | Nova → HQ → Connect | `nova-integration.md` § Uploading to HQ updates in place; `commcare-api.md` § Builds and releases; `connect-api.md` § Changing a live opportunity | `/nova:edit`, `upload_app_to_hq`, `commcare_make_build`, `commcare_release_build` | Re-apply HQ settings after every re-upload. **Whether a live opp picks up the release is UNVERIFIED** |
+| Edit a deployed app and ship the new version | Nova → HQ → Connect | `skills/app-modify`; `nova-integration.md` § Uploading to HQ updates in place; `commcare-api.md` § Builds and releases; `connect-api.md` § Changing a live opportunity | `/nova:edit`, `upload_app_to_hq`, `commcare_make_build`, `commcare_release_build` | Re-apply HQ settings after every re-upload. **Whether a live opp picks up the release is UNVERIFIED** |
 | Re-release an existing HQ app | HQ | `commcare-api.md` § Builds and releases; `skills/app-release` | `commcare_make_build`, `commcare_release_build` | `make_build` versions the HQ draft, not Nova (ace#1643) |
-| Change verification flags on a live opp | Connect | `connect-api.md` § Changing a live opportunity | `connect_set_verification_flags` | PM-org URL only |
-| Add a payment unit | Connect | same | `connect_create_payment_units` | Needs an unbound deliver unit (ace#573) |
+| Change verification flags on a live opp | Connect | `skills/connect-opp-modify`; `connect-api.md` § Changing a live opportunity | `connect_set_verification_flags` | PM-org URL only |
+| Add a payment unit | Connect | `skills/connect-opp-modify` | `connect_create_payment_units` | Needs an unbound deliver unit (ace#573) |
 | Change or delete a payment unit | Connect | same | **none** | Not possible from ACE; use the Connect UI |
-| Change the Learn passing score | Connect | `connect-api.md` § Learn `passing_score` | `connect_set_learn_passing_score` | Shared by every opp in the holding org on that Learn app (ace#1350) |
-| Change opp dates, budget, description, active | Connect | `connect-api.md` § Changing a live opportunity | `connect_update_opportunity` | Holding org is create-time only; 50-char traps |
+| Change the Learn passing score | Connect | `skills/connect-opp-modify`; `connect-api.md` § Learn `passing_score` | `connect_set_learn_passing_score` | Shared by every opp in the holding org on that Learn app (ace#1350) |
+| Change opp dates, budget, description, active | Connect | `skills/connect-opp-modify`; `connect-api.md` § Changing a live opportunity | `connect_update_opportunity` | Holding org is create-time only; 50-char traps |
 | Add an LLO / a partner opportunity to an existing program | Connect + HQ | `connect-api.md` § Changing a live opportunity; `skills/llo-onboarding` | `connect_send_llo_invite`, `connect_accept_program_application`, `commcare_linked_app_copy`, `connect_create_opportunity` | Capture the application UUID from the invite POST |
 | Invite / remove workers | Connect | `connect-api.md` | `connect_send_flw_invite`, `connect_delete_unaccepted_flw_invites` | Opp must be active |
 | Read worker progress / visit data | Connect + Labs | `connect-api.md`; `connect-labs.md` § Semantic registry, explorer | `connect_get_deliver_progress`, `explorer_describe`, `explorer_query` | `explorer_query` returns rows only for synthetic opps through canopy |
 | Refresh a bot's knowledge and republish | OCS | `ocs-integration.md` § Changing a live bot; `skills/ocs-knowledge-refresh` | `ocs_upload_collection_files`, `ocs_wait_for_collection_indexing`, `ocs_publish_chatbot_version` | Readers see only the published version |
-| Update a bot's prompt, description or tools | OCS | `ocs-integration.md` § Changing a live bot | `ocs_set_chatbot_system_prompt` / `_description` / `_tools` → publish | Re-run a quick QA after |
+| Update a bot's prompt, description or tools | OCS | `skills/ocs-bot-update`; `ocs-integration.md` § Changing a live bot | `ocs_set_chatbot_system_prompt` / `_description` / `_tools` → publish | Re-run a quick QA after |
 | Share a bot | OCS | `ocs-integration.md` | `ocs_ensure_public_link` | Never regenerate a sent link; no Connect widget field (CCC-301) |
-| Edit a solicitation (deadline, text, visibility) | Labs | `connect-labs.md` § Changing live labs objects | `update_solicitation` | Non-public reads need `program_id` |
+| Edit a solicitation (deadline, text, visibility) | Labs | `skills/solicitation-edit`; `connect-labs.md` § Changing live labs objects | `update_solicitation` | Locked criteria cannot change; answered questions keep their ids. Unlisted calls are owner-readable by id |
 | Seed responses / award a response | Labs | `connect-labs.md` § Solicitations | `create_response`, `award_response` | Award is irreversible and may email the awardee (ace#3146) |
-| Point a labs workflow at other opportunities | Labs | `connect-labs.md` § Changing live labs objects | `workflow_update_opportunity_ids` | Rebuild history afterwards |
-| Freeze or refollow template-driven report pages | Labs | `connect-labs.md` § Workflow template lifecycle | `workflow_follow_template`, `scripts/labs-report-templates.ts` | Refollow only pages nobody relies on as a record |
+| Point a labs workflow at other opportunities | Labs | `skills/labs-workflow-repoint`; `connect-labs.md` § Changing live labs objects | `workflow_update_opportunity_ids` | Rebuild history afterwards |
+| Freeze or refollow template-driven report pages | Labs | `skills/labs-workflow-repoint`; `connect-labs.md` § Workflow template lifecycle | `workflow_follow_template`, `scripts/labs-report-templates.ts` | Refollow only pages nobody relies on as a record |
 | Simulate N weeks of a program | Labs | `connect-labs.md` § History (simulated time) | `synthetic_generate_from_manifest`, `workflow_preview_as_of`, `workflow_rebuild_history` | No clock; backdate data |
 | Procurement / stock | Labs | `connect-labs.md` § Supply chain | `supply_chain_*` | Skills being added |
 | Case sharing between workers | HQ + Nova | `hq-case-sharing.md`; `skills/app-case-sharing` | `commcare_*` location + user atoms | — |

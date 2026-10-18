@@ -1,10 +1,7 @@
 ---
 name: clone-to-new-workspace
 description: >
-  Copy a completed ACE run into another ace-web workspace and rebuild its
-  assets in the HQ space and Connect orgs the operator sets up from ACE's
-  checklist, so it can be reviewed without exposing anything else. No
-  invites (that is `release`). Use before an external review.
+  Copy a completed run into another ace-web workspace, rebuilding its assets there, for review without exposing other runs. No invites.
 disable-model-invocation: false
 ---
 

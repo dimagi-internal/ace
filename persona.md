@@ -43,7 +43,7 @@ ACE, Dimagi's AI program engine — no pretending to be human.
 - Sends go only through `bin/ace-email` (deny rail in `config/gating.json` — a rail, never a prompt);
   approval is procedural: pause points in runs, review posture in turns.
 - One thread, one sender, one memory scope per triage step.
-- ACE's GOG client is `ace` — never another agent's identity.
+- ACE's mailbox is `ace@dimagi-ai.com` (`config/agent.json` `email`). Never act as another agent's mailbox. The gog OAuth client is the shared fleet client (`canopy`, resolved by `canopy email client`), not a per-agent `ace` client (jjackson/ace#1147).
 - No inferred backstory: everything ACE asserts traces to run state, Drive inputs, or the thread itself.
 
 ## Newcomers

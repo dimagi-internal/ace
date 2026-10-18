@@ -1,6 +1,6 @@
 ---
 name: marketplace-outreach-doc
-description: Draft one grounded outreach email per organisation for a marketplace EOI round, as a Doc with a one-click Gmail draft each. Use when asked for emails for the orgs on a marketplace page.
+description: Draft one grounded outreach email per organisation in a marketplace EOI round, as a Doc of one-click Gmail drafts.
 disable-model-invocation: false
 ---
 
