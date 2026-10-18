@@ -1,7 +1,7 @@
 ---
 name: simulated-weekly-review-eval
 description: >
-  Grade a weekly program review against labs' own figures for that week (LLM judge).
+  Grade a weekly program review against labs' own figures.
 disable-model-invocation: false
 ---
 

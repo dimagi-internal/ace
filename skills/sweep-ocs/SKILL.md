@@ -1,8 +1,7 @@
 ---
 name: sweep-ocs
 description: >
-  Find orphaned OCS chatbots, pipelines, collections, and sessions and delete per-opp clones; the
-  template is protected. Needs a live-set from sweep-live-set.
+  Find orphaned OCS chatbots, pipelines, collections and sessions and delete per-opp clones.
 disable-model-invocation: false
 ---
 

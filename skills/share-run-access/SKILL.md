@@ -1,8 +1,7 @@
 ---
 name: share-run-access
 description: >
-  Grant named people access to review an ACE run on every surface it links (ace-web, labs,
-  Connect, HQ, OCS). Editor by default; approval-gated per invite.
+  Grant named people review access to an ACE run on every surface it links. Approval-gated.
 disable-model-invocation: false
 ---
 
