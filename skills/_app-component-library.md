@@ -172,7 +172,7 @@ exactly that error — see the change log for 2026-08-13.)
 
 | Mechanism | Why it is closed | Sanctioned alternative | Origin |
 |---|---|---|---|
-| **Connect-side enforcement of a GPS accuracy / location radius** — Connect refuses or flags a visit on fix quality | Connect's verification-flags form no longer renders `gps` / `gps_radius_meters` (#1013 — posted as unrecognized keys, returns `ok: true`, never persisted on any run). On the **form** side Nova additionally rejects `validate` on `kind: geopoint` (#695/#699); note that an in-form accuracy gate via an adjacent constrained question is **ACE policy-closed, not platform-closed** (#723 FLW UX, PR #988's constraint-locality parser) — do not describe it as impossible | **Observability, stated honestly.** Tolerance in the question hint, `gps_accuracy_m` submitted every visit, a whole-range on-screen advisory, normalized lat/lon, down-weighting in dedup. See [`gps-accuracy-capture`](#gps-accuracy-capture) | ace#1006, ace#1013 |
+| **Connect-side enforcement of a GPS accuracy / location radius** — Connect refuses or flags a visit on fix quality | Connect removes `gps` / `location` (the radius ACE calls `gps_radius_meters`) from the verification-flags form, and clears them on save, on every opportunity with automatic visit verification — which every ACE opportunity has (Connect `forms.py:1559-1561`, `1580-1583` at c7409bd35; ace#3138; first observed live as #1013, where they were posted as unrecognized keys and never persisted; the atom now refuses them). On the **form** side Nova additionally rejects `validate` on `kind: geopoint` (#695/#699); note that an in-form accuracy gate via an adjacent constrained question is **ACE policy-closed, not platform-closed** (#723 FLW UX, PR #988's constraint-locality parser) — do not describe it as impossible | **Observability, stated honestly.** Tolerance in the question hint, `gps_accuracy_m` submitted every visit, a whole-range on-screen advisory, normalized lat/lon, down-weighting in dedup. See [`gps-accuracy-capture`](#gps-accuracy-capture) | ace#1006, ace#1013 |
 | **~~Reading a case property into a followup form's field~~ — RETIRED 2026-08-29, the upstream fix SHIPPED** | **This row is history, not a live constraint.** `voidcraft-labs/commcare-nova#458` closed COMPLETED on 2026-08-15 and `ace#1180` on 2026-08-13: a followup form's `case-ref` to its OWN case type now survives Nova's canonical identity round-trip, so a case-UPDATE form CAN read its own case and an `entity_id` MAY be keyed on case values. The preload-bound-hidden-field workaround is retired. Two narrower facts from the original row still hold and are NOT platform closures: `caseWrite` is a WRITE destination, so it must never be authored as a pseudo-preload (`ace#1224`), and a visible case-bound field emits no preload of its own (`ace#1232`) — use an explicit `case-ref` instead of either. | **Use `case-ref`.** Key `entity_id` on the case values the PDD's grain names. Do NOT fall back to `concat(username, today())` — that is the `atomic-visit` grain and it silently degrades a `longitudinal-visits` design into "any visit counts". | `voidcraft-labs/commcare-nova#458` (fixed), ace#1180, ace#1224, ace#1232, ace#1558, ace#1798 |
 | **An elapsed-time floor or cap derived from bare `now()` calculates** — "the form cannot be submitted in under N minutes" | JavaRosa evaluates a calculate at form-init and thereafter **only when a node it references changes**. A bare `now()` references no node, so every bare `now()` in a form resolves to form-init time and any duration between two of them is permanently 0 — the threshold is structurally unable to fire. This is an evaluation-semantics fact, not a tooling gap | **The mechanism IS buildable — this implementation is not.** Chain each timestamp to the previous part's last answer: `<part>_start = if(<last answer of previous part> = '', '', now())`. See [`section-timestamps`](#section-timestamps) | ace#995 |
 
@@ -259,11 +259,18 @@ credit one. Both enforcement surfaces are closed:
   only a self-reference and a cardinality gate adjacent to its repeat. An
   adjacent GPS gate is neither and now hard-fails QA.
 - **Server-side (Connect).** Connect's
-  `/opportunity/<id>/verification_flags_config/` form no longer renders `gps`,
-  `location`, `gps_radius_meters`, `catchment_areas`, `duplicate`, or
-  `check_attachments` — `connect_set_verification_flags` posts them as
-  unrecognized keys, Django drops them, and the atom still returns `ok: true`
-  (dimagi-internal/ace#1013). No ACE run has ever persisted one. And even when
+  `/opportunity/<id>/verification_flags_config/` form does not render `gps`,
+  `location` (`gps_radius_meters`), `duplicate`, or `check_attachments` on an
+  ACE opportunity: Connect removes them from the form and clears them on save
+  whenever the opportunity uses automatic visit verification, which every new
+  opportunity gets from a site-wide switch
+  (`dimagi/commcare-connect@c7409bd35:commcare_connect/opportunity/forms.py:692-693, 1559-1561, 1580-1583, 1602-1603, 1630-1631`;
+  dimagi-internal/ace#3138). `catchment_areas` is not on the form at all. First
+  observed live as dimagi-internal/ace#1013 (posted as unrecognized keys, `ok:
+  true`, never persisted); `connect_set_verification_flags` now refuses them
+  with `unsupported_verification_flag`. No ACE run has ever persisted one, and
+  Phase 1 flags a PDD that asks for one (platform-constraint rule
+  `verification-flags-off-under-auto-verify`). And even when
   `location` existed it was a *radius*, never an *accuracy* bound — so Connect
   was never a complete answer to the accuracy ceiling anyway.
 

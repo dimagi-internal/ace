@@ -105,6 +105,7 @@ export const KNOWN_FACTS = [
   'passing_score_varies',
   'learn_app_reused',
   'learn_modules_change_after_launch',
+  'verification_flags_request_auto_verify_cleared',
 ] as const;
 
 function factNames(p: Predicate, out: Set<string> = new Set()): Set<string> {
@@ -202,6 +203,37 @@ export function parseDeliverUnitMap(v: string | undefined): Map<string, Array<{ 
   return out;
 }
 
+/**
+ * The Connect checks automatic visit verification removes and clears (rule
+ * verification-flags-off-under-auto-verify): the opportunity's GPS, duplicate
+ * and location (minimum distance) flags, and a deliver unit's attachment
+ * (photo) check. Matched as a whole word or as the leading/trailing part of a
+ * snake_case id (`gps_within_radius`, `photo_required`), never inside a word.
+ */
+const AUTO_VERIFY_CLEARED_TERM =
+  /(?<![a-z0-9])(?:gps|duplicates?|location|distance|radius|attachments?|photos?)(?![a-z0-9])/i;
+/** A clause that negates itself declares the check OFF, not a request for it. */
+const CLAUSE_NEGATION = /\b(?:no|not|off|none|without|false|disabled?)\b/i;
+/** Clauses naming Connect settings automatic verification leaves alone. */
+const KEPT_UNDER_AUTO_VERIFY = /^\s*(?:form[_ ]field[_ ]rules|duration|form[_ ]submission)/i;
+
+/**
+ * `verification_flags` asks for a check Connect clears under automatic visit
+ * verification. Deliberately simple: split the value into clauses on `;`, `,`
+ * and newlines; a clause counts when it names one of the cleared checks, does
+ * not negate itself ("no photo check", "duplicate flag off"), and is not a
+ * form-field-rule / duration / submission-window clause (those settings
+ * survive). `undefined` when the row is absent.
+ */
+export function verificationFlagsRequestAutoVerifyCleared(v: string | undefined): boolean | undefined {
+  const s = clean(v);
+  if (s === undefined) return undefined;
+  if (NONE.test(s)) return false;
+  return s
+    .split(/[;,\n]/)
+    .some((c) => AUTO_VERIFY_CLEARED_TERM.test(c) && !CLAUSE_NEGATION.test(c) && !KEPT_UNDER_AUTO_VERIFY.test(c));
+}
+
 /** Visibility values that mean every worker sees every Learn module. */
 const ALL_WORKERS = /^(all[- ]?workers|all|every[- ]?worker|everyone|ungated)$/i;
 
@@ -294,6 +326,7 @@ export function deriveFacts(params: ReadonlyMap<string, string>, archetype?: str
     passing_score_varies: passingVaries,
     learn_app_reused: /reuse|existing/i.test(first(params, ['learn_app_source']) ?? ''),
     learn_modules_change_after_launch: YES.test(first(params, ['learn_modules_change_after_launch']) ?? ''),
+    verification_flags_request_auto_verify_cleared: verificationFlagsRequestAutoVerifyCleared(params.get('verification_flags')),
   };
 }
 

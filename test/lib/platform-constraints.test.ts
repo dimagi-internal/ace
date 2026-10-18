@@ -56,6 +56,7 @@ describe('config/platform-constraints.yaml', () => {
         'repeat-visit-same-entity-is-duplicate',
         'budget-funds-claims-in-order',
         'passing-score-is-per-app',
+        'verification-flags-off-under-auto-verify',
       ]),
     );
   });
@@ -77,9 +78,12 @@ describe('the real PDDs', () => {
     expect(findings.map((f) => f.severity)).toContain('blocker');
   });
 
-  it('the clean PDD has no findings', () => {
+  it('the clean PDD has no blocker; its only finding is the verification-flags warn it genuinely earns', () => {
+    // Pass-001 asks for `photo_required, gps_within_radius` — both are checks
+    // Connect clears under automatic visit verification (ace#3138).
     const findings = checkPlatformConstraints(programParametersFromPdd(CLEAN), extractArchetype(CLEAN));
-    expect(findings).toEqual([]);
+    expect(findings.map((f) => f.rule.id)).toEqual(['verification-flags-off-under-auto-verify']);
+    expect(findings.every((f) => f.severity === 'warn')).toBe(true);
   });
 });
 
@@ -138,6 +142,26 @@ describe('each rule fires on its predicate and only there', () => {
 
   it('reused Learn app', () => {
     expect(ids(params({ learn_app_source: 'reuse the 2025 cohort app' }))).toContain('learn-modules-never-deleted');
+  });
+
+  it('a Connect GPS / duplicate / distance / photo check under automatic visit verification (ace#3138)', () => {
+    const rule = 'verification-flags-off-under-auto-verify';
+    // bednet-check-2-visit/20261018-0554, verbatim § Program Parameters value.
+    const bednet =
+      'form_field_rules: consent_confirmed = yes on the Follow-Up Visit deliver unit (R3); gps: attempt per brief, ' +
+      'expected to be refused under automatic visit verification (not reported as configured); no photo or attachment check';
+    expect(ids(params({ verification_flags: bednet }))).toContain(rule);
+    expect(ids(params({ verification_flags: 'photo_required, gps_within_radius' }))).toContain(rule);
+    expect(ids(params({ verification_flags: 'duplicate flag on; minimum distance 100 m' }))).toContain(rule);
+    expect(ids(params({ verification_flags: 'check attachments on the visit unit' }))).toContain(rule);
+    // No fire: form-field rules and duration survive automatic verification;
+    // a self-negating clause declares the check off; an absent row is no request.
+    expect(ids(params({ verification_flags: 'form_field_rules: consent_confirmed = yes' }))).not.toContain(rule);
+    expect(ids(params({ verification_flags: 'no photo check' }))).not.toContain(rule);
+    expect(ids(params({ verification_flags: 'no photo or attachment check; duplicate flag off' }))).not.toContain(rule);
+    expect(ids(params({ verification_flags: 'form_field_rules: household_location_captured = yes; duration 5 min' }))).not.toContain(rule);
+    expect(ids(params({ verification_flags: 'none' }))).not.toContain(rule);
+    expect(deriveFacts(params({})).verification_flags_request_auto_verify_cleared).toBeUndefined();
   });
 
   it('derives two roles from a role property even without worker_roles', () => {
