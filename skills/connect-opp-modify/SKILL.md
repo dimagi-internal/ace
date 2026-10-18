@@ -50,6 +50,11 @@ Refuse these up front, with the reason, before any write.
 2. **Read the before state** at `program_org`:
    - `connect_get_opportunity`;
    - `connect_list_payment_units` and `connect_list_deliver_units`;
+   - `connect_get_verification_flags`: the persisted `form_field_rules`, the per-deliver-unit
+     duration floors and the submission window. It is read-only (ace#3161), so the before-read
+     never goes through `connect_set_verification_flags`. An explicit `--form-field-rules`
+     overrides it. Read it even when `changes` has no `verification_flags`: a new payment unit
+     on a deliver unit that already carries rules changes what those rules gate;
    - for a passing-score change, `connect_get_learn_passing_score` (needs `program_id`).
 
    A missing opportunity at that org means the wrong org. Re-resolve it; never try the other org
@@ -84,7 +89,7 @@ Refuse these up front, with the reason, before any write.
 
 ## MCP Tools Used
 
-- ace-connect: `connect_get_opportunity`, `connect_list_opportunities`, `connect_list_deliver_units`, `connect_list_payment_units`, `connect_set_verification_flags`, `connect_create_payment_units`, `connect_update_opportunity`, `connect_activate_opportunity`, `connect_get_learn_passing_score`, `connect_set_learn_passing_score`
+- ace-connect: `connect_get_opportunity`, `connect_list_opportunities`, `connect_list_deliver_units`, `connect_list_payment_units`, `connect_get_verification_flags`, `connect_set_verification_flags`, `connect_create_payment_units`, `connect_update_opportunity`, `connect_activate_opportunity`, `connect_get_learn_passing_score`, `connect_set_learn_passing_score`
 
 ## Existing objects
 

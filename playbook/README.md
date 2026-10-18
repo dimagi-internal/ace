@@ -39,7 +39,7 @@ verified, so check it before promising a change.
 | Build a new program end to end | all | `/ace:run` (`agents/ace-orchestrator.md`) | — | — |
 | Edit a deployed app and ship the new version | Nova → HQ → Connect | `skills/app-modify`; `nova-integration.md` § Uploading to HQ updates in place; `commcare-api.md` § Builds and releases; `connect-api.md` § Changing a live opportunity | `/nova:edit`, `upload_app_to_hq`, `commcare_make_build`, `commcare_release_build` | Re-apply HQ settings after every re-upload. **Whether a live opp picks up the release is UNVERIFIED** |
 | Re-release an existing HQ app | HQ | `commcare-api.md` § Builds and releases; `skills/app-release` | `commcare_make_build`, `commcare_release_build` | `make_build` versions the HQ draft, not Nova (ace#1643) |
-| Change verification flags on a live opp | Connect | `skills/connect-opp-modify`; `connect-api.md` § Changing a live opportunity | `connect_set_verification_flags` | PM-org URL only |
+| Change verification flags on a live opp | Connect | `skills/connect-opp-modify`; `connect-api.md` § Changing a live opportunity | `connect_get_verification_flags` (before-read), `connect_set_verification_flags` | PM-org URL only; additive |
 | Add a payment unit | Connect | `skills/connect-opp-modify` | `connect_create_payment_units` | Needs an unbound deliver unit (ace#573) |
 | Change or delete a payment unit | Connect | same | **none** | Not possible from ACE; use the Connect UI |
 | Change the Learn passing score | Connect | `skills/connect-opp-modify`; `connect-api.md` § Learn `passing_score` | `connect_set_learn_passing_score` | Shared by every opp in the holding org on that Learn app (ace#1350) |

@@ -454,6 +454,7 @@ export class RestBackend implements ConnectClient {
   // PLAYWRIGHT in capability-map.ts.
   getLearnPassingScore = stub('getLearnPassingScore') as ConnectClient['getLearnPassingScore'];
   setVerificationFlags = stub('setVerificationFlags') as ConnectClient['setVerificationFlags'];
+  getVerificationFlags = stub('getVerificationFlags') as ConnectClient['getVerificationFlags'];
   deleteUnacceptedFlwInvites = stub('deleteUnacceptedFlwInvites') as ConnectClient['deleteUnacceptedFlwInvites'];
   listFlwInvites = stub('listFlwInvites') as ConnectClient['listFlwInvites'];
   addOrgMember = stub('addOrgMember') as ConnectClient['addOrgMember'];
