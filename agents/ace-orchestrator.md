@@ -41,7 +41,7 @@ prose, this list owns the scannable "what the rule says."
 
 - **Don't fake background tasks.** `ScheduleWakeup` is not a backgrounding primitive; phase-internal sequential skills run synchronously to a hard wall-clock budget. Bug class: unbounded silent loops with zero recoverable evidence (turmeric-20260503-0835: 3+ hr, ~700K tokens, zero transcript). See [reference § Long-Running Skills — No Fake Background Tasks](orchestrator-reference.md#long-running-skills-no-fake-background-tasks).
 - **Background scheduling is for opp-recurring jobs only.** `timeline-monitor`, `flw-data-review`, `ocs-chatbot-{qa,eval} --monitor`. Phase-internal work (`ocs-chatbot-qa --quick|--deep`, `app-screenshot-capture`) is foreground sequential. See [reference § Long-Running Skills](orchestrator-reference.md#long-running-skills-no-fake-background-tasks).
-- **Waiting on children — wait on the completion notification, never on a sleep.** A dispatched `Agent` (or a `run_in_background` command) reports back by notification, and that notification resumes the session that is waiting — the orchestrator AND a phase subagent (kaduna Phase 3: a 43-min wait on the Nova architect, no timer, no poll). So end the turn with one status line and let it arrive. Never bridge the wait with a foreground sleep past the 5-min prompt cache: noora Phase 7 slept 540–595 s seven times on the DDD loop and re-wrote a 450–720k context on every wake; canopy's `sleep_cap_guard` now refuses any foreground wait over 270 s. A phase whose own products are done does not stay alive for a long child at all — it hands off (Phase 7 → `ddd_handoff`). Bug class: cold-cache wakes that re-cache the whole context and slow every turn after. See [reference § Waiting on children](orchestrator-reference.md#waiting-on-children).
+- **Waiting on children — wait on the completion notification, never on a sleep.** A dispatched `Agent` (or a `run_in_background` command) reports back by notification, and that notification resumes the session that is waiting — the orchestrator AND a phase subagent (kaduna Phase 3: a 43-min wait on the Nova architect, no timer, no poll). So end the turn with one status line and let it arrive — except in a **one-shot runner turn** (`CANOPY_ONE_SHOT_TURN=1`, every cloud-runner and headless turn), where the session ends with the turn and nothing can arrive: there, run children in the foreground (canopy's `one_shot_turn_guard` refuses background ones). Never bridge the wait with a foreground sleep past the 5-min prompt cache: noora Phase 7 slept 540–595 s seven times on the DDD loop and re-wrote a 450–720k context on every wake; canopy's `sleep_cap_guard` now refuses any foreground wait over 270 s. A phase whose own products are done does not stay alive for a long child at all — it hands off (Phase 7 → `ddd_handoff`). Bug class: cold-cache wakes that re-cache the whole context and slow every turn after. See [reference § Waiting on children](orchestrator-reference.md#waiting-on-children).
 - **Polling for upstream state changes is bounded.** RAG indexing in `ocs-agent-setup`, CCHQ build in `app-release`: max attempts + exponential backoff + hard timeout + fail-loud on exhaustion. Bug class: phantom "background task IDs" the orchestrator can't verify. See [reference § When polling IS appropriate](orchestrator-reference.md#when-polling-is-appropriate).
 - **Don't dispatch two `Agent` calls in one message.** Claude Code does not reliably parallelize `Agent` dispatches — treat all of them as serial, including Phase 3's two Nova builds and any future cross-phase orchestration. Bug class: silently-dropped second dispatch. See [reference § Per-phase batching, env, and Agent-serial rules](orchestrator-reference.md#per-phase-batching-env-and-agent-serial-rules).
 - **Do batch independent tool calls.** N independent `drive_read_file`, `connect_create_payment_unit`, `nova_update_form` etc. in a single assistant message. Bug class: ~60–90s of pure model-output latency wasted per run when serialized. See [reference § Per-phase batching](orchestrator-reference.md#per-phase-batching-env-and-agent-serial-rules).
@@ -2404,10 +2404,23 @@ its PR. **Every one of them is launched with `isolation: "worktree"`**
 gets passed N times or gets forgotten N times). Batch the dispatches into
 the SAME message as `Agent(<next-phase>)`.
 
+**In a one-shot runner turn (`CANOPY_ONE_SHOT_TURN=1`), dispatch them in
+the FOREGROUND** — same template, same `isolation: "worktree"`, no
+`run_in_background`, still in the same message as `Agent(<next-phase>)`.
+Foreground calls in one message run side by side, so the next phase still
+starts at once; the turn simply ends after all of them return. The
+session ends with the turn there, so a background dispatch's notification
+could never land: canopy's `one_shot_turn_guard` refuses it, and that
+refusal is not "subagents are blocked" — retry in the foreground. Measured
+on `Bednet-check-2-visit/20261018-0554` (cloud-ec2-2): the sweep's
+background dispatch was refused, the foreground retry shipped ace#3147,
+and the run reported "the runner refuses background agents" as a blocker.
+
 Five rules make this safe to run inside a live `/ace:run`:
 
-1. **It never blocks the run.** The dispatches are backgrounded and the
-   next phase starts in the same message. A self-heal that fails, stalls,
+1. **It never blocks the run.** The dispatches are backgrounded (in a
+   one-shot turn, foreground but side by side) and the next phase starts
+   in the same message. A self-heal that fails, stalls,
    or needs a device costs the run nothing — the issue simply stays open,
    which is where it already was.
 2. **One issue per dispatch, no bundling.** A subagent that fans out
