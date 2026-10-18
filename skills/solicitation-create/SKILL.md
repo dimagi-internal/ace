@@ -258,7 +258,7 @@ contract.
    | `evaluation_criteria` | array of `{id, name, weight, description, scoring_guide, linked_questions}` | Composed locally — see Step 3. **NOT** `rubric`. **NOT** `[{dimension, criterion, weight}]`. The deployed schema requires `id`, `name`, `weight` (verified via live `tools/list`); the ACE convention adds `description`, `scoring_guide`, and `linked_questions` as content-quality requirements. `id` is kebab-case (e.g. `field-ops-realism`), unique within the rubric — derive `slugify(name)` if you're tempted to elide it; explicit ids are required because duplicate-named criteria would otherwise silently collide. Weights sum to 100 (integers). |
    | `questions` | array of `{id, text, type, framing, required, options}` | Composed locally — see Step 4. **NOT** `response_questions`. Field is `text`, not `question`. The deployed schema requires `id`, `text`, `type` (verified via live `tools/list`); `framing` is an optional structured key that ACE always populates because it's the rubric anchor `solicitation-review` consumes when scoring responses. `id` is kebab-case (e.g. `field-ops-realism`). `type` is one of `"textarea"` (default — use it for any prose answer), `"text"` (a single-line input; the right choice for a short factual answer like an org name, a headcount or a date), `"multiple_choice"`, or `"number"`. Verified against the live `tools/list` 2026-08-29: the enum is exactly `[multiple_choice, number, text, textarea]` (ace#1834 — `text` had been omitted here). Empty `framing` is a `[BLOCKER]` — the review path can't score responses against a missing anchor. |
    | `status` | string | `'active'` (publishes immediately; `'draft'` for dry-run mode). |
-   | `is_public` | bool | `true` — lists it on the labs marketplace **for logged-in labs users**. It is NOT anonymous readability: `/solicitations/<id>/` requires a labs login by design (see § Step 7a), so an org without a labs account cannot reach the listing at all. Set it `true` regardless; just never describe the result as "public" to a candidate. |
+   | `is_public` | bool | **`true` by default** — lists it on the labs marketplace **for logged-in labs users**. It is NOT anonymous readability: `/solicitations/<id>/` requires a labs login by design (see § Step 7a), so an org without a labs account cannot reach the listing at all; never describe the result as "public" to a candidate. **`false` when the run's `optional_steps.private_solicitation` is true** (`isOptionalStepEnabled(runState, 'private_solicitation')`, `lib/optional-steps.ts`): an unlisted call is readable only by the owning org's members and by anyone who responds. `seed_responses`, `ace_winner` and `supply_chain` force it on, so fabricated responses never sit on a listed call. See § Private (demonstration) solicitations below. |
    | `connect_opportunity_id` | int | Phase 4 opp internal id (not the UUID). Stored on the record for downstream solicitation-review linkage. |
 
    **Why the Phase 4 opp dates are not the source of truth for these two
@@ -332,8 +332,10 @@ contract.
    **`is_public: true` flips the server-side public ACL flag** (the
    field the `/solicitations/` marketplace query actually filters on).
    That means the title, description, scope_of_work, and questions
-   become readable by any unauthenticated visitor. Before calling
-   `create_solicitation`, scan the composed payload and confirm:
+   become readable by any logged-in labs user. Run this scan on a
+   private call too: a private call can still get a public Google Form
+   (`optional_steps.google_form`) that carries the same text. Before
+   calling `create_solicitation`, scan the composed payload and confirm:
 
    - `description` contains no names, dates of birth, phone numbers,
      addresses, or health data
@@ -853,10 +855,36 @@ contract.
        ...
      ],                                          # 7-9 items; framing is structured, not inlined in text
      status: 'active',
-     is_public: true,
+     is_public: <true; false when optional_steps.private_solicitation>,
      connect_opportunity_id: <int>,
    )
    ```
+
+   **Private (demonstration) solicitations.** When
+   `optional_steps.private_solicitation` is true:
+   1. Send `is_public: false`.
+   2. Prefix `description` with this banner, verbatim, on its own line, before
+      the composed body:
+
+      ```
+      > **[Demonstration — not a live call.]** Created by ACE to exercise the Labs workflow; responses are synthetic.
+      ```
+
+      The banner is mandatory. A private call is still readable by every member
+      of the owning org and by anyone who responds, and a public Google Form for
+      it (`google_form`) reaches anyone with the link. Without the banner, a
+      reader cannot tell a demonstration from a real call for partners.
+   3. Record `visibility: private` in the Step 9 products block (`public`
+      otherwise). An absent `visibility` reads as `public`, which is the legacy
+      behaviour.
+
+   Reads of an unlisted call need no `program_id`. Labs authorizes them by
+   owning-org membership: since connect-labs#2567, `get_solicitation`,
+   `list_responses`, `get_response`, `update_solicitation` and
+   `award_response` all describe `program_id` as "Accepted for compatibility;
+   not needed" (live `tools/list`, 2026-10-18). ACE is a member of the owning
+   PM org through the Step 5a registration, so the read-backs below work for a
+   private call as written.
 
    **Large payloads: send the file, don't retype it (ace#2261).** The atom
    above takes inline arguments only — the live labs schema has **no**
@@ -972,8 +1000,7 @@ contract.
 
 7a. **Verify the round-trip via `get_solicitation`.** Immediately after
    publish (whether via MCP atom or direct JSON-RPC fallback), call
-   `mcp__connect-labs__get_solicitation(solicitation_id=<returned>,
-   program_id=<labs_program_id>)` and assert every load-bearing field
+   `mcp__connect-labs__get_solicitation(solicitation_id=<returned>)` and assert every load-bearing field
    round-trips intact. Treat the response as the canonical view of
    what labs persisted — if it diverges from what you sent, that's
    either silent-drop (an extra field labs rejected without surfacing)
@@ -1044,7 +1071,8 @@ contract.
    - `contact_email`: assert only **if you sent one** — when sent, it matches; when omitted (no PDD-derived contact), assert it is absent/empty on the round-trip (an omitted optional field is correct, not a miss).
    - `len(questions)` matches sent; every question has `id`, `text`, `type`, `framing` (non-empty), plus `required` if sent.
    - `len(evaluation_criteria)` matches sent; every criterion has `id`, `name`, `weight`, `scoring_guide`, `linked_questions` (non-empty); `sum(weights) == 100`.
-   - `is_public: true`; `status: 'active'`; `connect_opportunity_id` matches sent.
+   - `is_public` matches what was sent (`true`, or `false` for a private call); `status: 'active'`; `connect_opportunity_id` matches sent.
+   - For a private call, `description` starts with the demonstration banner.
 
    **Any miss → `[BLOCKER]`** naming the missing or mutated field +
    the probable cause (e.g. "scope_of_work returned as an array — labs
@@ -1074,19 +1102,22 @@ contract.
    ```
    mcp__connect-labs__get_solicitation(
      solicitation_id: <returned id>,
-     program_id: <same labs_program_id used on create>,
    )
    ```
 
    This catches the silent-misconfig class where the create succeeds but
-   the record is unreachable on subsequent reads. Without `program_id`,
-   the labs `LabsRecord` API filters to `is_public=true` only — so a
-   newly-created `is_public: false` solicitation (or any future change in
-   default visibility) would round-trip as "not found." Always pass
-   `program_id` on read so the prod-side membership check authorizes the
-   private record. If the verification call returns no record or a
-   different `id`, halt and surface the mismatch — do not proceed to
-   write `published.md` or mutate `opp.yaml`.
+   the record is unreachable on subsequent reads. A private
+   (`is_public: false`) call is readable here because ACE belongs to the
+   owning org. Labs authorizes reads by owning-org membership, and the live
+   schema marks `program_id` "Accepted for compatibility; not needed". The
+   older rule, that an unscoped read sees only listed calls, described the
+   pre-connect-labs#2567 ConnectProd `LabsRecord` API, which no longer
+   serves these calls. **If this read returns
+   "not found" for a private call**, the cause is ownership, not a missing
+   `program_id`: check that the call's owner (`org_slug`) is the Step 5a
+   LabsOrg and that ace@ is a member of it. If the verification call
+   returns no record or a different `id`, halt and surface the mismatch —
+   do not proceed to write `published.md` or mutate `opp.yaml`.
 
 8. **Write `published.md`.** Save:
 
@@ -1118,6 +1149,7 @@ contract.
            solicitation_id: <returned>
            labs_program_id: <integer resolved in step 5>
            owner_org_slug: <pm org slug registered in step 5a>
+           visibility: <public | private>   # private iff optional_steps.private_solicitation
            public_url: <returned>
            manage_url: <returned>
            type: <EOI|RFP>
@@ -1200,7 +1232,8 @@ contract.
   id for step 5a), `supply_chain_org_upsert` (register the PM org as the
   owning LabsOrg — step 5a, ace#3049), `create_solicitation` (with
   `org_slug`),
-  `get_solicitation` (round-trip verification — pass `program_id`)
+  `get_solicitation` (round-trip verification by `solicitation_id`;
+  `program_id` is not needed, even for a private call)
 - `ace-gdrive`: `drive_create_file`, `drive_read_file`,
   `drive_update_file`, `update_yaml_file` (write
   `phases.solicitation-management.products.solicitation` to

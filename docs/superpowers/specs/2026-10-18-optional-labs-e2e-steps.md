@@ -62,8 +62,7 @@ A resume reads the block and never re-resolves it. That keeps run independence i
 
 - Read `optional_steps.private_solicitation`. When it is true, publish with `is_public: false`.
 - Prefix the description with the banner `> **[Demonstration — not a live call.]** Created by ACE to exercise the Labs workflow; responses are synthetic.`. This is the convention the Noora demo call (labs 1000001) used ad hoc; the change writes it down.
-- The read-back (Step 7a, `:1075-1090`) already passes `program_id`, without which a private record reads as "not found". Keep it.
-- **Every reader must also pass `program_id`.** That means `solicitation-monitor`, `solicitation-review`, `solicitation-seed-responses` and `sweep-labs`. The plan enumerates each call site.
+- ~~The read-back already passes `program_id`, without which a private record reads as "not found". Every reader must also pass `program_id`.~~ **Refuted against the live schema while PR2 was being built (2026-10-18).** `get_solicitation`, `list_responses`, `get_response`, `update_solicitation` and `award_response` all describe `program_id` as "Accepted for compatibility; not needed". Since connect-labs#2567, labs authorizes them by owning-org membership, and unlisted calls are "readable by their owner and by anyone who responded". So readers pass `solicitation_id` alone. Only `list_solicitations` uses `program_id`, and only as a filter. PR2 removed the stale "pass `program_id` or it 404s" claims from `solicitation-create`, `-monitor`, `-review` and `connect-labs.md`, and pins that with `test/skills/solicitation-visibility.test.ts`.
 - Record `visibility: private` in `products.solicitation`.
 
 `solicitation-review`'s `award_response` call passes a retired `amount` argument. The live schema requires `response_id`, `reward_budget` and `org_id`, and **emails the awardee when labs email is on** (ace#3146). That is fixed in the same PR. The confirm prompt must then say an email may go out, and the award record must capture `awardee_notified`.
@@ -316,7 +315,7 @@ phases:
 ## § K. Residuals to verify live (each one is named in its PR)
 
 1. Which identifier `award_response.org_id` takes (§ C).
-2. Whether `create_response` on a *private* solicitation needs `program_id` or works on `solicitation_id` alone.
+2. Whether `create_response` on a *private* solicitation needs `program_id` or works on `solicitation_id` alone. **The schema answers it (checked in PR2, 2026-10-18):** `create_response.program_id` is "Accepted for compatibility; not needed", and the owner (or platform support) "enters the response on the firm's behalf -- no respondent user, any named organisation, deadline ignored". PR4's live seed call still confirms it in practice. `create_response` also takes an `org_id` string alongside `llo_entity_id` (the labs slug), and that is where § K1's `award_response.org_id` identifier should be pinned.
 3. Whether `forms.batchUpdate` populates a form created through `drive.files.create` on a Shared Drive with no further step.
 4. Whether `workflow_rebuild_history` covers weeks whose visits came from `synthetic_clone_to_labs_only`.
 5. Whether supply-chain `*_on` dates may predate the programme's creation date (the § G calendar assumes they may).

@@ -46,13 +46,14 @@ descending lexically; run-ids are `YYYYMMDD-HHMM`). Read its
 - `solicitation_id`
 - `deadline`
 - `labs_program_id` — labs **integer** program ID cached by
-  `solicitation-create`. Required for any `list_solicitations` /
-  `get_solicitation` call (without scope, labs's `LabsRecord` API
-  filters to `is_public=true` only, so the parent record of a private
-  solicitation is invisible). Note: this is **not** the Connect
-  program UUID — labs `int()`-parses the field. Also available at
-  `opp.yaml.connect.program.connect_int_id` as the durable opp-level
-  cache.
+  `solicitation-create`. Used only as the optional `list_solicitations`
+  filter ("only calls for this Connect programme"). `get_solicitation`
+  and `list_responses` do NOT need it, even for a private
+  (`is_public: false`) call: since connect-labs#2567, labs authorizes those
+  reads by owning-org membership, and the live schema marks `program_id`
+  "Accepted for compatibility; not needed" (2026-10-18). Note: this is
+  **not** the Connect program UUID. Also available at
+  `opp.yaml.connect.program.connect_int_id` as the durable opp-level cache.
 - `ACE/<opp-name>/runs/<run-id>/8-solicitation-management/llo-invite_invitations.md`
   (optional; for outstanding-invitee tracking)
 
@@ -64,18 +65,17 @@ descending lexically; run-ids are `YYYYMMDD-HHMM`). Read its
    mcp__connect-labs__list_responses(solicitation_id: <id>)
    ```
 
-   `list_responses` is a child query keyed by `solicitation_id` and does
-   not require `program_id` scoping. **However**, if this skill ever
-   needs to verify the parent record (e.g. `get_solicitation` to refresh
-   the deadline or status from labs), the call **must** thread
-   `program_id: <labs_program_id>` (read from
-   `products.solicitation.labs_program_id` or
-   `opp.yaml.connect.program.connect_int_id`) or `organization_id` if
-   program-less. Without scope, labs's prod-side filter strips
-   non-public records and the parent appears missing — see the 0.13.4
-   fix note in `CHANGELOG.md` and labs PR #156. Pass the labs
-   **integer** id, not the Connect UUID — labs `int()`-parses the
-   field server-side.
+   `list_responses` is keyed by `solicitation_id` alone. The owning org's
+   members (ACE, via `solicitation-create` Step 5a) see every submitted
+   response; anyone else sees only their own. To refresh the parent record
+   (deadline, status), call `get_solicitation(solicitation_id: <id>)`.
+   That works for a private call too, with no `program_id`: labs
+   authorizes by owning-org membership since connect-labs#2567. The older
+   rule here ("thread `program_id` or the prod-side filter strips
+   non-public records", labs PR #156) described the retired ConnectProd
+   `LabsRecord` path. **If a private call reads as "not found"**, check
+   ownership (the call's owner org and ace@'s membership of it); a missing
+   `program_id` is not the cause.
 
 2. **Diff against local state.** Read existing files in
    `ACE/<opp-name>/runs/<run-id>/8-solicitation-management/solicitation-monitor_responses/` (each is named
