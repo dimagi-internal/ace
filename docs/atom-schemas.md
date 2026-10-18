@@ -12,7 +12,7 @@ For the deterministic atom-rename / remove drift check, see `test/skill-atom-ref
 
 ## ace-gdrive
 
-Source: `mcp/google-drive-server.ts` — 52 atoms
+Source: `mcp/google-drive-server.ts` — 55 atoms
 
 ### `sheets_list_tabs`
 
@@ -446,6 +446,38 @@ Read a Google Forms form definition via the Forms API (forms.googleapis.com/v1/f
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `formId` | `z.string` | **required** | The Google Forms form ID (from the form URL or generate_inputs_manifest output). A shortcut id is resolved to its target. |
+
+### `forms_create_from_spec`
+
+Create a Google Form from a spec, in a folder on a Shared Drive. Creates the file with the Drive API (`files.create`, mimeType `application/vnd.google-apps.form`) after the Shared-Drive parent guard, then fills title, description and items with one `forms.batchUpdate`. `forms.forms.create` is NOT used: it lands in the service account's My Drive, which has no storage quota. Every item is validated before any write, so a bad spec creates nothing. Refuses when a same-named form already exists in the folder (names its id) rather than making a duplicate. The form comes back UNPUBLISHED (`published: false`): nobody can open it until `forms_set_publish_settings`. Returns `{form_id, name, edit_url, responder_uri, published, items: [{index, title, kind, item_id, question_id}]}` — keep `question_id` to map responses back. See playbook/integrations/google-forms.md.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `parentFolderId` | `z.string` | **required** | Required. A folder on a Shared Drive (checked before writing). |
+| `name` | `z.string` | optional | Drive file name. Defaults to `title`. |
+| `title` | `z.string` | **required** | The title respondents see. |
+| `description` | `z.string` | optional | The description respondents see under the title (e.g. a demonstration banner). |
+| `items` | `z.array` | **required** | Items in display order. |
+
+### `forms_set_publish_settings`
+
+Publish, close or unpublish a Google Form (`forms.setPublishSettings`, publishState), and optionally set who may respond. Live-verified 2026-10-18: publishing ALONE does not let anyone respond — an anonymous browser gets 401 on the responder link until the form has the Drive permission `{type: anyone, role: reader, view: published}`. Pass `anyoneWithLinkCanRespond: true` to add it (idempotent), `false` to remove it, or omit it to leave responder access unchanged. `isAcceptingResponses: true` with `isPublished: false` is refused (the API rejects it). To CLOSE a form, pass `isPublished: true, isAcceptingResponses: false`. Returns `{form_id, is_published, is_accepting_responses, anyone_with_link_can_respond, responder_uri}`, read back after the write. Making a form public is an outward-facing act: a caller must have the operator's decision that this form is public.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `formId` | `z.string` | **required** | The form id. |
+| `isPublished` | `z.boolean` | **required** | Whether the form is published. |
+| `isAcceptingResponses` | `z.boolean` | **required** | Whether it accepts responses. Must be false when isPublished is false. |
+| `anyoneWithLinkCanRespond` | `z.boolean` | optional | true = anyone with the link may respond (adds the published-view permission); false = remove it; omit = unchanged. |
+
+### `forms_list_responses`
+
+List a Google Form's responses (`forms.responses.list`, every page). Returns `{form_id, questions: {question_id: title}, responses: [{response_id, create_time, last_submitted_time, respondent_email, answers: {question_id: string[]}}]}`. Text and choice answers are their values; file uploads are Drive file ids. `since` (RFC3339) keeps responses submitted at or after it. Read-only. A Drive shortcut id is resolved to its target first (the Sheets/Docs/Slides/Forms APIs do not follow shortcuts); the result echoes `requested_file_id` and `shortcut_resolved`.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `formId` | `z.string` | **required** | The form id. |
+| `since` | `z.string` | optional | RFC3339 timestamp; only responses at or after it. |
 
 ### `validate_run_state`
 

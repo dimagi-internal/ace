@@ -123,6 +123,9 @@ const SCOPES = [
   'https://www.googleapis.com/auth/documents',
   'https://www.googleapis.com/auth/presentations',
   'https://www.googleapis.com/auth/forms.body.readonly',
+  // forms_create_from_spec / forms_set_publish_settings / forms_list_responses.
+  'https://www.googleapis.com/auth/forms.body',
+  'https://www.googleapis.com/auth/forms.responses.readonly',
 ];
 
 // ============================================================================
@@ -4417,6 +4420,349 @@ server.tool(
     try {
       const r = await handleGetGoogleFormDefinition({ formId }, forms);
       return result(r);
+    } catch (e: any) {
+      return error(e.message);
+    }
+  },
+);
+
+// Forms write atoms — create a form from a spec, publish it, read responses.
+// Live-verified 2026-10-18 (playbook/integrations/google-forms.md):
+//   - a form made with drive.files.create in a Shared Drive folder is filled by
+//     forms.batchUpdate with no further step;
+//   - a form is UNPUBLISHED until setPublishSettings, and publishing alone does
+//     NOT let anyone respond — an anonymous GET of responderUri stays 401 until
+//     a Drive permission {type: 'anyone', role: 'reader', view: 'published'}
+//     exists; then it is 200.
+// forms.forms.create is deliberately not used: it lands in the SA's My Drive,
+// which has no storage quota (the assertParentOnSharedDrive class).
+
+export const FORM_ITEM_KINDS = [
+  'short_answer',
+  'paragraph',
+  'radio',
+  'checkbox',
+  'dropdown',
+  'scale',
+  'date',
+  'section',
+  'info',
+] as const;
+export type FormItemKind = (typeof FORM_ITEM_KINDS)[number];
+
+export interface FormItemSpec {
+  title: string;
+  description?: string;
+  kind: FormItemKind;
+  required?: boolean;
+  options?: string[];
+  low?: number;
+  high?: number;
+  lowLabel?: string;
+  highLabel?: string;
+}
+
+/** One spec item → the Forms API `Item` body. Throws on a spec the API would reject. */
+export function formItemFromSpec(spec: FormItemSpec, index: number): any {
+  const where = `items[${index}] ("${spec.title}")`;
+  const base: any = { title: spec.title };
+  if (spec.description) base.description = spec.description;
+  const needsOptions = spec.kind === 'radio' || spec.kind === 'checkbox' || spec.kind === 'dropdown';
+  if (needsOptions && !(spec.options && spec.options.length > 0)) {
+    throw new Error(`${where}: kind "${spec.kind}" needs a non-empty options[]`);
+  }
+  if (!needsOptions && spec.options && spec.options.length > 0) {
+    throw new Error(`${where}: options[] is only valid for radio, checkbox or dropdown, not "${spec.kind}"`);
+  }
+  const question = (q: any) => ({ ...base, questionItem: { question: { required: !!spec.required, ...q } } });
+  switch (spec.kind) {
+    case 'short_answer':
+      return question({ textQuestion: { paragraph: false } });
+    case 'paragraph':
+      return question({ textQuestion: { paragraph: true } });
+    case 'radio':
+    case 'checkbox':
+    case 'dropdown': {
+      const type = spec.kind === 'radio' ? 'RADIO' : spec.kind === 'checkbox' ? 'CHECKBOX' : 'DROP_DOWN';
+      return question({ choiceQuestion: { type, options: spec.options!.map((value) => ({ value })) } });
+    }
+    case 'scale': {
+      const low = spec.low ?? 1;
+      const high = spec.high ?? 5;
+      if (!(low === 0 || low === 1) || high < 2 || high > 10 || high <= low) {
+        throw new Error(`${where}: scale needs low 0 or 1 and high 2..10 (got ${low}..${high})`);
+      }
+      const scaleQuestion: any = { low, high };
+      if (spec.lowLabel) scaleQuestion.lowLabel = spec.lowLabel;
+      if (spec.highLabel) scaleQuestion.highLabel = spec.highLabel;
+      return question({ scaleQuestion });
+    }
+    case 'date':
+      return question({ dateQuestion: { includeYear: true } });
+    case 'section':
+      return { ...base, pageBreakItem: {} };
+    case 'info':
+      return { ...base, textItem: {} };
+    default:
+      throw new Error(`${where}: unknown kind "${(spec as any).kind}"`);
+  }
+}
+
+export interface CreateFormResult {
+  form_id: string;
+  name: string;
+  edit_url: string;
+  responder_uri: string;
+  published: false;
+  items: { index: number; title: string; kind: FormItemKind; item_id: string; question_id: string | null }[];
+}
+
+export async function handleFormsCreateFromSpec(
+  args: { parentFolderId: string; name?: string; title: string; description?: string; items: FormItemSpec[] },
+  formsClient: typeof forms,
+  driveClient: typeof drive = drive,
+): Promise<CreateFormResult> {
+  if (!args.items || args.items.length === 0) throw new Error('items[] must contain at least one item');
+  // Validate every item before any write, so a bad spec creates nothing.
+  const bodies = args.items.map((it, i) => formItemFromSpec(it, i));
+  const guard = await assertParentOnSharedDrive(args.parentFolderId, driveClient);
+  if (!guard.ok) throw new Error(guard.message);
+  const name = args.name ?? args.title;
+  const existing = await driveClient.files.list({
+    q: `'${args.parentFolderId}' in parents and name = '${name.replace(/'/g, "\\'")}' and mimeType = 'application/vnd.google-apps.form' and trashed = false`,
+    supportsAllDrives: true,
+    includeItemsFromAllDrives: true,
+    fields: 'files(id,name)',
+  });
+  const dup = existing.data.files?.[0];
+  if (dup) {
+    throw new Error(
+      `A form named "${name}" already exists in ${args.parentFolderId} (id ${dup.id}). Refusing to create a second one; ` +
+        'reuse it, or trash it first if it is a stale attempt.',
+    );
+  }
+  const created = await driveClient.files.create({
+    requestBody: { name, mimeType: 'application/vnd.google-apps.form', parents: [args.parentFolderId] },
+    supportsAllDrives: true,
+    fields: 'id,name,webViewLink',
+  });
+  const formId = created.data.id as string;
+  const info: any = { title: args.title };
+  let mask = 'title';
+  if (args.description) {
+    info.description = args.description;
+    mask = 'title,description';
+  }
+  // A form made through drive.files.create arrives with a default blank
+  // "Untitled Question" (live-verified 2026-10-18). Delete whatever is there,
+  // highest index first, so respondents see exactly the spec.
+  const blank = await formsClient.forms.get({ formId });
+  const preexisting = (blank.data.items ?? []).length;
+  const requests: any[] = [{ updateFormInfo: { info, updateMask: mask } }];
+  for (let i = preexisting - 1; i >= 0; i--) requests.push({ deleteItem: { location: { index: i } } });
+  bodies.forEach((item, index) => requests.push({ createItem: { item, location: { index } } }));
+  const bu = await formsClient.forms.batchUpdate({ formId, requestBody: { includeFormInResponse: false, requests } });
+  // Replies are positional: [updateFormInfo, deleteItem × preexisting, createItem × items].
+  const replies: any[] = (bu.data.replies ?? []).slice(1 + preexisting);
+  const got = await formsClient.forms.get({ formId });
+  return {
+    form_id: formId,
+    name: created.data.name ?? name,
+    edit_url: created.data.webViewLink ?? `https://docs.google.com/forms/d/${formId}/edit`,
+    responder_uri: got.data.responderUri ?? '',
+    published: false,
+    items: args.items.map((it, index) => {
+      const r = replies[index]?.createItem ?? {};
+      return { index, title: it.title, kind: it.kind, item_id: r.itemId ?? '', question_id: r.questionId?.[0] ?? null };
+    }),
+  };
+}
+
+export interface PublishFormResult {
+  form_id: string;
+  is_published: boolean;
+  is_accepting_responses: boolean;
+  anyone_with_link_can_respond: boolean;
+  responder_uri: string;
+}
+
+export async function handleFormsSetPublishSettings(
+  args: { formId: string; isPublished: boolean; isAcceptingResponses: boolean; anyoneWithLinkCanRespond?: boolean },
+  formsClient: typeof forms,
+  driveClient: typeof drive = drive,
+): Promise<PublishFormResult> {
+  if (args.isAcceptingResponses && !args.isPublished) {
+    throw new Error('isAcceptingResponses: true requires isPublished: true (the Forms API rejects the combination)');
+  }
+  const pub = await formsClient.forms.setPublishSettings({
+    formId: args.formId,
+    requestBody: {
+      publishSettings: {
+        publishState: { isPublished: args.isPublished, isAcceptingResponses: args.isAcceptingResponses },
+      },
+      updateMask: 'publishState',
+    },
+  });
+  const state: any = pub.data.publishSettings?.publishState ?? {};
+  const listPublished = async () =>
+    (
+      await driveClient.permissions.list({
+        fileId: args.formId,
+        supportsAllDrives: true,
+        includePermissionsForView: 'published',
+        fields: 'permissions(id,type,role,view)',
+      })
+    ).data.permissions ?? [];
+  const isAnyonePublished = (p: any) => p.type === 'anyone' && p.view === 'published';
+  if (args.anyoneWithLinkCanRespond === true) {
+    if (!(await listPublished()).some(isAnyonePublished)) {
+      await driveClient.permissions.create({
+        fileId: args.formId,
+        supportsAllDrives: true,
+        requestBody: { type: 'anyone', role: 'reader', view: 'published' },
+      });
+    }
+  } else if (args.anyoneWithLinkCanRespond === false) {
+    for (const p of (await listPublished()).filter(isAnyonePublished)) {
+      if (!p.id) continue;
+      await driveClient.permissions.delete({ fileId: args.formId, permissionId: p.id, supportsAllDrives: true });
+    }
+  }
+  const anyone = (await listPublished()).some(isAnyonePublished);
+  const got = await formsClient.forms.get({ formId: args.formId });
+  return {
+    form_id: args.formId,
+    is_published: !!state.isPublished,
+    is_accepting_responses: !!state.isAcceptingResponses,
+    anyone_with_link_can_respond: anyone,
+    responder_uri: got.data.responderUri ?? '',
+  };
+}
+
+export interface FormResponseRow {
+  response_id: string;
+  create_time: string | null;
+  last_submitted_time: string | null;
+  respondent_email: string | null;
+  answers: Record<string, string[]>;
+}
+
+export async function handleFormsListResponses(
+  args: { formId: string; since?: string },
+  formsClient: typeof forms,
+  driveClient: typeof drive = drive,
+  opts: ResolveOpts = {},
+): Promise<{
+  form_id: string;
+  requested_file_id: string;
+  shortcut_resolved: boolean;
+  questions: Record<string, string>;
+  responses: FormResponseRow[];
+}> {
+  // A read: the Forms API does not follow Drive shortcuts (ace#2462).
+  const resolved = await resolveShortcutTarget(args.formId, driveClient, opts);
+  const formId = resolved.fileId;
+  const form = await formsClient.forms.get({ formId });
+  const questions: Record<string, string> = {};
+  for (const it of form.data.items ?? []) {
+    const qid = it.questionItem?.question?.questionId;
+    if (qid) questions[qid] = it.title ?? '';
+  }
+  const responses: FormResponseRow[] = [];
+  let pageToken: string | undefined;
+  do {
+    const page: any = await formsClient.forms.responses.list({
+      formId,
+      filter: args.since ? `timestamp >= ${args.since}` : undefined,
+      pageToken,
+    });
+    for (const r of page.data.responses ?? []) {
+      const answers: Record<string, string[]> = {};
+      for (const [qid, a] of Object.entries<any>(r.answers ?? {})) {
+        const text = (a.textAnswers?.answers ?? []).map((x: any) => x.value ?? '');
+        const files = (a.fileUploadAnswers?.answers ?? []).map((x: any) => x.fileId ?? '');
+        answers[qid] = [...text, ...files];
+      }
+      responses.push({
+        response_id: r.responseId ?? '',
+        create_time: r.createTime ?? null,
+        last_submitted_time: r.lastSubmittedTime ?? null,
+        respondent_email: r.respondentEmail ?? null,
+        answers,
+      });
+    }
+    pageToken = page.data.nextPageToken ?? undefined;
+  } while (pageToken);
+  return { form_id: formId, ...shortcutEcho(resolved), questions, responses };
+}
+
+const formItemSpecSchema = z.object({
+  title: z.string().min(1).describe('The question or section text shown to the respondent.'),
+  description: z
+    .string()
+    .optional()
+    .describe('Help text under the title. Callers that map answers back (solicitation-google-form) carry their own question id here.'),
+  kind: z
+    .enum(FORM_ITEM_KINDS)
+    .describe('short_answer | paragraph | radio | checkbox | dropdown | scale | date | section (page break) | info (text block, no answer).'),
+  required: z.boolean().optional().describe('Questions only. Default false.'),
+  options: z.array(z.string().min(1)).optional().describe('Required for radio / checkbox / dropdown; refused for every other kind.'),
+  low: z.number().int().optional().describe('scale only: 0 or 1 (default 1).'),
+  high: z.number().int().optional().describe('scale only: 2..10 (default 5).'),
+  lowLabel: z.string().optional().describe('scale only.'),
+  highLabel: z.string().optional().describe('scale only.'),
+});
+
+server.tool(
+  'forms_create_from_spec',
+  'Create a Google Form from a spec, in a folder on a Shared Drive. Creates the file with the Drive API (`files.create`, mimeType `application/vnd.google-apps.form`) after the Shared-Drive parent guard, then fills title, description and items with one `forms.batchUpdate`. `forms.forms.create` is NOT used: it lands in the service account\'s My Drive, which has no storage quota. Every item is validated before any write, so a bad spec creates nothing. Refuses when a same-named form already exists in the folder (names its id) rather than making a duplicate. The form comes back UNPUBLISHED (`published: false`): nobody can open it until `forms_set_publish_settings`. Returns `{form_id, name, edit_url, responder_uri, published, items: [{index, title, kind, item_id, question_id}]}` — keep `question_id` to map responses back. See playbook/integrations/google-forms.md.',
+  {
+    parentFolderId: z.string().min(1).describe('Required. A folder on a Shared Drive (checked before writing).'),
+    name: z.string().optional().describe('Drive file name. Defaults to `title`.'),
+    title: z.string().min(1).describe('The title respondents see.'),
+    description: z.string().optional().describe('The description respondents see under the title (e.g. a demonstration banner).'),
+    items: z.array(formItemSpecSchema).min(1).describe('Items in display order.'),
+  },
+  async (args) => {
+    try {
+      return result(await handleFormsCreateFromSpec(args, forms));
+    } catch (e: any) {
+      return error(e.message);
+    }
+  },
+);
+
+server.tool(
+  'forms_set_publish_settings',
+  'Publish, close or unpublish a Google Form (`forms.setPublishSettings`, publishState), and optionally set who may respond. Live-verified 2026-10-18: publishing ALONE does not let anyone respond — an anonymous browser gets 401 on the responder link until the form has the Drive permission `{type: anyone, role: reader, view: published}`. Pass `anyoneWithLinkCanRespond: true` to add it (idempotent), `false` to remove it, or omit it to leave responder access unchanged. `isAcceptingResponses: true` with `isPublished: false` is refused (the API rejects it). To CLOSE a form, pass `isPublished: true, isAcceptingResponses: false`. Returns `{form_id, is_published, is_accepting_responses, anyone_with_link_can_respond, responder_uri}`, read back after the write. Making a form public is an outward-facing act: a caller must have the operator\'s decision that this form is public.',
+  {
+    formId: z.string().min(1).describe('The form id.'),
+    isPublished: z.boolean().describe('Whether the form is published.'),
+    isAcceptingResponses: z.boolean().describe('Whether it accepts responses. Must be false when isPublished is false.'),
+    anyoneWithLinkCanRespond: z
+      .boolean()
+      .optional()
+      .describe('true = anyone with the link may respond (adds the published-view permission); false = remove it; omit = unchanged.'),
+  },
+  async (args) => {
+    try {
+      return result(await handleFormsSetPublishSettings(args, forms));
+    } catch (e: any) {
+      return error(e.message);
+    }
+  },
+);
+
+server.tool(
+  'forms_list_responses',
+  'List a Google Form\'s responses (`forms.responses.list`, every page). Returns `{form_id, questions: {question_id: title}, responses: [{response_id, create_time, last_submitted_time, respondent_email, answers: {question_id: string[]}}]}`. Text and choice answers are their values; file uploads are Drive file ids. `since` (RFC3339) keeps responses submitted at or after it. Read-only.' + SHORTCUT_READ_NOTE,
+  {
+    formId: z.string().min(1).describe('The form id.'),
+    since: z.string().optional().describe('RFC3339 timestamp; only responses at or after it.'),
+  },
+  async (args) => {
+    try {
+      return result(await handleFormsListResponses(args, forms));
     } catch (e: any) {
       return error(e.message);
     }
