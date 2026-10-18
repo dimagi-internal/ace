@@ -13,7 +13,7 @@
  *
  * | dimension                   | weight | evidence |
  * |-----------------------------|--------|----------|
- * | verification_flag_fidelity  | 0.20   | `products.connect.opportunity.verification` — decided `form_field_rules` vs `form_field_rules_saved` (Connect has NO read surface for rules, so the persisted count is the only evidence); each rule's shape (25-char name cap, JSONPath not XPath — ace#1301, string predicate — ace#2296, a live DU id) |
+ * | verification_flag_fidelity  | 0.20   | `products.connect.verification` (Step 10's spelling; `products.connect.opportunity.verification` as fallback — ace#3182) — decided `form_field_rules` vs `form_field_rules_saved` (Connect has NO read surface for rules, so the persisted count is the only evidence); each rule's shape (25-char name cap, JSONPath not XPath — ace#1301, string predicate — ace#2296, a live DU id) |
  * | payment_unit_fit            | 0.16   | live `connect_list_payment_units` count vs the archetype's PU shape (one for the whole arc on `longitudinal-visits`, ace#2294); the CREATE response's `amount` / `max_daily` / `max_total` / `required_deliver_units` vs `payment_rate_*`, `daily_cap_per_flw`, `total_cap_per_flw` (the list read cannot see those — ace#1026) |
  * | deliver_unit_wiring         | 0.16   | live `connect_list_deliver_units` slugs vs the PDD-payable slugs; `deliver_app.cc_app_id` vs the deployed HQ Deliver app; PU `required_deliver_units` ⊆ live DU server ids |
  * | active_window_status        | 0.16   | `checkOppPostcondition` (is_test, activation proven by an invite row — ace#617); window length vs `opportunity_{start,end}_date` ±10% |
@@ -48,6 +48,19 @@ export interface FormFieldRuleRecord {
   deliver_unit_id?: string | number;
 }
 
+interface VerificationRecord {
+  form_field_rules?: FormFieldRuleRecord[];
+  form_field_rules_saved?: number | null;
+}
+
+/** A design value with its auto-mode annotation (`USD [PROPOSED]`) stripped — the bracket is review metadata, not the value (ace#3182). */
+export function stripAnnotation(v: string): string {
+  return v.replace(/\\?\[[^\]]*\\?\]/g, '').trim();
+}
+
+/** Parameters every PDD § Program Parameters table is expected to carry; if NONE parse, the table was not readable. */
+const PROBE_PARAMS = ['opportunity_currency', 'opportunity_start_date', 'opportunity_end_date', 'total_budget'];
+
 export interface OppConfigInput {
   target: string;
   archetype?: string;
@@ -57,8 +70,14 @@ export interface OppConfigInput {
   products?: {
     opportunity?: {
       id?: string;
-      verification?: { form_field_rules?: FormFieldRuleRecord[]; form_field_rules_saved?: number | null };
+      verification?: VerificationRecord;
     };
+    /**
+     * Where `connect-opp-setup` Step 10 documents the block: a SIBLING of
+     * `opportunity`. Read first; the nested spelling stays a fallback (ace#3182 —
+     * reading only the nested one graded a real rule as "none decided" and 10/10).
+     */
+    verification?: VerificationRecord;
   } | null;
   /** `connect_get_opportunity` result; null = the read failed. */
   opportunity: Record<string, unknown> | null;
@@ -119,6 +138,16 @@ export function checkOppConfigFacts(input: OppConfigInput): OppFactsResult {
     } else checks.push({ name, status: 'checked' });
   }
 
+  // A PDD read as text/plain renders § Program Parameters as tab-separated lines that
+  // readProgramParameter cannot parse: every PDD-backed check then skipped quietly while
+  // the dimensions stayed 10 (ace#3182). Say so loudly instead.
+  if (input.pddText && /Program Parameters/i.test(input.pddText) && PROBE_PARAMS.every((k) => param(input.pddText, k) === null)) {
+    checks.push({ name: 'pdd-program-parameters', status: 'unable', reason: 'PDD has a Program Parameters section but no row parsed — pass the markdown export (drive_read_file exportAs: text/markdown), not text/plain' });
+    auto.push({ severity: 'PLATFORM', message: 'PDD Program Parameters table is unreadable (plain-text export?) — every PDD-backed sub-check (band, caps, currency, dates) is unverified; re-run with the markdown export' });
+  } else if (input.pddText) {
+    checks.push({ name: 'pdd-program-parameters', status: 'checked' });
+  }
+
   const liveDuIds = new Set(
     (input.deliverUnits ?? []).map((d) => String(d.server_id ?? d.id ?? '')).filter(Boolean),
   );
@@ -127,7 +156,7 @@ export function checkOppConfigFacts(input: OppConfigInput): OppFactsResult {
   // ── verification_flag_fidelity ────────────────────────────────────────
   let vf = 10;
   const vfNotes: string[] = [];
-  const ver = input.products?.opportunity?.verification;
+  const ver = input.products?.verification ?? input.products?.opportunity?.verification;
   const rules = ver?.form_field_rules ?? [];
   const saved = ver?.form_field_rules_saved ?? null;
   if (!rules.length) {
@@ -213,7 +242,7 @@ export function checkOppConfigFacts(input: OppConfigInput): OppFactsResult {
   }
   const oppCurrency = input.opportunity ? String(input.opportunity.currency ?? '') : '';
   const pddCurrency = param(input.pddText, 'opportunity_currency');
-  if (oppCurrency && pddCurrency && oppCurrency.toUpperCase() !== pddCurrency.trim().toUpperCase()) {
+  if (oppCurrency && pddCurrency && oppCurrency.toUpperCase() !== stripAnnotation(pddCurrency).toUpperCase()) {
     pu -= 3;
     auto.push({ severity: 'WARN', message: `opportunity currency ${oppCurrency} ≠ PDD opportunity_currency ${pddCurrency} — every amount is mispriced` });
   }

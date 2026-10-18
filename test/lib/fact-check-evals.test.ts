@@ -190,6 +190,27 @@ describe('connect-opp-setup-eval facts (deterministic) + residue', () => {
     expect(f.dimensions.payment_unit_fit.score).toBe(2); // −3 band, −2 daily, −3 currency
   });
 
+  it('reads verification where connect-opp-setup Step 10 writes it — a sibling of opportunity (ace#3182)', () => {
+    const bad = { form_field_rules: [{ name: 'c', question_path: '/data/consent', question_value: 'yes', deliver_unit_id: 7084 }], form_field_rules_saved: 1 };
+    const f = checkOppConfigFacts({ ...liveBase, products: { opportunity: { id: OPP_ID }, verification: bad } });
+    // Before the fix the sibling block was invisible: "no rules decided", score 10.
+    expect(f.dimensions.verification_flag_fidelity.score).toBeLessThanOrEqual(3);
+  });
+
+  it('a [PROPOSED] annotation on the PDD currency is not a mismatch (ace#3182)', () => {
+    const f = checkOppConfigFacts({ ...liveBase, pddText: PDD.replace('| NGN |', '| NGN \\[PROPOSED\\] |') });
+    expect(f.dimensions.payment_unit_fit.score).toBe(10);
+    expect(f.autoSurfaced.some((a) => /currency/.test(a.message))).toBe(false);
+  });
+
+  it('an unparseable (plain-text) parameter table fails loud instead of skipping quietly (ace#3182)', () => {
+    const plain = '# PDD\nProgram Parameters\nopportunity_currency\tNGN\ntotal_budget\t3300\n';
+    const f = checkOppConfigFacts({ ...liveBase, pddText: plain });
+    expect(f.checks.find((c) => c.name === 'pdd-program-parameters')?.status).toBe('unable');
+    expect(f.autoSurfaced.some((a) => a.severity === 'PLATFORM' && /Program Parameters/.test(a.message))).toBe(true);
+    expect(checkOppConfigFacts(liveBase).checks.find((c) => c.name === 'pdd-program-parameters')?.status).toBe('checked');
+  });
+
   it('no create response = INFO-SKIPPED, never a deduction (the list read cannot see amounts, ace#1026)', () => {
     const f = checkOppConfigFacts({ ...liveBase, createdPaymentUnits: undefined });
     expect(f.dimensions.payment_unit_fit.score).toBe(10);
