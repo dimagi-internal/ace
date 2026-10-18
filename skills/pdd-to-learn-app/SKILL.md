@@ -313,10 +313,11 @@ Generate the Learn (training) app from the PDD using the Nova plugin
      the brief, in its own paragraph, prefixed `REQUIRED:`:
 
      > REQUIRED: Nova's `add_fields` has a partial-persistence quirk.
-     > After EVERY `add_fields` call, immediately call `get_form` and
-     > count the persisted fields. If the count is less than what you
-     > requested, re-issue `add_fields` for the missing fields and
-     > re-verify. Repeat until counts match. Do not move on to the
+     > After EVERY `add_fields` call, count the entries in the result's
+     > `fields` array (Nova returns one `{id, uuid}` per field it
+     > persisted) against the number you sent. If fewer came back, or
+     > the call errored, call `get_form` on that form, re-issue
+     > `add_fields` for the missing fields, and re-verify. Repeat until counts match. Do not move on to the
      > next form before counts match — silent partial persistence on
      > form N becomes invisible once you start working on form N+1.
 

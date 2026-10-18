@@ -480,8 +480,13 @@ library is the only place ACE names them:
 
 - **`get_lookup_tables({app_id | work_id})`** — lists the app Project's data tables and
   their columns, with the stable `tableId` / column ids you need. Call it
-  **once per build, before authoring any select whose options are not in the
-  PDD**, and read the result before deciding a field's kind.
+  **at most once per build, and only before authoring a select whose options
+  are not in the PDD**, and read the result before deciding a field's kind.
+  The catalog is PROJECT-WIDE: every ACE build shares the Project, so it lists
+  every earlier build's tables (56 tables, ~35 KB per read, on 2026-10-17 —
+  ace#3078). Only a table created for THIS RUN qualifies (by this build, or by
+  this run's Learn build); never bind another opp's table. A table you create comes back with its ids from
+  `create_lookup_table`, so you never need to re-list to find it.
 - **`create_lookup_table({work_id, request_id, name, tag, columns, rows})`** — creates the
   table AND up to 5000 rows in ONE atomic write, returning every table, column
   and row id. It takes `work_id` for authority but is **not staged**: the table
@@ -594,8 +599,11 @@ a select, record it as a decision row naming the `entity_id` you shipped.
 > OPTION SOURCES — read this before you type `kind: text`. When the PDD spells a
 > field `select` / `lookup` / "choose from" / "from the registered <X>" and you
 > do NOT have the option list in front of you, that is NOT permission to ship
-> free text. Call `get_lookup_tables` FIRST (with your `work_id`) — it lists this app
-> Project's data tables and columns with their stable ids — and if a table
+> free text. Call `get_lookup_tables` FIRST (with your `work_id`), ONCE — it lists
+> this app Project's data tables and columns with their stable ids. The Project is
+> shared by every ACE build, so ignore every table not created for this run (never
+> bind another opp's table), and don't re-list to find a table you created:
+> `create_lookup_table` already returned its ids. If a table of yours
 > holds the option set, bind it with
 > `set_field_options_source({work_id, request_id, moduleUuid, formUuid, fieldUuid, source:
 > {kind: 'lookup', tableId, valueColumnId, labelColumnId}})`, then save. That call is an
