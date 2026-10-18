@@ -15,6 +15,7 @@
  * that stays `awarded` (never closed).
  */
 import type { QACheck, QACheckResult } from '../../lib/qa-types';
+import { decimalEq, toScaled } from '../../lib/decimal-string';
 import { SYNTHETIC_SUFFIX } from '../../lib/supply-chain-ref';
 
 export interface ProcurePlan {
@@ -86,19 +87,11 @@ const num = (v: unknown): number | null => (typeof v === 'number' ? v : null);
 const arr = (v: unknown): Array<Record<string, unknown>> => (Array.isArray(v) ? (v as Array<Record<string, unknown>>) : []);
 
 /**
- * Decimal strings to a comparable scaled BigInt. Labs writes `"38"` in one
- * place and `"38.00"` in another; comparing strings would call them different.
+ * Labs writes `"38"` in one place and `"38.00"` in another; comparing strings
+ * would call them different. The exact helpers live in lib/decimal-string.ts.
  */
-export function decimalScaled(value: string, scale = 6): bigint {
-  const v = value.trim();
-  if (!/^\d*\.?\d+$/.test(v)) throw new Error(`not a non-negative decimal: ${JSON.stringify(value)}`);
-  const [whole, frac = ''] = v.split('.');
-  return BigInt((whole || '0') + frac.padEnd(scale, '0').slice(0, scale));
-}
-
-export function decimalEq(a: string, b: string): boolean {
-  return decimalScaled(a) === decimalScaled(b);
-}
+export { decimalEq } from '../../lib/decimal-string';
+const decimalScaled = toScaled;
 
 /** Normalise the raw labs replies into {@link ProcureReadback} for one tender. */
 export function normalizeReadback(raw: RawReadback, tenderId: number): ProcureReadback {

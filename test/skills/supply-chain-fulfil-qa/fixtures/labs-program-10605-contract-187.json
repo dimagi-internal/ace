@@ -1,0 +1,52 @@
+{
+  "_provenance": {
+    "captured": "2026-10-18",
+    "by": "ace@dimagi-ai.com via the connect-labs MCP, READ-ONLY calls only",
+    "program_id": 10605,
+    "calls": [
+      "supply_chain_shipment_list({program_id: 10605, contract_id: 187})  -> {value: []}",
+      "supply_chain_receipt_list({program_id: 10605, contract_id: 187})",
+      "supply_chain_invoice_list({program_id: 10605, contract_id: 187})   -> {value: []}",
+      "supply_chain_payment_list({program_id: 10605, contract_id: 187})   -> {value: []}",
+      "supply_chain_contract_match({program_id: 10605, contract_id: 187})",
+      "supply_chain_checks_list({program_id: 10605, categories: ['conflict']})"
+    ],
+    "edits": "Every block is verbatim except checks_list, which is reduced to its `checks` array (empty: the live reply said count 0) plus the six kinds its `kinds` map files under `conflict`. `contract` is a four-field extract of contract 187 from supply_chain_contract_list. Programme 10605 holds NO shipments, invoices or payments, so those lists are empty here: the shapes the tests build for them come from the live tool SCHEMAS (supply_chain_invoice_record / _payment_record / _shipment_record, loaded 2026-10-18), not from a captured row. That is a named residual.",
+    "what_it_shows": "A receipt with no shipment (goods recorded straight in), 20 accepted of 20 ordered, and a three-way match that reads fully_received with nothing invoiced: over_invoiced -20, payable_now USD 760 (20 kits x USD 38, the value that ARRIVED)."
+  },
+  "contract": { "id": 187, "quantity": "20", "quantity_unit": "kit", "unit_price": "38", "payment_terms": "on_delivery" },
+  "shipment_list": { "value": [] },
+  "receipt_list": {
+    "value": [
+      {
+        "id": 94, "contract_id": 187, "shipment_id": null, "supply_point_id": 149, "reference": "GRN-HHS-1108",
+        "received_on": "2026-09-24",
+        "lines": [
+          { "item_id": 220, "batch": "LFC-2609", "expiry": "2028-08-31", "quantity_accepted": "20", "quantity_rejected": "0", "rejection_reason": "", "quantity_unit": "kit" }
+        ],
+        "document_ids": [], "source": "partner_reported", "recorded_by_org_id": 242, "witnessed": false, "note": ""
+      }
+    ]
+  },
+  "invoice_list": { "value": [] },
+  "payment_list": { "value": [] },
+  "contract_match": {
+    "contract_id": 187, "currency": "USD", "status": "fully_received", "matches": false, "covered_by": [],
+    "payment_terms": "on_delivery", "advance_state": null,
+    "ordered": { "amount": "20", "unit": "kit" },
+    "received": { "amount": "20", "unit": "kit" },
+    "invoiced": { "amount": "0", "unit": "kit" },
+    "outstanding": { "amount": "0", "unit": "kit" },
+    "still_to_arrive": null,
+    "over_invoiced": { "amount": "-20", "unit": "kit" },
+    "billed_amount": { "amount": "0", "currency": "USD" },
+    "paid_amount": { "amount": "0", "currency": "USD" },
+    "payable_now": { "amount": "760", "currency": "USD" },
+    "awaiting_delivery": null, "recoverable": null,
+    "refused": { "amount": "0", "unit": "kit" }
+  },
+  "checks_list": {
+    "checks": [],
+    "conflict_kinds": ["award_not_contracted", "invoice_over_billed", "invoice_above_contract", "stock_variance", "stock_negative", "shipment_quantity_unaccounted"]
+  }
+}

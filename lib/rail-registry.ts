@@ -317,6 +317,7 @@ export const RAILS: Readonly<Record<string, RailProvenance>> = {
   'test/skills/nova-upload-hq-refresh-before-authoring.test.ts': { issues: ['ace#3043'] },
   'test/skills/nova-private-work.test.ts': { issues: ['ace#2526', 'voidcraft-labs/commcare-nova#693'], note: 'observed live 2026-09-28 against a throwaway Nova app, not a run' },
   'test/skills/starter-module-removal.test.ts': { issues: ['ace#1787'], observed: 'bednet-check-2-visit/20260828-0629' },
+  'test/skills/supply-chain-fulfil-qa/checks.test.ts': { issues: ['ace#3152'], note: "controls grounded on a live read-only capture of labs program 10605 contract 187 (receipt + labs' three-way match), 2026-10-18" },
   'test/skills/supply-chain-procure-qa/checks.test.ts': { issues: ['ace#3152'], note: 'controls grounded on a live read-only capture of labs program 10605 tender 60 (an award to the non-cheapest quote with a stated reason), 2026-10-18' },
   'test/skills/supply-chain-setup-qa/checks.test.ts': { issues: ['ace#3049'], observed: 'noora-health/20261015-1129', note: 'controls grounded on a live read-only capture of labs program 10602, 2026-10-18' },
   'test/skills/sweep-handle-off-rendered-names.test.ts': { issues: ['ace#2733'], observed: 'spark-facilitator/20261004-1706' },

@@ -1,8 +1,7 @@
 ---
 name: demo-data-setup
 description: >
-  Stand up a demo dataset and live labs dashboard from a brief (synthetic) or a real opp (clone);
-  returns the dashboard URL. Also run by /ace:demo.
+  Stand up a demo dataset and live labs dashboard from a brief (synthetic) or a real opp (clone).
 disable-model-invocation: false
 ---
 
