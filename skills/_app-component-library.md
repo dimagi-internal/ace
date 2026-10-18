@@ -1335,7 +1335,14 @@ brief (see the DO NOT BRIEF THIS bullet above)**:**
 > REQUIRED — Terminology: the words "section" and "module" MUST NOT appear
 > anywhere user-facing in a Deliver app — not in form names, not in menu names,
 > not in question labels, hints, help text, or choice labels. Use plain
-> task-oriented names instead.
+> task-oriented names instead. This holds even when the PDD itself says
+> "section" or "module" — the PDD describes the form's structure, so reword
+> it ("Household questions", "Her questions", "Did she answer all of her
+> questions?") instead of copying it into a label.
+
+The PDD clause is from ace#3078 arm A (kaduna-graduation, 2026-10-17): the brief
+carried this paragraph, but the PDD's "household section / her section" wording
+came through into 7 labels, every one a terminology BLOCKER.
 
 ### connect-supported-capabilities-only
 
