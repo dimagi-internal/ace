@@ -4673,7 +4673,7 @@ server.tool(
     mode: z
       .string()
       .optional()
-      .describe('Optional override of the phase run MODE. Normally omit it: the atom reads `phases.<phase>.mode` out of the run folder\'s run_state.yaml itself, so a supported mode relaxes the fence without the caller having to remember. Recognized values live in `lib/artifact-manifest.ts::PHASE_MODES` (today: `app-QA-only`); an unrecognized string is ignored and the full required set applies, so a typo cannot skip the fence.'),
+      .describe('Optional override of the phase run MODE. Normally omit it: the atom reads `phases.<phase>.mode` out of the run folder\'s run_state.yaml itself, so a supported mode relaxes the fence without the caller having to remember. Recognized values live in `lib/artifact-manifest.ts::PHASE_MODES` (today: `app-QA-only`, `simulated`); an unrecognized string is ignored and the full required set applies, so a typo cannot skip the fence.'),
   },
   async ({ runFolderId, phase, mode }) => {
     try {

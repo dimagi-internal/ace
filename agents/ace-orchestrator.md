@@ -577,6 +577,20 @@ control that forks-then-resumes is `agents/iterate-loop.md`; the copy mechanic
 is the `fork-run` skill. (Rationale + jjackson/ace#672: see
 orchestrator-reference.md § Run shape rationale.)
 
+**Step 4a — Resolve optional steps (fresh runs only).** In one Bash call:
+
+```bash
+npx tsx "$CLAUDE_PLUGIN_ROOT/scripts/resolve-optional-steps.ts" [--with <the --with value>] [--opp-yaml <local copy of opp.yaml>] [--invite-candidates]
+```
+
+Write `opp.yaml` to the scratchpad from the Step 3 read if it exists, and pass
+`--invite-candidates` when the operator gave it or
+`ACE_SOLICITATION_INVITE_CANDIDATES=1`. Exit 2 is a refusal (`code` +
+`message`): halt Pre-flight and show it. `optional_steps: none` means write
+no block. Anything else is the `optional_steps:` block, and Step 5 writes it
+at the top level of the initial `run_state.yaml`. **A resume never runs this
+step:** it reads the block already in the run (§ Optional steps).
+
 **Step 5 — Create the run folder FIRST, then batch the file writes.**
 This is two messages, not one — `drive_create_file` requires
 `parentFolderId`, which is the run folder's id, which does not exist
@@ -589,7 +603,7 @@ exact footgun that derailed bednet-spot-check 20260529-0651.
    returned `id`** — that is the run folder id every write below (and
    every downstream phase) uses. Never substitute a guessed value.
 2. **Then**, in ONE parallel message keyed on the returned id:
-   - `drive_create_file` for `run_state.yaml` (initial — phases all pending)
+   - `drive_create_file` for `run_state.yaml` (initial: phases all pending, plus the Step 4a `optional_steps:` block when there is one)
    - `drive_create_file` for `inputs-manifest.yaml` (frozen file_id list from Step 3)
    - `drive_create_file` for `README.md` (Step 7b)
    - **`claims.yaml` — FREEZE the claim set, if one is pending.** If
@@ -617,6 +631,44 @@ phase handoff" below).
 - run a 2nd Bash to check an env var → it was already in Step 1's output.
 
 …stop, undo the planned solo call, and batch.
+
+### Optional steps
+
+A run can opt into extra steps (`/ace:run --with …` or `opp.yaml.optional_steps`;
+the table is in `commands/run.md`, the design in
+`docs/superpowers/specs/2026-10-18-optional-labs-e2e-steps.md`). **They are OFF
+unless the run's `run_state.yaml` has a top-level `optional_steps` block**, and
+the block is the ONLY thing that turns one on. Never read `--with` or `opp.yaml`
+after Pre-flight, and never infer a step from the opp's inputs: a brief that
+says "make the call private" is an input to Phase 1, not a run flag. Step 4a
+writes the block once. A resume reads it as written, so an `opp.yaml` edit
+cannot change a run in flight.
+
+What the orchestrator does with it:
+
+- **Every dispatch prompt from Phase 8 on carries the block verbatim**, as a
+  `## Optional steps (this run)` section. When there is no block, write
+  `none — every optional step is off`. Phase agents and skills branch on it;
+  they never re-derive it.
+- **Phase 8** dispatches as normal. `solicitation-management` runs each enabled
+  optional step in its own place (§ Phase 8). A disabled step is reported in the
+  phase summary as `skipped (not enabled)`, never as a gap.
+- **The award (`ace_winner`) stays a human decision at level 0.**
+  `solicitation-review`'s HITL gate is unchanged, and `AskUserQuestion` is
+  withheld from subagents, so after Phase 8's write-back the orchestrator runs
+  `solicitation-review` **inline**, in its own context. The operator approves the
+  award to the ACE winner org there, in every mode, `auto` included.
+- **Phase 9 is dispatched only in simulated mode**, when the block has
+  `simulate_weeks` or `supply_chain`, and only after `selected_llo` is recorded
+  with `synthetic_winner: true`. Its dispatch prompt says `mode: simulated`, and
+  `agents/execution-manager.md` then runs only its simulated block: no email, no
+  Connect invite, no `llo-onboarding`. Without those steps, Phase 9 is not
+  dispatched, which is the § Workflow boundary as before.
+- **The fence is unchanged.** Every artifact an optional step produces is
+  `required: false` in `lib/artifact-manifest.ts`, and each step's own `-qa`
+  verdict is its gate. A simulated Phase 9 writes
+  `phases.execution-management.mode: simulated`, which exempts the real
+  onboarding / UAT / launch artifacts and nothing else.
 
 ### Per-phase conventions (apply at every phase boundary)
 
@@ -925,6 +977,9 @@ stop, up until the point of external communication.*
   manual `/ace:step solicitation-review` (HITL-gated `award_response`) is
   what populates `selected_llo`; when Phase 9 is eventually enabled this
   boundary always pauses in every mode (first 1-1 LLO contact).
+  **Simulated runs** (`optional_steps.simulate_weeks` / `supply_chain`) pause
+  here for the inline `solicitation-review` award approval in every mode,
+  then continue into simulated Phase 9 (§ Optional steps).
 - **Phases 9–10 (Execution Management, Closeout) — not yet live:** when
   enabled, these behave like `review` mode for any step whose action
   affects an external party — always pause before `llo-onboarding`
@@ -1803,6 +1858,13 @@ When invoked with an opportunity, execute these phases in order.
 > authoritative, the per-phase `Gate:` fields and § Modes do not restate
 > it; they point here. To turn Phase 9 on, remove the agent self-guards
 > and re-validate the external-comms pause points.
+>
+> **One exception: simulated mode.** A run whose `optional_steps` block has
+> `simulate_weeks` or `supply_chain` continues past the PAUSE. It runs
+> `solicitation-review` inline (operator approval at L0, award to the ACE
+> winner org), then dispatches `Agent(execution-manager)` with
+> `mode: simulated`. That mode contacts no real LLO and makes no Connect
+> mutation (§ Optional steps). Real Phase 9 and Phase 10 are still not live.
 
 **Per-phase block shape.** Each `### Phase N` block lists `Dispatch`, `Inputs (inline at handoff)`, `Atoms / skills used`, `Products`, and optionally `Gate` + `Notes`. Two contracts apply to **every** phase and are NOT restated per block — read them once here:
 
@@ -1986,11 +2048,20 @@ reads `skipped` as `done`, so dispatches 2 and 3 never run. Report the skip and 
 
 **Gate:** terminal — `/ace:run` halts after this phase (Phase 8→9 boundary; see § Workflow callout for the authoritative statement). `selected_llo` is populated only by the manual `/ace:step solicitation-review` (HITL-gated `award_response`).
 
+**Optional steps (only when the run's `optional_steps` block enables them; § Optional steps):** the dispatch prompt carries the block. Inside Phase 8 the agent then runs:
+- `solicitation-create` with `is_public: false` (`private_solicitation`);
+- `solicitation-google-form` (`google_form`);
+- `solicitation-seed-responses` (`seed_responses`), with the ACE winner's response bound to `llo_org` when `ace_winner` is on.
+
+With `simulate_weeks` / `supply_chain` the run does not halt here. The orchestrator runs `solicitation-review` inline at L0 (HITL award to the ACE winner) and then dispatches Phase 9 in simulated mode.
+
 **Notes:** The recurring `solicitation-monitor` skill polls labs for responses while the solicitation is open; runs OUTSIDE `/ace:run` (cron or manual dispatch). Its cross-run write semantics are TBD pending Phase 8+/8 architecture decisions. `solicitation` and `selected_llo` are separate sub-blocks under `phases.solicitation-management.products.*` — only `solicitation-review` populates `selected_llo`.
 
 ### Phase 9: Execution Management
 
 **Not yet live** — `/ace:run` does not reach this phase (§ Workflow callout); the block below is forward-spec for when execution is enabled, and `agents/execution-manager.md` self-guards against accidental dispatch.
+
+**Simulated mode (optional, live).** Dispatched only when `optional_steps` has `simulate_weeks` or `supply_chain` and `selected_llo.synthetic_winner: true` is recorded. The dispatch prompt names `mode: simulated` and carries the block. The agent runs `supply-chain-setup` → `supply-chain-procure` → `supply-chain-fulfil` (`supply_chain`), then `simulated-execution`, which calls `supply-chain-operate` and `simulated-weekly-review` once per simulated week (`simulate_weeks`). It writes `phases.execution-management.mode: simulated`, with `products.supply_chain` / `products.simulation`. **No real-LLO step runs in this mode:** no email, no Connect invite, no `llo-onboarding` / `llo-uat` / `llo-launch`. Phase 10 is not dispatched after it.
 
 **Dispatch:** `Agent(execution-manager)`. **Entry gated on `phases.solicitation-management.products.selected_llo.org_slug` being populated by Phase 8's `solicitation-review`** in the current run's `run_state.yaml`.
 

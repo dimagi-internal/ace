@@ -63,6 +63,24 @@ operator_stop_after_phase:
   requested_by: <email>
   status: pending|fired
 
+# OPTIONAL STEPS (optional — absent on every run that did not ask for one,
+# and absent means EVERY optional step is off). Written once at Pre-flight
+# Step 4a by scripts/resolve-optional-steps.ts (lib/optional-steps.ts) from
+# `--with` + opp.yaml.optional_steps; never re-resolved on resume. Downstream
+# skills read THIS block, never the flag. Spec:
+# docs/superpowers/specs/2026-10-18-optional-labs-e2e-steps.md.
+optional_steps:
+  resolved_at: <ISO timestamp>
+  source: flag|"opp.yaml"|both
+  private_solicitation: true|false   # forced true by seed_responses / ace_winner / supply_chain
+  google_form: true|false            # a PUBLIC form; does not imply a private call
+  seed_responses: false|{ count: <int> }
+  ace_winner: true|false             # award to ACE's own llo_org, never a real LLO
+  supply_chain: true|false           # requires ace_winner
+  simulate_weeks: false|<int>        # requires ace_winner
+  implied:                           # optional: steps turned on by an implication
+    private_solicitation: <the step that forced it>
+
 phases:
   idea-to-design:       # Phase 1
     idea-to-pdd: done|pending|error|dry-run-success|...
@@ -150,6 +168,49 @@ identifiers (Connect program UUID + URL + connect_int_id) that survive
 across runs. Each run's `connect-opp-setup` records a copy of the
 program identifiers into its own `products.connect.program` so the
 run state file is self-contained for forking / debugging.
+
+**Optional-track products** (only on a run whose `optional_steps` block
+enables them; spec 2026-10-18 § H). All are absent on a default run:
+
+```yaml
+phases:
+  solicitation-management:
+    products:
+      solicitation:
+        visibility: private          # absent = public (legacy/default)
+        google_form: { form_id, responder_url, edit_url }        # google_form
+        seeded_responses:                                         # seed_responses
+          - { response_id, org_name, synthetic: true, intended_profile }
+      selected_llo:
+        source: solicitation
+        org_slug: <llo_org>
+        synthetic_winner: true       # the ACE-owned winner; consumers skip external comms
+  execution-management:
+    mode: simulated                  # the only legal value here; absent = real execution
+    products:
+      supply_chain:                  # supply_chain
+        program_id: <int>
+        labs_org_ids: { pm: <int>, llo: <int> }
+        commodities: [<slug>]
+        supply_points: { central: <id>, regional: <id>, flw: { <username>: <id> } }
+        suppliers: [<id>]
+        tender_id: <int>
+        award_ids: [<int>]
+        contract_ids: [<int>]
+        shipment_ids: [<int>]
+        invoice_ids: [<int>]
+        payment_ids: [<int>]
+      simulation:                    # simulate_weeks
+        calendar: { sim_start, weeks: [{ w, start, end }] }
+        synthetic_opportunity_id: <int>
+        workflow_id: <int>
+        weekly_reviews: [<drive file id>]
+```
+
+`mode: simulated` is a `PHASE_MODES` value (`lib/artifact-manifest.ts`): it
+exempts the real `llo-onboarding` / `llo-uat` / `llo-launch` artifacts from
+the fence and nothing else. `lib/run-state-validator.ts` refuses any other
+`execution-management.mode`.
 
 See `docs/superpowers/specs/2026-05-10-state-consolidation.md` for
 historical context (the original design had cross-run inheritance via

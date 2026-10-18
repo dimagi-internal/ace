@@ -1412,6 +1412,13 @@
                   },
                   "status": {
                     "type": "string"
+                  },
+                  "visibility": {
+                    "type": "string",
+                    "enum": [
+                      "public",
+                      "private"
+                    ]
                   }
                 },
                 "additionalProperties": true
@@ -1437,6 +1444,9 @@
                       "solicitation",
                       "operator"
                     ]
+                  },
+                  "synthetic_winner": {
+                    "type": "boolean"
                   },
                   "response_id": {
                     "type": [
@@ -1496,6 +1506,81 @@
           "execution-management-products": {
             "type": "object",
             "properties": {
+              "supply_chain": {
+                "type": "object",
+                "properties": {
+                  "program_id": {
+                    "type": [
+                      "string",
+                      "number"
+                    ]
+                  },
+                  "labs_org_ids": {
+                    "type": "object",
+                    "properties": {
+                      "pm": {
+                        "type": [
+                          "string",
+                          "number"
+                        ]
+                      },
+                      "llo": {
+                        "type": [
+                          "string",
+                          "number"
+                        ]
+                      }
+                    },
+                    "additionalProperties": true
+                  },
+                  "commodities": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "tender_id": {
+                    "type": [
+                      "string",
+                      "number"
+                    ]
+                  }
+                },
+                "additionalProperties": true
+              },
+              "simulation": {
+                "type": "object",
+                "properties": {
+                  "calendar": {
+                    "type": "object",
+                    "properties": {
+                      "sim_start": {
+                        "type": "string"
+                      }
+                    },
+                    "additionalProperties": true
+                  },
+                  "synthetic_opportunity_id": {
+                    "type": [
+                      "string",
+                      "number"
+                    ]
+                  },
+                  "workflow_id": {
+                    "type": [
+                      "string",
+                      "number"
+                    ]
+                  },
+                  "weekly_reviews": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "additionalProperties": true
+              },
               "launch": {
                 "type": "object",
                 "properties": {
@@ -1521,7 +1606,16 @@
       "productProducers": {
         "launch": "llo-launch"
       },
-      "unattributedProductKeys": []
+      "unattributedProductKeys": [
+        {
+          "key": "supply_chain",
+          "reason": "Declared up front by the optional-steps framework (plan 2026-10-18 PR1) so the strict() root accepts it; its writers (supply-chain-setup / -procure / -fulfil / -operate) land in PR6-PR9. Attribute it in the PR that adds the first writer."
+        },
+        {
+          "key": "simulation",
+          "reason": "Declared up front by the optional-steps framework (plan 2026-10-18 PR1); its writer, simulated-execution, lands in PR10. Attribute it there."
+        }
+      ]
     },
     "closeout": {
       "schema": {

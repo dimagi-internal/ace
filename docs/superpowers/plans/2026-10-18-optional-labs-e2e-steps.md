@@ -3,6 +3,37 @@
 **Spec:** `docs/superpowers/specs/2026-10-18-optional-labs-e2e-steps.md`
 **Shape:** staged PRs. Each PR is one bump → PR → auto-merge cycle via `skills/shipping`, and a PR merges before anything that depends on it starts. **Each file has exactly one owning PR**, so implementers working in parallel never touch the same file. PR 1 lands every new `lib/artifact-manifest.ts` entry up front, so later PRs never edit the manifest.
 
+## Amendments made by PR1 (read before starting any later PR)
+
+1. **Manifest entries land WITH each skill, not in PR1.** The lint and coherence
+   tests require every `producedBy` in `lib/artifact-manifest.ts` to be a real
+   `skills/<name>/` directory, with a row in `skills/_qa-decisions.md` and
+   `skills/_eval-decisions.md` (`test/lib/artifact-manifest-lint.test.ts`,
+   `test/lib/registries-coverage.test.ts`). PR1 therefore cannot pre-register
+   artifacts for skills that do not exist yet. Instead:
+   - PR1 put one comment anchor per later PR in the manifest, e.g.
+     `// [optional-track:PR4 solicitation-seed-responses]`, in a Phase 8 block and
+     a Phase 9 block.
+   - Each skill PR inserts its own `required: false` entries directly under its
+     own anchor, so parallel PRs stay in separate hunks.
+   - Each skill PR also adds its own `_qa-decisions.md` / `_eval-decisions.md`
+     rows.
+2. **Phase 9 simulated mode is a `PHASE_MODES` value.** PR1 added `simulated` to
+   `PHASE_MODES`. The real `llo-onboarding` / `llo-uat` / `llo-launch` artifacts
+   carry `notRequiredInModes: ['simulated']`, and `execution-manager_summary.md`
+   stays required. The phase folder is `9-execution-manager/`, not the
+   `9-execution-management/` the spec text uses. Use the real one.
+3. **Products schema.** `lib/phase-products-schema.ts` now declares:
+   - `solicitation.visibility`;
+   - `selected_llo.synthetic_winner`;
+   - `execution-management.products.{supply_chain, simulation}`. They are listed
+     in `UNATTRIBUTED_PRODUCT_KEYS`; **PR6 and PR10 must move them into
+     `PRODUCT_PRODUCERS`** when their writers land.
+   - `REQUIRED_PRODUCT_KEYS_BY_MODE.simulated`, which is empty. PR10 sets the
+     simulated requirement.
+4. **The resolver CLI is `scripts/resolve-optional-steps.ts`**, called at
+   orchestrator Pre-flight Step 4a.
+
 ## Dependency graph
 
 ```

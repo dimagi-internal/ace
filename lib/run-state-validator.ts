@@ -28,6 +28,7 @@
 import { parseTriggeredBy } from './triggering-thread.js';
 import { parseBlockers, parseLineage, parseOutcome } from './run-record.js';
 import { findAmbiguousYamlScalars } from './yaml-ambiguous-scalars.js';
+import { validateOptionalStepsBlock } from './optional-steps.js';
 
 export type ValidationSeverity = 'error' | 'warning';
 
@@ -426,6 +427,18 @@ function validatePhaseBlock(
     );
   }
   warnProseVerdict(warnings, path, block.verdict);
+  // `phases.execution-management.mode` (spec 2026-10-18 § G): the optional
+  // simulated track writes `simulated`; real execution writes no mode. Any
+  // other value would be read by nothing and relax nothing, so it is an error.
+  if (phaseName === 'execution-management' && block.mode !== undefined && block.mode !== 'simulated') {
+    pushError(
+      errors,
+      `${path}.mode`,
+      'execution-management.mode is only ever `simulated` (absent = real execution)',
+      'simulated',
+      block.mode,
+    );
+  }
   if (
     block.summary_artifact !== undefined &&
     typeof block.summary_artifact !== 'string'
@@ -665,6 +678,17 @@ export function validateRunState(
     const b = parseBlockers((parsed as Record<string, unknown>).blockers);
     for (const issue of b.issues) {
       pushError(errors, 'blockers', issue, 'a list of typed blocker entries', (parsed as any).blockers);
+    }
+  }
+
+  // `optional_steps` (lib/optional-steps.ts): absent = every optional step
+  // off, which is how every run predating it reads. When present its shape and
+  // its hard implications (fabricated responses force a private call) are
+  // errors: a skill reads this block, not the flag, to decide what to do.
+  {
+    const issues = validateOptionalStepsBlock((parsed as Record<string, unknown>).optional_steps);
+    for (const issue of issues) {
+      pushError(errors, 'optional_steps', issue, 'the block lib/optional-steps.ts renders', (parsed as any).optional_steps);
     }
   }
 
