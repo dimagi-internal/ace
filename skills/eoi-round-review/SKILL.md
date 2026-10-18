@@ -38,7 +38,7 @@ length.
 applicants or outside Dimagi. The internal report goes in ACE's Drive area for Dimagi
 people only (`@dimagi.com`, `@dimagi-ai.com`, `@dimagi-associate.com`). The external
 report carries no organisation or person names and no applicants' words, and passes a
-de-identification scan (step 12) before it is published. Both are published with sharing
+de-identification scan (step 13) before it is published. Both are published with sharing
 off; the requester decides who receives each. Contact names, emails and phones are not
 read (`include_contacts` stays false) and never appear in either report, or in any field
 of a labs review, including a claim's `text` or a `quote`. Reviews
@@ -55,7 +55,7 @@ record others will read: cite the organisation's answers, never a person.
 | connect-labs | `marketplace_round_responses(slug=…)` | every submission's answers (each `{question_id, question, answer}`; claims cite `question_id`), its `response_id` and matched org; `round.evaluation_criteria` and `round.rubric_version` |
 | connect-labs | `list_reviews(response_id=…)` | reviews already on each response (an earlier AI pass, human reviews built on it) |
 | connect-labs | `marketplace_orgs_get(slugs=…)` | each matched org's delivered and applied programmes, year established, team size |
-| Requester (optional) | the team's own picks, for comparison | the agreement table (step 10) |
+| Requester (optional) | the team's own picks, for comparison | the agreement table (step 11) |
 
 ## Products
 
@@ -66,8 +66,13 @@ record others will read: cite the organisation's answers, never a person.
   concerns from the claims, and computes the overall score from the criteria scores and
   the round's weights. Re-running replaces ACE's earlier AI review of that response.
 - `calibration.md`, written by the calibrating agent (step 8): the score distributions,
-  every change with before → after and why, the spot-check table and the final slate. A
-  working file; the internal report summarises it.
+  every change with before → after and why, the spot-check table and the final slate, plus
+  `calibration.json`, the same changes as data. Working files; the internal report
+  summarises them.
+- `rubric-health.md`, written in step 9 by `rubric_health.py` and the agent reading it: how
+  well the rubric served this pool, with keep / reweight / split / drop / add
+  recommendations, each with its numbers. It goes in the internal report and, when it
+  recommends a change, to `eoi-criteria-proposal` for the next version.
 - **The internal report**, a Google Doc published with `gdoc-writer` under
   `Projects/<project>/` (the project is the round's programme or the requester's project
   name), sharing off. Dimagi only. It has two tabs:
@@ -76,14 +81,14 @@ record others will read: cite the organisation's answers, never a person.
   2. **The pool and the review**: what the pool told us about the work, pool coverage and
      quality, how it was reviewed, the comparison with the team, next-form advice, the
      all-organisation table, and one ≤120-word entry per submission (outcome, role fit,
-     cost, strengths and concerns citing the answer, questions to ask). Step 9 lists the
+     cost, strengths and concerns citing the answer, questions to ask). Step 10 lists the
      sections.
   The doc opens with a link to the round page in labs,
   https://labs.connect.dimagi.com/labs/marketplace/rounds/<slug>/, where reviewers verify,
   agree, edit or add their own reviews. The doc is a summary of the AI pass; labs holds the
   reviews.
 - **The external report**, a de-identified Google Doc for funders and partners, published
-  the same way with sharing off after the step 12 scan passes: no organisation or person
+  the same way with sharing off after the step 13 scan passes: no organisation or person
   names, no verbatim quotes, figures for the pool only, places only at the level of the
   call's priority sites or regions.
 - The three links (both reports and the round page), in the reply to the requester, with
@@ -122,8 +127,15 @@ record others will read: cite the organisation's answers, never a person.
    - If the criteria exist but the requester questions them, or they plainly do not fit
      the pool (a criterion every response would score the same), say so and offer
      `eoi-criteria-proposal` before scoring. Replacing them later invalidates this pass.
+   - Save the round to `criteria.json` and run
+     `python3 "${CLAUDE_PLUGIN_ROOT}/skills/eoi-criteria-proposal/check_rubric.py" criteria.json`.
+     If it does not print `OK: rubric is explicit` (anchors at 1/3/5/7/10, a Silent rule,
+     outcome rules in `criteria_basis`), say which parts are missing and offer
+     `eoi-criteria-proposal`. Scoring on a rubric without anchors or outcome rules is
+     possible, but each batch then reads the bands and settles the slate its own way; say
+     so in the internal report's "How we scored".
    - Show the criteria (name, weight) in one short list before scoring, with the
-     `rubric_version` the reviews will carry.
+     `rubric_version` the reviews will carry, and the outcome rules.
 
 4. **Pull every response, without contacts.**
    - Call `marketplace_round_responses(slug=…)`. Leave `include_contacts` false: the
@@ -174,8 +186,9 @@ record others will read: cite the organisation's answers, never a person.
      “” → ", – and — → -, then a substring test) and also checks that every `question` is
      a real `question_id` of that response, claim ids are unique, every criterion has a
      1–10 score and at least one `criterion:<id>` claim, the outcome is one of
-     pick/backup/waitlist/pass with an `outcome` claim, every web cite has a url, and every
-     response in the batch was reviewed. It prints each problem and exits 1, so a
+     pick/backup/waitlist/pass with an `outcome` claim, every web cite has a url, every
+     response in the batch was reviewed, and, when the round's guides are anchored, that
+     every criterion claim names the anchor nearest its score. It prints each problem and exits 1, so a
      subagent fixes and re-runs; a quote is fixed by copying the words from the answer,
      never by loosening the claim's cite to make it pass.
    - Each subagent returns `out-<n>.json`: a list with one entry per response,
@@ -187,10 +200,13 @@ record others will read: cite the organisation's answers, never a person.
 
      where:
      - `criteria_scores`: `{criterion_id: 1–10}` for **every** criterion on the round,
-       scored against that criterion's `scoring_guide` anchors; ids exactly as saved;
+       scored against that criterion's `scoring_guide` anchors: find the anchor the
+       answer matches, then move a point up or down for what it adds or lacks; an answer
+       that says nothing gets the Silent score. Ids exactly as saved;
      - `claims`: the review's statements, in the shape in § Claims and evidence:
        - at least one `about: "criterion:<criterion_id>"` claim for **every** criterion
-         scored, giving the reason for that score;
+         scored, giving the reason for that score and naming the anchor it was read
+         against (§ Claims and evidence: the text starts `Anchor <n>: ` or `Silent: `);
        - 2–4 `strength` and 2–4 `concern` claims;
        - a `flag` claim for each flag, saying what in the response raised it;
        - one `outcome` claim giving the reason for the provisional outcome;
@@ -229,7 +245,7 @@ record others will read: cite the organisation's answers, never a person.
      - how they sample, and who addresses bias;
      - the spread of prices, expressed in the call's units.
    - These patterns go to the calibrator (step 8) and become the "what the pool told us"
-     and "before-launch conditions" sections of the internal report (step 9).
+     and "before-launch conditions" sections of the internal report (step 10).
    - If the pool shows a criterion is not separating anyone, or something decisive has no
      criterion, say so in the reply and suggest `eoi-criteria-proposal`. Do not adjust the
      scores to compensate.
@@ -255,14 +271,23 @@ record others will read: cite the organisation's answers, never a person.
    - **(c) Checks that each claim's text is supported by its cites**, not only that the
      quote exists. A claim that says more than its passage does is rewritten to what the
      passage shows, re-cited, or marked `synthesized` honestly.
-   - **(d) Settles outcomes across the pool**: about one `pick` per slot and two `backup`s
-     per slot, then `waitlist` for the credible rest and `pass`. It rewrites the `outcome`
-     claim of every response whose outcome changes, saying why in terms of the pool (for
-     example "backup: a stronger applicant covers this region").
+   - **(d) Settles outcomes across the pool by the rubric's outcome rules** in
+     `criteria_basis` (Slots, Pick, Backup, Waitlist, Pass, Overrides); when the round has
+     none, about one `pick` per slot and two `backup`s per slot, then `waitlist` for the
+     credible rest and `pass`. Every outcome claim names the rule it applied, and an
+     outcome that goes against the score order names the override (for example "backup,
+     slot rule: a higher scorer covers Ghana north", "pick, rescoping override: conditional
+     on one site within budget"). It rewrites the `outcome` claim of every response whose
+     outcome changes.
    - **(e) Writes `calibration.md`**: the distributions (before and after), every change
      with before → after and why (scores, outcomes, rewritten claims), the spot-check table
      (response, scorer's score, blind score, gap, per criterion), and the final slate per
-     slot.
+     slot. It also writes every change as data in `calibration.json`, which step 9 reads:
+
+     ```
+     {"changes": [{"response_id", "field": "outcome" | "score:<criterion_id>",
+                   "before", "after", "why"}]}
+     ```
    - Re-runs `check_claims.py` on every batch it changed, until each prints `OK: every
      claim checks`, and returns the calibrated `out-<n>.json` files.
    For scale, in the 44-response dry run (2026-10-18) calibration changed 16 outcomes and
@@ -270,7 +295,43 @@ record others will read: cite the organisation's answers, never a person.
    calibration that changes nothing is possible but worth a second look: check the slate
    against the slot count before believing it.
 
-9. **Write the two reports.** Both draw on the calibrated reviews and `calibration.md`.
+9. **Check how well the rubric served the pool** (rubric health). Run after calibration,
+   on the calibrated reviews, before the reports; run it again once people have reviewed
+   in labs, since their agreements and disagreements are the best evidence of all.
+   - Save the round (`marketplace_round_responses`) to `round.json` and the reviews to
+     `reviews.json`: before the labs write, the calibrated `out-<n>.json` entries with
+     `kind: "ai"` added; after it, every response's `list_reviews` result, which also
+     carries people's reviews (`kind: "human"`, `based_on`, `stance`). Then:
+
+     ```bash
+     python3 "${CLAUDE_PLUGIN_ROOT}/skills/eoi-round-review/rubric_health.py" \
+       round.json reviews.json --calibration calibration.json --json rubric-health.json \
+       > rubric-health.md
+     ```
+
+   - It reports, per criterion: the score distribution (mean, SD, histogram, the share on
+     three adjacent values: does it spread or bunch?); whether it separates picks and
+     backups from passes (means, and the AUC: the chance a random selected response
+     out-scores a random pass); its effective weight (how much of the weighted score's
+     spread it actually produces) against its nominal weight; the share of its scores with
+     no exact passage behind them, and the share that are a low score for a missing answer
+     (hard to judge from the form). Across criteria: the correlation matrix (|r| ≥ 0.7 is a
+     redundant pair). For the slate: which responses got a better outcome than a higher
+     scorer and what the outcome claims say it turned on (slot or geography, rescoping,
+     safety or scope). And where calibration and people changed scores or outcomes, by
+     criterion and stance.
+   - Its recommendations are a starting point with the thresholds in the script. Read the
+     numbers and the claims behind them and write the final list: **keep / reweight /
+     split / drop / add**, one line each, every one with the numbers it rests on (for
+     example "reweight cost_fit 15 → 10: AUC 0.64, the lowest; the slate turned on
+     rescoping, not on the quote"). An "add" is for what the slate turned on that no
+     criterion or outcome rule captures. Also say which anchors the scores show were read
+     inconsistently (the same kind of answer scored 1, 2 and 3), and what the Silent rule
+     should be.
+   - Do not change scores or outcomes to fit the findings. A change to the rubric goes
+     through `eoi-criteria-proposal`, and replacing the criteria invalidates this pass.
+
+10. **Write the two reports.** Both draw on the calibrated reviews and `calibration.md`.
    Plain language. No scores in the bottom line. Numbers only where they decide something
    (a price, a count, a budget). The picks, backups, waitlist and pass list are exactly the
    calibrated outcomes, so labs and the internal report agree.
@@ -289,8 +350,9 @@ record others will read: cite the organisation's answers, never a person.
      - **Before-launch conditions**: what must be true or settled before launch, what the
        pool cannot yet answer, which design assumption the responses challenge, and the
        standard rate card or template to issue.
-     - **How we scored**: the round's criteria and weights (with `rubric_version`), what
-       the criteria basis says was dropped, and the round-page link, in three lines.
+     - **How we scored**: the round's criteria and weights (with `rubric_version`), the
+       outcome rules applied, what the criteria basis says was dropped, the one-line
+       rubric-health verdict, and the round-page link, in four lines.
    - *The pool and the review tab*:
      - **What the pool told us about the work**: what applicants report about the field
        the call is in. For a value-chain call that is the trade itself: prices, buyers,
@@ -302,7 +364,25 @@ record others will read: cite the organisation's answers, never a person.
      - **How it was reviewed**: the criteria table (id, name, weight, one-line
        rationale), the calibration summary (what changed and why), the spot-check table,
        and evidence counts (claims, quoted vs synthesized, cites by kind, web checks).
-     - **Comparison with the team** (step 10), when there is one.
+     - **Comparison with the team** (step 11), when there is one.
+     - **Rubric health** (step 9): the recommendations with their numbers, the
+       per-criterion table and the slate-override table, in under a page.
+     - **Program design: what this pool tells us**: what the program team should think
+       about before contracting, grounded in the responses and counted ("31 of 44 ..."):
+       - questions the team should answer before contracting (what the pool shows is
+         undecided: the unit of payment, whether "we don't know" answers are acceptable,
+         what happens at a slot nobody credible covers);
+       - design risks the pool exposed (scope drift into collection, safety at
+         breaking or smelting sites, start dates before contracting, capacity resting on
+         one person);
+       - assumptions in the call the responses contradict (for example the battery life
+         assumed, who households sell to, where the batteries go);
+       - what to ask the shortlisted organisations before contracting, beyond each
+         review's `ask_next`: the questions the whole slate leaves open;
+       - what the next call should ask differently (form questions, structured fields,
+         pricing guidance), merged with the next-form advice below.
+       Present applicants' reports as their reports, not findings; give the count behind
+       every point.
      - **Next-form advice**: questions to add, cut or structure, from the criteria basis
        and what this review could not judge.
      - **All-organisation table**: every response, one row: organisation, country and
@@ -325,13 +405,13 @@ record others will read: cite the organisation's answers, never a person.
      running the next call (form, timeline, outreach, pricing guidance).
    - No picks, outcomes or anything that lets a reader work out who was chosen.
 
-10. **Compare with the team's picks when there are any.**
+11. **Compare with the team's picks when there are any.**
     - When the requester gives the team's own shortlist (as for ULAB), add a short table
       to the internal report with each pick, theirs vs ACE's, agree or differ, and why.
     - A difference is information, not an error to hide. A difference ACE cannot defend
       from the responses is a finding about this skill. Note it in the reply.
 
-11. **Write the AI reviews to labs.**
+12. **Write the AI reviews to labs.**
     - For each response, call `list_reviews(response_id=…)` first. If people have already
       reviewed on top of ACE's earlier AI review (`based_on` it, or feedback on it), say so
       in the reply before replacing it: their review stays, but it now sits on an AI review
@@ -397,7 +477,7 @@ record others will read: cite the organisation's answers, never a person.
     - If `rubric_version` on the round changed while this ran, stop: the reviews written so
       far carry a version that no longer applies. Re-run.
 
-12. **De-identify, publish and share the links.**
+13. **De-identify, publish and share the links.**
     - **Run the de-identification scan on the external report before publishing it.** Build
       a deny list from the batches and the answers:
       - every `org_name`, and every distinctive word in one (skip generic words such as
@@ -429,7 +509,13 @@ its cites are exact.
 - `id`: short, unique within the review: `"c1"`, `"c2"`, …
 - `about`: `"criterion:<criterion_id>"` (the reason for that criterion's score),
   `"strength"`, `"concern"`, `"flag"` or `"outcome"`.
-- `text`: one sentence in plain language. No names, emails or phone numbers.
+- `text`: one sentence in plain language. No names, emails or phone numbers. A
+  `criterion:<id>` claim on an anchored rubric starts by naming the anchor its score was
+  read against: `Anchor 7: names one priority LGA, but not its urban/rural mix.` The anchor
+  is the one nearest the score (2 reads against 1 or 3, 8 against 7, 9 against 10), and
+  the rest of the sentence says what moved it off the anchor. An answer that says nothing
+  starts `Silent: ` and gets the rubric's Silent score, citing the answer `absent: true`.
+  `check_claims.py` enforces both.
 - `basis`: `"quoted"` when the claim rests on specific passages, or `"synthesized"` when
   it is a judgement drawn from across the response ("the text is generic throughout",
   "the answers contradict each other on staff numbers"). A synthesized claim is fully
@@ -459,11 +545,11 @@ Example, for an invented applicant (criterion ids are whatever the round saved):
 ```json
 [
   {"id": "c1", "about": "criterion:named_sites", "basis": "quoted",
-   "text": "Names three districts and the markets it already works in there.",
+   "text": "Anchor 7: names three districts and the markets it already works in there.",
    "cites": [{"question": "q4", "quote": "we work in Kisumu, Siaya and Homa Bay"},
              {"question": "q4", "quote": "weekly visits to the Kibuye and Bondo markets"}]},
   {"id": "c2", "about": "criterion:cost_fit", "basis": "quoted",
-   "text": "Quotes 9 USD per household survey, under the call's rate.",
+   "text": "Anchor 7: quotes 9 USD per household survey, under the call's rate.",
    "cites": [{"question": "q9", "quote": "USD 9 per completed household survey"}]},
   {"id": "c3", "about": "strength", "basis": "quoted",
    "text": "Has delivered a Connect programme before, and finished it.",
@@ -476,7 +562,7 @@ Example, for an invented applicant (criterion ids are whatever the round saved):
    "text": "Answers read as generic text that could fit any call.",
    "cites": [{"question": "q2", "whole": true}, {"question": "q3", "whole": true}]},
   {"id": "c6", "about": "outcome", "basis": "synthesized",
-   "text": "Backup for the survey role: strong sites and price, but no buyer for the value-chain role."}
+   "text": "Backup, slot rule: strong sites and price, but a higher scorer holds the survey slot and it names no buyer for the value-chain role."}
 ]
 ```
 
@@ -522,8 +608,12 @@ button in one or two lines; the reviewers are the audience.
 - Google Drive: `drive_read_file`, `read_personal_drive_doc` (the announcement);
   publishing goes through `gdoc-writer`
 - Web search, for shortlist candidates only
-- `skills/eoi-round-review/check_claims.py` (python3, stdlib only): the quote and
-  structure check every batch passes before labs sees it
+- `skills/eoi-round-review/check_claims.py` (python3, stdlib only): the quote, structure
+  and anchor-citation check every batch passes before labs sees it
+- `skills/eoi-criteria-proposal/check_rubric.py`: whether the round's rubric is explicit
+  (step 3)
+- `skills/eoi-round-review/rubric_health.py` (python3, stdlib only): how well the rubric
+  served the pool (step 9)
 
 ## Mode Behavior
 
@@ -548,6 +638,7 @@ platform is "Connect".
 
 | Date | Change | Author |
 |------|--------|--------|
+| 2026-10-18 | Explicit rubric and rubric health: step 3 checks the round's rubric with `check_rubric.py`; criterion claims name the anchor they were read against (`Anchor <n>: ` / `Silent: `, enforced by `check_claims.py`); calibration settles outcomes by the outcome rules in `criteria_basis` and writes `calibration.json`; new step 9 runs `rubric_health.py` (distribution, separation, effective weight, evidence, correlation, slate overrides, calibration and human changes) and writes keep/reweight/split/drop/add with numbers; the internal report gains Rubric health and "Program design: what this pool tells us" | ACE team |
 | 2026-10-18 | Learnings from a 44-response dry run: shipped `check_claims.py` (labs' quote matching plus structure checks) that every batch runs until OK; batch in/out shapes (`cost_per_site_usd`, `cost_note`, `one_line`); a separate calibration agent before any labs write (distributions, blind spot-check of 6, claim support, outcomes settled per slot, `calibration.md`); labs writes paced ≥2.5 s and retried after 60 s on the 30/m limit; internal and de-identified external reports, both published with sharing off after a de-identification scan; the three human review modes and the round page's Start reviewing walk | ACE team |
 | 2026-10-17 | Evidence: every statement in an AI review is a claim citing the response's exact words (`question_id` + verbatim quote), an absent or whole answer, or labs/web history; strengths, concerns and criterion notes go in `claims` (labs fills the flat fields); fix-and-retry on `BAD_REQUEST`; reviewers click a claim to see its passages | ACE team |
 | 2026-10-17 | Scores on the round's saved criteria (1–10, via `eoi-criteria-proposal`; no private rubric), writes one AI review per response to labs (`create_review(kind="ai")`), links the doc to the round page, explains the human review flow in labs | ACE team |
