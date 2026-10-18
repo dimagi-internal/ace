@@ -259,6 +259,9 @@ describe('hook matcher covers every spelling a rule targets', () => {
     'mcp__connect_labs__synthetic_set_allowed_domains',
     'mcp__nova__upload_app_to_hq',
     'mcp__plugin_nova_nova__provision_workers',
+    'mcp__connect_labs__supply_chain_tender_create',
+    'mcp__plugin_ace_connect-labs__create_solicitation',
+    'mcp__ace-connect__connect_create_organization',
   ])('%s reaches the guard', (tool) => {
     expect(matcher.test(tool)).toBe(true);
   });
@@ -308,5 +311,111 @@ describe('entry points bind to the configured workspace', () => {
       const text = fs.readFileSync(path.join(REPO_ROOT, rel), 'utf8');
       expect(text, rel).not.toMatch(/ace-bind"?\s+"?\$\{ACE_WEB_WORKSPACE/);
     }
+  });
+});
+
+// The full supply_chain_* tool list labs served on 2026-10-18, split into
+// writes and reads. Labs has no delete for most supply records (spec
+// 2026-10-18 § F6), so a write the generic rule misses is a write the guard
+// can never be asked about — pin the split against every name.
+const SUPPLY_CHAIN_WRITES = [
+    'alert_subscription_create', 'alert_subscription_delete', 'alert_subscription_update',
+    'approval_decide', 'approval_request', 'award_create', 'charge_record', 'commitment_record',
+    'commitment_reply_sent', 'commitment_resolve', 'commodity_upsert', 'consignment_dispatch',
+    'consignment_receive', 'contract_create', 'contract_update', 'dispensing_rule_upsert',
+    'distribution_record', 'document_attach', 'invoice_dispute', 'invoice_record',
+    'invoice_update', 'item_upsert', 'movement_record', 'org_merge', 'org_upsert',
+    'outreach_delete', 'outreach_log', 'outreach_update', 'payment_confirm', 'payment_record',
+    'programme_runner_set', 'programme_team_add', 'programme_team_remove', 'quote_correct',
+    'quote_record', 'quote_void', 'receipt_record', 'shipment_record', 'shipment_update',
+    'stock_count_record', 'supplier_create', 'supplier_mark_reviewed', 'supplier_market_invite',
+    'supplier_update', 'supply_point_upsert', 'tender_close', 'tender_create', 'tender_invite_org',
+    'tender_open', 'tender_set_duty_terms', 'tender_set_import_estimates', 'tender_uninvite_org',
+    'tender_update', 'update_link_issue', 'update_link_revoke', 'view_pin', 'view_unpin',
+];
+const SUPPLY_CHAIN_READS = [
+    'alert_log_list', 'alert_subscription_list', 'approval_list', 'award_list', 'chain_summary',
+    'charge_list', 'checks_list', 'commitment_list', 'commodity_list', 'commodity_market_offers',
+    'commodity_supply_base', 'consignment_list', 'contract_get', 'contract_holds',
+    'contract_landed_cost', 'contract_list', 'contract_match', 'dispensing_rule_get',
+    'dispensing_rule_list', 'distribution_get', 'distribution_list', 'document_list',
+    'followup_render', 'invoice_list', 'item_get', 'item_list', 'movement_list', 'network_stock',
+    'network_tree', 'org_list', 'outreach_list', 'payment_list', 'programme_runner_get',
+    'programme_team_list', 'quote_get', 'quote_list', 'receipt_list', 'reminder_render',
+    'request_render', 'resupply_plan', 'shipment_get', 'shipment_list', 'stock_by_batch',
+    'stock_count_list', 'stock_flow', 'stock_forecast', 'stock_on_hand', 'stock_position',
+    'supplier_get', 'supplier_list', 'supplier_performance', 'supply_point_get',
+    'supply_point_list', 'tender_compare', 'tender_drafts_render', 'tender_get', 'tender_list',
+    'tender_outstanding_questions', 'update_link_list', 'view_list', 'worker_stock',
+    'worker_stock_get',
+];
+
+describe('optional labs track writes (spec 2026-10-18 § I)', () => {
+  const RULES = JSON.parse(fs.readFileSync(path.join(REPO_ROOT, 'config', 'tenancy-targets.json'), 'utf8')).rules as {
+    name: string;
+    tool_pattern: string;
+  }[];
+  const ruleFor = (tool: string) => RULES.find((r) => new RegExp(r.tool_pattern).test(tool))?.name;
+  const TENDER = 'mcp__connect_labs__supply_chain_tender_create';
+  const UPSERT = 'mcp__connect_labs__supply_chain_org_upsert';
+  const SOLICIT = 'mcp__connect_labs__create_solicitation';
+  const CREATE_ORG = 'mcp__plugin_ace_ace-connect__connect_create_organization';
+
+  it.each(SUPPLY_CHAIN_WRITES)('supply_chain_%s is a guarded write', (n) => {
+    expect(ruleFor(`mcp__connect_labs__supply_chain_${n}`)).toMatch(/^labs-supply-chain-/);
+  });
+  it.each(SUPPLY_CHAIN_READS)('supply_chain_%s is a read, never guarded', (n) => {
+    expect(ruleFor(`mcp__connect_labs__supply_chain_${n}`)).toBeUndefined();
+  });
+  it('org_upsert matches its own rule, not the generic write rule', () => {
+    expect(ruleFor(UPSERT)).toBe('labs-supply-chain-org-upsert');
+  });
+
+  it('the program_id rule is INERT while the tenancy record has no connect_program_ids key', () => {
+    spawnSync(BIND, ['spark/spark-facilitator', '--warn', '--tenancy-json', JSON.stringify(SPARK)], {
+      env: env({ CLAUDE_CODE_SESSION_ID: SESSION }),
+      encoding: 'utf8',
+    });
+    expect(guard(TENDER, { program_id: 999, data: {} }).code).toBe(0);
+    expect(fs.existsSync(path.join(bindDir, 'bound-violations.log'))).toBe(false);
+  });
+
+  it('applies the moment ace-web ships connect_program_ids', () => {
+    bind({ ...SPARK, connect_program_ids: [308] });
+    expect(guard(TENDER, { program_id: 308, data: {} }).code).toBe(0);
+    const r = guard(TENDER, { program_id: 999, data: {} });
+    expect(r.code).toBe(2);
+    expect(r.stderr).toContain('999');
+  });
+
+  it('a connect_program_ids key that is present but empty refuses, rather than guessing', () => {
+    bind({ ...SPARK, connect_program_ids: [] });
+    const r = guard(TENDER, { program_id: 308, data: {} });
+    expect(r.code).toBe(2);
+    expect(r.stderr).toMatch(/connect_program_ids.*not set/);
+  });
+
+  it('a labs org row binds only to the opp orgs, or to ACE-owned winner org from the installed .env', () => {
+    bind(SPARK);
+    expect(guard(UPSERT, { data: { slug: 's', name: 'S', connect_organization_slug: 'spark' } }).code).toBe(0);
+    const winner = { data: { slug: 'w', name: 'W', connect_organization_slug: 'ace-test-llo-synthetic' } };
+    expect(guard(UPSERT, winner, { ACE_CONNECT_LLO_ORG: 'ace-test-llo-synthetic' }).code).toBe(0);
+    // Unset (HOME moved so the real installed .env cannot answer) admits nothing.
+    expect(guard(UPSERT, winner, { HOME: bindDir }).code).toBe(2);
+    expect(guard(UPSERT, { data: { slug: 'x', name: 'X', connect_organization_slug: 'evil-org' } }).code).toBe(2);
+  });
+
+  it('a solicitation is owned by the opp PM org', () => {
+    bind(SPARK);
+    expect(guard(SOLICIT, { title: 't', description: 'd', solicitation_type: 'eoi', org_slug: 'spark-pm' }).code).toBe(0);
+    expect(guard(SOLICIT, { title: 't', description: 'd', solicitation_type: 'eoi', org_slug: 'ace-pm-org' }).code).toBe(2);
+  });
+
+  it('connect_create_organization is refused in a bound session and allowed unbound', () => {
+    expect(guard(CREATE_ORG, { name: 'ACE Test LLO (Synthetic)' }).code).toBe(0);
+    bind(SPARK);
+    const r = guard(CREATE_ORG, { name: 'ACE Test LLO (Synthetic)' });
+    expect(r.code).toBe(2);
+    expect(r.stderr).toContain('NEW Connect org');
   });
 });

@@ -1,5 +1,5 @@
 {
-  "_doc": "Which tool arguments name a tenant target, for hooks/tenancy_guard.py. When a session is bound to an opp (bin/ace-bind), every matching MCP write is checked against that opp's tenancy (ace-web GET /api/w/{ws}/opps/{slug}/tenancy) and refused if it points anywhere else. 'tool_pattern' is a regex on the tool NAME (suffix-matched, because hosts register plugins as mcp__plugin_ace_ace-connect__X or mcp__ace-connect__X, and connect-labs / Nova may be registered user-scope as mcp__connect_labs__X / mcp__nova__X — hooks/hooks.json's PreToolUse matcher must cover every one of those spellings or the rule never runs). Each 'args' entry maps an argument path (dot = nested key, [] = every list element) to the tenancy field(s) it must equal; a list of fields means any of them. An ABSENT argument is not checked (the tool's own default applies — see 'server_env' for tools whose tenant is fixed at server start). Read-only tools are deliberately absent: reading a shared source (e.g. copying FROM the shared HQ space into a partner space) is allowed, so upstream/source arguments are not listed. Spec: ace-web docs/specs/2026-09-28-clone-and-release-design.md § D.",
+  "_doc": "Which tool arguments name a tenant target, for hooks/tenancy_guard.py. When a session is bound to an opp (bin/ace-bind), every matching MCP write is checked against that opp's tenancy (ace-web GET /api/w/{ws}/opps/{slug}/tenancy) and refused if it points anywhere else. 'tool_pattern' is a regex on the tool NAME (suffix-matched, because hosts register plugins as mcp__plugin_ace_ace-connect__X or mcp__ace-connect__X, and connect-labs / Nova may be registered user-scope as mcp__connect_labs__X / mcp__nova__X — hooks/hooks.json's PreToolUse matcher must cover every one of those spellings or the rule never runs). Each 'args' entry maps an argument path (dot = nested key, [] = every list element) to the tenancy field(s) it must equal; a list of fields means any of them. An ABSENT argument is not checked (the tool's own default applies — see 'server_env' for tools whose tenant is fixed at server start). Read-only tools are deliberately absent: reading a shared source (e.g. copying FROM the shared HQ space into a partner space) is allowed, so upstream/source arguments are not listed. Three rule keys beyond 'args': 'operator_values' admits ACE-owned values whatever the tenancy says ('{agent_email_domain}', or '{plugin_env:KEY}' for a value from the installed .env); 'pending_fields' names tenancy fields ace-web has not shipped yet — an arg checked only against pending fields is INERT while the tenancy record lacks the key, and applies the moment the key appears; 'refuse_when_bound' refuses the tool outright in a bound session (warn mode logs it). Spec: ace-web docs/specs/2026-09-28-clone-and-release-design.md § D.",
   "rules": [
     {
       "name": "connect-org-writes",
@@ -41,6 +41,46 @@
       "args": {"allowed_domains[]": []},
       "operator_values": {"allowed_domains[]": ["@dimagi.com", "@dimagi-associate.com", "{agent_email_domain}"]},
       "_operator_values_doc": "The ONLY domains admitted on a labs allowlist (ace-web dropped the per-opp labs_allowed_domains on 2026-10-08, so Labs stays Dimagi-only): Dimagi staff (@dimagi.com and @dimagi-associate.com, owner 2026-10-16 — associates are Dimagi, as lib/destructive-guards.ts DIMAGI_OWNER_DOMAINS already says) and ACE's own mailbox domain ({agent_email_domain} = config/agent.json email). Neither widens a partner's view, and ACE must stay on every list or it locks itself out of its own synthetic opps — synthetic_set_allowed_domains REPLACES the list (ace#2713)."
+    },
+    {
+      "name": "connect-create-organization",
+      "tool_pattern": "(?:^|__)connect_create_organization$",
+      "refuse_when_bound": "connect_create_organization makes a NEW Connect org, which is outside every opp's tenancy by definition. It is for ACE-owned orgs only (e.g. ACE's synthetic winner org, ACE_CONNECT_LLO_ORG), created once in an unbound session, never inside an opp-bound one."
+    },
+    {
+      "name": "labs-create-solicitation",
+      "tool_pattern": "(?:^|__)create_solicitation$",
+      "args": {
+        "org_slug": ["connect_pm_org"],
+        "program_id": ["connect_program_ids"]
+      },
+      "pending_fields": ["connect_program_ids"],
+      "_args_doc": "A call is owned by the opp's PM org (ace-web tenancy connect_pm_org). program_id is mapped to connect_program_ids, a tenancy field ace-web does not carry yet: the check is INERT until the tenancy record has that key (pending_fields), then it applies. award_response / update_solicitation / create_response name the winner by its Connect org INTEGER id (connect-labs #2605), which no tenancy field holds, so they are not slug-checked here; the call itself is owned by the PM org that created_solicitation was checked against."
+    },
+    {
+      "name": "labs-create-response",
+      "tool_pattern": "(?:^|__)create_response$",
+      "args": {"program_id": ["connect_program_ids"]},
+      "pending_fields": ["connect_program_ids"],
+      "_args_doc": "create_response's program_id is 'accepted for compatibility; not needed' upstream, so it is usually absent (absent = unchecked). When given, it must be one of the opp's programs once ace-web ships connect_program_ids; inert until then."
+    },
+    {
+      "name": "labs-supply-chain-org-upsert",
+      "tool_pattern": "(?:^|__)supply_chain_org_upsert$",
+      "args": {
+        "data.connect_organization_slug": ["connect_pm_org", "connect_holding_org"],
+        "program_id": ["connect_program_ids"]
+      },
+      "operator_values": {"data.connect_organization_slug": ["{plugin_env:ACE_CONNECT_LLO_ORG}"]},
+      "pending_fields": ["connect_program_ids"],
+      "_args_doc": "A labs org row bound to a Connect org must bind to one of the opp's orgs, or to ACE's own synthetic winner org (ACE_CONNECT_LLO_ORG from the installed .env — an ACE-owned org, never a partner's, so admitting it widens no partner's view; unset admits nothing). Listed BEFORE labs-supply-chain-writes so this rule, not the generic one, matches."
+    },
+    {
+      "name": "labs-supply-chain-writes",
+      "tool_pattern": "(?:^|__)supply_chain_\\w*?_(?:upsert|create|record|update|delete|merge|dispatch|receive|confirm|dispute|correct|void|close|open|invite_org|uninvite_org|set_duty_terms|set_import_estimates|decide|request|resolve|reply_sent|issue|revoke|pin|unpin|add|remove|attach|set|log|market_invite|mark_reviewed)$",
+      "args": {"program_id": ["connect_program_ids"]},
+      "pending_fields": ["connect_program_ids"],
+      "_args_doc": "Every supply-chain write is scoped by program_id, and labs keeps no delete for tenders, quotes, awards, contracts, shipments, receipts, invoices or payments (spec 2026-10-18 § F6), so a write into the wrong program cannot be cleaned up — this is the rule that should eventually guard it. ace-web's tenancy has no program field yet; connect_program_ids is PENDING (dimagi-internal/ace-web#914), so the rule is inert until ace-web ships it, then applies. The write/read split is pinned against the full live tool list in test/hooks/tenancy-guard.test.ts. programme_runner_set's org_id is a labs org pk, which no tenancy field holds; only its program_id is checked."
     },
     {
       "name": "ocs-team-writes",

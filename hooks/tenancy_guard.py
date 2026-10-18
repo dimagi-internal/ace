@@ -165,16 +165,34 @@ def _operator_values(rule: dict, arg: str, field: str) -> set[str]:
     for v in (rule.get("operator_values") or {}).get(arg, []):
         if v == "{agent_email_domain}":
             v = agent_email_domain()
+        elif v.startswith("{plugin_env:") and v.endswith("}"):
+            # An ACE-owned value from the installed .env, e.g. ACE's own
+            # synthetic winner org (ACE_CONNECT_LLO_ORG). Unset → admits nothing.
+            v = plugin_env(v[len("{plugin_env:"):-1])
         if v:
             out.add(_norm(v, field))
     return out
 
 
+def _pending(rule: dict, fields: list[str], tenancy: dict) -> bool:
+    """True when every field is one the rule declares PENDING and the tenancy
+    record does not carry the key at all — ace-web has not shipped that field
+    yet, so the check is inert. A key that is present but empty is a field that
+    exists and is not set up, which refuses as usual."""
+    pending = set(rule.get("pending_fields") or [])
+    names = [f[:-2] if f.endswith("[]") else f for f in fields]
+    return bool(names) and all(n in pending and n not in tenancy for n in names)
+
+
 def violations(rule: dict, tool_input: dict, tenancy: dict) -> list[str]:
     problems: list[str] = []
+    if rule.get("refuse_when_bound"):
+        problems.append(str(rule["refuse_when_bound"]))
     for arg, fields in (rule.get("args") or {}).items():
         values = _values_at(tool_input, arg)
         if not values:
+            continue
+        if _pending(rule, fields, tenancy):
             continue
         operators = _operator_values(rule, arg, fields[0] if fields else arg)
         if not fields:
