@@ -2546,6 +2546,11 @@ Four outcomes, and they are NOT the same:
 
 - **installed == live MCP == origin/main** → current; say nothing.
 - **installed < origin/main** → run `/ace:update` here, per rule 3 above.
+  If its Step 1 says `RUNNER_MANAGED` (a canopy cloud runner: ACE's
+  marketplace is a `directory` source such as `/opt/agents/ace`, refreshed by
+  canopy's fleet hook at session start — ace#3143), there is nothing to take
+  in-session: record the gap (installed vs `main`) in the phase's run_state
+  notes and continue. Never pull into that checkout or write the plugin cache.
 - **live MCP < installed** → the session's MCP subprocesses are stale.
   `/ace:update` does NOT fix this and `/reload-plugins` does NOT respawn
   them. Report the gap, name the changed `mcp/` files, and let the operator
