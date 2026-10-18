@@ -1799,7 +1799,7 @@ Append validated load-bearing default rows to a run's decisions.yaml. The MCP tr
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `runFolderId` | `z.string` | **required** | Drive file ID of the run folder (e.g. resolved via resolve_opp_path → runs/<run-id>). decisions.yaml lives at the root of this folder. |
-| `opportunity` | `z.string` | **required** | Opportunity slug (e.g. `bednet-spot-check`). Must match an existing log's `opportunity` if one is already in place. |
+| `opportunity` | `z.string` | **required** | Opportunity slug (e.g. `bednet-check-2-visit`). Must match an existing log's `opportunity` if one is already in place. |
 | `run_id` | `z.string` | **required** | Run id (e.g. `20260525-2013`). Must match an existing log's `run_id` if one is already in place. |
 | `rows` | `z.array` | **required** | Array of validated decision rows to append. Each row's `ai-default` (and `override` if set) MUST be one of the strings in its `options` array, exact-match — put rationale in `reasoning`, never in `ai-default`. Duplicate ids within the batch are rejected; ids already present in the existing log are silently skipped (idempotent re-run). |
 
