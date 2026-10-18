@@ -138,4 +138,57 @@ describe('eoi-round-review check_claims.py', () => {
     const r = spawnSync('python3', [SCRIPT, '/nonexistent/batch.json', '/nonexistent/out.json', '/nonexistent/c.json'], { encoding: 'utf8' });
     expect(r.status).toBe(2);
   });
+
+  describe('on an anchored rubric', () => {
+    const anchored = (id: string, weight: number) => ({
+      id,
+      name: id,
+      weight,
+      scoring_guide: [
+        '1: gives nothing on this point, or answers N/A',
+        '3: mentions it in general terms with nothing checkable',
+        '5: gives one checkable detail but no unit or source',
+        '7: gives a checkable detail with a unit and a source',
+        '10: gives several checkable details from its own field work',
+        'Silent: 2 - blank or "No"; cite the answer with absent: true',
+      ].join('\n'),
+    });
+    const anchoredCriteria = [anchored('named_sites', 60), anchored('cost_fit', 40)];
+    const anchoredReview = () => {
+      const rev = goodReview();
+      rev.claims[0].text = 'Anchor 7: names two districts, with weekly market visits.';
+      rev.claims[1].text = 'Anchor 5: quotes USD 900 per site, with no breakdown.';
+      return rev;
+    };
+
+    it('passes when each criterion claim names the anchor nearest its score', () => {
+      const rev = anchoredReview();
+      rev.criteria_scores = { named_sites: 8, cost_fit: 6 };
+      const r = run([rev], anchoredCriteria);
+      expect(r.stdout.trim()).toBe('OK: every claim checks');
+      expect(r.status).toBe(0);
+    });
+
+    it('accepts a Silent claim', () => {
+      const rev = anchoredReview();
+      rev.criteria_scores = { named_sites: 7, cost_fit: 2 };
+      rev.claims[1] = { id: 'c2', about: 'criterion:cost_fit', basis: 'quoted', text: 'Silent: gives no cost.', cites: [{ question: 'q2', absent: true }] } as never;
+      expect(run([rev], anchoredCriteria).status).toBe(0);
+    });
+
+    it('refuses a criterion claim with no anchor, or the wrong one for its score', () => {
+      const rev = anchoredReview();
+      rev.claims[0].text = 'Names two districts.';
+      rev.criteria_scores = { named_sites: 7, cost_fit: 9 };
+      const r = run([rev], anchoredCriteria);
+      expect(r.status).toBe(1);
+      expect(r.stdout).toMatch(/r1 c1: text must start 'Anchor <n>: '/);
+      expect(r.stdout).toMatch(/r1 c2: cites anchor 5 for a score of 9; the nearest anchor is 10/);
+    });
+
+    it('does not ask for anchors when the guide is the older banded shape', () => {
+      const banded = criteria.map((c) => ({ ...c, scoring_guide: '1-3: none. 4-6: some. 7-8: most. 9-10: all.' }));
+      expect(run([goodReview()], banded).status).toBe(0);
+    });
+  });
 });

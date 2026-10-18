@@ -11,9 +11,11 @@ Marketplace EOI rounds go out on Google Forms without a published evaluation fra
 the criteria a round is judged on are written *after* the submissions arrive. This skill
 writes them. It reads every response and the call's announcement, works out what actually
 varies across the pool and what the call needs, and proposes 5–8 criteria, each with a
-reason grounded in the pool, a weight and 1–10 scoring anchors. After the requester
-approves, it saves them on the round in labs, where the AI first pass
-(`eoi-round-review`) and every human reviewer score against the same criteria.
+reason grounded in the pool, a weight and 1–10 scoring anchors, plus the rules that turn
+scores into outcomes. Together that is the round's **rubric**, and it is written out in full
+(§ The rubric shape): `check_rubric.py` refuses a set that leaves any part implicit. After
+the requester approves, it saves the rubric on the round in labs, where the AI first pass
+(`eoi-round-review`) and every human reviewer score against the same anchors.
 
 Criteria written after the fact can be bent to favour an applicant someone already likes.
 The guard is the reason given for each criterion: it must cite what varied across the
@@ -48,25 +50,9 @@ proposal doc, if one is written, is shared only with Dimagi people (`@dimagi.com
 - After explicit approval only: the criteria saved on the round with
   `marketplace_round_criteria_set`, and the new `rubric_version` reported back.
 
-The labs criterion shape:
-
-```
-{ id, name, weight, scoring_guide, rationale }
-```
-
-- `id`: short snake_case slug (`named_sites`, `cost_fit`). Stable: keep an existing id
-  when a criterion carries over, so scores stay comparable.
-- `weight`: a percentage. Weights across the set sum to exactly 100.
-- `scoring_guide`: anchors for a 1–10 score, at least at 1–3, 4–6, 7–8 and 9–10, each
-  phrased as what the answer contains ("names districts and the actors it works with
-  there"), so two reviewers reading the same answer land within a point or two. Each
-  score's reason is written as a claim that quotes the passage it rests on, so an anchor
-  a reader can point to in the text works better than one that needs a judgement call.
-- `rationale`: why this criterion separates THIS pool, citing what varied (counts, the
-  range, a representative paraphrase) and what in the call makes it matter.
-
-`basis` (free text, saved with the set): how the criteria were derived, the pool size,
-what was considered and dropped and why, and who approved.
+The rubric is saved in the fields labs already stores (`marketplace_round_criteria_set`
+takes `{id, name, weight, scoring_guide, rationale}` per criterion and a free-text `basis`,
+which labs returns as `criteria_basis`). § The rubric shape says what goes in each.
 
 ## Process
 
@@ -128,15 +114,37 @@ what was considered and dropped and why, and who approved.
    - If the requester offered criteria, test them by the same three conditions and say
      plainly when one fails.
 
-6. **Weight and anchor them.**
+6. **Weight and anchor them, and write the outcome rules.** Write the rubric in the shape
+   in § The rubric shape.
    - Weight by how much the criterion decides whether the partner can do *this* work,
      adjusted for how well it can be judged: a decisive criterion judged on thin evidence
      gets less than its importance alone suggests. Give each weight a one-line reason.
    - Weights are whole numbers that sum to 100. Check the sum before showing it.
-   - Write the 1–10 anchors from the pool's own spread, so the bottom anchor describes the
-     weaker answers actually received and the top anchor the strongest, not an ideal no one
-     approaches. Try the anchors against three real answers (low, middle, high) and adjust
-     until each lands where a reader would expect.
+   - Write the anchors at 1, 3, 5, 7 and 10 from the pool's own spread, so the 1 anchor
+     describes the weakest answers actually received and the 10 the strongest, not an
+     ideal no one approaches. Each anchor says what is **in** the answer (a named district,
+     a price with a unit), never only how good it is ("strong", "adequate").
+   - Write the **Silent** rule for each criterion: the score an answer that says nothing
+     (blank, "No", "N/A", "we will find out") gets, and that the claim cites the answer with
+     `absent: true`. One fixed score, so silence is not scored 1 by one batch and 3 by the
+     next. Say whether "we don't know yet" scores the same as silence: when the call
+     invites honest uncertainty, it may deserve a point more.
+   - Try the anchors against three real answers (low, middle, high) and adjust until each
+     lands where a reader would expect.
+   - Write the outcome rules into `basis` (§ The rubric shape): the score formula, the
+     slots, the rule for each outcome and the overrides. The slots and budget come from
+     the call or the requester; if neither says how many partners each role takes, ask.
+   - Run the structural check, and fix the rubric until it prints `OK: rubric is explicit`:
+
+     ```bash
+     python3 "${CLAUDE_PLUGIN_ROOT}/skills/eoi-criteria-proposal/check_rubric.py" rubric.json
+     ```
+
+     `rubric.json` is `{"criteria": [...], "basis": "..."}`, exactly what step 10 will send.
+     It checks 5–8 criteria with snake_case ids, whole weights summing to 100, an anchor
+     at each of 1/3/5/7/10 of at least five words that says what the answer contains, a
+     Silent rule, `Measures:` and `Separates:` (with a count) in each rationale, and an
+     `Outcome rules:` section in `basis` with every line in § The rubric shape.
 
 7. **Compare with criteria already on the round.** If `round.evaluation_criteria` is not
    empty:
@@ -159,8 +167,9 @@ what was considered and dropped and why, and who approved.
 
 9. **Present the proposal and wait for approval.**
    - In chat (or the Doc, linked) show: the pool profile (counts, no names), the criteria
-     table (id, name, weight, one-line rationale), the anchors for each, the drops with
-     reasons, the diff from step 7 if any, and the form advice.
+     table (id, name, weight, one-line rationale), the anchors and Silent rule for each,
+     the outcome rules, the drops with reasons, the diff from step 7 if any, and the form
+     advice.
    - Ask the requester to approve, edit, or reject. Edits loop back to steps 5–6; re-check
      that weights still sum to 100.
    - **Do not call `marketplace_round_criteria_set` until the requester explicitly approves
@@ -176,12 +185,66 @@ what was considered and dropped and why, and who approved.
     - `basis` names who approved and when, the pool size the criteria were drawn from,
       what was dropped and why, and the form advice.
     - Read the round back with `marketplace_round_responses(slug=…)` and confirm
-      `round.evaluation_criteria` matches and `round.rubric_version` is set. Only then
-      report it saved.
+      `round.evaluation_criteria` matches and `round.rubric_version` is set. Save that
+      result to a file and run `check_rubric.py` on it (it reads the round shape too): the
+      saved rubric must still print `OK: rubric is explicit`. Only then report it saved.
     - Reply with the version, the criteria in one line each, and the next step: run
       `eoi-round-review` for the AI first pass; reviewers then score in labs at
       https://labs.connect.dimagi.com/labs/marketplace/rounds/<slug>/.
     - Run `agent-turn-review` before replying.
+
+## The rubric shape
+
+Everything a reviewer needs to score a response and place it, in fields labs already has.
+Nothing is left to "the reviewer will know": a rule that is not written here is applied
+differently by every batch, and the rubric-health step in `eoi-round-review` cannot tell
+whether it served the pool.
+
+**`id`, `name`, `weight`.** `id` is a short snake_case slug (`named_sites`, `cost_fit`);
+keep an existing id when a criterion carries over, so scores stay comparable. `weight` is a
+whole-number percentage; the set sums to exactly 100.
+
+**`scoring_guide`, per criterion: anchors and the Silent rule.** One line each, in this
+form (labs scores 1–10, so the bottom anchor is 1; 2, 4, 6, 8 and 9 sit between anchors):
+
+```
+1: <what an answer at this level contains: the weakest answers actually received>
+3: <...>
+5: <...>
+7: <...>
+10: <what the strongest answers contain, plainly from the applicant's own work>
+Silent: <score> - blank, "No", "N/A" or "we will find out"; cite the answer with absent: true
+```
+
+Write each anchor as observable evidence (what a reader can point to in the text), not a
+verdict. A reviewer reads the answer, finds the anchor it matches, and moves one point up
+or down for what it adds or lacks; the review cites the anchor it used
+(`eoi-round-review` § Claims and evidence).
+
+**`rationale`, per criterion: two labelled lines.**
+
+```
+Measures: <what the criterion measures, in one sentence>
+Separates: <why it separates THIS pool: the spread in counts, and what in the call makes it matter>
+```
+
+**`basis` (`criteria_basis`): how it was derived, then the outcome rules.** The derivation
+paragraph comes first (pool size, drops and why, who approved, form advice). Then:
+
+```
+Outcome rules:
+Score: weighted score = sum(weight x criterion score) / 10, from 10 to 100; labs computes it.
+Slots: <each role or site and how many partners it takes, e.g. "4: Kano, a second Nigeria site, Ghana south, Ghana north, one partner each">
+Pick: <e.g. the highest-scoring credible applicant for each slot, at most one per slot>
+Backup: <e.g. the next two per slot, in score order>
+Waitlist: <e.g. credible (no criterion at 1-2 that the call needs) but not a pick or backup>
+Pass: <e.g. outside every slot, or 1-2 on a criterion the call cannot do without>
+Overrides: <when the score order gives way, and to what: slot or geography coverage, a conditional pick that must be rescoped (and the condition), a safety or scope problem, a duplicate>
+```
+
+An override is legitimate, but it must be written here before scoring, so a pick that
+outranks a higher score points at a rule rather than at a judgement made on the day. Each
+outcome claim in a review names the rule it applied.
 
 ## Pool profile shape
 
@@ -266,6 +329,7 @@ The proposal is prose a person reads. Follow `skills/_terminology.md`: the platf
 
 | Date | Change | Author |
 |------|--------|--------|
+| 2026-10-18 | The rubric is explicit (§ The rubric shape): anchors at 1/3/5/7/10 written as observable evidence and a Silent rule in each `scoring_guide`, `Measures:`/`Separates:` in each `rationale`, and outcome rules (score formula, slots, pick/backup/waitlist/pass, overrides) in `basis`; `check_rubric.py` checks the shape before approval and after saving. The ULAB v1 guides had four 1-3/4-6/7-8/9-10 bands, no silent rule and no outcome rules | ACE team |
 | 2026-10-18 | Pool profiling from the 44-response dry run: batches of ~9 to parallel subagents, each returning a structured profile per dimension (tally, strong/weak example, separates, judgeable from form) plus `everyone_passes`, `cost_quotes` and `form_limits`, then merged | ACE team |
 | 2026-10-17 | Anchors written so a score's reason can quote the passage it rests on (AI reviews now cite evidence) | ACE team |
 | 2026-10-17 | Initial version: criteria written after submissions, grounded in the pool's spread, saved on the round in labs (`marketplace_round_criteria_set`) after approval | ACE team |

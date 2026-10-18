@@ -22,12 +22,24 @@ substring test against the answer the cite's question_id names. A quote that
 passes here can still be refused by labs if labs changes its rule; one that
 fails here would be refused.
 
+When a criterion's scoring_guide is in the anchored shape eoi-criteria-proposal
+writes (anchors at 1/3/5/7/10 and a Silent rule; see
+skills/eoi-criteria-proposal/check_rubric.py), each criterion:<id> claim must
+also say which anchor the score was read against: its text starts
+"Anchor <n>: ", where <n> is the anchor nearest the score (either one on a tie),
+or "Silent: " when the answer said nothing and the Silent rule set the score.
+Older banded guides ("1-3: ...") are not checked for this.
+
 Standard library only, so it runs anywhere python3 does.
 """
 
 import json
+import os
 import re
 import sys
+
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "eoi-criteria-proposal"))
+from check_rubric import is_anchored, nearest_anchors  # noqa: E402
 
 OUTCOMES = ("pick", "backup", "waitlist", "pass")
 ABOUT_FIXED = ("strength", "concern", "flag", "outcome")
@@ -39,6 +51,7 @@ _CHAR_MAP = str.maketrans({
     "–": "-", "—": "-",
 })
 _WS = re.compile(r"\s+")
+_ANCHOR_CITE = re.compile(r"^\s*(?:anchor\s+(\d{1,2})|(silent))\s*:", re.IGNORECASE)
 
 
 def normalise(text):
@@ -55,15 +68,36 @@ def load(path, what):
         sys.exit(2)
 
 
-def criteria_ids(raw):
+def criteria_list(raw):
     if isinstance(raw, dict):
+        if isinstance(raw.get("round"), dict):
+            raw = raw["round"]
         raw = raw.get("criteria", raw.get("evaluation_criteria", []))
-    ids = []
-    for c in raw or []:
-        cid = c.get("id") if isinstance(c, dict) else None
-        if cid:
-            ids.append(cid)
-    return ids
+    return [c for c in raw or [] if isinstance(c, dict) and c.get("id")]
+
+
+def criteria_ids(raw):
+    return [c["id"] for c in criteria_list(raw)]
+
+
+def anchored_ids(raw):
+    """Ids of criteria whose scoring_guide is in the anchored shape."""
+    return {c["id"] for c in criteria_list(raw) if is_anchored(c.get("scoring_guide"))}
+
+
+def check_anchor_cite(where, text, score):
+    """An anchored criterion's reason names the anchor its score was read against."""
+    m = _ANCHOR_CITE.match(text or "")
+    if not m:
+        return [f"{where}: text must start 'Anchor <n>: ' (or 'Silent: ') naming the anchor scored against"]
+    if m.group(2) or not isinstance(score, int) or isinstance(score, bool):
+        return []
+    anchor = int(m.group(1))
+    allowed = nearest_anchors(score)
+    if anchor not in allowed:
+        return [f"{where}: cites anchor {anchor} for a score of {score}; the nearest anchor is "
+                f"{' or '.join(map(str, allowed))}"]
+    return []
 
 
 def check_cite(where, cite, answers):
@@ -96,7 +130,7 @@ def check_cite(where, cite, answers):
     return problems
 
 
-def check_review(review, response, crit_ids):
+def check_review(review, response, crit_ids, anchored=frozenset()):
     rid = review.get("response_id")
     problems = []
     answers = {a.get("question_id"): a.get("answer") or "" for a in response.get("answers", [])}
@@ -140,8 +174,11 @@ def check_review(review, response, crit_ids):
         if about in ABOUT_FIXED:
             abouts.add(about)
         elif isinstance(about, str) and about.startswith("criterion:"):
-            if about[len("criterion:"):] not in crit_ids:
+            cid = about[len("criterion:"):]
+            if cid not in crit_ids:
                 problems.append(f"{where}: about {about!r} names a criterion not on the round")
+            elif cid in anchored:
+                problems.extend(check_anchor_cite(where, claim.get("text"), scores.get(cid)))
             abouts.add(about)
         else:
             problems.append(f"{where}: about is {about!r}")
@@ -164,7 +201,7 @@ def check_review(review, response, crit_ids):
     return problems
 
 
-def check(batch, out, crit_ids):
+def check(batch, out, crit_ids, anchored=frozenset()):
     problems = []
     if not crit_ids:
         problems.append("criteria file has no criteria with an id")
@@ -184,7 +221,7 @@ def check(batch, out, crit_ids):
             problems.append(f"{rid}: reviewed twice")
             continue
         reviewed[rid] = review
-        problems.extend(check_review(review, responses[rid], crit_ids))
+        problems.extend(check_review(review, responses[rid], crit_ids, anchored))
     for rid in responses:
         if rid not in reviewed:
             problems.append(f"{rid}: in the batch but not reviewed")
@@ -197,11 +234,12 @@ def main(argv):
         return 2
     batch = load(argv[1], "batch")
     out = load(argv[2], "reviews")
-    crit_ids = criteria_ids(load(argv[3], "criteria"))
+    crit_raw = load(argv[3], "criteria")
+    crit_ids = criteria_ids(crit_raw)
     if not isinstance(batch, list):
         print("batch.json is not a list of responses", file=sys.stderr)
         return 2
-    problems = check(batch, out, crit_ids)
+    problems = check(batch, out, crit_ids, anchored_ids(crit_raw))
     if problems:
         for p in problems:
             print(p)
