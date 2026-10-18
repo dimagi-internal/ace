@@ -3,7 +3,9 @@
 Shared conventions for ACE's Phase 8 solicitation skills:
 `solicitation-create`, `solicitation-monitor`, `solicitation-review`,
 plus their evals (`solicitation-create-eval`, `solicitation-review-eval`)
-and the `llo-invite` invitation-side companion. All consume the
+and the `llo-invite` invitation-side companion, plus the optional-track
+`solicitation-google-form` (+ `-qa`; only with `optional_steps.google_form`,
+off by default). All consume the
 connect-labs MCP and share a contract around the `solicitation` and
 `selected_llo` blocks under `run_state.yaml.phases.solicitation-management.products`
 in the current run's state file. Per-run only — every `/ace:run`

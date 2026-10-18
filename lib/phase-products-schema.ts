@@ -657,6 +657,19 @@ const SolicitationProducts = z
               .passthrough(),
           )
           .optional(),
+        /**
+         * The public Google Form mirroring this call, only when the run's
+         * `optional_steps.google_form` is on (spec 2026-10-18 § E). Absent on
+         * every other run.
+         */
+        google_form: z
+          .object({
+            form_id: z.string(),
+            responder_url: z.string().url(),
+            edit_url: z.string().url(),
+          })
+          .passthrough()
+          .optional(),
       })
       .passthrough()
       .optional(),
@@ -985,6 +998,8 @@ export const PRODUCT_PRODUCERS: Partial<Record<PhaseName, Record<string, string>
     // Optional `seed_responses` step (spec 2026-10-18 § D): the synthetic
     // respondent list, written whole by its producer.
     'solicitation.seeded_responses': 'solicitation-seed-responses',
+    // Only on a run with optional_steps.google_form (skills/solicitation-google-form § Products).
+    'solicitation.google_form': 'solicitation-google-form',
     // `selected_llo` has TWO writers, one per `source` (ace, 2026-09-16):
     //   - `source: 'solicitation'` -> `solicitation-review` (the award path;
     //     still the ONLY skill that may call `award_response`).

@@ -129,6 +129,7 @@ Most ACE evals are companion `-eval` skills today. `inline self-eval` is rare bu
 | `solicitation-monitor` | **NO eval** | Recurring poll for responses. State-tracking; nothing to grade on a 0-10 spectrum. |
 | `solicitation-seed-responses` | **NO eval** | Synthetic fixture data, not a deliverable. Its job is to give the review something to rank; `solicitation-review-eval` grades that ranking, and a winner ranked anywhere but first is reported there as a roster finding (spec § D). |
 | `solicitation-review` | **has eval** | `solicitation-review-eval`. Grades the awardee recommendation (scoring rubric applied consistently, recommendation reasoning grounded in responses, no obvious bias). Critical for Phase 8→9 HITL gate quality. |
+| `solicitation-google-form` | **NO eval** | A mirror of the solicitation plus an importer: nothing of its own to grade on a 0-10 spectrum. The call's quality is `solicitation-create-eval`'s; the mirror's fidelity is `solicitation-google-form-qa`'s binary checks. Optional step (`google_form`), off by default. |
 
 ### Phase 9 — execution-management
 

@@ -1447,6 +1447,28 @@
                       ],
                       "additionalProperties": true
                     }
+                  },
+                  "google_form": {
+                    "type": "object",
+                    "properties": {
+                      "form_id": {
+                        "type": "string"
+                      },
+                      "responder_url": {
+                        "type": "string",
+                        "format": "uri"
+                      },
+                      "edit_url": {
+                        "type": "string",
+                        "format": "uri"
+                      }
+                    },
+                    "required": [
+                      "form_id",
+                      "responder_url",
+                      "edit_url"
+                    ],
+                    "additionalProperties": true
                   }
                 },
                 "additionalProperties": true
@@ -1519,6 +1541,7 @@
         "solicitation": "solicitation-create",
         "solicitation.awarded": "solicitation-review",
         "solicitation.seeded_responses": "solicitation-seed-responses",
+        "solicitation.google_form": "solicitation-google-form",
         "selected_llo": "solicitation-review",
         "selected_llo.program_application_id": "llo-onboarding",
         "selected_llo.opportunity_id": "llo-onboarding",
