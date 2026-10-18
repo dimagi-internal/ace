@@ -6,11 +6,14 @@ description: >
 user-invocable: false
 ---
 
-# Inbox Triage — routing ACE's mail back into its runs
+# Inbox Triage — routing ACE's mail to its runs and program projects
 
 ACE's outbound skills (`llo-invite`, `llo-onboarding`, `llo-uat`, `timeline-monitor`, …) email real
-people. This skill is how the replies come back **without a human relaying them**: each thread is
-routed to the run that sent it, and its content either advances that run or gets escalated.
+people, and program teams write to ACE about live programs it supports. This skill is how that mail
+gets handled **without a human relaying it**: each thread is routed either to the run that sent it
+or to the **program project** it concerns (`skills/partner-on-connect-program`). Its content then
+advances that run, becomes program work, or gets escalated. A request to change something already
+live (an app, an opportunity, a bot, a report) is program work, not a new run.
 
 ## The cardinal rule: one thread, one sender, one memory scope
 
@@ -124,8 +127,8 @@ against `date: 2026-09-14 12:26`; message 0 was Neal's, on 21 July, and the 14 S
 
   a. **Read** the full thread via `email-communicator` (read).
 
-  b. **Route the thread to an opp/run — and cite the evidence.** Routing evidence comes from the
-     thread itself, in this order:
+  b. **Route the thread to an opp/run or a program project — and cite the evidence.** Routing
+     evidence comes from the thread itself, in this order:
      1. Match the Gmail `thread_id` against the run comms-logs (`<skill>_comms-log.md` under
         `ACE/<opp>/runs/<run-id>/<N>-<phase>/`, **and** `*_comms-log.md` at the run root
         `ACE/<opp>/runs/<run-id>/` — where sends that belong to no phase log, today
@@ -135,14 +138,25 @@ against `date: 2026-09-14 12:26`; message 0 was Neal's, on 21 July, and the 14 S
      2. Else match opp-slug / opportunity-name conventions in the subject line.
      3. Else resolve identifiers quoted in the thread **body** (Connect opp/program URLs or UUIDs,
         run-ids, chatbot links) against opp `run_state.yaml` files.
-     4. Else the thread is **unroutable**: read-only, summarize to the human, move on.
+     4. Else match the thread against ACE's **active program projects**
+        (`canopy agent projects --slug ace --active`, then each project's
+        `<Program> — program context` doc): the program's current or retired names, its Connect
+        org slugs, opportunity IDs, HQ domains/app IDs, OCS bot IDs and Labs IDs, all quoted in
+        the thread itself. Also match a run's identifiers here when that run has gone live and
+        its program now has a project (`skills/partner-on-connect-program` § When a build becomes
+        a program project). A match routes the thread to that **program project**.
+     5. Else the thread is **unroutable**: read-only, summarize to the human, move on. An act-tier
+        sender asking for work on a program that has no project yet is not a dead end. Escalate
+        with the proposal to open one (`skills/partner-on-connect-program` § The project), and
+        let the owner decide.
      State which evidence class routed the thread before acting on it. **Ambient session context is
      NEVER routing evidence** — the cwd/worktree/branch name, recently-triaged noise subjects, or
      whichever opp this session happens to be working on say nothing about where a thread belongs
      (jjackson/ace#854: a worktree named after one opp silently hijacked an act-tier instruction that
      belonged to another; both opps were plausibly paused at the same phase, so nothing contradicted
-     the wrong guess). A routed thread always resolves to the opp's **current** run — never reach
-     across runs.
+     the wrong guess). A routed thread resolves to the opp's **current** run or to one program
+     project. Never reach across runs, and never route a request to change a live program into a
+     run: a run builds new objects, so "fix the app" routed there becomes a second opportunity.
 
      **Pre-mutation assert (act tier):** before executing any run mutation (resuming a phase,
      dispatching a skill, writing run state), re-read the thread for opp identifiers and confirm
@@ -151,7 +165,11 @@ against `date: 2026-09-14 12:26`; message 0 was Neal's, on 21 July, and the 14 S
      (`"$CLAUDE_PLUGIN_ROOT/bin/ace-bind" <opp> --warn` — a bare opp; ace-bind reads the workspace from the plugin `.env`) before
      the mutation, and `bin/ace-bind --clear` when the thread is done — the next thread may be a
      different opp. Triage itself (reading, routing, drafting) runs unbound. Best-effort: a
-     failed bind is noted in the report, never a reason to skip the thread.
+     failed bind is noted in the report, never a reason to skip the thread. A thread routed to a
+     **program project** has no opp to bind, because `ace-bind` takes `<ws>/<opp>`. Its writes run
+     unbound and are logged to `unbound-writes.log`. Before each write, confirm that every target
+     ID appears in the project's context-doc Scope, and say in the report that the work ran
+     unbound.
 
   c. **Resolve the sender's tier** (table above — `canopy caller tier` first when `--caller` is set). Automated notifications (Drive shares,
      `*-noreply@google.com`) are attributed to the human who triggered them and take that
@@ -202,6 +220,17 @@ against `date: 2026-09-14 12:26`; message 0 was Neal's, on 21 July, and the 14 S
        before marking the thread read. **Send no handoff ack** ("a run session was started"): the
        run session's own reply, with the run page, is the answer. (Origin: ace#2961 — turn d45e2ac0
        had to reverse-engineer this from an earlier ACE email.)
+     - **Program work** *(act tier only; the thread routed to a program project)*: a question
+       about a live program, or a change to something already live (an app, the opportunity's
+       flags or payment units, a bot, a report, a solicitation). Follow
+       `skills/partner-on-connect-program`. Questions are answered from a live read (§ Every
+       session). Changes follow § Changing a live program: before/after evidence, the owner's
+       approval of any outbound or shared act, and a dated line in the context doc's Decisions.
+       File or advance the project's board task (`skills/task-tracker`). A change that outlives the
+       turn (an app edit and re-release, a multi-step reconfiguration) is dispatched like
+       **Start a run**, with a brief carrying the project name, the context-doc link, the
+       sender's asks verbatim, the turn mode and the reply instruction. Only a genuinely new
+       build (a new opportunity, a fresh app for a new partner) is a **Start a run**.
      - **File** — save an attachment/asset to the run's Drive folder. Intake recipe (use the
        shared canopy engine, not raw `gog` — canopy ≥ 0.2.344): `bin/ace-env canopy email read
        <threadId> --repo .` returns each message's `attachments[]` with the `attachment_id`; then

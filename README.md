@@ -1,6 +1,6 @@
 # ACE — AI Connect Engine
 
-Orchestrates the ACE lifecycle for Connect opportunities, from idea through app building, deployment, LLO management, and closeout.
+Dimagi's AI partner for Connect programs. ACE builds new Connect opportunities end to end (idea through app building, deployment, LLO management and closeout, via `/ace:run`), and maintains and supports live programs: it answers questions from a live read and changes apps, opportunity config, bots and reports as program projects.
 
 ACE is a Claude Code plugin with the same architecture as canopy: agents orchestrate skills, skills are prompt-based capability definitions, and MCP servers provide programmatic access to external systems.
 
