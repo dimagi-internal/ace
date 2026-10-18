@@ -5,6 +5,29 @@
 > When something that used to work starts failing — especially with an opaque error —
 > run `skills/upstream-regression-triage` before concluding it needs a live probe.
 
+## Contents
+
+- [Status](#status)
+- [Install + auth](#install--auth)
+- [Migrating to plugin v2 (2026-09-27)](#migrating-to-plugin-v2-2026-09-27)
+- [Resolved blockers (kept for record)](#resolved-blockers-kept-for-record)
+- [ACE service identity for Nova](#ace-service-identity-for-nova)
+- [ACE's surface area on Nova](#aces-surface-area-on-nova)
+- [HQ domain coupling](#hq-domain-coupling)
+- [Uploading to HQ updates in place](#uploading-to-hq-updates-in-place)
+- [Authentication summary](#authentication-summary)
+- [Plugin freshness — treat every Nova release as a compatibility update](#plugin-freshness--treat-every-nova-release-as-a-compatibility-update)
+- [Operating notes](#operating-notes)
+- [Gotchas](#gotchas)
+- [The per-language (i18n) channel — shipped 2026-08-16/17](#the-per-language-i18n-channel--shipped-2026-08-1617)
+- [The media channel — shipped by 2026-06-03, adopted 2026-08-27](#the-media-channel--shipped-by-2026-06-03-adopted-2026-08-27)
+- [The fixtures (Project data table) channel — shipped by 2026-09-01, fully adopted 2026-09-06](#the-fixtures-project-data-table-channel--shipped-by-2026-09-01-fully-adopted-2026-09-06)
+- [The case choices channel — shipped 2026-10-08, adopted 2026-10-08](#the-case-choices-channel--shipped-2026-10-08-adopted-2026-10-08)
+- [The private-work authoring contract — shipped 2026-09-27, adopted 2026-09-28](#the-private-work-authoring-contract--shipped-2026-09-27-adopted-2026-09-28)
+- [The 2026-07-31 uuid-addressing migration (read this before writing a Nova call)](#the-2026-07-31-uuid-addressing-migration-read-this-before-writing-a-nova-call)
+- [What is NOT here](#what-is-not-here)
+- [Related learnings](#related-learnings)
+
 ## Status
 
 **Live — on nova plugin v2.0.0 and the private-work authoring contract
@@ -1488,3 +1511,9 @@ migration cost two Nova builds. Run it manually with
   plugin ships its own.
 - A puppeteered web-UI integration. Considered as a fallback if Nova
   shipped no API; not needed.
+
+## Related learnings
+
+- `docs/learnings/2026-04-29-nova-connect-marker-bugs.md` — autobuild skipping Connect markers; why `app-connect-coverage` exists
+- `docs/learnings/2026-05-25-entity-id-misdiagnosis.md` — the `entity_id` pattern swapped on an uncaptured rescan
+- `docs/learnings/2026-05-12-boundary-probe-registry.md` — probes that pin upstream contracts

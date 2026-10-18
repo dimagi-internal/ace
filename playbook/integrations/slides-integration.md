@@ -1,18 +1,19 @@
 # Slides integration
 
 How ACE produces Google Slides decks — Slides API atoms, the
-`training-deck-build` skill, the template lifecycle, and the
-durable-knowledge gotcha record.
+training-deck skills (`training-deck-generate` → `training-deck-render`),
+the template lifecycle, and the durable-knowledge gotcha record. The
+partnership pitch deck (`partnership-deck-build`) uses the same atoms.
 
 ## Overview
 
-ACE's per-artifact training skills produce six text artifacts under
-`ACE/<opp>/training-materials/`. The `training-deck-build` skill takes
-the seventh artifact (`training-deck-outline.md`, produced by
-`training-deck-outline`) and renders it into a presentable Google
-Slides deck the LLO admin can edit and use Slides' native
-"Present + Record" for the video deliverable. No standalone video
-pipeline ships in ACE today.
+`training-deck-generate` writes a structured deck spec
+(`training-deck-spec.yaml`, parsed by `parseTrainingSpec` in
+`lib/training-deck-spec.ts`) from the PDD, app summaries and screenshots;
+`training-deck-render` copies the stencil template and fills it into a
+Google Slides deck the LLO admin can edit and present. Neither needs a
+run beyond its inputs — re-rendering a live program's deck after an app
+change is the same two calls.
 
 The Slides path uses three atoms in `mcp/google-drive-server.ts`,
 mirrored after the `docs_*` family. The build path is template-based:
@@ -43,13 +44,13 @@ available.
 |---|---|
 | `scripts/bootstrap-training-deck-template.ts` | One-time per environment. Creates the ACE training-deck template with two stencil slides (`ace_stencil_title`, `ace_stencil_content`) and `{{TITLE}}` / `{{SUBTITLE}}` / `{{BODY}}` placeholder tokens. Idempotent — re-running with an existing template prints the existing ID. |
 
-### One pure-helper module
+### Pure-helper modules
 
-`lib/training-deck-spec.ts` — no I/O, fully unit-tested:
-- `parseDeckOutline(md)` — strict markdown parser for
-  `training-deck-outline.md`
-- `buildSlidesRequests(spec, { stencils })` — translate parsed deck
-  into a Slides batchUpdate request stream
+`lib/training-deck-spec.ts` (no I/O, unit-tested) parses and lints the
+spec (`parseTrainingSpec`, `lintDeckFormatting`, `bodyFit`);
+`lib/training-deck-frames.ts` picks screenshot frames;
+`lib/training-deck-stencil-geometry.ts` holds stencil geometry. The
+batchUpdate request stream is built by `buildSlidesRequestsV2`.
 - `buildSpeakerNotesRequests(notes, idMap)` — second-phase batch for
   speaker notes
 
@@ -141,7 +142,7 @@ await drive.permissions.create({
 ```
 
 `app-screenshot-capture` sets this permission for every uploaded PNG.
-`training-deck-build` should verify the permission before building the
+`training-deck-render` should verify the permission before building the
 request stream and either fix it inline or fail loudly.
 
 Live-verified 2026-05-02 via `scripts/test-screenshot-to-slides-e2e.ts`.
@@ -185,7 +186,7 @@ collisions don't happen. That's why the build code can hard-reference
 `ace_stencil_title` / `ace_stencil_content` after copy without
 re-discovering them.
 
-The `training-deck-build` skill should still verify both stencils
+The `training-deck-render` skill should still verify both stencils
 exist via `slides.get` after copy (defensive — catches operator
 edits that broke the template). If either is missing, fail with a
 hint to re-run the bootstrap script.
@@ -235,11 +236,12 @@ If you re-order any of these, two failure modes appear:
 `buildSlidesRequests` always uses `pageObjectIds: [duplicateId]` to
 scope per-slide replacements. Don't bypass that.
 
-## Phase 6 invocation chain
+## Invocation chain (Phase 6 of a build)
 
-For a full Phase 6 end-to-end:
+Inside `/ace:run` the deck is produced in Phase 6. Outside a run, start
+at step 3 with the inputs in hand.
 
-1. `qa-plan` — produces walkthrough recipes + screenshot manifest
+1. `app-test-cases` — produces walkthrough recipes
 2. `app-screenshot-capture` — runs recipes against AVD, uploads PNGs
    to Drive **with anyone-with-link permission**
 3. Five text-artifact skills in parallel:
@@ -247,12 +249,12 @@ For a full Phase 6 end-to-end:
    - `training-flw-guide`
    - `training-quick-reference`
    - `training-faq`
-   - `training-deck-outline`
-4. `training-deck-build` — sequential after `training-deck-outline`.
+   - `training-deck-generate`
+4. `training-deck-render` — sequential after `training-deck-generate`.
    Skipped if `ACE_TRAINING_DECK_TEMPLATE_ID` is unset.
 5. `training-onboarding-email` — last, links to all other docs by URL.
 
-`training-deck-build` is non-blocking (Phase 7 doesn't depend on the
+`training-deck-render` is non-blocking (Phase 7 doesn't depend on the
 Slides deck — `onboarding-email-body.md` is the load-bearing Phase 7
 input).
 

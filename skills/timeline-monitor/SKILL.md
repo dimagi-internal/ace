@@ -14,14 +14,20 @@ Check LLO progress against expected timeline and prompt action if behind.
 
 1. **Read opportunity state** from GDrive:
    - Timeline/milestones from PDD
-   - Current status from `ACE/<opp-name>/run_state.yaml`
+   - Current status from the opp's **current run's** `run_state.yaml` — `run_state.yaml`
+     is per run, never per opp: resolve the run with `resolve_current_run_id({opp})`
+     (or take an explicit `<opp>/<run-id>`), then read
+     `ACE/<opp-name>/runs/<run-id>/run_state.yaml`. For a live program with no ACE run
+     (a program project — `skills/partner-on-connect-program`), take the opportunity
+     id from the program's context doc instead.
    - Previous monitoring reports from `ACE/<opp-name>/monitoring/`
 
 2. **Check progress indicators:**
    - Have LLOs started onboarding FLWs?
    - Are FLWs submitting forms in the expected timeframe?
    - Are delivery targets on track?
-   - Use Connect opportunity status and CommCare submission data
+   - Use Connect opportunity status and progress: `connect_get_opportunity`,
+     `connect_get_learn_progress`, `connect_get_deliver_progress` (ace-connect)
 
 3. **Self-evaluate (LLM-as-Judge):**
    - Is the assessment accurate given the data available?
@@ -56,8 +62,11 @@ The `experiment_id` and `public_id` for this opportunity's chatbot come from
 
 ## MCP Tools Used
 - Google Drive: `drive_read_file`, `drive_create_file`
-- Connect (connect-labs): `get_opportunity_apps`, opportunity status queries
-- CommCare (connect-labs/scout-data): form submission queries for FLW activity
+- Connect (ace-connect): `connect_get_opportunity`, `connect_get_learn_progress`,
+  `connect_get_deliver_progress` — opportunity status and per-worker progress
+- Connect (connect-labs): `get_opportunity_apps` for app structure; `explorer_describe` /
+  `explorer_query` for visit-level activity (through canopy, `explorer_query` returns rows
+  only for SYNTHETIC opportunities — on a real one use `connect_get_deliver_progress`)
 - OCS: `ocs_list_sessions`, `ocs_get_session`, `ocs_trigger_bot_message`, `ocs_add_session_tags`
 
 ## Mode Behavior

@@ -5,28 +5,75 @@
 > When something that used to work starts failing — especially with an opaque error —
 > run `skills/upstream-regression-triage` before concluding it needs a live probe.
 
-## What Exists Today
+## What ACE has today
 
-The **connect-labs MCP** includes a set of CommCare HQ tools alongside the Connect
-tools. These are production-ready today.
+CommCare HQ is reached through the **`commcare_*` atoms on the `ace-connect` MCP**
+(`mcp/connect/backends/commcare.ts`), which share the Connect session's CommCare HQ
+cookies (and `ACE_HQ_API_KEY` for the read-only REST API). Signatures live in
+[`docs/atom-schemas.md` § ace-connect](../../docs/atom-schemas.md); grep there for any
+`commcare_` atom rather than trusting a paraphrase here. Apps themselves are
+**authored in Nova** and uploaded with Nova's `upload_app_to_hq` — see
+[`nova-integration.md`](nova-integration.md); the atoms below act on what is already in
+HQ.
 
-### App Structure Tools
-- `list_apps` — list all CommCare apps for a project space
-- `get_app_structure` — fetch the module/form hierarchy for an app
-- `get_form_questions` — get all questions in a specific form
-- `get_form_json_paths` — get the JSON path mappings for form fields (useful for
-  mapping data to Connect delivery/verification rules)
+| Family | Atoms |
+|---|---|
+| Project spaces & plan | `commcare_create_domain`, `commcare_get_subscription`, `commcare_link_domains`, `commcare_create_api_key` (space-restricted key, returned as an `hq-key:<name>` reference) |
+| Apps — list / copy / delete | `commcare_list_apps`, `commcare_linked_app_copy`, `commcare_delete_app` (soft delete) |
+| Builds & releases | `commcare_make_build`, `commcare_release_build`, `commcare_download_ccz`, `commcare_validate_ccz` |
+| Form-level edits in HQ | `commcare_get_form_source`, `commcare_patch_xform`, `commcare_upload_multimedia`, `commcare_set_menu_display`, `commcare_set_app_menu_display` |
+| Lookup tables | `commcare_get_lookup_table`, `commcare_get_lookup_table_rows`, `commcare_create_lookup_table`, `commcare_lookup_table_append_rows` |
+| Users & locations | `commcare_list_users`, `commcare_get_user`, `commcare_invite_web_user`, `commcare_list_user_fields`, `commcare_set_user_fields`, `commcare_update_user_field`, `commcare_list_location_types`, `commcare_set_location_types`, `commcare_list_locations`, `commcare_assign_user_locations` |
+| Cases | `commcare_get_case` |
+| Integrations (motech) | `commcare_list_connections`, `commcare_create_connection`, `commcare_create_repeater`, `commcare_list_inbound_apis`, `commcare_create_inbound_api`, `commcare_list_ucr_expressions`, `commcare_create_ucr_expression` |
 
-### Bundled Resources
-The CommCare MCP also exposes 3 resource bundles:
-- **App metadata resource** — app name, version, description, build status
-- **Domain metadata resource** — project space settings, user groups
-- **User resource** — CommCare user lookup by username or ID
+Case sharing by location (owner = a worker's place) has its own evidence-tiered
+reference: [`hq-case-sharing.md`](hq-case-sharing.md).
 
-### Analytics (scout-data MCP)
-The `scout-data` MCP provides analytics query access to CommCare data. Skills that need
-to analyze FLW submission data or aggregate metrics should use `scout-data` rather than
-the CommCare HQ API directly. This covers the `flw-data-review` skill's data needs.
+There is **no ACE atom for aggregate submission analytics on HQ.** For worker activity on
+a Connect opportunity use `connect_get_deliver_progress` / `connect_get_learn_progress`
+(ace-connect) or connect-labs `explorer_describe` / `explorer_query` (rows returned to an
+agent only for synthetic opportunities) — see [`connect-labs.md`](connect-labs.md).
+(An earlier version of this doc pointed at a `scout-data` MCP; it was never wired into
+`plugin.json`.)
+
+## Builds and releases — the mechanics
+
+A Connect opportunity reads an app's form schema and Connect markers from its **released
+build**, not from the draft and not from Nova. So every app change — first build or a
+later edit — ends with a release. The procedure, its drift check and its failure modes
+live in [`skills/app-release`](../../skills/app-release/SKILL.md); the platform facts are:
+
+- **`commcare_make_build` versions the HQ DRAFT. It does not pull from Nova.** A Nova edit
+  made after the last `upload_app_to_hq` is absent from the build, and the build still
+  reports success (ace#1643). Re-upload first.
+- **A re-upload to an existing HQ app updates it in place** — the HQ app id stays stable
+  (`skills/app-deploy`). Settings Nova cannot carry (camera-only photo capture, grid menu
+  display) are HQ-side and must be **re-applied after every re-upload**
+  (`skills/app-hq-settings`), before the build.
+- **Release is a separate toggle on a build** (`commcare_release_build`); a made-but-
+  unreleased build is invisible to Connect.
+- **The order for an edit is therefore fixed:** Nova edit + `save_work` → `upload_app_to_hq`
+  → re-apply HQ settings → `commcare_make_build` → `commcare_release_build` → verify the
+  CCZ (`commcare_download_ccz` / `commcare_validate_ccz`, `skills/app-release-qa`).
+- HQ hands back 40-hex SHA-1 form uids after a re-upload; both widths are accepted
+  (`lib/hq-unique-id.ts`, ace#1644).
+- The CommCare HQ build/release endpoints are internal web routes, not a public API; the
+  verified URLs and a rediscovery probe are in `skills/app-release § Endpoints`.
+
+What a live Connect opportunity does with a new release is a Connect question — see
+[`connect-api.md` § Changing a live opportunity](connect-api.md#changing-a-live-opportunity).
+
+## Changing a live app — what you can and cannot do
+
+| Change | How | Limit |
+|---|---|---|
+| Edit forms, fields, logic, case config | Nova (`/nova:edit`, private work → `save_work`) then the release order above | Editing an English string demotes its translation (translate LAST — `nova-integration.md`) |
+| Patch one form's XML in HQ only | `commcare_patch_xform` | Lost on the next Nova re-upload — prefer the Nova edit |
+| Add or replace media | Nova media channel (`app-media-coverage`); `commcare_upload_multimedia` for HQ-only assets | HQ-only media is lost on a Nova re-upload |
+| Lookup-table rows | `commcare_lookup_table_append_rows` (append); Nova `replace_lookup_rows` for a Nova-owned table | No HQ row update/delete atom |
+| Users / locations for case sharing | `commcare_*` user + location atoms | See `hq-case-sharing.md` |
+| Delete an app | `commcare_delete_app` (soft; restorable in HQ admin) | — |
 
 ## New project spaces — set them to "Test or Demo Project"
 
@@ -93,51 +140,14 @@ not in use by a partner"*. Accounts sanctioned this for ACE's partner
 **review** spaces. A space moving to partner production use is a separate
 subscription conversation, outside ACE.
 
----
+## Staging
 
-## What Needs to Be Built
+There is no ACE staging project space and no sandbox switch in the `commcare_*` atoms
+(the `ACE_SANDBOX` routing an earlier version described was never built). Test work goes
+into a separate project space created with `commcare_create_domain`, set to Test or Demo
+as described above.
 
-The following CommCare capabilities are not yet exposed via MCP and must be added.
+## Related learnings
 
-### App Upload and Build
-- **App upload** — programmatically upload a `.ccz` file or app JSON to CommCare HQ
-- **App build** — trigger a build for an uploaded app (equivalent to clicking "Build"
-  in the HQ UI)
-- **App publish** — publish a built app to make it available to mobile users
-- **App version check** — confirm build succeeded and get the version number
-
-These are needed by the `app-deploy` skill. Without these, the skill falls back to
-manual upload instructions.
-
-### Form Data Access (Beyond Analytics)
-- **Form submission lookup** — fetch individual form submissions by case ID or
-  submission ID (for the `app-test` skill to verify test submissions)
-- **Case data access** — read case property values after form submission
-
-Note: Aggregate analytics queries are covered by the existing `scout-data` MCP.
-Individual submission/case lookup may require direct CommCare REST API calls or a
-new MCP tool.
-
----
-
-## Manual Workaround
-
-Skills requiring unbuilt CommCare APIs will fall back to manual upload via the HQ UI:
-
-1. The `app-deploy` skill will generate a checklist of what needs to be done
-2. It will provide the app package (from Nova) ready to upload
-3. The user uploads via CommCare HQ → App Builder → Import App
-4. The user triggers Build and Publish in HQ
-5. The user confirms the app is live before ACE proceeds to app testing
-
-For the `app-test` skill, manual verification steps will be included as a checklist
-until automated test submission and result validation are available.
-
-## Staging Environment
-
-When `--sandbox` is active, ACE routes CommCare API calls to the staging project space.
-
-- **Staging project space:** TBD — confirm with Cal's team (likely `ace-staging`)
-- **How it works:** MCP server reads `ACE_SANDBOX=true` environment variable and targets the staging project space instead of the production ACE domain
-- **Data isolation:** Staging project space is separate from production — app uploads, builds, and publishes only affect staging
-- **Limitations:** scout-data analytics may not be available for the staging project space
+- `docs/learnings/2026-09-02-household-dual-group-membership.md` — a household case can sit in two groups (two named child indices)
+- `docs/learnings/2026-09-04-vsla-group-running-ledger.md` — a group case can carry a running ledger, but the property reads as text

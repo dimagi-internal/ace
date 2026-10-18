@@ -737,11 +737,11 @@ Invoke the `app-connect-coverage` skill **once per app** (Learn, Deliver),
   reporting before/after state per form. The Nova app on Firestore is
   mutated in place — every form's `connect` block (`learn_module` /
   `assessment` / `deliver_unit` / `task`) is set per the form's purpose.
-- **Why before deploy:** Connect's `Sync Deliver Units` reads markers
-  from the released CCZ. If markers are missing, the opp gets stuck
-  silently at Phase 4 Step 2 (no deliver units → no payment unit).
-  Fixing on the Nova side before upload avoids round-tripping HQ
-  builds.
+- **Why before deploy:** Connect reads deliver units from the released
+  CCZ, so missing markers stall Phase 4 silently (platform fact:
+  `playbook/integrations/connect-api.md § Connect reads deliver units from
+  the RELEASED build`). Fixing on the Nova side before upload avoids
+  round-tripping HQ builds.
 - **Why before eval:** the existing `pdd-to-{learn,deliver}-app-eval`
   judges grade Connectify wiring (25% weight). Running coverage first
   means evals score the auto-fixed app, not whatever Nova happened to
@@ -856,25 +856,15 @@ Invoke the `app-deploy` skill.
   upload, so a release cut before a re-upload would pass it), before dispatching
   Phase 4 (ace#2938).
 
-  **What delete-and-recreate of the Connect opportunity does NOT touch:**
-  any labs solicitation already published for this opp. Per
-  `skills/solicitation-create/SKILL.md`, solicitations are scoped to a
-  labs `program_id`, NOT to a specific Connect opportunity UUID — the
-  `connect_opportunity_id` field under the current run's
-  `phases.solicitation-management.products.solicitation` is ACE-side
-  bookkeeping that records ACE's intended target, not a labs-side
-  foreign key. The public solicitation URL keeps working, the deadline
-  keeps counting down, candidate LLO views and applications continue
-  uninterrupted. The recovery is manual deletion in the Connect web UI
-  (no connect-delete-opportunity atom yet — see
-  `skills/sweep-connect/SKILL.md § Implementation notes`) followed by
-  `connect_create_opportunity` against canonical HQ ids + a
-  `connect_opportunity_id` bookkeeping update in the current run's
-  `run_state.yaml`. **Repointing the Connect opp pre-Phase-9 is
-  therefore a low-cost recovery, not a destructive one.** Phase 9
-  onboarding then targets the new opp UUID. Surfaced 2026-04-30
-  (turmeric-20260429-2330) and re-confirmed cheaply 2026-05-07
-  (turmeric-20260507-1733).
+  **Delete-and-recreate of the Connect opportunity does NOT touch a
+  published labs solicitation** (platform fact:
+  `playbook/integrations/connect-labs.md § A solicitation is not tied to a
+  Connect opportunity`). The recovery is manual deletion in the Connect web
+  UI (no delete-opportunity atom — `skills/sweep-connect/SKILL.md §
+  Implementation notes`), `connect_create_opportunity` against canonical HQ
+  ids, then update `connect_opportunity_id` in the current run's
+  `run_state.yaml`; Phase 9 onboarding targets the new opp. A low-cost
+  recovery before Phase 9 (turmeric-20260429-2330, -20260507-1733).
 
 ### Step 2.6: Generate app-test-cases.yaml
 

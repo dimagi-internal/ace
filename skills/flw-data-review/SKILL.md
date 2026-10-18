@@ -18,7 +18,16 @@ Analyze FLW data and recommend improvements to communicate to LLOs.
    - PDD success metrics
    - **PDD `archetype:` and `## Evidence Model` section** — these determine whether this is a quantitative review (`atomic-visit`, query-driven) or a qualitative review (`focus-group`, content-driven). See `## Archetypes` below. The Evidence Model's Layer B is what step 2/3 evaluates per delivery; Layer C is what they evaluate across deliveries.
 
-2. **Query FLW data** via scout-data MCP:
+2. **Query FLW data** via the Connect and connect-labs atoms (there is no
+   scout-data MCP — that server was never wired into `plugin.json`):
+   - `connect_get_deliver_progress` / `connect_get_learn_progress` (ace-connect) — per-worker
+     delivery and Learn counts the opportunity's dashboard shows
+   - `explorer_describe({opportunity_ids})` (connect-labs) — the `visits` relation and an
+     index of submitted form fields (path, type, fill rate); START HERE
+   - `explorer_query({opportunity_ids, sql})` — one read-only SELECT over `visits`. Called
+     through canopy it returns rows only for SYNTHETIC opportunities; on a REAL opportunity
+     validate the SQL with `explorer_validate` and read the result on the labs page, or use
+     a labs pipeline (`pipeline_create` + `pipeline_preview`)
    - Form submission rates by FLW
    - Completion rates and dropout patterns
    - Data quality issues (missing fields, outlier values)
@@ -117,8 +126,11 @@ happened in the data".
 
 ## MCP Tools Used
 - Google Drive: `drive_read_file`, `drive_create_file`
-- CommCare (scout-data): `query`, `list_tables`, `describe_table`
-- Connect (connect-labs): `get_opportunity_apps` for app IDs
+- Connect (ace-connect): `connect_get_deliver_progress`, `connect_get_learn_progress`,
+  `connect_list_payment_units` (the real `max_daily` / `max_total` caps)
+- Connect (connect-labs): `get_opportunity_apps` for app structure; `explorer_describe`,
+  `explorer_query`, `explorer_validate`; `pipeline_create` / `pipeline_preview` for
+  recurring extractions
 - OCS: `ocs_list_sessions`, `ocs_get_session`, `ocs_add_session_tags`
 
 ## Mode Behavior
@@ -138,3 +150,4 @@ When `--dry-run` is active:
 |------|--------|--------|
 | 2026-04-08 | Add `## Archetypes` section: focus-group review = qualitative synthesis (per-session quality, cross-session themes, saturation, quote bank), no quantitative outlier checks | ACE team (PM scout, focus-group framework lens) |
 | 2026-04-08 | Read PDD `## Evidence Model` in step 1; Layer B drives per-delivery evaluation, Layer C drives cross-delivery synthesis | ACE team (PM scout, focus-group framework lens) |
+| 2026-10-18 | Replace the never-wired scout-data MCP with the real ace-connect progress atoms and connect-labs explorer/pipeline atoms | ACE (maintain-vs-build audit, Tier 3) |
