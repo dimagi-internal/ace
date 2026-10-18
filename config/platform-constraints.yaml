@@ -284,34 +284,65 @@ rules:
       deliver-unit marker (or attach it as an optional unit of a paid payment unit
       — rule optional-deliver-units-are-any-of then applies).
 
+  # The id keeps its historical name so `platform-<id>` decision rows already
+  # written by runs still resolve; the FACT is the opposite of the name. A repeat
+  # visit is tagged duplicate (processor.py:500-501) only to be reset to pending
+  # when the opportunity's duplicate flag is off (processor.py:347-351), which it
+  # always is under automatic visit verification (forms.py:1559-1561, 1580-1583),
+  # and then auto-approved (processor.py:525-530) and counted by
+  # CompletedWork.payment_accrued, "Includes duplicates" (models.py:991-993).
+  # The key does not stop a repeat payment — ace#2512, ace#3140,
+  # playbook/integrations/connect-api.md § A repeated `entity_id` is PAID AGAIN.
   - id: repeat-visit-same-entity-is-duplicate
     severity: warn
     source:
-      - dimagi/commcare-connect@c7409bd35:commcare_connect/form_receiver/processor.py:462
+      - dimagi/commcare-connect@c7409bd35:commcare_connect/form_receiver/processor.py:487-491
       - dimagi/commcare-connect@c7409bd35:commcare_connect/form_receiver/processor.py:500-501
+      - dimagi/commcare-connect@c7409bd35:commcare_connect/form_receiver/processor.py:347-351
+      - dimagi/commcare-connect@c7409bd35:commcare_connect/form_receiver/processor.py:525-530
+      - dimagi/commcare-connect@c7409bd35:commcare_connect/opportunity/models.py:991-993
+      - dimagi/commcare-connect@c7409bd35:commcare_connect/opportunity/forms.py:1559-1561
+      - dimagi/commcare-connect@c7409bd35:commcare_connect/opportunity/forms.py:1580-1583
     fact: >-
-      Connect marks a second visit by the same worker to the same entity id for
-      the same deliver unit as a duplicate, so a programme that revisits the same
-      person needs the entity id to change per visit, per period or per round.
+      A repeat visit by the same worker on the same entity id lands on the same
+      completed-work record and, with the opportunity's duplicate check off
+      (always, under automatic visit verification), is reset to pending,
+      approved and paid again; so a programme that pays per repeat visit needs
+      a per-visit or per-period key to keep its records distinct, and a
+      programme that pays once per entity needs a stop that is not the key: an
+      app-side closure or eligibility rule, a computed paid-slot field with a
+      form-field rule, or the payment unit's limits.
     when:
       all:
         - {fact: archetype, op: eq, value: longitudinal-visits}
         - {fact: entity_id_grain, op: present}
         - {fact: entity_grain_has_repeat_key, op: falsy}
-    question: What makes each repeat visit's entity id unique?
-    plain_question: How does each repeat visit to the same person count as a new paid visit?
+    question: >-
+      A repeat visit on the same entity id is paid again — is every repeat
+      visit meant to be paid, and if not, what stops the extra payment?
+    plain_question: >-
+      The platform pays every repeat visit to the same person, so should each
+      repeat visit be paid, or only one, and what stops the rest?
     plain: >-
-      Each repeat visit to the same person uses a different visit key, such as
-      the month or the visit number, so the platform does not mark it a
-      duplicate.
+      The platform pays a repeat visit to the same person again, so paid repeat
+      visits are told apart by the month or visit number, and a design that
+      pays only once stops the extra visits in the app or with a form check.
     options:
       - Add a period or visit number to the key
-      - One paid visit per entity
+      - One paid visit per entity, stopped in the app or by a form rule
     recommended: Add a period or visit number to the key
     remedy: >-
-      Add a per-visit, per-period or per-round component to `entity_id_grain`
-      (e.g. "participant id + scheduled month"), or state that only the first
-      visit per entity is paid.
+      If every repeat visit is paid, add a per-visit, per-period or per-round
+      component to `entity_id_grain` (e.g. "participant id + scheduled month")
+      so each paid visit is its own record. If only one visit per entity is
+      paid, the key cannot enforce it — Connect pays a repeated key again
+      (ace#2512; playbook/integrations/connect-api.md § A repeated `entity_id`
+      is PAID AGAIN). Name the stop: the app closes the case or hides the paid
+      form once the entity is paid, or the Deliver form computes a paid-slot
+      field (`payable_slot = yes` only for the first payable visit) and Phase 4
+      adds a form-field rule requiring `yes`, or the payment unit's
+      `max_visits` / `max_daily` caps it. Record the choice as decision row
+      `platform-repeat-visit-same-entity-is-duplicate`.
 
   - id: visits-before-start-are-trial
     severity: warn

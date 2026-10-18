@@ -2,6 +2,8 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
 
+import { loadPlatformConstraints } from '../../lib/platform-constraints';
+
 /**
  * A repeated `entity_id` is PAID AGAIN on Connect — prose must not say otherwise.
  *
@@ -40,7 +42,11 @@ import { join, relative } from 'node:path';
  */
 
 const REPO_ROOT = join(__dirname, '..', '..');
-const SCAN_ROOTS = ['skills', 'templates', 'agents', 'playbook'];
+// `config` joined in ace#3140: the platform-constraints rule
+// `repeat-visit-same-entity-is-duplicate` taught the paid-once premise from a
+// config file this scan never read, and its finding is copied into decision
+// rows verbatim (bednet-check-2-visit/20261018-0554).
+const SCAN_ROOTS = ['skills', 'templates', 'agents', 'playbook', 'config'];
 
 const BANNED: { id: string; re: RegExp; control: string }[] = [
   {
@@ -62,6 +68,22 @@ const BANNED: { id: string; re: RegExp; control: string }[] = [
     id: 'pays-each-key-once',
     re: /pays?\s+each\s+[^.|]{0,40}?\b(?:key|slot|entity)\b[^.|]{0,30}?\bonce\b/i,
     control: 'Connect pays each de-duplication key once.',
+  },
+  // ace#3140 — the phrasings the platform-constraints rule used.
+  {
+    id: 'only-first-visit-paid',
+    re: /only\s+(?:the\s+)?first\s+visit\s+(?:per|to|on)\s+(?:each\s+|an?\s+|the\s+)?[\w-]+\s+is\s+paid/i,
+    control: '(e.g. "participant id + scheduled month"), or state that only the first visit per entity is paid.',
+  },
+  {
+    id: 'repeat-marked-duplicate',
+    re: /marks?\s+(?:a\s+)?(?:second|repeat(?:ed)?)\s+visit\b[^.]{0,120}?\bas\s+a\s+duplicate/i,
+    control: 'Connect marks a second visit by the same worker to the same entity id for the same deliver unit as a duplicate, so',
+  },
+  {
+    id: 'key-avoids-duplicate-mark',
+    re: /does\s+not\s+mark\s+it\s+(?:as\s+)?a\s+duplicate/i,
+    control: 'such as the month or the visit number, so the platform does not mark it a duplicate.',
   },
 ];
 
@@ -123,6 +145,36 @@ describe('repeated entity_id is paid again (ace#2512)', () => {
       }
     }
     expect(hits, hits.join('\n')).toEqual([]);
+  });
+
+  it('no platform-constraints rule asserts it in any field a decision row copies (folded YAML, ace#3140)', () => {
+    // The line scan above cannot see a claim a YAML folded scalar wraps across
+    // lines; the parsed rule fields are what reach decision rows verbatim.
+    const hits: string[] = [];
+    for (const r of loadPlatformConstraints().rules) {
+      const fields: [string, string][] = [
+        ['fact', r.fact],
+        ['question', r.question],
+        ['plain_question', r.plain_question],
+        ['plain', r.plain],
+        ['remedy', r.remedy],
+        ...r.options.map((o, i): [string, string] => [`options[${i}]`, o]),
+      ];
+      for (const [field, text] of fields) {
+        const flat = text.replace(/\s+/g, ' ');
+        if (/ace#2512/.test(flat)) continue;
+        for (const b of BANNED) if (b.re.test(flat)) hits.push(`${r.id}.${field} [${b.id}] ${flat.slice(0, 160)}`);
+      }
+    }
+    expect(hits, hits.join('\n')).toEqual([]);
+  });
+
+  it('the repeat-visit rule states the paid-again fact and cites the pending reset', () => {
+    const rule = loadPlatformConstraints().rules.find((r) => r.id === 'repeat-visit-same-entity-is-duplicate');
+    expect(rule).toBeDefined();
+    expect(rule!.fact).toMatch(/paid again/i);
+    expect(rule!.plain).toMatch(/pays a repeat visit .* again/i);
+    expect(rule!.source.some((s) => /form_receiver\/processor\.py:347-351$/.test(s))).toBe(true);
   });
 
   it('the canonical Connect write-up exists and cites its upstream source', () => {
