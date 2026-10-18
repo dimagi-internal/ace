@@ -9,13 +9,20 @@
  * operator approved the plan.
  *
  *   npx tsx scripts/llo-directory.ts contract
- *   npx tsx scripts/llo-directory.ts plan   --org org.json --contact contact.json
- *   npx tsx scripts/llo-directory.ts apply  --org org.json --contact contact.json
- *   npx tsx scripts/llo-directory.ts verify --org org.json --org-row 242 --contact contact.json --contact-row 205
+ *   npx tsx scripts/llo-directory.ts plan   --org org.json --contact contact.json --dates dates.json --submitted 2026-10-05
+ *   npx tsx scripts/llo-directory.ts apply  --org org.json --contact contact.json --dates dates.json --submitted 2026-10-05
+ *   npx tsx scripts/llo-directory.ts verify --org org.json --org-row 242 --contact contact.json --contact-row 205 --dates dates.json --dates-row 261
  *
- * `org.json` / `contact.json` map LIVE header text → cell value, e.g.
+ * `org.json` / `contact.json` / `dates.json` map LIVE header text → cell value, e.g.
  * `{"Organization Name": "…", "Website": "…"}`. Unknown headers are refused, and
  * so is a value for a column the sheet fills with a formula (ace#2957).
+ *
+ * `dates.json` is the org's row on the dates tab (connect-labs `DATES_TAB`): labs
+ * reads the join date from there, and stamps an org with no dated row with the day
+ * its import first sees it. `--submitted` is the org's OWN submission date — the
+ * earliest submission timestamp's date for an EOI/RFP applicant, the lead's
+ * submission date for an inbound lead — or `none` when there is none. `plan`
+ * refuses a join date that is not that date (today's date included).
  *
  * `apply` re-plans, refuses unless `ready`, runs the writes as argument arrays
  * (`execFileSync`, no shell — a note containing `"` or `\` reaches the sheet
@@ -33,10 +40,12 @@ import {
   QUALITY_MODULE,
   assertUpstreamRulesUnchanged,
   buildRow,
+  checkJoinDate,
   columnLetter,
   diffRowReadBack,
   expectedFormulas,
   findDuplicates,
+  fold,
   formulaColumns,
   headerIndex,
   headerKey,
@@ -57,6 +66,8 @@ export interface Deps {
   exec: (cmd: string, args: string[]) => string;
   identity: () => { account: string; client: string };
   log: (line: string) => void;
+  /** Today's date, YYYY-MM-DD — the day ACE writes, which a join date must not default to. */
+  today: () => string;
 }
 
 const defaultDeps: Deps = {
@@ -64,6 +75,7 @@ const defaultDeps: Deps = {
     execFileSync(cmd, args, { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, stdio: ['ignore', 'pipe', 'pipe'] }),
   identity: () => resolveGogIdentity({ repoRoot: REPO_ROOT }),
   log: (line) => console.log(line),
+  today: () => new Date().toLocaleDateString('en-CA'),
 };
 
 /** The `gog sheets update` argument array for one exact-range write. */
@@ -122,6 +134,7 @@ export function main(argv: string[], deps: Deps = defaultDeps): number {
   const id = contract.directoryId;
   const orgTab = contract.organizationsTab;
   const contactTab = contract.contactsTab;
+  const datesTab = contract.datesTab;
 
   if (cmd === 'contract') {
     print({ connectLabsSha: sha, ...contract });
@@ -130,18 +143,23 @@ export function main(argv: string[], deps: Deps = defaultDeps): number {
 
   const orgFields = readJson(arg('--org'), '--org');
   const contactFields = readJson(arg('--contact'), '--contact');
+  // Every org this skill adds gets its join date written too; there is no run without it.
+  const datesFields = readJson(arg('--dates'), '--dates');
   const orgHeader = sheetGet(id, `${quoteTab(orgTab)}!1:1`)[0] ?? [];
   const contactHeader = sheetGet(id, `${quoteTab(contactTab)}!1:1`)[0] ?? [];
+  const datesHeader = sheetGet(id, `${quoteTab(datesTab)}!1:1`)[0] ?? [];
   requireHeaders(orgHeader, [...contract.orgColumns], orgTab);
   requireHeaders(contactHeader, [...contract.contactColumns], contactTab);
+  requireHeaders(datesHeader, [...contract.datesColumns], datesTab);
   const orgRow = buildRow(orgHeader, orgFields, orgTab);
   const contactRow = buildRow(contactHeader, contactFields, contactTab);
+  const datesRow = buildRow(datesHeader, datesFields, datesTab);
 
   /** Formula columns of `tab`, read from the row above `target` (the precedent). Header row has none. */
   const formulasAbove = (tab: string, header: string[], target: number) =>
     target > 2 ? formulaColumns(sheetGet(id, rowRange(tab, header, target - 1), 'FORMULA')[0] ?? []) : new Map<number, string>();
 
-  const verify = (orgN: number, contactN: number) => {
+  const verify = (orgN: number, contactN: number, datesN: number) => {
     const check = (tab: string, header: string[], row: string[], n: number) =>
       diffRowReadBack(
         row,
@@ -151,7 +169,13 @@ export function main(argv: string[], deps: Deps = defaultDeps): number {
       );
     const orgDiff = check(orgTab, orgHeader, orgRow, orgN);
     const contactDiff = check(contactTab, contactHeader, contactRow, contactN);
-    return { ok: orgDiff.length === 0 && contactDiff.length === 0, organizations: { row: orgN, diff: orgDiff }, contacts: { row: contactN, diff: contactDiff } };
+    const datesDiff = check(datesTab, datesHeader, datesRow, datesN);
+    return {
+      ok: orgDiff.length === 0 && contactDiff.length === 0 && datesDiff.length === 0,
+      organizations: { row: orgN, diff: orgDiff },
+      contacts: { row: contactN, diff: contactDiff },
+      dates: { row: datesN, diff: datesDiff },
+    };
   };
 
   if (cmd === 'plan' || cmd === 'apply') {
@@ -159,6 +183,22 @@ export function main(argv: string[], deps: Deps = defaultDeps): number {
     if (!name) throw new Error(`--org must set "${contract.orgNameHeader}"`);
     if (headerKey(fieldFor(contactFields, contract.orgNameHeader)) !== headerKey(name)) {
       throw new Error(`The contact's "${contract.orgNameHeader}" must equal the org row's, or labs cannot join them.`);
+    }
+    // labs looks the join date up by the exact org name (`dates.get(row.name)`), so no folding here.
+    if (fieldFor(datesFields, contract.orgNameHeader).trim() !== name.trim()) {
+      throw new Error(`The dates row's "${contract.orgNameHeader}" must equal the org row's exactly, or labs never finds the join date.`);
+    }
+    const submitted = arg('--submitted');
+    if (!submitted) throw new Error('--submitted <YYYY-MM-DD|none> is required: the org\'s own submission date, or none');
+    const joinDate = checkJoinDate({
+      joined: fieldFor(datesFields, contract.datesJoinedHeader),
+      submitted,
+      today: deps.today(),
+      isoPattern: contract.isoDatePattern,
+    });
+    if (!fieldFor(datesFields, contract.datesBasisHeader).trim()) {
+      joinDate.ok = false;
+      joinDate.problems.push(`"${contract.datesBasisHeader}" is blank; say where the date came from, following the precedent rows.`);
     }
 
     // The whole Organizations tab, for the duplicate check by labs' own fold.
@@ -177,16 +217,26 @@ export function main(argv: string[], deps: Deps = defaultDeps): number {
     const orgTarget = nextEmptyRow(orgAll.map((r) => [r[nameCol]]));
     const cIdx = headerIndex(contactHeader).get(headerKey(contract.contactColumns[0]))!;
     const contactTarget = nextEmptyRow(sheetGet(id, `${quoteTab(contactTab)}!A:ZZ`).map((r) => [r[cIdx]]));
+    const dIdx = headerIndex(datesHeader).get(headerKey(contract.orgNameHeader))!;
+    const datesAll = sheetGet(id, `${quoteTab(datesTab)}!A:ZZ`);
+    const datesTarget = nextEmptyRow(datesAll.map((r) => [r[dIdx]]));
+    // A dates row already naming this org (labs keeps the last one) is the sheet owner's to resolve.
+    const existingDates = datesAll
+      .map((r, i) => ({ row: i + 1, name: String(r[dIdx] ?? '').trim() }))
+      .filter((r) => r.row > 1 && r.name && fold(r.name) === fold(name));
 
     const orgRange = rowRange(orgTab, orgHeader, orgTarget);
     const contactRange = rowRange(contactTab, contactHeader, contactTarget);
     const orgEmpty = rowIsEmpty(sheetGet(id, orgRange));
     const contactEmpty = rowIsEmpty(sheetGet(id, contactRange));
+    const datesRange = rowRange(datesTab, datesHeader, datesTarget);
+    const datesEmpty = rowIsEmpty(sheetGet(id, datesRange));
     const writes = [
       ...planRowWrites({ tab: orgTab, headerRow: orgHeader, row: orgRow, targetRow: orgTarget, precedentRow: orgTarget - 1, formulas: formulasAbove(orgTab, orgHeader, orgTarget) }),
       ...planRowWrites({ tab: contactTab, headerRow: contactHeader, row: contactRow, targetRow: contactTarget, precedentRow: contactTarget - 1, formulas: formulasAbove(contactTab, contactHeader, contactTarget) }),
+      ...planRowWrites({ tab: datesTab, headerRow: datesHeader, row: datesRow, targetRow: datesTarget, precedentRow: datesTarget - 1, formulas: formulasAbove(datesTab, datesHeader, datesTarget) }),
     ];
-    const ready = duplicates.length === 0 && orgEmpty && contactEmpty;
+    const ready = duplicates.length === 0 && orgEmpty && contactEmpty && datesEmpty && existingDates.length === 0 && joinDate.ok;
     const plan = {
       connectLabsSha: sha,
       directory_id: id,
@@ -194,6 +244,8 @@ export function main(argv: string[], deps: Deps = defaultDeps): number {
       duplicates,
       organizations: { target_row: orgTarget, range: orgRange, target_row_empty: orgEmpty, row: orgRow },
       contacts: { target_row: contactTarget, range: contactRange, target_row_empty: contactEmpty, row: contactRow },
+      dates: { target_row: datesTarget, range: datesRange, target_row_empty: datesEmpty, existing_rows: existingDates, row: datesRow },
+      join_date: joinDate,
       ready,
       writes,
     };
@@ -203,12 +255,12 @@ export function main(argv: string[], deps: Deps = defaultDeps): number {
       return 0;
     }
     if (!ready) {
-      print({ applied: false, reason: 'plan is not ready: a duplicate, or a target row that is not empty', plan });
+      print({ applied: false, reason: 'plan is not ready: a duplicate, a target row that is not empty, an existing dates row, or a join date that is not the org\'s own submission date', plan });
       return 1;
     }
     const who = deps.identity();
     for (const w of writes) deps.exec('gog', gogUpdateArgs(id, w, who)); // one attempt each: a write is not retried blind
-    const result = verify(orgTarget, contactTarget);
+    const result = verify(orgTarget, contactTarget, datesTarget);
     print({ applied: true, writes, verify: result });
     return result.ok ? 0 : 1;
   }
@@ -216,14 +268,16 @@ export function main(argv: string[], deps: Deps = defaultDeps): number {
   if (cmd === 'verify') {
     const orgN = Number(arg('--org-row'));
     const contactN = Number(arg('--contact-row'));
-    if (!orgN || !contactN) throw new Error('--org-row and --contact-row are required');
-    const result = verify(orgN, contactN);
+    const datesN = Number(arg('--dates-row'));
+    if (!orgN || !contactN || !datesN) throw new Error('--org-row, --contact-row and --dates-row are required');
+    const result = verify(orgN, contactN, datesN);
     print(result);
     return result.ok ? 0 : 1;
   }
 
   throw new Error(
-    'usage: llo-directory.ts contract | plan --org f --contact f | apply --org f --contact f | verify --org f --org-row n --contact f --contact-row n',
+    'usage: llo-directory.ts contract | plan --org f --contact f --dates f --submitted YYYY-MM-DD|none | apply (same as plan) | ' +
+      'verify --org f --org-row n --contact f --contact-row n --dates f --dates-row n',
   );
 }
 
