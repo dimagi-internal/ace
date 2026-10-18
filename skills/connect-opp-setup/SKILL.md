@@ -22,14 +22,19 @@ acts in`).
 
 ## Inputs
 
-| Source | Artifact | Used for |
+| Parameter | Used for | Resolver |
 |---|---|---|
-| Phase 1 | `1-design/idea-to-pdd.md` | archetype + Evidence Model (Layer A → verification flags) |
-| Phase 4 | `4-connect/connect-program-setup.md` | program UUID (opp is scoped to it) |
-| Phase 8 | current run's `phases.solicitation-management.products.selected_llo.org_slug` | awarded LLO (must have ACCEPTED ProgramApplication; see § Pre-flight) |
-| Phase 3 | `3-commcare/app-deploy_summary.md` | `hq_server`, `learn_app`/`deliver_app` IDs, HQ project space slug |
-| Phase 1 (componentized only) | `run_state.…idea-to-design.products.components[].pdd_file_id` + `.program_level[].file_id` | the component PDDs, read for their verification rules and their payment terms — Step 8a's rule rows need every rule in the PDD set, and on a componentized programme they live in the component PDDs (e.g. a Targeting PDD's duplicates rule), not the overview; Step 6's payment-unit set comes from each component's payment terms (§ Archetypes › Componentized programmes, ace#2163) |
-| Phase 3 | `3-commcare/pdd-to-deliver-app_summary.md` | Step 8a's rule rows: the CCZ-side enforcement a rule relies on when Connect cannot carry it |
+| `pdd` | archetype + Evidence Model (Layer A → verification flags), payment plan, `program_parameters.learn_passing_score` | explicit arg (a Drive file id); default: `1-design/idea-to-pdd.md` |
+| `program_id` | program UUID (the opportunity is scoped to it) | explicit arg; default: `4-connect/connect-program-setup.md`; else `opp.yaml.connect.program.id` |
+| `pm_org` / `holding_org` | the program's org (every PM-only page) and the org the opportunity is created HELD BY | explicit arg; default: the dispatch's `connect_orgs` block (`lib/connect-orgs.ts` `phase4Orgs()`; see Step 3) |
+| `hq_server`, `hq_domain`, `learn_app_id`, `deliver_app_id` | the released apps the opportunity wires to | explicit arg; default: `3-commcare/app-deploy_summary.md` |
+| `component_pdds` (componentized only) | the component PDDs, read for their verification rules and payment terms. Step 8a's rule rows need every rule in the PDD set, and on a componentized programme they live in the component PDDs (e.g. a Targeting PDD's duplicates rule), not the overview; Step 6's payment-unit set comes from each component's payment terms (§ Archetypes › Componentized programmes, ace#2163) | explicit arg; default: run_state `…idea-to-design.products.components[].pdd_file_id` + `.program_level[].file_id` |
+| `deliver_app_summary` | Step 8a's rule rows: the CCZ-side enforcement a rule relies on when Connect cannot carry it | explicit arg; default: `3-commcare/pdd-to-deliver-app_summary.md` |
+
+Creating an opportunity is a build step: the full Process below runs inside
+`/ace:run` Phase 4. Its configuration steps also run on an opportunity that
+already exists, with explicit ids and no `run_state.yaml`. See § Operations
+on an existing opportunity.
 
 ## Phase folder anchor
 
@@ -46,6 +51,25 @@ alone makes the artifact land outside `4-connect` and fail
 - `4-connect/connect-opp-setup.md` (written with `parentFolderId = phaseFolderId`) — opp UUID, verification flags, payment units, ACE test-user invite URL, connect_int_id (ConnectProd integer id, from the create response)
 - `decisions.yaml` rows (`phase: 4-connect`, `skill: connect-opp-setup`) — one rule row per PDD verification rule, plus `[ACE]` latitude and `[FIXED]` ambiguity rows (Step 8a, § Decisions Log). The decisions log is the run's review artifact; these rows are the only record of where each rule is enforced
 - `run_state.yaml.phases.connect-setup.products.connect` — single atomic block with `program` (copied from `opp.yaml.connect.program` for run self-containment), `opportunity`, `ace_test_user` sub-keys. Read by `synthetic-data-generate` (`opportunity.connect_int_id`), Phase 6 mobile recipes, and other skills within the same run. Per-run only — no other run reads it.
+
+## Operations on an existing opportunity
+
+Three parts of the Process are the one place their mechanics are written
+down, and each runs standalone against an opportunity that already exists:
+one ACE built, or one it didn't. `connect-opp-modify` is the procedure for a
+change to a live opportunity (approval, before-read, refusals, record), and
+it points here for these mechanics instead of restating them.
+
+| Operation | Section | Needs | Build-only parts to skip outside a run |
+|---|---|---|---|
+| **Verification flags** (`form_field_rules`, duration floors, submission window) | Step 5 | `opportunity_id`, `pm_org`, the rules (from a PDD's Layer A or the caller), the released Deliver CCZ for the real question paths | the `self-managed` gap rows (Step 8a); `run_state` writes |
+| **Payment units** | Step 6 | `opportunity_id`, `pm_org`, `total_budget`, the payment plan, deliver-unit `server_id`s from `connect_list_deliver_units` | the `phases.connect-setup.status` write on `opportunity_underfunded` (report to the caller instead) |
+| **Learn passing score read-back and repair** | Step 4, verify-after-create › `passing_score` | `program_id`, `opportunity_id`, `pm_org`, the intended score, whether a PDD decided it | none; the shared-row caution applies everywhere |
+
+Outside a run, write the outcome where the caller says: the program
+context doc's Decisions for a program project, or the run folder when one
+is bound. `comms-log/observations.md` and `auto_surfaced` mean the
+caller's record.
 
 ## Process
 
@@ -571,7 +595,8 @@ alone makes the artifact land outside `4-connect` and fail
    "mismatch".
 
    Also check:
-   - `passing_score` — numeric match. **Read it with
+   - `passing_score` *(also runs on an existing opportunity: § Operations
+     on an existing opportunity)* — numeric match. **Read it with
      `connect_get_learn_passing_score({organization_slug, program_id,
      opportunity_id})`, NOT from `connect_get_opportunity`** (ace#1449).
      `connect_get_opportunity` hydrates from `/a/<org>/opportunity/<id>/edit`
@@ -683,7 +708,8 @@ alone makes the artifact land outside `4-connect` and fail
    side of that rule (see `agents/ace-orchestrator.md § External
    Mutations — Verify After Create`).
 
-5. **Configure verification flags** via `connect_set_verification_flags`,
+5. **Configure verification flags** via `connect_set_verification_flags`
+   *(also runs on an existing opportunity: § Operations on an existing opportunity)*,
    mapping the PDD's Evidence Model Layer A to the surfaces Connect
    *actually has*. *(This atom still goes through the legacy HTML form —
    the verification config page isn't part of PR #1135's automation API.)*
@@ -806,7 +832,8 @@ alone makes the artifact land outside `4-connect` and fail
    NOT among them: a CCZ cannot see another submission's payment, and Connect
    does not dedup payment on a repeated key (ace#2512).
 
-6. **Configure payment units** via `connect_create_payment_units` (plural,
+6. **Configure payment units** *(also runs on an existing opportunity:
+   § Operations on an existing opportunity)* via `connect_create_payment_units` (plural,
    atomic batch — the new automation API takes a list). Build one entry
    per unit in the PDD's payment plan; the entire request is rejected if
    any unit is invalid.
@@ -1633,6 +1660,19 @@ alone makes the artifact land outside `4-connect` and fail
     the walk with that reason instead of failing on the device. A read that
     errors is reported as unconfirmed, never as fine.
 
+## Existing objects
+
+- **Deliver units are keyed on the holding org's `CommCareApp` row** (ace#573). A second
+  opportunity in the same holding org on the same released Deliver app cannot bind a payment unit
+  to a deliver unit the first already holds. Step 6 is the gate; a fresh Deliver release is the fix.
+- **The Learn `passing_score` lives on the shared `CommCareApp` row** (ace#1350). A create against
+  an existing row discards the posted score, and the repair moves the gate for every opportunity
+  wired to that Learn app (Step 4's `passing_score` check).
+- **The holding org is create-time only** (ace#2919). Step 3 resolves it before the create; there
+  is no repair.
+- **There is no payment-unit update or delete atom.** A malformed unit is recreated in the Connect
+  UI (Step 6).
+
 ## Archetypes
 
 The PDD's `archetype:` field shapes verification + payment unit setup:
@@ -1990,6 +2030,7 @@ decisions_append_rows({
 
 | Date | Change | Author |
 |------|--------|--------|
+| 2026-10-18 | `## Inputs` are parameters with resolvers. New § Operations on an existing opportunity names Step 5 (verification flags), Step 6 (payment units) and Step 4's passing-score read-back and repair as the one written source for those mechanics, runnable on an existing `opportunity_id`; `connect-opp-modify` points here instead of restating them. New § Existing objects. The stale Phase 8 `selected_llo` input row is gone (Phase 4 runs before Phase 8; the holding org comes from `connect_orgs`). | ACE (#3148 batch 3) |
 | 2026-10-03 | **Build memo retired — decisions.yaml is the review artifact (schema v6).** Step 8 no longer ends `connect-opp-setup.md` with a memo section; new Step 8a records one rule row per PDD verification rule (`Where is the PDD verification rule '<rule>' enforced?`, with `plain`, `check_at`, and `scope` / `enforcement` set or computed by `classifyRule`), plus latitude and ambiguity rows, and a rule Connect refused is a rule row with `enforcement: gap` that `decisions_enrich` turns into a review ask; `products.connect.build_memo` is no longer written, and the Phase 4 boundary fails a written summary with zero rows under `skill: connect-opp-setup`. Contract: docs/decisions-contract.md. | ACE team |
 | 2026-10-01 | **Step 8 names a per-worker rule's PER-WORKER enforcement point first (build-memo-eval, spark-facilitator/20260926-1800).** Both per-worker caps — "at most 1 payable meeting per CBF per day" and "total cap 21 per CBF" — were written `CCZ: … ; also Connect payment unit …` and recorded as `CCZ constraint` decisions, so the build memo told the reviewer the app enforced them. The app checks are keyed on the COMMUNITY case (the date check, the 7 × 3 per-step clamp) and cannot bound a worker across communities; only the payment unit's `max_daily` / `max_total` do. `Where applied` gains `Connect payment unit max_daily / max_total (per worker)`, the decision `options` gain `Connect payment unit limit`, and a scope paragraph says which goes first. *Enforced:* `lib/build-memo-compose.ts` `checkEnforcementScope` via `scripts/build-memo-compose.ts --check` (`test/lib/build-memo-compose.test.ts`, on that run's table and decision rows). | ACE team |
 | 2026-10-04 | **Rule rows carry `plain_value` when their `ai-default` is jargon (ace#2654, spark-facilitator/20261004-1706).** The row contract mandated the closed `options` labels `Connect form_field_rules`, `Connect deliver_unit_checks` and `CCZ constraint` as `ai-default` but never mentioned `plain_value`, which the plain-language gate requires whenever `ai-default` is jargon — so 9 of that run's 12 compliant rule rows failed `decisions_enrich` and had to be re-emitted with `supersedes`. The table gains a `plain_value` row and the worked example a `Connect form_field_rules` row carrying it; the write boundary now stamps a default for those three labels (`RULE_ENFORCEMENT_PLAIN_VALUE`, `lib/decision-review.ts`). *Enforced:* `test/skills/connect-opp-setup-plain-value.test.ts` runs the real gate over every rule label and every worked-example row. | ACE team |

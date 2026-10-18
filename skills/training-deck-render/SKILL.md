@@ -17,11 +17,16 @@ pipeline. Single-pass (no speaker notes).
 Phase 6 (`qa-and-training`), after `training-deck-generate`. The last
 training material step before Phase 7.
 
-## Inputs (read from Drive)
+## Inputs
 
-| Source | Artifact | Used for |
+| Parameter | Used for | Resolver |
 |---|---|---|
-| Phase 6 (`training-deck-generate`) | `ACE/<opp>/runs/<run-id>/6-qa-and-training/training-deck-spec.yaml` | The spec to render |
+| `spec` | the deck spec to render | explicit arg (a Drive file id); default: `ACE/<opp>/runs/<run-id>/6-qa-and-training/training-deck-spec.yaml` (from `training-deck-generate`) |
+| `out_folder_id` | where the deck and its verdict land (step 6's `parentFolderId`) | explicit arg; default: the run's `6-qa-and-training/` folder |
+
+Outside a run (a refreshed deck for a live program), pass both. Step 10's
+`run_state.yaml` handoff is then skipped; the caller records the deck link
+(a program project's context doc).
 
 ## Inputs (env)
 
@@ -69,7 +74,7 @@ training material step before Phase 7.
 6. **Copy template.** Call `slides_copy_template` with:
    - `templatePresentationId`: `ACE_TRAINING_DECK_TEMPLATE_ID`
    - `title`: `"<opp-name> — Training Deck"`
-   - `parentFolderId`: the run's `6-qa-and-training/` folder ID
+   - `parentFolderId`: `out_folder_id` (default: the run's `6-qa-and-training/` folder ID)
 
 7. **Discover stencil objectIds.** Call `slides_get` on the copied
    deck. Verify all 14 stencils are present (match against the
@@ -197,7 +202,7 @@ training material step before Phase 7.
    `scripts/bootstrap-training-deck-template.ts` (after trashing or
    renaming the existing template — it dedupes on `TEMPLATE_NAME`).
 
-10. **Write deck handoff** to `run_state.yaml`:
+10. **Write deck handoff** to `run_state.yaml` (only when a run is bound):
 
     ```yaml
     phases:
@@ -378,6 +383,7 @@ node "$ACE_ROOT/node_modules/tsx/dist/cli.mjs" "$ACE_ROOT/scripts/rerender-train
 
 ## Change Log
 
+- 2026-10-18: `## Inputs` are parameters (`spec`, `out_folder_id`); step 10's run_state handoff runs only when a run is bound (#3148 batch 3).
 - v3 (2026-10-01): Step 2b — refuse a screen slide with no screen and any
   `mobile_flow` (`checkDeckScreenBacking`); walkthrough phones drawn at ~91%
   of the slide height (was 82%); body URLs rendered as link text styled onto

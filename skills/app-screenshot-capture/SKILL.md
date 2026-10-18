@@ -14,17 +14,25 @@ smoke judge so Phase 6 has a meaningful (but cheap) signal that the
 built apps are usable end-to-end. Deep, per-journey UX grading lives in
 `/ace:qa-deep` → `app-ux-eval` — this skill is intentionally shallow.
 
-## Inputs (read from Drive)
+## Inputs
 
-| Source | Artifact | Used for |
+| Parameter | Used for | Resolver |
 |---|---|---|
-| Phase 1 (`pdd-to-app-journeys`) | `ACE/<opp>/runs/<run-id>/2-scenarios/pdd-to-app-journeys.md` | persona summary for the UX judge prompt; archetype context |
-| Phase 3 (`app-test-cases`) | `ACE/<opp>/runs/<run-id>/3-commcare/app-test-cases.yaml` | smoke-recipe selection (`is_smoke: true`) + recipe paths |
-| Phase 1 | `ACE/<opp>/inputs/pdd.md` | persona-summary fallback if not embedded in pdd-to-app-journeys |
-| Phase 3 | `ACE/<opp>/runs/<run-id>/3-commcare/app-deploy_summary.md` | HQ domain for `${HQ_DOMAIN}` env var |
-| Phase 3 (run_state.yaml) | `phases.commcare-setup.products` (the `apps` block, sole writer `app-deploy`) | the output key each app's previews index names — § Step 4.9, read via `resolveAppOutputKey` |
-| Phase 4 (run_state.yaml) | `phases.connect-setup.products.connect.pm_org_slug` (legacy: `organization_slug`) | `organization_slug` for EVERY Connect call in this skill. On a PM→NM run the opportunity is HELD by the NM org, but the PM org's URL serves every surface this skill reads (invite read-back, dashboard, learn/deliver progress) — live matrix in `playbook/integrations/connect-api.md § PM→NM org-URL matrix`. `runConnectOrgs()` (`lib/connect-orgs.ts`) is the rule. |
-| Phase 4 (run_state.yaml) | `phases.connect-setup.products.connect.opportunity.{id, name}` + top-level `run_id` + ACE test user invite | `${OPP_RUN_ID}` (verbatim from `run_state.yaml.run_id`, the deterministic tile matcher), `${OPP_NAME}` (verbatim from `opportunity.name`, logging/screenshot context only), `${ACE_E2E_PHONE_LOCAL}`, etc. |
+| `journeys_doc` | persona summary for the UX judge prompt; archetype context | explicit arg (a Drive file id); default: `ACE/<opp>/runs/<run-id>/2-scenarios/pdd-to-app-journeys.md`; persona fallback: `ACE/<opp>/inputs/pdd.md` |
+| `test_cases_catalog` | smoke-recipe selection (`is_smoke: true`) + recipe paths | explicit arg (a Drive file id); default: `ACE/<opp>/runs/<run-id>/3-commcare/app-test-cases.yaml` |
+| `hq_domain` | the `${HQ_DOMAIN}` env var | explicit arg; default: `3-commcare/app-deploy_summary.md` |
+| `app_output_keys` | the output key each app's previews index names (§ Step 4.9, `resolveAppOutputKey`) | explicit arg; default: run_state `phases.commcare-setup.products` (the `apps` block, sole writer `app-deploy`) |
+| `organization_slug` | the org for EVERY Connect call in this skill. On a PM→NM run the opportunity is HELD by the NM org, but the PM org's URL serves every surface this skill reads (invite read-back, dashboard, learn/deliver progress); live matrix in `playbook/integrations/connect-api.md § PM→NM org-URL matrix`. `runConnectOrgs()` (`lib/connect-orgs.ts`) is the rule | explicit arg; default: run_state `phases.connect-setup.products.connect.pm_org_slug` (legacy: `organization_slug`) |
+| `opportunity_id`, `opportunity_name` | the opportunity under test; `${OPP_NAME}` (verbatim, logging/screenshot context only) | explicit arg; default: run_state `phases.connect-setup.products.connect.opportunity.{id, name}` |
+| `opp_run_id` | `${OPP_RUN_ID}`, the deterministic tile matcher (§ OPP_RUN_ID) | explicit arg; default: top-level `run_state.yaml.run_id`. Outside a run, pass the token that uniquely identifies the opportunity's tile |
+| `out_folder_id` | where previews, forensics and the summary go | explicit arg; default: the run's `3-commcare/previews/` and `6-qa-and-training/` folders |
+| test user | `${ACE_E2E_PHONE_LOCAL}`, `${ACE_E2E_PIN}`; the opportunity must already have invited the test user (`connect-opp-setup` Step 7 inside a run; `connect_send_flw_invite` on a live one) | the session's test worker (see the `connect-login.yaml` notes below) |
+
+Outside a run, pass every explicit parameter. The run_state write-back is
+skipped; the summary goes to `out_folder_id` and the caller records it.
+Learn completion is one-way per (test user, opportunity), so on a live
+opportunity a consumed test user records `satisfied-by-prior-completion`
+for Learn (Step 2.7) rather than re-walking it.
 
 Recipes are read by path from the entries in `app-test-cases.yaml`
 (`recipe_path` field). They were composed and validated by Phase 3's
@@ -2104,6 +2112,7 @@ Notes:
 
 | Date | Change | Author |
 |---|---|---|
+| 2026-10-18 | `## Inputs` are parameters with resolvers (journeys doc, test-case catalog, HQ domain, org, opportunity, `opp_run_id` tile matcher, output folder); the run_state write-back is skipped outside a run. | ACE (#3148 batch 3) |
 | 2026-09-29 | **Output previews contract v1 — smoke-leg PNGs move to the phase that BUILT the app.** New § Step 4.9 resolves each leg's folder `3-commcare/previews/<app-output-slug>/` from the journey's `app:` binding and the output key THIS run's `phases.commcare-setup.products` actually carries (`resolveAppOutputKey` — `apps.learn` declared, drifted spellings honoured), and clears it per leg before upload (never the other leg's — Learn is one-way). New § Step 6.2 writes one authoritative `_previews.yaml` per app (real bytes, read back through `assertPreviewsIndexReadable`; `items: []` for a leg that did not pass). `6-qa-and-training/screenshots/` keeps Phase 6's forensics only (ui-dumps, `*-FAILURE.*`, post-Learn landing). Manifest unchanged in shape; each row's Drive path now points at the preview folder. Helpers: `lib/output-previews.ts`. Spec: ace-web `docs/specs/2026-09-29-output-previews-design.md`. | ACE team |
 | 2026-08-29 | **Step 9 required check: the verdicts must agree with the manifest's `journeys[].status` (dimagi-internal/ace#1830).** Both verdict files are now gated on `checkVerdictManifestAgreement` (`lib/verdict-manifest-agreement.ts`) before they are written, and again after any re-run that changes a leg's status. It names three kinds — `stale-verdict` (manifest passes, verdict says failed/ungradeable: the ace#1830 recovery direction), `unsupported-pass` (manifest failed, verdict says pass: the Step 5 hard rule, jjackson/ace#756, which this skill has asserted in prose since 2026-06-12 with nothing enforcing it), and `unreported-leg`. Surfaced by hh-poverty-targeting/20260828-0702, where a Deliver leg recovered at 15:02Z rewrote the manifest and the structural verdict while `app-screenshot-capture_verdict-shallow.yaml` sat at `3.0 / fail` for five hours still carrying a `[BLOCKER]` reading "no Deliver screenshots exist for this run" — `opp-eval` aggregates verdict files by directory discovery and Phase 9's `llo-launch` reads them, so the run misreported itself to every downstream consumer in the direction that keeps a healthy run gated. The guard keys on data that already exists on both sides rather than on a new staleness stamp, because a stamp needs every writer to remember it — the same by-hand honouring that failed here. *Enforced:* `test/lib/verdict-manifest-agreement.test.ts`, calibrated against both real states of that run (the 14:10Z stale file as the positive control, the 19:30Z re-graded 2.5/pass as the negative). | ACE team |
 | 2026-08-29 | **Step 2.6 gains the `input-without-erase` recipe-sanity class (dimagi-internal/ace#1844).** Maestro's `inputText` appends at the cursor, so an `inputText` with no `eraseText` before it concatenates onto whatever the field already held. Live on `spark-facilitator/20260828-0703`: `40` typed into a field holding a preload submitted `140`, the form's cross-field constraint refused to advance, and the leg died two screens later on an unrelated scroll. Pure recipe shape — runs unconditionally, never gated on `fields`. | ACE team |

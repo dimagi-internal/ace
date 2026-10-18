@@ -12,11 +12,21 @@ Create or select a Connect program for this opportunity.
 
 ## Inputs
 
-| Source | Artifact | Used for |
+| Parameter | Used for | Resolver |
 |---|---|---|
-| Phase 1 | `1-design/idea-to-pdd.md` | archetype-aware program naming + domain match |
-| Connect MCP | `connect_list_programs({organization_slug})` | reuse-vs-create decision |
-| Preflight | `connect_orgs.pm_org` (from `/ace:doctor --preflight`, passed in by the connect-setup dispatch) | the `organization_slug` for every call in this skill |
+| `organization_slug` | the org for every call in this skill (see **Which org** below) | explicit arg; default: `connect_orgs.pm_org` (from `/ace:doctor --preflight`, passed in by the connect-setup dispatch) |
+| `archetype` | archetype-aware program naming + archetype-matched reuse | explicit arg; default: the PDD's `archetype:` frontmatter |
+| `domain`, `description` | the domain match in the reuse scan, and the program description | explicit arg; default: the PDD |
+| `connect_delivery_type`, `country`, `currency`, `budget`, dates | the create-time-only program fields Step 4 gates | explicit arg; default: the PDD's `program_parameters` |
+| `pdd` | the resolver for every field above that the caller does not pass | explicit arg (a Drive file id); default: `1-design/idea-to-pdd.md` |
+| existing programs | the reuse-vs-create decision | read live: `connect_list_programs({organization_slug})` |
+
+Outside a run (a program project that needs a program, with no PDD), pass
+the fields explicitly. Step 4's gates (`connect_delivery_type` resolved
+against the live list, `checkProgramLocale` on country and currency) apply
+the same way to explicit values: they are checks on the value, not on
+where it came from. Step 6's `opp.yaml` write applies only when an opp
+folder exists; otherwise record the program id in the program context doc.
 
 **Which org.** `organization_slug` throughout this skill is **the configured PM
 org — `connect_orgs.pm_org`** from preflight (`lib/connect-orgs.ts`; see
@@ -47,7 +57,8 @@ alone makes the artifact land outside `4-connect` and fail
 
 ## Process
 
-1. **Read the PDD** from `ACE/<opp-name>/runs/<run-id>/1-design/idea-to-pdd.md`, including the
+1. **Resolve the inputs.** Use each explicit parameter the caller passed; read the rest from the
+   PDD (default `ACE/<opp-name>/runs/<run-id>/1-design/idea-to-pdd.md`), including the
    `archetype:` field. Program shape is mostly archetype-agnostic, but
    program NAME and DESCRIPTION should signal archetype so future opps
    under the same program can be grouped coherently. See
@@ -616,6 +627,7 @@ Rows this skill writes use `phase: "4-connect"` and `skill: "connect-program-set
 
 | Date | Change | Author |
 |------|--------|--------|
+| 2026-10-18 | `## Inputs` are parameters with resolvers (org, archetype, domain, the create-time fields; the PDD is one resolver). Step 1 resolves explicit values first; Step 4's gates apply to explicit values the same way. | ACE (#3148 batch 3) |
 | 2026-10-16 | **Step 4a: the create path rules org-wide unreadable rows OUT of a program it just minted (ace#2083).** A `setup_incomplete` opportunity is permanently unreadable, so each one forced Σ unknown and added `EXPECTED_OPP_BUDGET` to the target of every program sized against the org — including a brand-new one that provably contained nothing (`poverty-graduation/20260905-1345`: 0 matched rows, 11 unreadable, raised 126,000 → 176,400). `connect_list_opportunities` gains `program_created_this_invocation`; with it, and with `matched_rows == 0`, `summarizeOpportunitiesByProgram` reports `sigma_known: true` and `unreadable_rows_ruled_out: true`. The reuse path is unchanged. The sweep half stays upstream-bound: Connect has no opportunity-delete route; its own weekly `delete_stale_opportunities` removes no-visit opportunities older than 6 months. *Enforced:* `test/lib/connect-list-projection.test.ts` § create-path narrowing. | ACE team |
 | 2026-10-15 | **Step 3a no longer proposes NARROWING a reused program's window below opportunities already on it (ace#2985).** `reconcileProgramWithPdd` compared `start_date`/`end_date` by string equality and put any difference in `updateArgs`, so on `smallholder-seasonal/20261015-1402` (program `09b74c39-…`) it proposed `end_date: 2030-01-31` while both existing opportunities end `2030-02-28`. Dates now have containment semantics like `budget`: `start_date` diverges only when live starts later than the PDD, `end_date` only when live ends earlier; a wider live window is no diff, no `updateArgs`, no `[WARN]`. *Enforced:* `test/lib/program-reconcile.test.ts` § date containment, incl. the live repro. | ACE team |
 | 2026-09-17 | **The reuse-path description refresh no longer round-trips ~21 KB of prose through the model (ace#2291).** `connect_update_program` gained `description_path`, the same `<param>_path` handle this server already offers on `new_xform_xml_path` / `file_bytes_path` / `ccz_path`: the server reads the bytes off disk verbatim. Step 3a refreshes `description` on EVERY reuse and reuse is the normal path after an opp's first run, so the inline-only shape cost ~5.8k output tokens per run forever (measured live 2026-09-17 on program `efb8af66`, `ai-demo-space`: 21,012 chars). It also removes a correctness gap — the description the reconciler judged and the description sent were two separate generations, with nothing making them match (the ace#1737 class). Step 3a now authors the description to a file first and points BOTH consumers at it. A relative, unreadable or empty file is a typed refusal naming the path with nothing sent, never a silently blanked LLO-facing description. *Enforced:* `test/mcp/connect/unit/update-program-description-path.test.ts`. | ACE team |

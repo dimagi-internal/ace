@@ -2,7 +2,7 @@
 name: semantic-registry-author
 description: >
   Author a labs semantic registry from a PDD: the entity, one indicator per PDD metric, and the
-  program's nouns. Needs an approved PDD.
+  program's nouns. Needs a PDD or indicator spec.
 disable-model-invocation: false
 ---
 
@@ -32,13 +32,19 @@ sentences, `targets_note` — follows [`skills/_terminology.md`](../_terminology
 
 ## Inputs
 
-| Source | Artifact | Used for |
+| Parameter | Used for | Resolver |
 |---|---|---|
-| Phase 1 | the PDD (`phases.idea-to-design.products.pdd`, read with `writeToPath`) | archetype, the followed entity, § Success Metrics, § Evidence Model, payment rule, state vocabulary |
-| Phase 3 | the released Deliver CCZ (`3-commcare/app-release_summary.md` → build id; `commcare_download_ccz`) | the paths every submission actually carries — the authority for the entity key and the QA input |
-| Phase 3 | `3-commcare/pdd-to-deliver-app_summary.md` + the Nova app (`get_form` — `mcp__nova__get_form` via ACE's user-scope PAT entry, or `mcp__plugin_nova_nova__get_form` on the plugin's OAuth connection; accept either) | the REAL form paths of the paid form — the registry reads what the app submits, nothing else |
-| Caller | `partners: [{label, opportunity_id}]` | the synthetic partner opportunities → `deployment.llo_map` (supplied by `demo-data-setup` § C1, which creates them) |
-| Caller | `program_id` | the labs-only program the record lives in |
+| `indicator_spec` | the only menu of indicators: § Success Metrics rows, the payment / verification predicate, the review signals; plus archetype, the followed entity, § Entity Lifecycle and the state vocabulary | explicit arg (a Drive file id: a PDD, or a spec written for a live program with the same sections); default: the run's PDD (`phases.idea-to-design.products.pdd`, read with `writeToPath`) |
+| `hq_domain`, `deliver_app_id`, `build_id` | the released Deliver CCZ (`commcare_download_ccz`): the paths every submission actually carries, the authority for the entity key and the QA input | explicit arg; default: `3-commcare/app-release_summary.md` → build id |
+| `nova_app_id` | the REAL form paths of the paid form via `get_form` (`mcp__nova__get_form` via ACE's user-scope PAT entry, or `mcp__plugin_nova_nova__get_form` on the plugin's OAuth connection; accept either). The registry reads what the app submits, nothing else | explicit arg; default: `3-commcare/pdd-to-deliver-app_summary.md`. Optional for an app Nova did not build: read the paths from the released CCZ alone |
+| `partners: [{label, opportunity_id}]` | the opportunities → `deployment.llo_map`. In Phase 7 they are the synthetic partner opportunities `demo-data-setup` § C1 creates; on a live program, the program's real opportunity ids (`--opportunity-id`, repeatable) | caller-supplied |
+| `program_id` | the labs program the record lives in (labs-only in Phase 7; the real program on a live one) | caller-supplied |
+| `out_folder_id` | where the three files under § Products are written | explicit arg; default: the run's `7-synthetic` folder |
+
+No `run_state.yaml` is needed when every parameter is passed. The
+`run_state` write in § Products happens only when a run is bound; on a
+program project, record `{registry_id, program_id, version}` in the
+program context doc's Decisions instead.
 
 ## Products
 
@@ -46,7 +52,7 @@ sentences, `targets_note` — follows [`skills/_terminology.md`](../_terminology
 - `7-synthetic/semantic-registry-author_layer1.json` — `{fields: [{name, path | paths, transform?}]}`, the Layer-1 fields the registry reads, in the labs pipeline-field shape `demo-data-setup` § C3 writes (QA resolves every one against the released app)
 - `7-synthetic/semantic-registry-author_summary.md` — the indicator table (below) + the not-computable list
 - labs registry record (`semantic_registry_create`, home = the synthetic program)
-- `run_state.phases.synthetic-data-and-workflows.products.synthetic.cascade.registry` — `{registry_id, program_id, version, indicators[]}`, written **the moment the create returns** (ace#2412), `update_yaml_file({merge: 'deep'})`
+- `run_state.phases.synthetic-data-and-workflows.products.synthetic.cascade.registry` (when a run is bound) — `{registry_id, program_id, version, indicators[]}`, written **the moment the create returns** (ace#2412), `update_yaml_file({merge: 'deep'})`
 
 ## Process
 
@@ -338,6 +344,7 @@ around the refusal by another route, and never record the step as done.
 
 | Date | Change |
 |---|---|
+| 2026-10-18 | `## Inputs` are parameters: an `indicator_spec` (a PDD, or a spec for a live program), the released app ids, real `--opportunity-id` partners and `out_folder_id`. The run_state write happens only when a run is bound. | ACE (#3148 batch 3) |
 | 2026-10-16 | § After a registry edit: the run_state relink is the WHOLE Phase 7 products block via `relink-rebuilt-history --run-state` (`relinkRunStateProducts`), not a hand list of fields — the list missed `source.dashboards[].par_url` and left seven dead dashboard links on spark-facilitator/20261004-1706 (ace#2739). | ACE team |
 | 2026-10-13 | § 1: the entity key's path is the one the RELEASED app writes — Nova operation forms put it under `form.__nova_operations.<op>.case.@case_id` — declared as `paths` with the generator's `form.case.@case_id` last; new product `semantic-registry-author_layer1.json`. Enforced by `entity-key` / `layer1-paths` in QA (`lib/layer1-path-check.ts`). Found on smallholder-seasonal/20261012-1549, registry 8527 (ace#2883). | ACE team |
 | 2026-10-06 | § 3: reader-facing registry text is plain language for a programme manager (no PDD/§/section numbers, indicator codes, `≥`/`≤`, or column names); the Spark `targets_note` before/after. Enforced by `lib/registry-display-text.ts` in both QA gates (ace#2748). The worked example's `targets_note` is rewritten to match. | ACE team |
