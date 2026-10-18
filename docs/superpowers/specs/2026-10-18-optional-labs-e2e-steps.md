@@ -314,8 +314,8 @@ phases:
 
 ## § K. Residuals to verify live (each one is named in its PR)
 
-1. Which identifier `award_response.org_id` takes (§ C).
-2. Whether `create_response` on a *private* solicitation needs `program_id` or works on `solicitation_id` alone. **The schema answers it (checked in PR2, 2026-10-18):** `create_response.program_id` is "Accepted for compatibility; not needed", and the owner (or platform support) "enters the response on the firm's behalf -- no respondent user, any named organisation, deadline ignored". PR4's live seed call still confirms it in practice. `create_response` also takes an `org_id` string alongside `llo_entity_id` (the labs slug), and that is where § K1's `award_response.org_id` identifier should be pinned.
-3. Whether `forms.batchUpdate` populates a form created through `drive.files.create` on a Shared Drive with no further step.
+1. Which identifier `award_response.org_id` takes (§ C). **Resolved (PR4 #3176, live probe + connect-labs #2605):** the winner's Connect organisation integer id, as a string; the awardee itself is the response's `llo_entity` (labs slug).
+2. Whether `create_response` on a *private* solicitation needs `program_id` or works on `solicitation_id` alone. **Resolved (PR2 #3166; confirmed live in PR4 #3176). The schema answers it (checked in PR2, 2026-10-18):** `create_response.program_id` is "Accepted for compatibility; not needed", and the owner (or platform support) "enters the response on the firm's behalf -- no respondent user, any named organisation, deadline ignored". PR4's live seed call still confirms it in practice. `create_response` also takes an `org_id` string alongside `llo_entity_id` (the labs slug), and that is where § K1's `award_response.org_id` identifier should be pinned.
+3. Whether `forms.batchUpdate` populates a form created through `drive.files.create` on a Shared Drive with no further step. **Resolved (PR5 #3171, live):** yes; the blank "Untitled Question" Drive creates is removed in the same batch.
 4. Whether `workflow_rebuild_history` covers weeks whose visits came from `synthetic_clone_to_labs_only`.
 5. Whether supply-chain `*_on` dates may predate the programme's creation date (the § G calendar assumes they may).
