@@ -10,6 +10,11 @@
 // NEGATIVE CONTROL: KNOWN_LAYOUT is the layout as it stood at connect-labs
 // 6ecaf66. It exists only so this test can detect a pasted copy; nothing in
 // production reads it.
+//
+// 2026-10-15: ACE added 19 ULAB scoping-EOI applicants to the Organizations and
+// Contacts tabs and wrote nothing to the dates tab, so labs' import stamped all
+// 19 with the day it first saw them (2026-10-16) instead of their own 2–7 October
+// submission dates. The dates tab is now part of the contract, read live too.
 
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
@@ -34,6 +39,8 @@ const KNOWN_LAYOUT = {
     'Latest MSA Link',
     'Latest Work Order Link',
   ],
+  datesTab: 'AI Enrichment - Connect Dates',
+  datesJoinedHeader: 'Joined Connect Network',
 };
 
 describe('llo-directory-add reads the layout live', () => {
@@ -55,6 +62,10 @@ describe('llo-directory-add reads the layout live', () => {
       'ORG_COLUMNS',
       'HQ_CITY',
       'CONTACT_COLUMNS',
+      'DATES_TAB',
+      'parse_dates',
+      '_ISO_DATE',
+      'stamped_with_today',
       '_header_key',
       '_fold',
     ]) {
@@ -76,8 +87,38 @@ describe('llo-directory-add reads the layout live', () => {
       expect(text).not.toContain(KNOWN_LAYOUT.directoryId);
       const copied = KNOWN_LAYOUT.orgOnlyColumns.filter((h) => text.includes(h));
       expect(copied, `${file} names labs-required org columns: ${copied.join(', ')}`).toEqual([]);
+      expect(text, `${file} carries a copy of the dates tab's name`).not.toContain(KNOWN_LAYOUT.datesTab);
     });
   }
+
+  for (const file of [LIB, SCRIPT]) {
+    it(`${file} carries no copy of the dates tab's join-date column`, () => {
+      expect(read(file)).not.toContain(KNOWN_LAYOUT.datesJoinedHeader);
+    });
+  }
+
+  it('every org added gets a dates row: plan, apply and verify all take it', () => {
+    const script = read(SCRIPT);
+    expect(script).toContain("readJson(arg('--dates'), '--dates')");
+    expect(script).toContain("arg('--submitted')");
+    expect(script).toContain("arg('--dates-row')");
+    expect(script).toMatch(/requireHeaders\(datesHeader, \[\.\.\.contract\.datesColumns\]/);
+    expect(script).toMatch(/planRowWrites\(\{ tab: datesTab/);
+    expect(script).toMatch(/joinDate\.ok/);
+    for (const cmd of ['plan', 'apply']) {
+      expect(skill).toMatch(new RegExp(`llo-directory\\.ts" ${cmd} [^\\n]*--dates dates\\.json --submitted`));
+    }
+    expect(skill).toMatch(/llo-directory\.ts" verify [^\n]*--dates dates\.json --dates-row/);
+  });
+
+  it('the skill names the EOI case, the submission date as the join date, and never today', () => {
+    expect(skill).toMatch(/The EOI case is the case this rule exists for/);
+    expect(skill).toMatch(/\*\*earliest\*\* submission/);
+    expect(skill).toMatch(/\*\*Never\*\* the day ACE writes the row/);
+    expect(skill).toMatch(/--submitted none/);
+    expect(skill).toMatch(/one run per org, each with its own submission date/);
+    expect(skill).not.toMatch(/EOI join\s+dates\) is an open product call/);
+  });
 
   it('writes to an exact row with RAW input, never append', () => {
     const script = read(SCRIPT);

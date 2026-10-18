@@ -6,13 +6,17 @@
 // connect-labs main at run time.
 
 import { describe, it, expect } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import {
   DIRECTORY_MODULE,
   QUALITY_MODULE,
   DirectoryContractError,
   assertUpstreamRulesUnchanged,
   buildRow,
+  checkJoinDate,
   columnLetter,
+  isCalendarDate,
   diffReadBack,
   diffRowReadBack,
   expectedFormulas,
@@ -38,6 +42,9 @@ DIRECTORY_ID = "sheet-id-fixture"
 ORGANIZATIONS_TAB = "Organizations"
 CONTACTS_TAB = "Contacts"
 MAPPING_TAB = "Connect Org Mapping"
+DATES_TAB = "AI Enrichment - Connect Dates"
+
+_ISO_DATE = re.compile(r"\\d{4}-\\d{2}-\\d{2}")
 
 
 def _header_key(title: str) -> str:
@@ -63,6 +70,18 @@ CONTACT_COLUMNS = (
     "Main POC",
     "Email Address",
 )
+
+
+def parse_dates(rows: list[list[str]]) -> dict[str, tuple[str, str]]:
+    """name -> (ISO join date, basis). Non-ISO cells are free text and ignored."""
+    cols = Columns(rows, DATES_TAB, required=(ORG_NAME, "Joined Connect Network", "Joined — basis"))
+    out: dict[str, tuple[str, str]] = {}
+    for row in rows[1:]:
+        name = cols.get(row, ORG_NAME)
+        joined, basis = cols.get(row, "Joined Connect Network"), cols.get(row, "Joined — basis")
+        if name and _ISO_DATE.fullmatch(joined):
+            out[name] = (joined, basis[:200])
+    return out
 `;
 
 const QUALITY_PY = `
@@ -86,7 +105,26 @@ describe('parseDirectoryContract', () => {
       orgColumns: ['Organization Name', 'Short Name', 'Website'],
       hqCityHeader: 'HQ City',
       contactColumns: ['Contact Full Name', 'Organization Name', 'Main POC', 'Email Address'],
+      datesTab: 'AI Enrichment - Connect Dates',
+      datesColumns: ['Organization Name', 'Joined Connect Network', 'Joined — basis'],
+      datesJoinedHeader: 'Joined Connect Network',
+      datesBasisHeader: 'Joined — basis',
+      isoDatePattern: '\\d{4}-\\d{2}-\\d{2}',
     });
+  });
+
+  it('reads the dates tab and its columns from parse_dates, so a renamed column follows labs', () => {
+    const renamed = DIRECTORY_PY.replaceAll('"Joined Connect Network"', '"Joined Network"');
+    expect(parseDirectoryContract(renamed).datesJoinedHeader).toBe('Joined Network');
+  });
+
+  it('refuses when parse_dates no longer reads the dates tab the way this reader knows', () => {
+    expect(() => parseDirectoryContract(DIRECTORY_PY.replace(/^DATES_TAB.*$/m, ''))).toThrow(/DATES_TAB/);
+    expect(() => parseDirectoryContract(DIRECTORY_PY.replace('_ISO_DATE.fullmatch(joined)', 'joined'))).toThrow(/_ISO_DATE\.fullmatch/);
+    expect(() => parseDirectoryContract(DIRECTORY_PY.replace(/^_ISO_DATE.*$/m, ''))).toThrow(/_ISO_DATE/);
+    expect(() =>
+      parseDirectoryContract(DIRECTORY_PY.replace('"Joined — basis"))', '"Joined — basis", "Source"))')),
+    ).toThrow(/expects name, date and basis/);
   });
 
   it('refuses, naming the symbol, when upstream drops a constant', () => {
@@ -279,5 +317,84 @@ describe('formula columns', () => {
     expect(diffRowReadBack(['HHI', ''], [['HHI', 'sani@example.org']], expected, [['HHI', 'sani@example.org']])).toEqual([
       { column: 'B', wrote: LIVE_L(243), read: 'sani@example.org' },
     ]);
+  });
+});
+
+describe('checkJoinDate', () => {
+  const base = { today: '2026-10-16', isoPattern: '\\d{4}-\\d{2}-\\d{2}' };
+
+  it("passes the org's own submission date", () => {
+    expect(checkJoinDate({ ...base, joined: '2026-10-05', submitted: '2026-10-05' }).ok).toBe(true);
+  });
+
+  it('fails today when the org submitted earlier: the day ACE writes is not a join date', () => {
+    const r = checkJoinDate({ ...base, joined: '2026-10-16', submitted: '2026-10-05' });
+    expect(r.ok).toBe(false);
+    expect(r.problems[0]).toMatch(/is today/);
+  });
+
+  it('allows today only when the org itself submitted today', () => {
+    expect(checkJoinDate({ ...base, joined: '2026-10-16', submitted: '2026-10-16' }).ok).toBe(true);
+  });
+
+  it('fails a blank date when a submission date exists, and a future submission date', () => {
+    expect(checkJoinDate({ ...base, joined: '', submitted: '2026-10-05' }).ok).toBe(false);
+    expect(checkJoinDate({ ...base, joined: '2026-11-01', submitted: '2026-11-01' }).ok).toBe(false);
+  });
+
+  it('with no submission date, requires a blank date and says so', () => {
+    const r = checkJoinDate({ ...base, joined: '', submitted: 'none' });
+    expect(r.ok).toBe(true);
+    expect(r.missing).toMatch(/blank/);
+    expect(checkJoinDate({ ...base, joined: '2026-10-05', submitted: 'none' }).ok).toBe(false);
+  });
+
+  it('refuses a --submitted that is not a calendar date', () => {
+    expect(() => checkJoinDate({ ...base, joined: '', submitted: '2026-02-30' })).toThrow(/--submitted/);
+    expect(() => checkJoinDate({ ...base, joined: '', submitted: '' })).toThrow(/--submitted/);
+    expect(isCalendarDate('2026-10-05')).toBe(true);
+  });
+});
+
+describe('checkJoinDate on the real dates tab (the 2026-10-15 ULAB adds)', () => {
+  // Captured read-only from the live dates tab and connect-labs main; see the fixture's _source.
+  const fixture = JSON.parse(
+    readFileSync(join(__dirname, '..', 'fixtures', 'llo-directory', 'dates-tab-2026-10-18.json'), 'utf8'),
+  ) as { stamped_by_import: string; added_by_ace: string; directory_py: string; rows: { joined: string; basis: string }[] };
+  // The fixture's real _ISO_DATE + parse_dates in place of this file's abridged ones.
+  const realPy = DIRECTORY_PY.split('\n\ndef parse_dates')[0].replace(/^_ISO_DATE.*$/m, '') + '\n\n' + fixture.directory_py;
+  const contract = parseDirectoryContract(realPy);
+  const eoiRows = fixture.rows.filter((r) => r.joined);
+  const isoPattern = contract.isoDatePattern;
+
+  it('reads the join-date column and ISO rule out of the real parse_dates', () => {
+    expect(contract.datesColumns).toHaveLength(3);
+    expect(contract.datesColumns).toContain(contract.datesJoinedHeader);
+    expect(eoiRows).toHaveLength(19);
+  });
+
+  it("passes each org's own submission date, as the hand-fixed rows carry it", () => {
+    for (const r of eoiRows) {
+      expect(checkJoinDate({ joined: r.joined, submitted: r.joined, today: fixture.added_by_ace, isoPattern }).ok).toBe(true);
+    }
+  });
+
+  it('fails every one of the 19 when dated the day the import stamped instead of its submission date', () => {
+    for (const r of eoiRows) {
+      const check = checkJoinDate({ joined: fixture.stamped_by_import, submitted: r.joined, today: fixture.stamped_by_import, isoPattern });
+      expect(check.ok, r.joined).toBe(false);
+      expect(check.problems.join(' ')).toMatch(/is today/);
+    }
+  });
+
+  it('fails a blank date (no dates row) for an org that has a submission date', () => {
+    for (const r of eoiRows) {
+      expect(checkJoinDate({ joined: '', submitted: r.joined, today: fixture.added_by_ace, isoPattern }).ok).toBe(false);
+    }
+  });
+
+  it('the inbound row with no recoverable date stays blank under --submitted none', () => {
+    const inbound = fixture.rows.find((r) => !r.joined)!;
+    expect(checkJoinDate({ joined: inbound.joined, submitted: 'none', today: fixture.added_by_ace, isoPattern }).ok).toBe(true);
   });
 });

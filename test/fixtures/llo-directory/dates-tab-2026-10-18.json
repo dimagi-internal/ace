@@ -1,0 +1,89 @@
+{
+  "_source": "Captured 2026-10-18 (read-only) from the Connect LLO Directory's dates tab, rows 241-260, columns B:C only (join date, basis); org names and notes dropped. Row 241 is the inbound lead with no recoverable date; rows 242-260 are the 19 ULAB scoping-EOI applicants ACE added on 2026-10-15 with no dates row, which labs stamped 2026-10-16 and a person re-dated by hand to each one's own submission date. directory_py is the _ISO_DATE line and parse_dates from connect-labs main at d4ad839c9ab75da3649477eb2dbaf0476f8a7ce8.",
+  "first_row": 241,
+  "stamped_by_import": "2026-10-16",
+  "added_by_ace": "2026-10-15",
+  "directory_py": "_ISO_DATE = re.compile(r\"\\d{4}-\\d{2}-\\d{2}\")\n\n\ndef parse_dates(rows: list[list[str]]) -> dict[str, tuple[str, str]]:\n    \"\"\"name -> (ISO join date, basis). Non-ISO cells are free text and ignored.\"\"\"\n    cols = Columns(rows, DATES_TAB, required=(ORG_NAME, \"Joined Connect Network\", \"Joined — basis\"))\n    out: dict[str, tuple[str, str]] = {}\n    for row in rows[1:]:\n        name = cols.get(row, ORG_NAME)\n        joined, basis = cols.get(row, \"Joined Connect Network\"), cols.get(row, \"Joined — basis\")\n        if name and _ISO_DATE.fullmatch(joined):\n            out[name] = (joined, basis[:200])\n    return out\n",
+  "rows": [
+    {
+      "joined": "",
+      "basis": "no EOI link: arrived via inbound email to connect-info@dimagi.com; the directory records no date for that contact"
+    },
+    {
+      "joined": "2026-10-05",
+      "basis": "Lead-Acid Battery Recycling scoping EOI (ULAB 2026) - exact submission timestamp"
+    },
+    {
+      "joined": "2026-10-07",
+      "basis": "Lead-Acid Battery Recycling scoping EOI (ULAB 2026) - exact submission timestamp"
+    },
+    {
+      "joined": "2026-10-05",
+      "basis": "Lead-Acid Battery Recycling scoping EOI (ULAB 2026) - exact submission timestamp"
+    },
+    {
+      "joined": "2026-10-05",
+      "basis": "Lead-Acid Battery Recycling scoping EOI (ULAB 2026) - exact submission timestamp"
+    },
+    {
+      "joined": "2026-10-05",
+      "basis": "Lead-Acid Battery Recycling scoping EOI (ULAB 2026) - exact submission timestamp"
+    },
+    {
+      "joined": "2026-10-06",
+      "basis": "Lead-Acid Battery Recycling scoping EOI (ULAB 2026) - exact submission timestamp"
+    },
+    {
+      "joined": "2026-10-02",
+      "basis": "Lead-Acid Battery Recycling scoping EOI (ULAB 2026) - exact submission timestamp"
+    },
+    {
+      "joined": "2026-10-06",
+      "basis": "Lead-Acid Battery Recycling scoping EOI (ULAB 2026) - exact submission timestamp"
+    },
+    {
+      "joined": "2026-10-02",
+      "basis": "Lead-Acid Battery Recycling scoping EOI (ULAB 2026) - exact submission timestamp"
+    },
+    {
+      "joined": "2026-10-03",
+      "basis": "Lead-Acid Battery Recycling scoping EOI (ULAB 2026) - exact submission timestamp"
+    },
+    {
+      "joined": "2026-10-04",
+      "basis": "Lead-Acid Battery Recycling scoping EOI (ULAB 2026) - exact submission timestamp"
+    },
+    {
+      "joined": "2026-10-06",
+      "basis": "Lead-Acid Battery Recycling scoping EOI (ULAB 2026) - exact submission timestamp"
+    },
+    {
+      "joined": "2026-10-03",
+      "basis": "Lead-Acid Battery Recycling scoping EOI (ULAB 2026) - exact submission timestamp"
+    },
+    {
+      "joined": "2026-10-06",
+      "basis": "Lead-Acid Battery Recycling scoping EOI (ULAB 2026) - exact submission timestamp"
+    },
+    {
+      "joined": "2026-10-07",
+      "basis": "Lead-Acid Battery Recycling scoping EOI (ULAB 2026) - exact submission timestamp"
+    },
+    {
+      "joined": "2026-10-05",
+      "basis": "Lead-Acid Battery Recycling scoping EOI (ULAB 2026) - exact submission timestamp"
+    },
+    {
+      "joined": "2026-10-06",
+      "basis": "Lead-Acid Battery Recycling scoping EOI (ULAB 2026) - exact submission timestamp"
+    },
+    {
+      "joined": "2026-10-07",
+      "basis": "Lead-Acid Battery Recycling scoping EOI (ULAB 2026) - exact submission timestamp"
+    },
+    {
+      "joined": "2026-10-06",
+      "basis": "Lead-Acid Battery Recycling scoping EOI (ULAB 2026) - exact submission timestamp"
+    }
+  ]
+}

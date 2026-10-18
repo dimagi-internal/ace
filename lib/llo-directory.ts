@@ -44,6 +44,16 @@ export interface DirectoryContract {
   hqCityHeader: string;
   /** Contacts headers labs refuses to import without (`CONTACT_COLUMNS`). */
   contactColumns: string[];
+  /** The tab labs reads each org's join date from (`DATES_TAB`). */
+  datesTab: string;
+  /** Dates-tab headers labs refuses to import without (`parse_dates`' `required=`). */
+  datesColumns: string[];
+  /** The dates-tab header whose cell labs keeps only when it fullmatches `_ISO_DATE`. */
+  datesJoinedHeader: string;
+  /** The remaining required dates-tab header: where that date came from (its basis). */
+  datesBasisHeader: string;
+  /** `_ISO_DATE`'s pattern source; a join date labs ignores unless it fullmatches this. */
+  isoDatePattern: string;
 }
 
 /** Top-level `NAME = "literal"` assignments in a Python module. */
@@ -92,15 +102,83 @@ export function parseDirectoryContract(directoryPy: string): DirectoryContract {
     }
     return value;
   };
+  const orgNameHeader = need('ORG_NAME');
   return {
     directoryId: need('DIRECTORY_ID'),
     organizationsTab: need('ORGANIZATIONS_TAB'),
     contactsTab: need('CONTACTS_TAB'),
-    orgNameHeader: need('ORG_NAME'),
+    orgNameHeader,
     orgColumns: stringTuple(directoryPy, 'ORG_COLUMNS', constants),
     hqCityHeader: need('HQ_CITY'),
     contactColumns: stringTuple(directoryPy, 'CONTACT_COLUMNS', constants),
+    datesTab: need('DATES_TAB'),
+    ...parseDatesContract(directoryPy, constants, orgNameHeader),
   };
+}
+
+const PY_ITEM = /"((?:[^"\\]|\\.)*)"|\b([A-Z][A-Z0-9_]*)\b/g;
+
+/** A string literal or a module constant, resolved; throws on anything else. */
+function resolveItem(m: RegExpMatchArray, constants: Map<string, string>, where: string): string {
+  if (m[1] !== undefined) return m[1];
+  const value = constants.get(m[2]);
+  if (value === undefined) {
+    throw new DirectoryContractError(
+      `${where} in ${DIRECTORY_MODULE} names ${m[2]}, which this reader cannot resolve. ` +
+        `Read the module and extend parseDirectoryContract rather than guessing.`,
+    );
+  }
+  return value;
+}
+
+/**
+ * The dates tab's columns, read out of `parse_dates`: the `required=` headers of
+ * its `Columns(rows, DATES_TAB, …)` call, which of them holds the join date (the
+ * one whose variable goes through `_ISO_DATE.fullmatch`), and the basis column
+ * (the one required header left). Each piece that is not where it was found
+ * throws, naming it, so a reshaped parser stops the skill rather than being
+ * guessed at.
+ */
+function parseDatesContract(
+  py: string,
+  constants: Map<string, string>,
+  orgNameHeader: string,
+): Pick<DirectoryContract, 'datesColumns' | 'datesJoinedHeader' | 'datesBasisHeader' | 'isoDatePattern'> {
+  const moved = (what: string) =>
+    new DirectoryContractError(
+      `${DIRECTORY_MODULE} on main: ${what}. The dates-tab contract moved; read parse_dates and ` +
+        `update lib/llo-directory.ts before writing to the sheet.`,
+    );
+  const iso = /^_ISO_DATE\s*=\s*re\.compile\(\s*r"((?:[^"\\]|\\.)*)"\s*\)/m.exec(py);
+  if (!iso) throw moved('_ISO_DATE is no longer a re.compile(r"…") constant');
+  const fn = pythonFunctionSource(py, 'parse_dates');
+  if (fn === null) throw moved('parse_dates is gone');
+  const call = /Columns\(\s*rows\s*,\s*DATES_TAB\s*,\s*required\s*=\s*\(([^)]*)\)/.exec(fn);
+  if (!call) throw moved('parse_dates no longer reads Columns(rows, DATES_TAB, required=(…))');
+  const datesColumns = [...call[1].matchAll(PY_ITEM)].map((m) => resolveItem(m, constants, 'parse_dates required='));
+  if (!datesColumns.some((h) => headerKey(h) === headerKey(orgNameHeader))) {
+    throw moved(`parse_dates no longer requires ${orgNameHeader}, so labs no longer joins dates on the org name`);
+  }
+  // variable -> header, from `a = cols.get(row, X)` and `a, b = cols.get(row, X), cols.get(row, Y)`.
+  const header = new Map<string, string>();
+  for (const line of fn.split('\n')) {
+    const m = /^\s*([A-Za-z_][\w\s,]*?)\s*=\s*(cols\.get\(.*)$/.exec(line);
+    if (!m) continue;
+    const names = m[1].split(',').map((v) => v.trim());
+    const gets = [...m[2].matchAll(/cols\.get\(\s*row\s*,\s*("(?:[^"\\]|\\.)*"|[A-Z][A-Z0-9_]*)\s*\)/g)];
+    names.forEach((v, i) => {
+      const item = gets[i] && [...gets[i][1].matchAll(PY_ITEM)][0];
+      if (item) header.set(v, resolveItem(item, constants, 'parse_dates cols.get'));
+    });
+  }
+  const checked = /_ISO_DATE\.fullmatch\(\s*(\w+)\s*\)/.exec(fn);
+  const datesJoinedHeader = checked ? header.get(checked[1]) : undefined;
+  if (!datesJoinedHeader || !datesColumns.includes(datesJoinedHeader)) {
+    throw moved('parse_dates no longer checks one required column with _ISO_DATE.fullmatch');
+  }
+  const rest = datesColumns.filter((h) => h !== datesJoinedHeader && headerKey(h) !== headerKey(orgNameHeader));
+  if (rest.length !== 1) throw moved(`parse_dates requires ${datesColumns.length} columns; this reader expects name, date and basis`);
+  return { datesColumns, datesJoinedHeader, datesBasisHeader: rest[0], isoDatePattern: iso[1] };
 }
 
 // --- Ported rules, each guarded against its upstream source ------------------
@@ -127,8 +205,8 @@ const PORTED_FROM: Record<string, { module: string; body: string }> = {
   },
 };
 
-/** A Python function's code with its docstring dropped and whitespace collapsed. */
-export function pythonFunctionBody(py: string, fn: string): string | null {
+/** A top-level Python function's body lines, as written (docstring included). */
+function pythonFunctionSource(py: string, fn: string): string | null {
   const start = new RegExp(`^def ${fn}\\(.*\\).*:\\s*$`, 'm').exec(py);
   if (!start) return null;
   const rest = py.slice(start.index + start[0].length).split('\n');
@@ -137,7 +215,14 @@ export function pythonFunctionBody(py: string, fn: string): string | null {
     if (line.trim() && !/^\s/.test(line)) break; // dedent back to module level
     body.push(line);
   }
-  const text = body.join('\n').replace(/^\s*("""|''')[\s\S]*?\1/, '');
+  return body.join('\n');
+}
+
+/** A Python function's code with its docstring dropped and whitespace collapsed. */
+export function pythonFunctionBody(py: string, fn: string): string | null {
+  const source = pythonFunctionSource(py, fn);
+  if (source === null) return null;
+  const text = source.replace(/^\s*("""|''')[\s\S]*?\1/, '');
   return text.replace(/\s+/g, ' ').trim();
 }
 
@@ -445,4 +530,77 @@ export function diffRowReadBack(
     if (wrote !== read) out.push({ column: columnLetter(i), wrote, read });
   });
   return out;
+}
+
+// --- Join date (the dates tab) ------------------------------------------------
+//
+// labs reads each org's join date from the dates tab, keyed on the org name, and
+// `marketplace_import` stamps an org with NO dated row there with the day the
+// import first sees it. On 2026-10-15 ACE added 19 ULAB EOI applicants with no
+// dates row, so all 19 joined the network on 2026-10-16 instead of their own
+// 2–7 October submission dates. The join date is the org's OWN submission date —
+// for an EOI/RFP applicant the date of its earliest submission timestamp to that
+// round, for an inbound lead the date the lead was submitted — never the day ACE
+// writes the row and never the round's publication date.
+
+/** The calendar date `YYYY-MM-DD`, rejecting a month or day that does not exist. */
+export function isCalendarDate(value: string): boolean {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!m) return false;
+  const d = new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3])));
+  return d.toISOString().slice(0, 10) === value;
+}
+
+export interface JoinDateCheck {
+  ok: boolean;
+  /** The org's own submission date, or null when none is available. */
+  submitted: string | null;
+  joined: string;
+  problems: string[];
+  /** Set when there is no submission date: what the reply and approval summary must say. */
+  missing?: string;
+}
+
+/**
+ * Whether the drafted dates row's join date is the org's own submission date.
+ * `submitted` is `YYYY-MM-DD`, or `none` when no submission date is available
+ * (the date is then left blank, never guessed). `isoPattern` is labs' live
+ * `_ISO_DATE` source: a date that does not fullmatch it is ignored by labs, which
+ * would stamp the org with today all the same.
+ */
+export function checkJoinDate(args: { joined: string; submitted: string; today: string; isoPattern: string }): JoinDateCheck {
+  const joined = (args.joined ?? '').trim();
+  const submittedArg = (args.submitted ?? '').trim();
+  if (submittedArg !== 'none' && !isCalendarDate(submittedArg)) {
+    throw new DirectoryContractError(
+      `--submitted must be the org's own submission date as YYYY-MM-DD, or "none" when there is no submission date; got ${JSON.stringify(args.submitted)}.`,
+    );
+  }
+  const problems: string[] = [];
+  if (submittedArg === 'none') {
+    if (joined) problems.push(`The join date is ${joined} but there is no submission date. Leave it blank; a date with no source is a guess.`);
+    return {
+      ok: problems.length === 0,
+      submitted: null,
+      joined,
+      problems,
+      missing:
+        'No submission date is available, so the join date is blank. labs will stamp the org with the day the import first sees it; say so, and fill the date if it turns up.',
+    };
+  }
+  const submitted = submittedArg;
+  if (submitted > args.today) problems.push(`The submission date ${submitted} is after today (${args.today}).`);
+  if (!joined) {
+    problems.push(`The join date is blank but the org submitted on ${submitted}. Write ${submitted}, or labs stamps it with the import day.`);
+  } else if (joined !== submitted) {
+    problems.push(
+      joined === args.today
+        ? `The join date ${joined} is today, the day ACE writes the row, not the org's own submission date (${submitted}).`
+        : `The join date ${joined} is not the org's own submission date (${submitted}).`,
+    );
+  }
+  if (joined && !(new RegExp(`^(?:${args.isoPattern})$`).test(joined) && isCalendarDate(joined))) {
+    problems.push(`The join date ${JSON.stringify(joined)} is not an ISO date labs reads; labs would ignore it and stamp the import day.`);
+  }
+  return { ok: problems.length === 0, submitted, joined, problems };
 }

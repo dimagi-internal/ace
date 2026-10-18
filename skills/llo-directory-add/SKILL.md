@@ -1,23 +1,35 @@
 ---
 name: llo-directory-add
 description: >
-  Add one organisation and its contact to the Connect LLO Directory sheet from an inbound lead. Use when a member asks ACE to add an org to the directory.
+  Add an org, its contact and join date to the Connect LLO Directory from a lead or EOI reply. Use when a member asks ACE to add an org to the directory.
 disable-model-invocation: false
 ---
 
 # LLO Directory Add
 
-Turns one inbound "add this org to the LLO Directory" request into **one
-Organizations row and one Contacts row** in the Connect LLO Directory sheet,
-read back before anyone is told they exist. The usual input is a
-connect.dimagi.com Contact Us / HubSpot lead that a teammate forwards to ace@
-(the first was Matt Theis's Heart for Humanity Initiative lead, thread
-`1a13cd3b541fd3ab`, 2026-10-14). dimagi-internal/ace#2920.
+Turns one "add this org to the LLO Directory" request into **one
+Organizations row, one Contacts row and one dates-tab row** in the Connect LLO
+Directory sheet, read back before anyone is told they exist. The input is
+either a connect.dimagi.com Contact Us / HubSpot lead that a teammate forwards
+to ace@ (the first was Matt Theis's Heart for Humanity Initiative lead, thread
+`1a13cd3b541fd3ab`, 2026-10-14; dimagi-internal/ace#2920), or an org's
+submission to a labs EOI/RFP round that a member asks ACE to add.
 
-This skill handles a single, explicit request from a member. Whether ACE
-maintains the network directory in general (bulk reconciliation, EOI join
-dates) is an open product call, parked on #2152. Don't stretch this skill to
-cover that.
+**The join date is this skill's job.** labs reads each org's join date from
+the dates tab (connect-labs `DATES_TAB`). An org with no dated row there is
+stamped by `marketplace_import` with the day the import first sees it
+(`stamped_with_today`), which puts it on the network-growth curve on the wrong
+day. On 2026-10-15 ACE added 19 orgs that had answered the Lead-Acid Battery
+Recycling scoping EOI (round `ulab-scoping-2026`) and wrote no dates rows, so
+all 19 joined on 2026-10-16 instead of their own 2–7 October submission dates.
+**The EOI case is the case this rule exists for:** an org added because it
+answered a round joins on the date of its own earliest submission to that
+round. Every org this skill adds gets that row, in the same approved write.
+
+This skill handles explicit requests from a member. Whether ACE maintains the
+network directory in general (bulk reconciliation of orgs nobody asked it to
+add) is an open product call, parked on #2152. Join dates for the orgs this
+skill adds are not part of that question: they are this skill's job.
 
 ## The layout is connect-labs', read live, never copied here
 
@@ -29,11 +41,13 @@ contract**. Every run reads that contract from connect-labs `main`:
 | Sheet id, tab names | `connect_labs/marketplace/directory.py`: `DIRECTORY_ID`, `ORGANIZATIONS_TAB`, `CONTACTS_TAB` |
 | Org columns labs requires, plus the optional HQ town | `directory.py`: `ORG_COLUMNS`, `HQ_CITY` (parsed by `parse_organizations`) |
 | Contact columns labs requires | `directory.py`: `CONTACT_COLUMNS` (parsed by `parse_contacts`) |
+| Dates tab, its required columns, which one is the join date, and labs' ISO-date rule | `directory.py`: `DATES_TAB`, the `required=` headers of `parse_dates`, the column it checks with `_ISO_DATE.fullmatch`, `_ISO_DATE` |
 | How a header matches (case, a bracketed note, Organisation/Organization) | `directory.py`: `_header_key`, `Columns` |
 | What counts as a duplicate org | `connect_labs/marketplace/quality.py`: `_fold` + `audit` (`near_duplicate_org`) |
 | How a sheet edit reaches labs | `connect_labs/marketplace/management/commands/marketplace_import.py` (`import_directory`, `handle`) |
 
 `scripts/llo-directory.ts` fetches those modules with `gh api` at run time.
+The dates tab's name and columns are read the same way, out of `parse_dates`.
 `lib/llo-directory.ts` parses the constants out of the source. It also refuses
 to run if connect-labs has changed `_header_key` or `_fold` since ACE ported
 them. **Never copy the sheet id, the tab names, labs' required-column lists or a
@@ -47,9 +61,23 @@ Columns move because people maintain the sheet by hand. So every cell is placed
 
 ## Inputs
 
-- The lead: a forwarded email or form submission (thread id). Its fields are
-  the only facts about the org, along with the org's **own website**.
+- The lead: a forwarded email or form submission (thread id), or the org's
+  response to an EOI/RFP round (round slug and response). Its fields are the
+  only facts about the org, along with the org's **own website**.
 - The requester (the member who forwarded it). Their name goes in the org notes.
+- **The org's own submission date, and where it came from.** This becomes the
+  join date.
+  - **EOI/RFP applicant** (an org added because it answered a round): the date
+    of the exact form submission timestamp of its **earliest** submission to
+    that round. Read it from the round's responses (connect-labs
+    `marketplace_round_responses`, or the round's response sheet). When an org
+    submitted more than once, take the earliest and say how many there were.
+  - **Inbound lead** (Contact Us / HubSpot): the date the lead was submitted,
+    from the form submission or the forwarded notification.
+  - **Never** the day ACE writes the row, the day the lead was forwarded, or the
+    round's publication or cohort date.
+  - **No submission date available:** the join date stays blank. Pass
+    `--submitted none` and say so in the plan and the reply. Never guess one.
 
 ## Process
 
@@ -65,18 +93,19 @@ columns as of that sha. A non-zero exit is a hard stop: the contract moved, a
 ported rule changed, or a required header is gone. Quote the message to the
 operator. Don't work around it.
 
-Then read the two live header rows. Use the header text exactly as the sheet
+Then read the three live header rows. Use the header text exactly as the sheet
 has it, including the columns labs doesn't require (the ones ACE fills are
 listed below):
 
 ```bash
 gog sheets get <DIRECTORY_ID> "<ORGANIZATIONS_TAB>!1:1" -a ace@dimagi-ai.com --client "$(canopy email client --repo .)" -j --results-only
 gog sheets get <DIRECTORY_ID> "<CONTACTS_TAB>!1:1"      -a ace@dimagi-ai.com --client "$(canopy email client --repo .)" -j --results-only
+gog sheets get <DIRECTORY_ID> "'<DATES_TAB>'!1:1"       -a ace@dimagi-ai.com --client "$(canopy email client --repo .)" -j --results-only
 ```
 
-### 2. Draft the two rows, keyed by live header
+### 2. Draft the three rows, keyed by live header
 
-Write `org.json` and `contact.json` (scratchpad). Each one maps live header
+Write `org.json`, `contact.json` and `dates.json` (scratchpad). Each one maps live header
 text to a value. **Fill a cell only from the lead or the org's own website.
 Leave everything else blank.** Never infer team size, FLW counts, year of
 establishment, whether the org has used Connect, an MSA or a work order. A blank
@@ -119,12 +148,36 @@ because the sheet is hand-maintained.
     `Inbound via connect.dimagi.com Contact Us form (2026-10-13).` An org phone
     from the website goes here, not in `Phone Number`, unless it is the
     person's own.
+- **Dates row** (`dates.json`, on the `DATES_TAB` tab). Follow its precedent
+  rows, re-read live: the ULAB rows dated on 2026-10-18 near the end of the
+  tab are the EOI case, and the HHI row is the inbound case with no
+  recoverable date.
+  - `Organization Name` must equal the Organizations row's **exactly**. labs
+    looks the date up by that exact name, so `plan` refuses any difference,
+    even in case.
+  - The join-date column (the one `contract` prints as `datesJoinedHeader`) is
+    the submission date from the inputs, as `YYYY-MM-DD`. labs ignores
+    anything that does not fullmatch its ISO-date rule and stamps the import
+    day instead. Leave it blank only when there is no submission date.
+  - The basis column (`datesBasisHeader`) follows the precedent wording:
+    `<EOI name> - exact submission timestamp` (add
+    `(earliest of <n> EOI forms)` when the org submitted more than once), or
+    `inbound Contact Us form - submission date` for a lead. With no date, it
+    says why, e.g. `no EOI link: inbound email; no submission date recoverable`.
+  - Notes says where the date came from: the round and response (or the lead
+    and its thread), the timestamp read, and `Added by ACE at <requester>'s
+    request, <YYYY-MM-DD>.`
+  - Leave the service-date and org-slug columns blank. They are not facts
+    from the lead.
 
 ### 3. Plan: duplicates, target rows, emptiness (read-only)
 
 ```bash
-node "$ACE_ROOT/node_modules/tsx/dist/cli.mjs" "$ACE_ROOT/scripts/llo-directory.ts" plan --org org.json --contact contact.json
+node "$ACE_ROOT/node_modules/tsx/dist/cli.mjs" "$ACE_ROOT/scripts/llo-directory.ts" plan --org org.json --contact contact.json --dates dates.json --submitted <YYYY-MM-DD|none>
 ```
+
+`--dates` and `--submitted` are required. No run adds an org without its join
+date.
 
 `plan` does the following, without writing anything:
 
@@ -137,7 +190,19 @@ node "$ACE_ROOT/node_modules/tsx/dist/cli.mjs" "$ACE_ROOT/scripts/llo-directory.
   of that tab's name column (`lastFilledRow`, 1-based). The 2026-10-14
   off-by-one came from mixing a 0-based count with 1-based sheet rows.
 - **Emptiness.** It reads each target row across the full header width and
-  reports `target_row_empty`.
+  reports `target_row_empty`, on all three tabs.
+- **Join date** (`join_date`). It refuses (`ready: false`, with `problems`):
+  - a join date that is not `--submitted`, so a row dated today when the org
+    submitted earlier fails
+  - a blank date when a submission date exists
+  - a date that is not an ISO date labs reads
+  - a future submission date, or a blank basis
+  - any date at all with `--submitted none`
+
+  With `none` it sets `missing`, which the approval summary and the reply must
+  repeat. It also lists any existing dates row for the org
+  (`dates.existing_rows`). One there stops the plan; resolving it is the sheet
+  owner's call.
 - **Writes.** It prints `ready` and `writes`, the exact-range writes as data
   (`range`, `input`, `values`). They are **exact-range writes**, never `append`.
   Each row is one `RAW` write across the header width. `RAW` matters: under
@@ -152,36 +217,38 @@ If `ready` is false, don't write. Report why.
 The directory is shared, hand-maintained state, so the write is
 **approval-gated** like any shared-state change. Show the operator:
 
-- the two drafted rows, as header → value
-- the target row numbers
+- the three drafted rows, as header → value
+- the target row numbers on all three tabs
+- the join date and the submission it came from (round and response, or
+  lead), or `join_date.missing` when there is none
 - the duplicate-check result
 - the connect-labs sha the layout was read at
 
-On an explicit yes, write with `apply`, using the same two files:
+On an explicit yes, write with `apply`, using the same three files and `--submitted`:
 
 ```bash
-node "$ACE_ROOT/node_modules/tsx/dist/cli.mjs" "$ACE_ROOT/scripts/llo-directory.ts" apply --org org.json --contact contact.json
+node "$ACE_ROOT/node_modules/tsx/dist/cli.mjs" "$ACE_ROOT/scripts/llo-directory.ts" apply --org org.json --contact contact.json --dates dates.json --submitted <YYYY-MM-DD|none>
 ```
 
 `apply` re-runs the plan and refuses (exit 1, nothing written) unless it is
 still `ready`. It passes each write to gog as an argument array, with no shell,
 so a note containing `"` or `\` reaches the sheet verbatim. Then it runs
-`verify` on both rows itself. **Never extract the writes from `plan`'s JSON
+`verify` on all three rows itself. **Never extract the writes from `plan`'s JSON
 and run them through a shell.** That path broke on a quoted note and wrote
 nothing (ace#2956). If the plan changed between approval and `apply` (different
 target rows), show the operator the new plan before re-running. Inside a turn,
 review posture parks the plan (verbatim) on the thread's board task until the
 operator approves (`skills/inbox-triage` § parked drafts).
 
-### 5. Read back both rows (before any claim)
+### 5. Read back all three rows (before any claim)
 
 `apply` prints `verify`'s result. To re-check later:
 
 ```bash
-node "$ACE_ROOT/node_modules/tsx/dist/cli.mjs" "$ACE_ROOT/scripts/llo-directory.ts" verify --org org.json --org-row <n> --contact contact.json --contact-row <m>
+node "$ACE_ROOT/node_modules/tsx/dist/cli.mjs" "$ACE_ROOT/scripts/llo-directory.ts" verify --org org.json --org-row <n> --contact contact.json --contact-row <m> --dates dates.json --dates-row <k>
 ```
 
-`verify` exits 0 only when both rows read back cell for cell as written. It
+`verify` exits 0 only when all three rows read back cell for cell as written. It
 compares each formula cell's `--render FORMULA` text with the precedent's
 formula, moved to that row. Nothing
 may say the rows exist until it passes. That includes the reply, the board card
@@ -192,7 +259,8 @@ and the turn close-out. On a diff, report the diff. Don't re-write blind.
 The reply is outbound, so it goes through `skills/agent-turn-review` and the
 send gate (`bin/ace-email`, never raw gog). It says:
 
-- the two row numbers, and what was left blank and why
+- the three row numbers, the join date and where it came from, and what was
+  left blank and why (including a missing submission date)
 - **that labs does not see the org yet.** connect-labs never writes the sheet.
   It reads it with `marketplace_import`, which runs daily on beat and can be run
   by hand (the connect-labs `Run Labs management command` workflow). The org
@@ -207,7 +275,12 @@ Mark the thread read only after the reply is sent (`bin/ace-mark-read`).
 - Never edit or delete an existing row. Corrections to someone else's row are
   the sheet owner's call; offer them.
 - Never fill a field from anything except the lead or the org's own site.
-- One org per run. A list of orgs is the bulk-maintenance question (#2152). Ask.
+- One org per run. Adding the applicants of one EOI round that a member asked
+  for is one run per org, each with its own submission date, never one date
+  for the whole round. Any other list of orgs is the bulk-maintenance question
+  (#2152). Ask.
+- Never write an Organizations row without its dates row. `plan` and `apply`
+  write all three rows or none.
 
 ## Related skills
 
