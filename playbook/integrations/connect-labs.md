@@ -231,9 +231,9 @@ is `agents/synthetic-data-and-workflows.md § Step 3.92`.
 
 | Change | How | Limits |
 |---|---|---|
-| Solicitation deadline, text, visibility, close | `update_solicitation` | No ACE skill composes this yet; read back with `get_solicitation` (+ `program_id` when non-public) |
+| Solicitation deadline, text, visibility, close | `update_solicitation` (procedure: `skills/solicitation-edit`) | Read back with `get_solicitation`. Unlisted calls are readable by their owner by id alone; `program_id` is accepted for compatibility, not needed (live schema, 2026-10-18). Locked `evaluation_criteria` cannot change |
 | Award a response | `award_response` | Irreversible and refused on a second try; may email the awardee |
-| Point a workflow at other opportunities | `workflow_update_opportunity_ids` | No skill yet. Rebuild history afterwards (`workflow_rebuild_history`), since past runs were computed on the old set |
+| Point a workflow at other opportunities | `workflow_update_opportunity_ids` (procedure: `skills/labs-workflow-repoint`) | Rebuild history afterwards (`workflow_rebuild_history`), since past runs were computed on the old set |
 | Change a report page's layout | Edit the template and publish, so following pages update; or `workflow_patch_render_code` on one page | A timed-out `workflow_patch_render_code` does not apply (§ Troubleshooting) |
 | Change an indicator | `semantic_registry_update` → `_validate` | Saved runs freeze the registry, so a wording change needs a new run |
 | Delete | `delete_solicitation`, `workflow_delete`, `pipeline_delete`, `synthetic_disable` | `sweep-labs` is the approval-gated path |
