@@ -911,6 +911,7 @@ export class PlaywrightBackend implements ConnectClient {
       short_description: args.short_description,
       description: args.description,
       end_date: args.end_date,
+      active: args.active,
       is_test: args.is_test,
     });
   };

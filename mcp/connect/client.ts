@@ -122,6 +122,7 @@ export interface ConnectClient {
     short_description?: string;
     description?: string;
     end_date?: string;
+    active?: boolean;
     is_test?: boolean;
   }): Promise<Opportunity>;
 
