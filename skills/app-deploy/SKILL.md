@@ -1,8 +1,8 @@
 ---
 name: app-deploy
 description: >
-  Upload Nova-built Learn and Deliver apps to CommCare HQ as draft builds and record the HQ app
-  ids. Needs the Nova app ids and a target project space.
+  Upload Nova-built Learn and Deliver apps to CommCare HQ as drafts, or re-upload an edit onto
+  the existing HQ app. Needs the Nova app ids and a project space.
 disable-model-invocation: false
 ---
 
@@ -21,15 +21,32 @@ release flow + the App Editor permission prerequisite.
 
 ## Inputs
 
-| Source | Artifact | Used for |
+| Parameter | Used for | Resolver |
 |---|---|---|
-| Phase 3 | `3-commcare/pdd-to-learn-app_summary.md` | `nova_app_id` for Learn app |
-| Phase 3 | `3-commcare/pdd-to-deliver-app_summary.md` | `nova_app_id` for Deliver app |
+| `learn_nova_app_id` / `deliver_nova_app_id` | the Nova apps to upload (either or both) | explicit argument; default: `3-commcare/pdd-to-{learn,deliver}-app_summary.md` frontmatter `nova_app_id` |
+| `hq_domain` | target project space | explicit argument; default: `run_workspace.hq_domain`, else `ACE_HQ_DOMAIN` (Step 2) |
+| `expected_hq_app_id` | re-upload only: the HQ app this Nova app already backs, used to prove the id did not change | explicit argument; default: run_state `phases.commcare-setup.products.apps.<app>.hq_app_id` |
+
+Steps 1–6 are the Phase 3 build path. To push an edit of an app that is already live, use
+§ Re-uploading to an existing HQ app. It needs no run.
+
+## Existing objects
+
+Re-uploading changes an HQ app that may already back a live opportunity. Nova updates the HQ app
+in place, so the id normally holds. Three things are still shared or one-way. Each is handled in
+§ Re-uploading to an existing HQ app:
+
+- **The HQ app id is wired into the Connect opportunity at create time**, and Connect's edit form
+  cannot repoint it. If the id changes, the opportunity can only be fixed by delete-and-recreate.
+- **A Nova re-upload wipes `appearance="acquire"` and per-module `display_style`** (ace#1643).
+  `app-hq-settings` must be re-applied before the next build.
+- **An upload only changes the HQ draft.** Workers see nothing until `app-release` builds and
+  releases it.
 
 ## Products
 
-- `3-commcare/app-deploy_summary.md` — HQ app IDs + URLs for both apps
-- `run_state.yaml.phases.commcare-setup.products.apps` — consolidated Learn + Deliver app handoff (name, nova_app_id, nova_url, hq_app_id, hq_url, build_status) written as a single atomic block at the end of Phase 3. This skill is the **sole writer** of `products.apps`; readers (ace-web summary, downstream phases) see the block populated once both apps are deployed.
+- `3-commcare/app-deploy_summary.md` — HQ app IDs + URLs for both apps (run-bound; a standalone re-upload records into the program context doc instead)
+- `run_state.yaml.phases.commcare-setup.products.apps` — run-bound only: consolidated Learn + Deliver app handoff (name, nova_app_id, nova_url, hq_app_id, hq_url, build_status) written as a single atomic block at the end of Phase 3. This skill is the **sole writer** of `products.apps`; readers (ace-web summary, downstream phases) see the block populated once both apps are deployed.
 <!-- 0.13.116: legacy `3-commcare/app-deploy_gate-brief.md` removed.
 Pause-time summary at the Phase 3→4 Pause Point is composed by the
 orchestrator from per-skill QA + eval verdicts. -->
@@ -37,9 +54,9 @@ orchestrator from per-skill QA + eval verdicts. -->
 
 ## Process
 
-1. **Read app summaries** from GDrive (paths in `## Inputs` above).
-   Extract `nova_app_id` from each frontmatter. These are the inputs to
-   `/nova:upload_to_hq`.
+1. **Resolve the Nova app ids** per § Inputs: explicit arguments first,
+   else the app summaries' frontmatter `nova_app_id` in GDrive. These are
+   the inputs to `/nova:upload_to_hq`.
 
 **Run workspace:** when the dispatch carries a `run_workspace:` block, its values replace the `.env` ones this skill names — `ACE_HQ_DOMAIN` → `run_workspace.hq_domain`, and Step 4.6's `commcare_delete_app` passes `allow_foreign_domain: <hq_domain>` for a partner space — and a partner workspace never falls back to `.env`. Contract: [`skills/_run-workspace.md`](../_run-workspace.md).
 
@@ -474,6 +491,31 @@ downstream skills treat `products.apps.*.hq_app_id` as PRIMARY and this
 summary as the cross-check — and may assert their target id is absent
 from `<app>_superseded_hq_app_id` before mutating. See
 `app-hq-settings` Step 1 for the consumer-side contract.
+
+## Re-uploading to an existing HQ app
+
+This section is the standalone path for pushing a Nova edit onto an HQ app that already exists,
+whether it is a finished run's app or a live program's (`skills/partner-on-connect-program`).
+It needs no run: pass `nova_app_id`, `hq_domain` and `expected_hq_app_id` explicitly.
+
+1. **Save the Nova edit first.** Nova stages every edit in private work (`begin_work` →
+   edits → `save_work`), and `upload_app_to_hq` uploads only the SAVED app. An edit whose
+   save did not answer `saved: true` is not in the upload, and nothing will error.
+2. **Upload.** Run `/nova:upload_to_hq <nova_app_id> <hq_domain>`, naming the space explicitly
+   as in Step 2.
+3. **Prove the id held.** Expect `hq_app_action: updated`, `hq_app_id == expected_hq_app_id`,
+   and an empty `deployment.left_behind`. If the id CHANGED (`created`, or a non-empty
+   `left_behind`), stop and tell the owner. Every opportunity wired to the old id keeps the old
+   app and cannot be repointed (Connect wires HQ app ids at create time). Clean up `left_behind`
+   per Step 4.6's guard rails.
+4. **Re-apply HQ settings.** Run `app-hq-settings` with explicit `--hq-app-id` / `--domain`. The
+   re-upload wiped camera-only capture and grid display (ace#1643).
+5. **Release.** Run `app-release` with explicit ids, then `app-release-qa` with
+   `--opportunity-id` for each live opportunity on the app. Its Step 4.7 re-release invariants
+   catch a change that silently breaks Connect's form-field rules or deliver-unit ids.
+6. **Record it.** In a run, rewrite the artifacts per § HQ-id stability. For a live program,
+   append the change to the program context doc's Decisions: what changed, the before and after
+   build versions, and the opportunities affected.
 
 <!-- 0.13.116: gate-brief write step + ## Gate Brief section removed.
 At the Phase 3→4 Pause Point, the orchestrator composes the

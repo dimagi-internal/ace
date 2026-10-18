@@ -2,7 +2,7 @@
 name: app-release
 description: >
   Build and release Learn and Deliver apps on CommCare HQ so Connect can read their form schema
-  and deliver units. Needs the deployed HQ app ids.
+  and deliver units. Needs the HQ app ids.
 disable-model-invocation: false
 ---
 
@@ -15,13 +15,39 @@ can read its form schema and surface deliver units to the opportunity.
 
 ## Inputs
 
-| Source | Artifact | Used for |
+The skill releases any HQ app, whether ACE built it this run or it is a live program's app.
+Pass the values explicitly. Inside `/ace:run` each one defaults to the run's Phase 3 artifacts.
+
+| Parameter | Used for | Resolver |
 |---|---|---|
-| Phase 3 | `3-commcare/app-deploy_summary.md` | HQ app IDs for Learn + Deliver apps |
+| `hq_domain` | the project space the apps live in | explicit argument; default: `run_workspace.hq_domain`, else `app-deploy_summary.md` frontmatter `hq_domain` |
+| `learn_app_id` / `deliver_app_id` | the 32-char HQ app ids to build + release (either or both) | explicit argument; default: `3-commcare/app-deploy_summary.md` frontmatter |
+| `learn_nova_app_id` / `deliver_nova_app_id` | Step 3a drift check and the Step 4a build-rejection fix loop | explicit argument; default: `3-commcare/pdd-to-{learn,deliver}-app_summary.md` frontmatter `nova_app_id`. Omit for an app with no Nova source: Step 3a then records `conclusive: false` and Step 4a can only surface the rejection |
+| `deployed_at` | Step 3a `deployedAt` signal | explicit argument; default: `app-deploy_summary.md` frontmatter `uploaded_at`; leave unset when unknown (the classifier handles an omitted signal, never a guessed one) |
+| `opportunity_id` | an EXISTING opportunity wired to these apps, whose deliver units Step 7 re-syncs | explicit argument; default: run_state `phases.connect-setup.products.opportunity.id` when that phase has run; absent on a first build |
+| `summary_folder_id` | where the release summary is written | default: the run's `3-commcare/` folder; outside a run, the program project's Drive folder (`skills/partner-on-connect-program`) |
+
+## Existing objects
+
+Releasing a new build of an app that a **live** opportunity already uses changes what
+working FLWs run, and some of what it touches is shared:
+
+- **Workers get the new build.** A released build is what CommCare offers on the next app
+  update. Release only content you mean every worker on every opportunity wired to this app
+  to receive.
+- **Deliver units are keyed per app and shared within the holding org** (ace#573). Re-releasing
+  the same `deliver_app_id` re-uses the existing `DeliverUnit` rows: it cannot give you a
+  fresh payment unit. A new deliver form shows up only after the deliver-unit sync in Step 7.
+- **The Learn passing score lives on the shared `CommCareApp` row** (ace#1350), not on the
+  opportunity. A release does not change it, but every opportunity on this Learn app reads the
+  same score, so don't "fix" it per opportunity.
+- **Whether a live opportunity picks up a re-released build without a manual sync is
+  unverified.** Read back with `connect_list_deliver_units` after Step 7 rather than assuming.
+  See `playbook/integrations/connect-api.md`.
 
 ## Products
 
-- `3-commcare/app-release_summary.md` — released build IDs + version numbers per app.
+- `3-commcare/app-release_summary.md` — released build IDs + version numbers per app. Outside a run the same file goes into `summary_folder_id` (§ Inputs).
 
   **Frontmatter contract (ace#1439).** `app-release-eval § both_apps_released`
   reads these keys, so they are declared here rather than left to whatever the
@@ -106,24 +132,34 @@ procedure below to rediscover.
 
 ## Process
 
-1. **Read app ids from the deployment summary.**
-   - `ACE/<opp-name>/runs/<run-id>/3-commcare/app-deploy_summary.md` frontmatter has `learn_app_id`
-     and `deliver_app_id` — the 32-char HQ app IDs Nova wrote there.
-   - Also read `hq_domain` (typically `connect-ace-prod`) and `hq_base_url`.
+1. **Resolve the app ids** per § Inputs. Explicit arguments win.
+   - Inside a run, `ACE/<opp-name>/runs/<run-id>/3-commcare/app-deploy_summary.md` frontmatter
+     has `learn_app_id` and `deliver_app_id` (the 32-char HQ app IDs Nova wrote there), plus
+     `hq_domain` (typically `connect-ace-prod`) and `hq_base_url`.
+   - Outside a run, take them from the caller, or from the program context doc's HQ apps row.
+     Confirm each id exists in `hq_domain` (`commcare_list_apps`) before building, so a stale
+     id fails here and not mid-release.
 
 2. **Establish session.** Use the `~/.ace/connect-session.json` cookie jar
    (Connect's OAuth-via-CCHQ flow leaves valid CCHQ cookies). If
    expired, run `/ace:connect-login` to refresh.
 
-3. **Pre-flight: confirm Connect-marker coverage was already run in
-   Phase 3 Step 1.5.** The `app-connect-coverage` skill is responsible
-   for verifying + auto-fixing Connect markers on the Nova side BEFORE
-   deploy + release. Just check that
-   `3-commcare/app-connect-coverage_{learn,deliver}.md`
-   exists with `status: clean`. If missing or `blocked`, halt and tell
-   the operator to resolve coverage first — re-running app-release on
-   uncovered apps will succeed at the build level but the opp will get
-   stuck at Phase 4 Step 2 with empty deliver units.
+3. **Pre-flight: Connect-marker coverage must be clean.** Releasing an
+   app whose forms lack Connect markers succeeds at the build level, but the
+   opportunity then gets stuck with empty deliver units (Phase 4 Step 2 on a
+   build, a silently unpayable form on a live program). This gate is not
+   optional, and it is a check this skill RUNS, never a file it trusts blindly:
+   - **In a run where Phase 3 Step 1.5 already ran:** read
+     `3-commcare/app-connect-coverage_{learn,deliver}.md`. `status: clean`
+     passes. `blocked` halts.
+   - **Otherwise (no coverage verdict for this app, or outside a run):** run
+     `app-connect-coverage` now against each app's Nova app id. Its auto-fix
+     edits Nova, so any fix it makes leaves the HQ draft stale. Step 3a then
+     reports drift and forces the re-upload before the build. With no Nova app
+     id, check the HQ draft's form XML for the markers instead
+     (`commcare_get_form_source`). If any are missing, halt: there is no
+     source to fix them in.
+   - Either way, `blocked` or missing markers halt. Never build past them.
 
 3a. **Pre-build drift check — is the HQ draft still the Nova app? (ace#1643)**
 
@@ -142,8 +178,8 @@ procedure below to rediscover.
 
        | Signal | Source |
        |---|---|
-       | `deployedAt` | `3-commcare/app-deploy_summary.md` frontmatter `uploaded_at` |
-       | `novaEditedSinceDeploy` | THIS RUN's own knowledge — did any step dispatch `/nova:edit`, an eval-driven repair, or a Step 4a build-rejection fix on this app AFTER `app-deploy`? `true` / `false`; leave unset if genuinely unknown |
+       | `deployedAt` | `deployed_at` per § Inputs (in a run: `3-commcare/app-deploy_summary.md` frontmatter `uploaded_at`) |
+       | `novaEditedSinceDeploy` | THIS RUN's own knowledge — did any step dispatch `/nova:edit`, an eval-driven repair, or a Step 4a build-rejection fix on this app AFTER `app-deploy`? `true` / `false`; leave unset if genuinely unknown (the usual case outside a run — the content counts below still decide) |
        | `novaFormCount` | `get_app({app_id: <nova_app_id>})` — one call per app |
        | `novaVisibleFieldCount` | Same `get_app` response, normalized to the HQ walk's basis: **every non-`hidden` LEAF, plus every `group`/`repeat` whose label is NON-EMPTY**. Use `countNovaVisibleFields` from `lib/app-release-drift.ts` — don't do this arithmetic by hand. Two corrections, each found by a live mismatch: the walk emits no hidden fields (`user_score`, `qN_score`, `case_name`, `entity_key`, `entity_label`, … — every ACE app has them, ace#1789), and it emits a container only when that container rendered a `<label>`, so an EMPTY-labelled group compiles to a self-closing `<group ref="…"/>` and contributes nothing while Nova still counts 1 (ace#1807). **The exclusion is on the LABEL, not on "all children are hidden"** — the compiled CCZ emits the group element either way; ace#1807's original wording said otherwise and was refuted against `test/fixtures/ccz/spark-facilitator-meeting-record.xml` |
        | `hqDraftFormCount` / `hqDraftVisibleFieldCount` | `run-form-walk.ts <hq_domain> <hq_app_id> --draft-only --with-fields --out-scratch` (same invocation `app-hq-settings § Step 2` documents; check `fields_available: true` before trusting the field count) — already visible-only, nothing to exclude on this side |
@@ -257,9 +293,11 @@ procedure below to rediscover.
        ID check"), not the form_unique_id; it's all you have at this
        point because the CCZ never built.
 
-    2. **Map `form_name` → Nova `form_id`.** The Nova app summary
-       (read from `3-commcare/pdd-to-{learn,deliver}-app_summary.md`
-       frontmatter `nova_app_id`) lists modules + forms. Call
+    2. **Map `form_name` → Nova `form_id`.** Resolve the app's
+       `nova_app_id` per § Inputs (in a run:
+       `3-commcare/pdd-to-{learn,deliver}-app_summary.md` frontmatter
+       `nova_app_id`; with none, skip to step 6 and surface the rejection —
+       there is no source to fix). Call
        `nova__get_app({app_id})` for the live structure and walk to
        the form whose name matches `form_name`. On ambiguity (two
        forms with the same name in different modules), use

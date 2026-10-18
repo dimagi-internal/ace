@@ -49,7 +49,6 @@ const PARAM_MARKER =
 
 /** Skills whose `## Inputs` were run-only when the rule landed (2026-10-18). */
 const LEDGER = new Set<string>([
-  'app-connect-coverage', 'app-deploy', 'app-release', 'app-release-qa',
   'app-screenshot-capture', 'app-test-cases', 'app-ux-eval', 'build-targeting-model',
   'connect-opp-setup', 'connect-opp-setup-eval', 'connect-program-setup-eval',
   'decisions-render', 'decisions-sync', 'demo-data-setup-qa', 'demo-fidelity-check',
