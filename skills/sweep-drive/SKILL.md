@@ -21,6 +21,7 @@ Find Drive folders under `ACE/` that no current opp references, score them, pres
 - `ACE/_sweep/<timestamp>/drive-orphans.md` — human-readable triage report (markdown).
 - `ACE/_sweep/<timestamp>/drive-orphans.yaml` — machine-readable `OrphanReport` (for replay / per-item approval).
 - For each approved orphan: a Drive trash operation via `drive_trash_file`.
+- For each approved open Google Form: a close via `forms_set_publish_settings` (before any trash).
 
 ## Process
 
@@ -32,9 +33,17 @@ Find Drive folders under `ACE/` that no current opp references, score them, pres
 6. **Render the report** via `renderOrphanReport()` from `lib/sweep-report.ts`. `drive_create_file` to `ACE/_sweep/<timestamp>/drive-orphans.md`. Also serialize the YAML form to `drive-orphans.yaml` in the same folder.
 7. **Recommend — stop here in `mode: recommend`.** Return the structured recommended-action list (only real orphaned opp folders — `high` confidence, opp-shaped but not in the live-set — each with id, name, confidence; reversibility: 30-day Drive bin) plus the report Drive link, to the orchestrator. **Trash nothing.** Do not try to prompt the human from this skill — a dispatched subagent can't reach them; the orchestrator runs the confirmation gate (see `agents/sweep.md § Human-confirmation gate`).
 
+## Google Forms and `ACE/_scratch`
+
+A run with `google_form` on (`solicitation-google-form`) leaves a **public** Google Form under its run folder. A public form keeps accepting submissions from anyone with the link until it is closed, and trashing the folder is not the same as closing it. So:
+
+- **Open forms in closed or orphaned runs.** For every form (mimeType `application/vnd.google-apps.form`) under a recommended folder, or under a run whose `solicitation.google_form.status` is not `closed` while its solicitation is closed, recommend **closing** it: `forms_set_publish_settings({ formId, isPublished: true, isAcceptingResponses: false })`. The link keeps working and shows the form as closed (playbook/integrations/google-forms.md). Closing is reversible; it is still an approved action.
+- **Close before trash.** In the execute pass, close every approved form first, then trash its folder.
+- **`ACE/_scratch`** holds throwaway objects from live checks (Forms probes, PR5/PR5b). Step 2 skips `_`-prefixed folders as opp folders, so list `_scratch` on its own: recommend closing any form in it and trashing everything older than 24 hours.
+
 ## Execute phase (`mode: execute` only)
 
-Runs only when the orchestrator re-dispatches with `mode: execute` + `approvedIds` (the folder ids the human approved in chat). For each **approved** orphan, call `drive_trash_file` with `fileId: <id>`. Trash nothing outside `approvedIds`; return the per-item result. Then (sanity check) `drive_list_folder` `ACE/` again and confirm the trashed names are gone — this catches partial failures.
+Runs only when the orchestrator re-dispatches with `mode: execute` + `approvedIds` (the folder, form and `_scratch` item ids the human approved in chat). Close each approved form first (above). Then, for each **approved** orphan, call `drive_trash_file` with `fileId: <id>`. Trash nothing outside `approvedIds`; return the per-item result. Then (sanity check) `drive_list_folder` `ACE/` again and confirm the trashed names are gone — this catches partial failures.
 
 ## Failure modes
 
