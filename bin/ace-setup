@@ -9,7 +9,9 @@
 #   1. Detect plugin root + data dir
 #   2. Verify Node/npm; resolve this install's ACE instance + 1Password vault
 #      via `canopy agent env --plugin ace --print` (canopy >= 0.2.681)
-#   3. Verify 1Password CLI is installed and authenticated (FAST FAIL)
+#   3. Verify 1Password CLI is installed and authenticated (FAST FAIL — but
+#      only when this run reads the vault: a missing SA key, or a .env to
+#      render. Otherwise a WARN, and setup carries on.)
 #   4. Fetch the Google service-account key from that vault if missing
 #   5. npm install (skip if node_modules + tsx present)
 #   6. Fill .env via `canopy agent env --plugin ace` (binds the install to one
@@ -36,6 +38,11 @@
 #   ACE_OP_VAULT        1Password vault to use instead of the one canopy-web records
 #                       for the instance (passed to `canopy agent env --vault`)
 #   OP_SERVICE_ACCOUNT_TOKEN  if set, op uses this and skips --account flag
+#   AGENT_ENV_FILE      a .env canopy already filled from this instance's vault
+#                       (`canopy agent prepare --runner` sets it). Used instead of
+#                       rendering when it covers every .env.tpl key.
+#   AGENT_VAULT         the instance's vault, used when `canopy agent env --print`
+#                       cannot resolve one (a runner has no person token)
 #   ACE_PLUGIN_REGISTRY       override ~/.claude/plugins/installed_plugins.json
 #   ACE_SETUP_ALLOW_TEMPLATE_MISMATCH=1
 #                       render .env from a root that is NOT the installed
@@ -68,7 +75,7 @@ while [ $# -gt 0 ]; do
     --rebind)        REBIND=1 ;;
     --print-root)    PRINT_ROOT=1 ;;
     -h|--help)
-      sed -n '2,44p' "$0" | sed 's/^# \{0,1\}//'
+      sed -n '2,51p' "$0" | sed 's/^# \{0,1\}//'
       exit 0
       ;;
     *) echo "ace-setup: unknown arg: $1" >&2; exit 2 ;;
@@ -257,6 +264,151 @@ DATA_DIR="$(ace_data_dir "$ROOT")"
 mkdir -p "$DATA_DIR"
 echo "INFO data_dir=$DATA_DIR"
 
+ENV_OUT="$DATA_DIR/.env"
+ENV_TPL="$ROOT/.env.tpl"
+
+# Keys .env.tpl declares that FILE lacks, space-separated (empty = covers them all).
+env_missing_keys() {
+  _tk="$(grep -E '^[[:space:]]*[A-Z_][A-Z0-9_]*=' "$ENV_TPL" 2>/dev/null | sed -E 's/^[[:space:]]*([A-Z_][A-Z0-9_]*)=.*/\1/' | sort -u)"
+  _fk="$(grep -E '^[[:space:]]*[A-Z_][A-Z0-9_]*=' "$1" 2>/dev/null | sed -E 's/^[[:space:]]*([A-Z_][A-Z0-9_]*)=.*/\1/' | sort -u)"
+  comm -23 <(printf '%s\n' "$_tk") <(printf '%s\n' "$_fk") | tr '\n' ' ' | sed 's/ *$//'
+}
+
+# Why $ENV_OUT must be (re)rendered from the vault — empty when it need not be.
+env_render_reason() {
+  if [ "$FORCE_ENV" = "1" ]; then echo "--force-env"; return; fi
+  if [ ! -f "$ENV_OUT" ]; then echo "$ENV_OUT does not exist"; return; fi
+  _miss="$(env_missing_keys "$ENV_OUT")"
+  if [ -n "$_miss" ]; then echo "drift detected (missing keys: $_miss)"; return; fi
+  # `grep -c` PRINTS 0 and exits 1 on no match, so never `|| echo 0` it ("0\n0").
+  _unres="$(grep -cE '=op://' "$ENV_OUT" 2>/dev/null)"
+  if [ "${_unres:-0}" -gt 0 ]; then echo "$_unres unresolved op:// refs in $ENV_OUT"; fi
+}
+
+# Local-only secrets: keys in $ENV_OUT that .env.tpl does not declare (set by an
+# operator or minted on this machine, e.g. ACE_E2E_AUTH_TOKEN, the ace-web
+# token), captured before $ENV_OUT is replaced so the new file can carry them.
+# Sets LOCAL_SECRETS / LOCAL_SECRET_COUNT.
+collect_local_secrets() {
+  LOCAL_SECRETS=""
+  LOCAL_SECRET_COUNT=0
+  if [ -f "$ENV_OUT" ]; then
+    TPL_KEYS_PRE="$(grep -E '^[[:space:]]*[A-Z_][A-Z0-9_]*=' "$ENV_TPL" | sed -E 's/^[[:space:]]*([A-Z_][A-Z0-9_]*)=.*/\1/' | sort -u)"
+    ENV_KEYS_PRE="$(grep -E '^[[:space:]]*[A-Z_][A-Z0-9_]*=' "$ENV_OUT" | sed -E 's/^[[:space:]]*([A-Z_][A-Z0-9_]*)=.*/\1/' | sort -u)"
+    EXTRA_KEYS="$(comm -23 <(printf '%s\n' "$ENV_KEYS_PRE") <(printf '%s\n' "$TPL_KEYS_PRE"))"
+    # Keys deliberately RETIRED from .env.tpl. The preservation above keys off
+    # "in .env but not in .env.tpl", which is exactly what a retired key looks
+    # like — so without this list, deleting a key from the template would
+    # IMMORTALISE its last value in the local-only block instead of removing
+    # it. That is the opposite of the intent and is silent.
+    #
+    # ACE_GMAIL_ACCOUNT / ACE_GMAIL_CLIENT: the gog identity now lives solely
+    # in config/agent.json. The vault held gmail_client=ace against
+    # agent.json's canopy, and no credentials-ace.json is ever provisioned
+    # (ace#1147, #1338).
+    RETIRED_KEYS="ACE_GMAIL_ACCOUNT ACE_GMAIL_CLIENT"
+    while IFS= read -r key; do
+      [ -z "$key" ] && continue
+      case " $RETIRED_KEYS " in
+        *" $key "*)
+          echo "INFO env: dropping retired key $key (now sourced from config/agent.json)"
+          continue
+          ;;
+      esac
+      line="$(grep -E "^[[:space:]]*${key}=" "$ENV_OUT" | head -1)"
+      if [ -n "$line" ]; then
+        LOCAL_SECRETS="${LOCAL_SECRETS}${line}
+"
+        LOCAL_SECRET_COUNT=$((LOCAL_SECRET_COUNT + 1))
+      fi
+    done <<EOF_KEYS
+$EXTRA_KEYS
+EOF_KEYS
+  fi
+}
+
+# Append the captured local-only block to FILE.
+append_local_secrets() {
+  [ "${LOCAL_SECRET_COUNT:-0}" -gt 0 ] || return 0
+  {
+    printf '\n# --- ACE local-only secrets (preserved across op inject) ---\n'
+    printf '# Set by operator, NOT 1Password-backed. Keys here must NOT appear in .env.tpl;\n'
+    printf '# bin/ace-setup auto-preserves them on re-inject. Edit values directly in this file.\n'
+    printf '%s' "$LOCAL_SECRETS"
+  } >> "$1"
+}
+
+# ace#880 — .env was just rewritten, so ANY MCP subprocess already running is
+# holding the previous values: they call dotenvConfig() at import and never
+# re-read the file.
+env_rewritten_notice() {
+  printf '\n'
+  printf '  !! RESTART REQUIRED — .env was just rewritten.\n'
+  printf '     MCP subprocesses read .env ONLY at startup, and /reload-plugins\n'
+  printf '     does NOT respawn them. Quit and reopen Claude Code (Cmd-Q), then\n'
+  printf '     re-run /ace:doctor.\n'
+  printf '     Order matters: run setup FIRST, restart AFTER — the reverse\n'
+  printf '     silently leaves every MCP server on the old values.\n'
+  if [ -f "$ROOT/scripts/doctor-env-freshness.ts" ]; then
+    ENV_FRESH_NOW="$(cd "$ROOT" && node "$ROOT/node_modules/tsx/dist/cli.mjs" scripts/doctor-env-freshness.ts 2>/dev/null || true)"
+    case "$ENV_FRESH_NOW" in
+      WARN*) printf '     %s\n' "$(printf '%s' "$ENV_FRESH_NOW" | head -1)" ;;
+      *) : ;;
+    esac
+  fi
+  printf '\n'
+}
+
+# ---- An env canopy already filled (AGENT_ENV_FILE)
+#
+# On a cloud runner, `canopy agent prepare --runner` renders the agent's
+# .env.tpl from the instance's vault itself (with the agent's own read-only
+# key) BEFORE it runs this script, and hands the result over as AGENT_ENV_FILE.
+# Rendering it a second time here would need `canopy agent env`, which takes a
+# PERSON's canopy-web token a runner does not have — so on a runner every
+# setup run died at "instance: not signed in to canopy-web" and nothing after
+# it (deps, ~/.ace/env.sh, the user-scope nova entry, the ace-web token) ran.
+# A supplied file is used only when it is complete: every .env.tpl key, no
+# unresolved op:// ref. Otherwise it is ignored, loudly, and setup renders.
+SUPPLIED_ENV=""
+if [ -n "${AGENT_ENV_FILE:-}" ] && [ "$SKIP_ENV" != "1" ]; then
+  if [ ! -r "$AGENT_ENV_FILE" ]; then
+    warn "env: AGENT_ENV_FILE=$AGENT_ENV_FILE is not readable — ignoring it"
+  elif [ -n "$(env_missing_keys "$AGENT_ENV_FILE")" ]; then
+    warn "env: AGENT_ENV_FILE=$AGENT_ENV_FILE lacks .env.tpl keys ($(env_missing_keys "$AGENT_ENV_FILE")) — ignoring it"
+  elif grep -qE '=op://' "$AGENT_ENV_FILE" 2>/dev/null; then
+    warn "env: AGENT_ENV_FILE=$AGENT_ENV_FILE has unresolved op:// refs — ignoring it"
+  else
+    SUPPLIED_ENV="$AGENT_ENV_FILE"
+    echo "INFO env: using the .env canopy already filled: $SUPPLIED_ENV (AGENT_ENV_FILE)"
+  fi
+fi
+
+# ---- Will this run read 1Password at all?
+#
+# Only two steps do: fetching a MISSING Google service-account key, and
+# rendering $ENV_OUT. When neither will happen (key present; --skip-env, a
+# supplied env, or an env that already covers .env.tpl) a missing or
+# signed-out `op` — or an instance canopy cannot resolve — is not a reason to
+# stop: everything after (deps, env.sh, the nova entry, ace-web) still has to
+# run. It is a WARN then, and a FAIL only when the run needs it.
+KEY_PRESENT=0
+{ [ -r "$DATA_DIR/gws-sa-key.json" ] || [ -r "$ROOT/.gws-sa-key.json" ]; } && KEY_PRESENT=1
+ENV_RENDER_REASON=""
+if [ "$SKIP_ENV" != "1" ] && [ -z "$SUPPLIED_ENV" ]; then
+  ENV_RENDER_REASON="$(env_render_reason)"
+fi
+NEED_OP_WHY=""
+[ "$KEY_PRESENT" = "0" ] && NEED_OP_WHY="the Google service-account key is missing"
+[ -n "$ENV_RENDER_REASON" ] && NEED_OP_WHY="${NEED_OP_WHY:+$NEED_OP_WHY; }$ENV_OUT must be rendered ($ENV_RENDER_REASON)"
+if [ "$SKIP_ENV" = "1" ]; then
+  NO_OP_NEEDED="key present, env skipped (--skip-env)"
+elif [ -n "$SUPPLIED_ENV" ]; then
+  NO_OP_NEEDED="key present, env supplied by canopy (AGENT_ENV_FILE)"
+else
+  NO_OP_NEEDED="key present, $ENV_OUT already complete"
+fi
+
 # =====================================================================
 # Phase 1 — Cheap pre-flight checks (fast fail)
 # =====================================================================
@@ -321,35 +473,52 @@ $(cat "$_cerr" 2>/dev/null; [ "$_crc" -eq 0 ] && printf '%s\n' "$BIND_JSON")"
   fi
 fi
 [ -n "$OP_VAULT" ] && echo "INFO instance=$BOUND_AGENT vault=$OP_VAULT (canopy agent env --print)"
+# A runner has no person token, so `--print` cannot resolve there; canopy hands
+# the vault it already resolved over as AGENT_VAULT (ACE_OP_VAULT still wins).
+# That is enough to READ the vault (the key fetch) — not to bind an instance,
+# so a render still needs canopy to resolve (checked after the op checks).
+if [ -z "$OP_VAULT" ] && [ -n "${ACE_OP_VAULT:-${AGENT_VAULT:-}}" ]; then
+  OP_VAULT="${ACE_OP_VAULT:-$AGENT_VAULT}"
+  echo "INFO vault=$OP_VAULT (from $([ -n "${ACE_OP_VAULT:-}" ] && echo ACE_OP_VAULT || echo AGENT_VAULT); canopy did not resolve an instance)"
+fi
 
+OP_ACCOUNT_FLAG=""
+OP_READY=1
 # ---- 1Password CLI installed?
 if ! command -v op >/dev/null 2>&1; then
-  fail "op: 1Password CLI not installed" \
-       "install with: brew install 1password-cli (or https://developer.1password.com/docs/cli/get-started/)"
-  access_note
-  exit 1
+  if [ -z "$NEED_OP_WHY" ]; then
+    warn "op: 1Password CLI not installed — not needed this run ($NO_OP_NEEDED)" \
+         "install it before a run that renders .env or fetches the key: brew install 1password-cli"
+    OP_READY=0
+  else
+    fail "op: 1Password CLI not installed (needed: $NEED_OP_WHY)" \
+         "install with: brew install 1password-cli (or https://developer.1password.com/docs/cli/get-started/)"
+    access_note
+    exit 1
+  fi
 fi
-pass "op: 1Password CLI v$(op --version 2>/dev/null)"
+[ "$OP_READY" = "1" ] && pass "op: 1Password CLI v$(op --version 2>/dev/null)"
 
 # ---- 1Password authenticated?
 # Prefer service-account token if present, else require interactive signin.
 AUTH_OK=0
 AUTH_MODE=""
-OP_ACCOUNT_FLAG=""
-if [ -n "${OP_SERVICE_ACCOUNT_TOKEN:-}" ]; then
+if [ "$OP_READY" = "0" ]; then
+  :
+elif [ -n "${OP_SERVICE_ACCOUNT_TOKEN:-}" ]; then
   if op whoami >/dev/null 2>&1; then
     AUTH_OK=1
     AUTH_MODE="service-account"
   fi
 fi
-if [ "$AUTH_OK" = "0" ]; then
+if [ "$AUTH_OK" = "0" ] && [ "$OP_READY" = "1" ]; then
   if op whoami --account dimagi.1password.com >/dev/null 2>&1; then
     AUTH_OK=1
     AUTH_MODE="dimagi.1password.com (interactive)"
     OP_ACCOUNT_FLAG="--account dimagi.1password.com"
   fi
 fi
-if [ "$AUTH_OK" = "0" ]; then
+if [ "$AUTH_OK" = "0" ] && [ "$OP_READY" = "1" ]; then
   # 1Password's desktop-app CLI integration (biometric unlock) authenticates
   # every `op` invocation via Touch ID and issues NO persistent session token,
   # so `op whoami` reports "account is not signed in" even though `op read` /
@@ -364,7 +533,10 @@ if [ "$AUTH_OK" = "0" ]; then
   fi
 fi
 
-if [ "$AUTH_OK" = "0" ]; then
+if [ "$AUTH_OK" = "0" ] && [ "$OP_READY" = "1" ] && [ -z "$NEED_OP_WHY" ]; then
+  warn "op: not authenticated to 1Password — not needed this run ($NO_OP_NEEDED)" \
+       "sign in (op signin --account dimagi.1password.com) before a run that renders .env or fetches the key"
+elif [ "$AUTH_OK" = "0" ] && [ "$OP_READY" = "1" ]; then
   # On macOS, GUI apps inherit env from launchd — not from ~/.zshrc — so
   # OP_SERVICE_ACCOUNT_TOKEN can be defined in shell rc and still be unset
   # for a Claude Code session opened from the dock. Detect that case so the
@@ -387,7 +559,7 @@ if [ "$AUTH_OK" = "0" ]; then
          # then: Cmd-Q Claude Code, reopen from dock, re-run /ace:setup"
     fi
   fi
-  fail "op: not authenticated to 1Password" "type one of these in the chat (the \`!\` prefix runs in this session):
+  fail "op: not authenticated to 1Password (needed: $NEED_OP_WHY)" "type one of these in the chat (the \`!\` prefix runs in this session):
        ! op signin --account dimagi.1password.com   # interactive personal signin
        ! eval \$(op signin --account dimagi.1password.com)   # if you need session env exported
        (or set OP_SERVICE_ACCOUNT_TOKEN=ops_... in your shell rc and reopen the session)
@@ -396,14 +568,20 @@ if [ "$AUTH_OK" = "0" ]; then
   access_note
   exit 1
 fi
-pass "op: authenticated as $AUTH_MODE"
+[ "$AUTH_OK" = "1" ] && pass "op: authenticated as $AUTH_MODE"
 
-# Every step below reads the instance's vault, so stop here without one.
-if [ -n "$CANOPY_ERR" ]; then
+# The instance is needed to RENDER $ENV_OUT (`canopy agent env` binds it); the
+# vault alone is enough to fetch a missing key. Stop only when this run needs
+# one it does not have.
+if [ -z "$CANOPY_ERR" ]; then
+  pass "instance: $BOUND_AGENT (vault $OP_VAULT, from canopy agent env)"
+elif [ -n "$ENV_RENDER_REASON" ] || { [ "$KEY_PRESENT" = "0" ] && [ -z "$OP_VAULT" ]; }; then
   fail "instance: $CANOPY_ERR" "$CANOPY_FIX"
   exit 1
+else
+  warn "instance: not resolved — not needed this run ($NO_OP_NEEDED${OP_VAULT:+; vault $OP_VAULT})" \
+       "$(printf '%s' "$CANOPY_ERR" | tail -n +2 | head -3 | tr '\n' ' ')"
 fi
-pass "instance: $BOUND_AGENT (vault $OP_VAULT, from canopy agent env)"
 
 # =====================================================================
 # Phase 2 — Slow state changes (only run if pre-flight passed)
@@ -488,9 +666,7 @@ if [ -x node_modules/.bin/tsx ]; then
   pass "deps: tsx=$(node_modules/.bin/tsx --version 2>&1 | head -1)"
 fi
 
-# ---- .env injection from 1Password
-ENV_OUT="$DATA_DIR/.env"
-ENV_TPL="$ROOT/.env.tpl"
+# ---- .env injection from 1Password ($ENV_OUT / $ENV_TPL are set above)
 
 # Template-root guard (ace#2091). The ordering fix above makes the INSTALLED
 # plugin win the resolution, but `CLAUDE_PLUGIN_ROOT` still overrides
@@ -527,6 +703,22 @@ if [ "$ENV_ROOT_REFUSED" = "1" ]; then
   mark_fail
 elif [ "$SKIP_ENV" = "1" ]; then
   warn "env: skipped (--skip-env)" "re-run without --skip-env to populate $ENV_OUT"
+elif [ -n "$SUPPLIED_ENV" ]; then
+  # canopy filled it from this instance's vault already (AGENT_ENV_FILE, see
+  # above): copy it in, keeping this machine's local-only block, atomically.
+  collect_local_secrets
+  SYNC_TMP="$(mktemp "${ENV_OUT}.XXXXXX")"
+  cat "$SUPPLIED_ENV" > "$SYNC_TMP"
+  append_local_secrets "$SYNC_TMP"
+  chmod 600 "$SYNC_TMP"
+  if [ -f "$ENV_OUT" ] && cmp -s "$SYNC_TMP" "$ENV_OUT"; then
+    rm -f "$SYNC_TMP"
+    pass "env: $ENV_OUT already matches $SUPPLIED_ENV (filled by canopy)"
+  else
+    mv "$SYNC_TMP" "$ENV_OUT"
+    pass "env: synced $ENV_OUT from $SUPPLIED_ENV (filled by canopy; preserved $LOCAL_SECRET_COUNT local-only secret(s))"
+    env_rewritten_notice
+  fi
 elif [ ! -f "$ENV_TPL" ]; then
   fail "env: .env.tpl not found at $ENV_TPL" "the plugin is corrupt; reinstall with /plugin install ace@ace"
   mark_fail
@@ -558,31 +750,12 @@ $LINT_BAD"
     pass "env: .env.tpl op:// refs well-formed"
   fi
 
-  # Decide whether to inject. Skip when .env already covers every key in .env.tpl.
+  # Decide whether to inject. Skip when .env already covers every key in .env.tpl
+  # and holds no unresolved op:// ref (env_render_reason, above).
   NEEDS_INJECT=0
-  if [ "$FORCE_ENV" = "1" ]; then
+  if [ -n "$ENV_RENDER_REASON" ]; then
     NEEDS_INJECT=1
-    echo "INFO env: --force-env, re-injecting"
-  elif [ ! -f "$ENV_OUT" ]; then
-    NEEDS_INJECT=1
-    echo "INFO env: $ENV_OUT does not exist, injecting"
-  else
-    TPL_KEYS="$(grep -E '^[[:space:]]*[A-Z_][A-Z0-9_]*=' "$ENV_TPL" | sed -E 's/^[[:space:]]*([A-Z_][A-Z0-9_]*)=.*/\1/' | sort -u)"
-    ENV_KEYS="$(grep -E '^[[:space:]]*[A-Z_][A-Z0-9_]*=' "$ENV_OUT" | sed -E 's/^[[:space:]]*([A-Z_][A-Z0-9_]*)=.*/\1/' | sort -u)"
-    DIFF="$(comm -23 <(printf '%s\n' "$TPL_KEYS") <(printf '%s\n' "$ENV_KEYS") | tr '\n' ' ' | sed 's/ *$//')"
-    if [ -n "$DIFF" ]; then
-      NEEDS_INJECT=1
-      echo "INFO env: drift detected (missing keys: $DIFF), re-injecting"
-    else
-      # `grep -c` PRINTS 0 and exits 1 on no match, so `|| echo 0` made it "0\n0" and the
-      # -gt test below errored ("integer expected") on every healthy re-run.
-      UNRESOLVED_EXISTING="$(grep -cE '=op://' "$ENV_OUT" 2>/dev/null)"
-      UNRESOLVED_EXISTING="${UNRESOLVED_EXISTING:-0}"
-      if [ "$UNRESOLVED_EXISTING" -gt 0 ]; then
-        NEEDS_INJECT=1
-        echo "INFO env: $UNRESOLVED_EXISTING unresolved op:// refs in $ENV_OUT, re-injecting"
-      fi
-    fi
+    echo "INFO env: $ENV_RENDER_REASON, re-injecting"
   fi
 
   if [ "$NEEDS_INJECT" = "1" ] && [ -n "$LINT_BAD" ]; then
@@ -596,41 +769,7 @@ $LINT_BAD"
     # preservation, every op inject wipes them and operators have to
     # re-mirror by hand. We only preserve keys NOT in .env.tpl, so a 1P
     # value in .env.tpl always wins over any stale local override.
-    LOCAL_SECRETS=""
-    LOCAL_SECRET_COUNT=0
-    if [ -f "$ENV_OUT" ]; then
-      TPL_KEYS_PRE="$(grep -E '^[[:space:]]*[A-Z_][A-Z0-9_]*=' "$ENV_TPL" | sed -E 's/^[[:space:]]*([A-Z_][A-Z0-9_]*)=.*/\1/' | sort -u)"
-      ENV_KEYS_PRE="$(grep -E '^[[:space:]]*[A-Z_][A-Z0-9_]*=' "$ENV_OUT" | sed -E 's/^[[:space:]]*([A-Z_][A-Z0-9_]*)=.*/\1/' | sort -u)"
-      EXTRA_KEYS="$(comm -23 <(printf '%s\n' "$ENV_KEYS_PRE") <(printf '%s\n' "$TPL_KEYS_PRE"))"
-      # Keys deliberately RETIRED from .env.tpl. The preservation above keys off
-      # "in .env but not in .env.tpl", which is exactly what a retired key looks
-      # like — so without this list, deleting a key from the template would
-      # IMMORTALISE its last value in the local-only block instead of removing
-      # it. That is the opposite of the intent and is silent.
-      #
-      # ACE_GMAIL_ACCOUNT / ACE_GMAIL_CLIENT: the gog identity now lives solely
-      # in config/agent.json. The vault held gmail_client=ace against
-      # agent.json's canopy, and no credentials-ace.json is ever provisioned
-      # (ace#1147, #1338).
-      RETIRED_KEYS="ACE_GMAIL_ACCOUNT ACE_GMAIL_CLIENT"
-      while IFS= read -r key; do
-        [ -z "$key" ] && continue
-        case " $RETIRED_KEYS " in
-          *" $key "*)
-            echo "INFO env: dropping retired key $key (now sourced from config/agent.json)"
-            continue
-            ;;
-        esac
-        line="$(grep -E "^[[:space:]]*${key}=" "$ENV_OUT" | head -1)"
-        if [ -n "$line" ]; then
-          LOCAL_SECRETS="${LOCAL_SECRETS}${line}
-"
-          LOCAL_SECRET_COUNT=$((LOCAL_SECRET_COUNT + 1))
-        fi
-      done <<EOF_KEYS
-$EXTRA_KEYS
-EOF_KEYS
-    fi
+    collect_local_secrets
 
     # `op inject` scans the ENTIRE file for op-scheme tokens — it does NOT skip
     # shell comments — so a bare reference inside a `#` line (e.g. an
@@ -688,38 +827,13 @@ EOF_KEYS
       # Block-marker comment makes the boundary obvious to operators
       # eyeballing .env, and lets a future maintenance script find/refresh
       # this region cleanly.
+      append_local_secrets "$ENV_OUT"
       if [ "$LOCAL_SECRET_COUNT" -gt 0 ]; then
-        {
-          printf '\n# --- ACE local-only secrets (preserved across op inject) ---\n'
-          printf '# Set by operator, NOT 1Password-backed. Keys here must NOT appear in .env.tpl;\n'
-          printf '# bin/ace-setup auto-preserves them on re-inject. Edit values directly in this file.\n'
-          printf '%s' "$LOCAL_SECRETS"
-        } >> "$ENV_OUT"
         pass "env: canopy agent env wrote $ENV_OUT (preserved $LOCAL_SECRET_COUNT local-only secret(s))"
       else
         pass "env: canopy agent env wrote $ENV_OUT"
       fi
-
-      # ace#880 — .env was just rewritten, so ANY MCP subprocess already
-      # running is now holding the previous values. They call dotenvConfig()
-      # at import and never re-read the file. Unconditional because the write
-      # unconditionally happened; the doctor probe below narrows it to the
-      # actual stale pids when it can see them.
-      printf '\n'
-      printf '  !! RESTART REQUIRED — .env was just rewritten.\n'
-      printf '     MCP subprocesses read .env ONLY at startup, and /reload-plugins\n'
-      printf '     does NOT respawn them. Quit and reopen Claude Code (Cmd-Q), then\n'
-      printf '     re-run /ace:doctor.\n'
-      printf '     Order matters: run setup FIRST, restart AFTER — the reverse\n'
-      printf '     silently leaves every MCP server on the old values.\n'
-      if [ -f "$ROOT/scripts/doctor-env-freshness.ts" ]; then
-        ENV_FRESH_NOW="$(cd "$ROOT" && node "$ROOT/node_modules/tsx/dist/cli.mjs" scripts/doctor-env-freshness.ts 2>/dev/null || true)"
-        case "$ENV_FRESH_NOW" in
-          WARN*) printf '     %s\n' "$(printf '%s' "$ENV_FRESH_NOW" | head -1)" ;;
-          *) : ;;
-        esac
-      fi
-      printf '\n'
+      env_rewritten_notice
     fi
   else
     pass "env: $ENV_OUT already has every .env.tpl key (use --force-env to refresh)"
