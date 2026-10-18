@@ -31,6 +31,7 @@ import {
   normalizeDriveExport,
   CHECKS,
   checkAnnexuresExcludeInternalDocuments,
+  checkNoDenyListedParty,
 } from '../../../skills/pdd-to-work-order-qa/checks';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -486,8 +487,8 @@ describe('checkNoScaffoldingMarkers', () => {
 });
 
 describe('CHECKS array', () => {
-  test('exports seventeen checks in canonical order', () => {
-    expect(CHECKS).toHaveLength(17);
+  test('exports eighteen checks in canonical order', () => {
+    expect(CHECKS).toHaveLength(18);
     const ids = CHECKS.map((c) => c.id);
     expect(ids).toEqual([
       // First deliberately: "this is not a template render" explains every
@@ -509,6 +510,7 @@ describe('CHECKS array', () => {
       'payment_unit_matches_entity_grain',
       'commercial_terms_match_solicitation',
       'annexures_exclude_internal_documents',
+      'no_deny_listed_party',
     ]);
   });
 });
@@ -1757,5 +1759,37 @@ describe('checkAnnexuresExcludeInternalDocuments', () => {
       expect(checkAnnexuresExcludeInternalDocuments(wo).pass).toBe(true);
       expect(checkAllRequiredSectionsPresent(wo).pass).toBe(true);
     });
+  });
+});
+
+describe('checkNoDenyListedParty (ace#3190)', () => {
+  const confidentialityYaml = 'llo_facing_deny_list: [GiveDirectly, Give Directly, GD]\n';
+
+  test('negative control: a work order lifting the PDD funder paragraph fails', () => {
+    const wo = GOOD_WO + '\nThis programme is funded by Give Directly through Dimagi.\n';
+    const r = checkNoDenyListedParty(wo, { confidentialityYaml });
+    expect(r.pass).toBe(false);
+    expect(r.detail).toContain('Give Directly');
+  });
+
+  test('positive control: the good fixture passes against the connect-fi deny list', () => {
+    expect(checkNoDenyListedParty(GOOD_WO, { confidentialityYaml }).pass).toBe(true);
+  });
+
+  test('positive control: "budget" and "GDP" do not trip the GD token', () => {
+    const wo = '6. Payment Terms\nThe budget is fixed; GDP figures are context only.\n';
+    expect(checkNoDenyListedParty(wo, { confidentialityYaml }).pass).toBe(true);
+  });
+
+  test('no confidentiality.yaml in ctx is a no-op pass', () => {
+    const r = checkNoDenyListedParty('funded by GiveDirectly', {});
+    expect(r.pass).toBe(true);
+    expect(r.detail).toMatch(/not applicable/);
+  });
+
+  test('is registered in CHECKS and reads ctx.confidentialityYaml', () => {
+    const c = CHECKS.find((x) => x.id === 'no_deny_listed_party');
+    expect(c).toBeDefined();
+    expect((c!.run('funded by GiveDirectly', { confidentialityYaml }) as { pass: boolean }).pass).toBe(false);
   });
 });

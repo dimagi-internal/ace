@@ -1,0 +1,9 @@
+# Parties that must never appear in LLO-facing text for this opp
+# (solicitation, Google Form, seeded responses, training, outbound email).
+# Source: the working notes' draft EOI questions are headed
+# "DO NOT REFERENCE GIVE DIRECTLY"; restated in "Connect FI — operator brief for this run".
+# Read by skills/solicitation-seed-responses (lib/synthetic-responses normalizeDenyList).
+llo_facing_deny_list:
+  - GiveDirectly
+  - Give Directly
+  - GD

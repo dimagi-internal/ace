@@ -18,6 +18,7 @@ import { normalizeDriveExport } from '../../lib/drive-export';
 import { classifyGrainRelation, readProgramParameter } from '../../lib/payment-grain';
 import { compareCommercialTerms } from '../../lib/commercial-terms-consistency';
 import { COUNTRY_CURRENCY } from '../../lib/program-locale';
+import { checkTextAgainstDenyList, parseConfidentialityYaml } from '../../lib/llo-facing-deny-list';
 
 /**
  * The 11 required headings in a complete work order. Matched against
@@ -1379,6 +1380,24 @@ export function checkAnnexuresExcludeInternalDocuments(raw: string): QACheckResu
   };
 }
 
+/**
+ * Check 17: the work order names no party on the opp's LLO-facing deny list
+ * (dimagi-internal/ace#3190). The work order goes to the implementing partner,
+ * while the PDD may legitimately name a funder the partner must never see; a
+ * render that lifts a PDD paragraph would otherwise pass every other check.
+ *
+ * `ctx.confidentialityYaml` is the TEXT of the opp's
+ * `inputs/confidentiality.yaml` (`qa-run.ts --confidentiality`). Absent → the
+ * opp declared nothing, a no-op pass that says so. Matching is shared with the
+ * Phase 8 skills via `lib/llo-facing-deny-list.ts` (whole words, so `GD` does
+ * not fire inside "budget").
+ */
+export function checkNoDenyListedParty(raw: string, ctx?: QACheckContext): QACheckResult {
+  const yamlText = ctx?.confidentialityYaml;
+  const denyList = typeof yamlText === 'string' ? parseConfidentialityYaml(yamlText) : null;
+  return checkTextAgainstDenyList(normalizeDriveExport(raw), denyList, 'The work order');
+}
+
 export const CHECKS: QACheck[] = [
   {
     id: 'rendered_from_template',
@@ -1504,5 +1523,13 @@ export const CHECKS: QACheck[] = [
       '§ Annexures does not annex the PDD or any other Dimagi-internal document, by link ' +
       'or by title (ace#2906; tekzal/20261013-2314)',
     run: (wo: string) => checkAnnexuresExcludeInternalDocuments(wo),
+  },
+  {
+    id: 'no_deny_listed_party',
+    type: 'static',
+    description:
+      'The LLO-facing work order names no party on the opp\u2019s inputs/confidentiality.yaml ' +
+      'llo_facing_deny_list (whole-word, case-insensitive; ace#3190)',
+    run: (wo: string, ctx?: QACheckContext) => checkNoDenyListedParty(wo, ctx),
   },
 ];
