@@ -1279,6 +1279,43 @@ describe('a partial build must not render as a clean one', () => {
     })).toEqual([]);
     expect(auditBuildStatusParity({ build: null }, {})).toEqual([]);
   });
+
+  // ace#3193: a run paused before Phase 3 (connect-fi/20261018-1440, stopped at
+  // the Phase 1 PDD-review gate) has no apps on the page, so "the apps render
+  // as if the run were clean" is false — not started is not finished unclean.
+  it('says nothing about a Phase 3 that has not started (pending)', () => {
+    expect(auditBuildStatusParity({ build: null }, {
+      'commcare-setup': { status: 'pending' },
+    })).toEqual([]);
+    expect(auditBuildStatusParity({ build: null }, {
+      'commcare-setup': { status: 'pending', steps: { a: { status: 'pending' } } },
+    })).toEqual([]);
+  });
+
+  it('says nothing about a Phase 3 the run shape skipped', () => {
+    expect(auditBuildStatusParity({ build: null }, {
+      'commcare-setup': { status: 'skipped' },
+    })).toEqual([]);
+  });
+
+  it('still BLOCKS a pending/skipped phase that carries a failing step', () => {
+    for (const status of ['pending', 'skipped']) {
+      const findings = auditBuildStatusParity({ build: null }, {
+        'commcare-setup': { status, steps: { 'x-eval': { verdict: 'fail' } } },
+      });
+      expect(codes(findings)).toContain('BUILD-STATUS-HIDDEN');
+    }
+  });
+
+  it('still BLOCKS every started-but-unclean status, alongside the ace-web#744 case', () => {
+    expect(codes(auditBuildStatusParity({ build: null }, partial))).toContain('BUILD-STATUS-HIDDEN');
+    for (const status of ['in_progress', 'partial', 'error', 'blocked']) {
+      const findings = auditBuildStatusParity({ build: null }, {
+        'commcare-setup': { status },
+      });
+      expect(codes(findings)).toContain('BUILD-STATUS-HIDDEN');
+    }
+  });
 });
 
 

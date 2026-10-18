@@ -1421,6 +1421,13 @@ export function auditWalkthroughParity(payload: unknown, phases: unknown): Findi
 /** Phase statuses / verdicts that mean "this phase finished clean". */
 const CLEAN_PHASE_STATUSES = new Set(['done', 'complete', 'completed', 'pass', 'passed']);
 const FAILING_STEP_VERDICTS = new Set(['fail', 'failed', 'halt', 'blocked', 'reject']);
+/**
+ * Phase statuses that mean "this phase has not run" (ace#3193). A run paused
+ * before Phase 3 has `commcare-setup.status: pending` and no apps on the page,
+ * so "the apps render as if the run were clean" is false there. `skipped` is
+ * the run-shape twin (`lib/run-state-validator.ts` PHASE_STATUSES).
+ */
+const NOT_STARTED_PHASE_STATUSES = new Set(['pending', 'skipped']);
 
 /**
  * Did the run generate its data, and does the page SAY so?
@@ -1486,6 +1493,7 @@ export function auditBuildStatusParity(payload: unknown, phases: unknown): Findi
           ))
         .map(([name]) => name)
     : [];
+  if (NOT_STARTED_PHASE_STATUSES.has(status) && failingSteps.length === 0) return [];
   const unclean = (status !== '' && !CLEAN_PHASE_STATUSES.has(status)) || failingSteps.length > 0;
   if (!unclean) return [];
   if (getPath(payload, 'build') != null) return [];
