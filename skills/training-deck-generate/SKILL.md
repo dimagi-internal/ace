@@ -1,8 +1,8 @@
 ---
 name: training-deck-generate
 description: >
-  Write a training deck spec from a PDD, app summaries, and screenshots; training-deck-render
-  turns it into Slides. Needs an approved PDD and built apps.
+  Write a training deck spec from a PDD, app summaries and screenshots, for training-deck-render.
+  Needs an approved PDD and built apps.
 disable-model-invocation: false
 ---
 

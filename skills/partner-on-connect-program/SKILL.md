@@ -135,6 +135,7 @@ Reading and answering are not changes.
    |---|---|
    | An app's forms, fields, logic or case config, shipped to its live opportunity | `app-modify` |
    | An opportunity's verification flags, payment units, dates, budget, Learn passing score | `connect-opp-modify` |
+   | A new partner org's own opportunity on the program (invite, accept, fresh apps, opp, payment units) | `connect-partner-opp-create` |
    | A bot's prompt, description, tools or pipeline | `ocs-bot-update` |
    | A bot's knowledge | `ocs-knowledge-refresh` |
    | A solicitation's deadline, text, questions, criteria, visibility or status | `solicitation-edit` |

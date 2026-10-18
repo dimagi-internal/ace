@@ -1,8 +1,8 @@
 ---
 name: demo-fidelity-check
 description: >
-  Pass/fail check that a cloned synthetic dataset reproduces the real source's statistical shape
-  before a funder sees it. Needs the clone and its source opp.
+  Pass/fail check that a synthetic clone matches its real source's statistical shape. Needs the
+  clone and its source opp.
 disable-model-invocation: false
 ---
 
