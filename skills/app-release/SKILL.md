@@ -424,11 +424,11 @@ procedure below to rediscover.
    EMPTY (`mcp/connect/backends/playwright.ts` `listDeliverUnits` /
    `createPaymentUnit`). So on an opp that already has deliver units,
    neither one re-syncs a changed schema. Instead:
-   1. POST the sync route below for the existing opportunity, at the
-      holding org's URL (`runConnectOrgs()`; the deliver-unit pages are
-      served at both the holding and PM org, per `connect-api.md` § PM→NM
-      org-URL matrix). Or click `Sync Deliver Units` in that opp's
-      payment-unit form.
+   1. POST the sync route below for the existing opportunity at the
+      program org's URL, the same org `app-modify` uses (`runConnectOrgs()`
+      `pm_org_slug`). Or click `Sync Deliver Units` in that opp's wizard.
+      The full live-change procedure, including a new deliver unit that
+      needs its own payment unit, is `skills/app-modify`.
    2. Read back with `connect_list_deliver_units` on the same opp, and
       confirm every deliver-unit slug in the new release's
       `projected_connect_state` is listed.
