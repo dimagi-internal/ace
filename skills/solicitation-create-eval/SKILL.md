@@ -23,6 +23,10 @@ shipped — see `skills/eval-calibration/SKILL.md`.
 
 ## Inputs
 
+Pipeline-only: it grades this run's `solicitation-create` draft and
+published records against the same run's PDD — the artifacts it judges exist
+only as run outputs, and its verdict file lands next to them.
+
 - `ACE/<opp-name>/inputs/pdd.md`
 - `ACE/<opp-name>/runs/<run-id>/8-solicitation-management/solicitation-create_draft.md`
 - `ACE/<opp-name>/runs/<run-id>/8-solicitation-management/solicitation-create_published.md`

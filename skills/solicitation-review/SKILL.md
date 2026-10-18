@@ -21,7 +21,20 @@ only skill that populates `selected_llo` (which gates Phase 9). Writes to
 
 ## Inputs
 
-Read from the current run's `run_state.yaml.phases.solicitation-management.products.solicitation`:
+| Parameter | Used for | Resolver |
+|---|---|---|
+| `--solicitation-id` | the call being reviewed and awarded | default: the run's `products.solicitation.solicitation_id`; outside a run, explicit |
+| `--rubric <doc id>` | evaluation criteria | default: the run's `solicitation-create_published.md`; else the call's own criteria via `get_solicitation` |
+| responses | what is scored | default: the run's `solicitation-monitor_responses/*.md`; else live `list_responses` + `get_response` |
+| `--out-folder-id` | where rubric / recommendation / award record go | default: the run's `8-solicitation-management/` |
+| `optional_steps.ace_winner` | write `selected_llo.synthetic_winner: true` | default: the run's `optional_steps` block; outside a run, absent |
+
+The HITL award gate (Step 6) is unchanged in every mode: the human approves at
+level 0 before `award_response`. Step 10's `run_state.yaml` write happens only
+when a run is bound; outside a run, record the award (response id, org, budget,
+`awardee_notified`) in the program context doc's Decisions.
+
+Default resolution inside a run — read from the current run's `run_state.yaml.phases.solicitation-management.products.solicitation`:
 
 - `solicitation_id`
 - `public_url`
@@ -197,7 +210,8 @@ Read from the current run's `run_state.yaml.phases.solicitation-management.produ
    out-of-band via the labs UI.
 
 10. **Populate `selected_llo` and update solicitation status.** Only
-    on a successful award, write to the current run's
+    on a successful award, and only when a run is bound (outside a run see
+    § Inputs), write to the current run's
     `run_state.yaml` via `update_yaml_file` + `merge: 'deep'`.
     Read the existing `products.solicitation` block first, set
     `status: awarded` and populate the `awarded.*` block, then write

@@ -25,6 +25,9 @@ the inflation this eval is supposed to prevent. So the award-existence gate
 
 ## Inputs
 
+Pipeline-only: it grades the reasoning in this run's `solicitation-review`
+rubric, recommendation and award record, which exist only as run outputs.
+
 - `ACE/<opp-name>/runs/<run-id>/8-solicitation-management/solicitation-review_scoring-rubric.md`
 - `ACE/<opp-name>/runs/<run-id>/8-solicitation-management/solicitation-review_recommendation.md`
 - `ACE/<opp-name>/runs/<run-id>/8-solicitation-management/solicitation-review_award-record.md`

@@ -38,7 +38,16 @@ Mirrors the `ocs-chatbot-qa` recurring pattern (`--quick`/`--monitor`).
 
 ## Inputs
 
-Find the **most recent run-id** under `ACE/<opp-name>/runs/` (sort
+| Parameter | Used for | Resolver |
+|---|---|---|
+| `--solicitation-id` | the call whose responses are pulled | default: the most recent run's `products.solicitation.solicitation_id` (below); outside a run, explicit |
+| `--labs-program-id` | optional `list_solicitations` filter only | default: `products.solicitation.labs_program_id`, else `opp.yaml.connect.program.connect_int_id`; never needed for `get_solicitation` / `list_responses` |
+| `--out-folder-id` | where response files are written | default: the run's `8-solicitation-management/solicitation-monitor_responses/` |
+
+With `--solicitation-id` given, no `run_state.yaml` is read. The skill writes
+no run state in any mode.
+
+Default resolution inside a run: find the **most recent run-id** under `ACE/<opp-name>/runs/` (sort
 descending lexically; run-ids are `YYYYMMDD-HHMM`). Read its
 `run_state.yaml`. Read (no write) from
 `phases.solicitation-management.products.solicitation`:
