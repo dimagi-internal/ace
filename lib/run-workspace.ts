@@ -40,6 +40,8 @@
  */
 
 import {
+  aceControlledOrgs,
+  CONTROLLED_ORGS_ENV,
   connectOrgsFromTenancy,
   LEGACY_DEFAULT_PM_ORG,
   renderConnectOrgsBlock,
@@ -115,8 +117,57 @@ export interface RunWorkspace {
    * all-spaces key (`lib/hq-api-key-store.ts`).
    */
   hq_api_key: { kind: 'instance'; ref: '${ACE_HQ_API_KEY}' } | { kind: 'space-restricted'; mint_per_run: true };
+  /**
+   * Default workspace only: can Phase 4 accept the holding org's programme
+   * application? `connect_accept_program_application` acts only for orgs in
+   * `aceControlledOrgs(env)` — ENVIRONMENT ONLY, by design (ace#2954) — while
+   * the orgs themselves may come from the tenancy (ace#2919). When the holding
+   * org is tenancy-sourced and not in that set, Phase 4 creates a program,
+   * sends the invite, and then cannot accept: the run must halt at start
+   * instead, with the machine-config remedy (ace#3175). Absent for a partner
+   * workspace, where the partner accepting its own invitation is the
+   * legitimate path, not a configuration defect.
+   */
+  phase4_accept_authority?: Phase4AcceptAuthority;
   /** Non-fatal observations (default workspace only: ace-web vs .env drift). */
   warnings: string[];
+}
+
+export interface Phase4AcceptAuthority {
+  ok: boolean;
+  /** The org whose programme application Phase 4 accepts (nm_org, else pm_org). */
+  holding_org: string;
+  /** `aceControlledOrgs(env)` — the orgs ACE may act as. */
+  controlled_orgs: string[];
+  /** Set when `ok` is false: the machine-config fix. */
+  remediation?: string;
+}
+
+/**
+ * Phase 4 Step 3a accepts the HOLDING org's programme application, and the
+ * accept atom refuses any org outside `aceControlledOrgs(env)`. Pure.
+ * (ace#3175: on a runner whose `.env` left the org keys unset, the tenancy
+ * supplied ace-pm-org / ace-nm-org while the controlled set was only the
+ * legacy default, so Phase 4 halted after creating a program.)
+ */
+export function phase4AcceptAuthority(
+  orgs: ConnectOrgs,
+  env: Record<string, string | undefined>,
+): Phase4AcceptAuthority {
+  const holding = orgs.nm_org ?? orgs.pm_org;
+  const controlled = aceControlledOrgs(env);
+  if (controlled.includes(holding)) return { ok: true, holding_org: holding, controlled_orgs: controlled };
+  const wanted = [...new Set([orgs.pm_org, holding])].join(',');
+  return {
+    ok: false,
+    holding_org: holding,
+    controlled_orgs: controlled,
+    remediation:
+      `Phase 4 must accept ${holding}'s programme application, but ACE may only act as orgs named in the installed .env ` +
+      `(controlled: ${controlled.join(', ') || 'none'}). If ${holding} is ACE's own org, add ${CONTROLLED_ORGS_ENV}=${wanted} ` +
+      '(or set ACE_CONNECT_PM_ORG / ACE_CONNECT_NM_ORG) to the local-only block of the installed .env, then fully restart ' +
+      'Claude Code (MCP servers read .env at spawn). Never widen this from the tenancy — a tenancy can name a partner org (ace#2954).',
+  };
 }
 
 const SLUG = /^[A-Za-z0-9][A-Za-z0-9_-]*$/;
@@ -355,6 +406,8 @@ export function resolveRunWorkspace(input: {
     } else if (input.responseError) {
       warnings.push(`ace-web tenancy not read (${input.responseError.message}); default workspace runs from .env`);
     }
+    const authority = phase4AcceptAuthority(orgs, env);
+    if (!authority.ok) warnings.push(`phase4_accept_authority: ${authority.remediation}`);
     return {
       workspace,
       opp,
@@ -365,6 +418,7 @@ export function resolveRunWorkspace(input: {
       connect_orgs: orgs,
       ocs: { team: configuredOcs!, source: 'configured', note: 'the configured OCS team (OCS_TEAM_SLUG)' },
       hq_api_key: { kind: 'instance', ref: '${ACE_HQ_API_KEY}' },
+      phase4_accept_authority: authority,
       warnings,
     };
   }
@@ -514,6 +568,17 @@ export function renderRunWorkspaceYaml(r: RunWorkspace | RunWorkspaceError): str
     r.hq_api_key.kind === 'instance'
       ? '  hq_api_key: "${ACE_HQ_API_KEY}"'
       : `  hq_api_key: "hq-key:${hqApiKeyName(r.hq_domain, '<run-id>')}"   # Phase 4 mints it: commcare_create_api_key(domain: ${r.hq_domain}, name: ${hqApiKeyName(r.hq_domain, '<run-id>')})`,
+    ...(r.phase4_accept_authority
+      ? [
+          '  phase4_accept_authority:   # ace#3175 — ok: false halts /ace:run at start while Phase 4 is still to run',
+          `    ok: ${r.phase4_accept_authority.ok}`,
+          `    holding_org: ${r.phase4_accept_authority.holding_org}`,
+          `    controlled_orgs: [${r.phase4_accept_authority.controlled_orgs.join(', ')}]`,
+          ...(r.phase4_accept_authority.remediation
+            ? [`    remediation: ${JSON.stringify(r.phase4_accept_authority.remediation)}`]
+            : []),
+        ]
+      : []),
     `  preflight_reads:${reads.length ? '' : ' []'}`,
     ...reads.map((x) => `    - ${x}`),
     `  warnings:${r.warnings.length ? '' : ' []'}`,
