@@ -90,104 +90,32 @@ model that replaced the multi-LLO roster in `connect-setup/invites.md`.
      the awarded amount and award context to mention in the onboarding
      email)
 
-2. **Send the Connect system invite** for the awarded org via
-   `connect_send_llo_invite` (ace-connect MCP, 0.10.47+). The atom hits
-   `POST /api/programs/<program_id>/applications/` and creates a
-   `ProgramApplication` row in `INVITED` status; Connect emails the LLO
-   workspace admins via the `send_program_invite_email` task. Args:
-   - `organization_slug`: PM-side org running the program — the org in
-     the program's recorded URL (`opp.yaml.connect.program.url`,
-     `/a/<org>/program/<id>/`), which for a program this instance created is
-     the configured PM org (`connect_orgs.pm_org` from preflight). Never
-     type a slug. (`connect_orgs.nm_org`, ACE's own network-manager org, is
-     not consumed here until the follow-up PM→NM flow change.)
-   - `program_id`: program UUID (from `connect-setup/program.md`)
-   - `organization`: `selected_llo.org_slug` from the current run's
-     `run_state.yaml`.
+2. **Stand up the LLO's delivery opportunity with `connect-partner-opp-create`.** That skill
+   owns the whole round trip: the program invite, the PM accept, fresh app copies, the
+   opportunity held by the LLO, its payment units and flags, then a read-back. Pass:
+   - `program_id` and `program_org`: the program UUID (from `connect-program-setup.md`) and the
+     PM-side org in the program's recorded URL (`connect_orgs.pm_org` from preflight). Never
+     type a slug.
+   - `partner_org_slug`: `selected_llo.org_slug`.
+   - `source_apps`: this run's released apps (`phases.commcare-setup.products.apps`).
+   - `opportunity` and `payment_units`: the PDD's dates, with the rate and budget the **work
+     order** settled, in the program's currency.
+   - the approval this phase recorded (a dispatched copy cannot ask the human).
 
-   Capture the returned `program_application_id` and write it back via
-   `update_yaml_file` (`merge: 'deep'`) into the current run's
-   `phases.solicitation-management.products.selected_llo.program_application_id`
-   for the auto-accept step (2a). `deep` merges just that one field
-   while preserving every sibling at every depth (the rest of
-   `selected_llo`, `products.solicitation`, and the phase's
-   `status`/`steps`) — so there's no need to re-send the full
-   `products.selected_llo` payload, and no risk of the `two-level`
-   whole-phase-block clobber (#572/#587). Single org, single call — no
-   roster iteration.
+   Three things it does that this skill relies on:
+   - **It captures `program_application_id` from the invite response**, the only place the UUID
+     appears. Write it back into `selected_llo` straight away (`update_yaml_file`,
+     `merge: 'deep'`), before anything else can fail.
+   - **It never accepts a real partner still at `INVITED`.** When it stops there, tell the
+     partner to accept the invitation in Connect, and retry later (ace#2954).
+   - **It halts rather than clamping** a `start_date` outside the program window.
 
-   **2a. PM accept — when the atom's gate allows it.** Connect's flow is
-   PM invites (`INVITED`) → the ORG accepts the invitation itself
-   (`APPLIED`) → the PM accepts the application (`ACCEPTED`).
-   `connect_accept_program_application` performs that last, PM step and
-   is gated (ace#2954, operator rule 2026-10-16). It is allowed when:
-   - the target org is ACE-controlled (an internal-testing fixture — ACE
-     has no "apply" step, so it is accepted straight from `INVITED`); or
-   - a real partner has already accepted their invitation in Connect, so
-     their row on the PM programme page reads `APPLIED`
-     (`connect_list_invites` shows it).
+   Phase 4 deliberately did NOT create this opportunity. Its opportunity is ACE's build/QA
+   vehicle, created before any LLO was invited. **Two opportunities is the correct model**, not
+   a workaround. It falls out of the ace#573 `DeliverUnit.payment_unit` FK constraint, which is
+   why `connect-partner-opp-create` copies fresh apps.
 
-   It refuses a real partner still at `INVITED`
-   (`PartnerHasNotAppliedError`). That is the tekzal/20261013-2314
-   incident: accepting then would enrol the partner without their consent,
-   and it cannot be undone. When this refusal comes back, tell the partner
-   to accept the invitation in Connect, and retry later. Call it as:
-   ```
-   connect_accept_program_application({
-     organization_slug: <PM-side org>,
-     program_id: <program UUID>,
-     application_id: <program_application_id from step 2>,
-   })
-   ```
-   This is required before `connect_create_opportunity` will accept the
-   org as the managed-opportunity owner. For a real LLO, the partner's
-   accepting the invite only takes it to `APPLIED`. The PM accept is still
-   needed after that, and ACE can now do it through this step.
-
-   **2b. Create the LLO's delivery opportunity — ONLY once the
-   application is `ACCEPTED`.** This is the step that completes the
-   network-manager / program-manager round-trip: PM creates the program
-   → invites the NM → **NM accepts** → PM creates the NM's opportunity →
-   confirms it to them.
-
-   Phase 4 deliberately did NOT create this one. Its opportunity is
-   ACE's self-managed build/QA vehicle, held by the PM org, because
-   Phase 4 runs before any LLO has been invited (see
-   `connect-opp-setup` § *This skill creates ACE's BUILD/QA
-   opportunity, never the LLO's*). **Two opportunities is the correct
-   model**, not a workaround — it falls out of the ace#573
-   `DeliverUnit.payment_unit` FK constraint.
-
-   1. **Copy, build and release fresh apps first.** The LLO's opp needs
-      its own `cc_app_id`s: a DeliverUnit backs exactly one PaymentUnit
-      ever, so it cannot reuse the build/QA opp's apps. Use
-      `commcare_linked_app_copy` with **the same domain and
-      `linked: false`** — HQ's generic Copy Application — then
-      `commcare_make_build` + `commcare_release_build`. A copy
-      preserves `acquire`/`grid`, so it dodges ace#1643, and it
-      destroys nothing. Two traps: the `name` must be UNIQUE (id
-      recovery is name-based), and **a 30s timeout on the recovery
-      re-list does NOT mean the POST failed** — re-list before retrying
-      or you create a duplicate.
-   2. `connect_create_opportunity` with `target_organization_slug`
-      = `selected_llo.org_slug`, the fresh app ids, and the PDD's
-      dates/budget. **Treat the rejection *"Organization must have an
-      accepted application for this program"* as the acceptance
-      check** — it is Connect's own verdict. `connect_list_invites` now
-      reads the PM page's real rows (since #3017), so check it first. If a
-      row reads `APPLIED`, run 2a before the create. If it reads
-      `INVITED`, the partner has not accepted yet: say so and stop. Never
-      accept on their behalf at `INVITED`; the 2a gate refuses it anyway.
-   3. **HALT and ask rather than silently clamping** if the PDD's
-      `start_date` would fall outside the program's window — no
-      opportunity may begin before its program, and quietly moving a
-      contractual date is not this skill's call.
-   4. Create the payment unit at the rate the **work order** settled,
-      not the PDD's draft band, and in the program's currency. Set all
-      Layer A criteria the Evidence Model names, not just the field
-      rule.
-   5. Record `opportunity_id` / `opportunity_url` into `selected_llo`
-      (step 7).
+   Record its returned `opportunity_id` / `opportunity_url` into `selected_llo` (step 7).
 
 3. **Read the PDD's `archetype:` field.** Email content — framing, "getting
    started" steps, timeline language, and which pieces of training material
@@ -227,7 +155,7 @@ model that replaced the multi-LLO roster in `connect-setup/invites.md`.
        (`training-onboarding-email`, `training-llo-guide`) carry the verbatim
        placeholder `[PLACEHOLDER — your organisation's Connect opportunity link, sent when your opportunity is set up]`
        because the partner's opportunity did not exist yet. Replace every
-       occurrence with the `opportunity_url` step 2b created. Never link the
+       occurrence with the `opportunity_url` step 2 created. Never link the
        Phase 4 opportunity (`phases.connect-setup.products.connect.opportunity.url`) —
        it is held by ACE's own Connect org and the LLO cannot open it (ace#3000).
 
@@ -282,7 +210,7 @@ model that replaced the multi-LLO roster in `connect-setup/invites.md`.
 
    | Field | Source |
    |---|---|
-   | `program_application_id` | the step-2 invite POST (already written there) |
+   | `program_application_id` | the step-2 invite POST, via `connect-partner-opp-create` (already written there) |
    | `opportunity_id` / `opportunity_url` | the LLO's own delivery opportunity, once it exists |
    | `email_thread_id` | the Gmail thread the onboarding exchange runs on |
    | `email_message_ids[]` | every message sent on it, appended in order |
@@ -396,11 +324,7 @@ criteria explicitly so the recipient knows what finishes Stage 1.
 
 ## MCP Tools Used
 - Google Drive: `drive_read_file`, `drive_create_file`, `drive_list_folder`
-- Connect (`ace-connect` MCP, 0.10.47+):
-  - `connect_send_llo_invite` — REST `POST /api/programs/<id>/applications/`
-  - `connect_accept_program_application` — REST `POST .../accept/`
-    (gated: ACE-controlled org, or a partner whose row reads `APPLIED`)
-  - `connect_list_invites` — verify status / detect already-invited (HTML)
+- Connect: through `connect-partner-opp-create` (invite, accept, app copies, opportunity, payment units); see its § MCP Tools Used
 - Email: `email-communicator` skill (sends from `ace@dimagi-ai.com`)
 
 ## Mode Behavior
@@ -431,3 +355,4 @@ binding on this skill's output.
 | 2026-05-04 | Read awardee from `opp.yaml.selected_llo` instead of iterating `connect-setup/invites.md` roster. Phase 9 entry guard halts with an actionable message if `selected_llo.org_slug` is null (Phase 8 `solicitation-review` must run first). Single-org onboarding replaces multi-LLO roster model. (0.12.0) | ACE team |
 | 2026-09-17 | **Step 5 sends with `--no-run-page`, and says why.** `bin/ace-email` refuses a body that links Drive/Docs and no ace-web page (ace#2378); step 4's body is nothing but the Phase 6 training pack as Drive links, so the first live Phase 9 send exited 3 before canopy was ever called — reproduced on a realistic body 2026-09-17. The rail's convention is scoped to a **reviewer-facing** reference to a run, and the awarded LLO is an implementing partner, not a reviewer, so the override is the fix rather than an ace-web link in an onboarding pack. `bin/ace-email`'s own refusal text and `email-communicator` said the override was for threads with NO run, which would have steered a Phase 9 agent away from the flag it needs; both now name the partner-deliverable case. *Enforced:* `test/hooks/email-shims.test.ts` extracts this step's reason and proves a Drive-only body carrying it reaches canopy, plus `test/docs/ace-web-primary-surface.test.ts`. ace#2380. | ACE team |
 | 2026-09-16 | **Two changes, one operator decision each (2026-09-16).** (1) **A solicitation is one way to select an LLO, not the only one.** `selected_llo.source` now distinguishes `solicitation` (award path, `solicitation-review`) from `operator` (the LLO named up front in the opp's `inputs/`, legal with **Phase 8 `skipped`**, and explicitly forbidden from carrying a fabricated `solicitation` block). The entry guard's FATAL message branches on whether Phase 8 ran, because the remedies differ. `selected_llo` also gained the handover record — `program_application_id` (UNRECOVERABLE if not captured at POST time: `connect_list_invites` is a blind read returning `[]` even for an accepted invite), the LLO's `opportunity_id`/`url`, and the Gmail thread + message ids — which previously had no typed home and landed in an invented top-level key nothing read. It renders as § LLO handover in the run README. (2) **New step 2b creates the LLO's delivery opportunity here**, after acceptance, on freshly-copied apps (`commcare_linked_app_copy`, same domain + `linked: false`) — Phase 4 cannot, since it runs before any invite exists. The create's own rejection IS the acceptance check; no readable application-status surface exists. Halts rather than clamping when `start_date` falls outside the program window. | ACE team |
+| 2026-10-18 | Steps 2/2a/2b (invite, PM accept, fresh app copies, the LLO's opportunity and payment units) moved into the standalone `connect-partner-opp-create`, so a partner opportunity can be added to any existing program with explicit ids; this skill now calls it (#3148 batch 4) | ACE |
