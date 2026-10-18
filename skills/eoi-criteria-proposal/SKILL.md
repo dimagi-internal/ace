@@ -59,7 +59,9 @@ The labs criterion shape:
 - `weight`: a percentage. Weights across the set sum to exactly 100.
 - `scoring_guide`: anchors for a 1–10 score, at least at 1–3, 4–6, 7–8 and 9–10, each
   phrased as what the answer contains ("names districts and the actors it works with
-  there"), so two reviewers reading the same answer land within a point or two.
+  there"), so two reviewers reading the same answer land within a point or two. Each
+  score's reason is written as a claim that quotes the passage it rests on, so an anchor
+  a reader can point to in the text works better than one that needs a judgement call.
 - `rationale`: why this criterion separates THIS pool, citing what varied (counts, the
   range, a representative paraphrase) and what in the call makes it matter.
 
@@ -208,4 +210,5 @@ The proposal is prose a person reads. Follow `skills/_terminology.md`: the platf
 
 | Date | Change | Author |
 |------|--------|--------|
+| 2026-10-17 | Anchors written so a score's reason can quote the passage it rests on (AI reviews now cite evidence) | ACE team |
 | 2026-10-17 | Initial version: criteria written after submissions, grounded in the pool's spread, saved on the round in labs (`marketplace_round_criteria_set`) after approval | ACE team |
