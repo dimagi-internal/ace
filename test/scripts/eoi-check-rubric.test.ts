@@ -37,10 +37,10 @@ const basis = [
   'Outcome rules:',
   'Score: weighted score = sum(weight x criterion score) / 10, from 10 to 100.',
   'Slots: 2: site A and site B, one partner each.',
-  'Pick: the highest-scoring credible applicant per slot.',
+  'Recommended: the highest-scoring credible applicant per slot.',
   'Backup: the next two per slot, in score order.',
-  'Waitlist: credible but not a pick or backup.',
-  'Pass: outside every slot, or 1-2 on a criterion the call needs.',
+  'Keep in view: credible but not recommended or a backup.',
+  'Not recommended: outside every slot, or 1-2 on a criterion the call needs.',
   'Overrides: slot coverage beats score order; a pick may be conditional on rescoping to one site.',
 ].join('\n');
 
@@ -139,6 +139,17 @@ describe('eoi-criteria-proposal check_rubric.py', () => {
     const partial = run({ ...goodRubric(), basis: basis.replace(/^Overrides: .*$/m, '').replace(/^Slots: .*$/m, '') });
     expect(partial.stdout).toMatch(/outcome rules have no 'Slots:' line/);
     expect(partial.stdout).toMatch(/outcome rules have no 'Overrides:' line/);
+    const noKeep = run({ ...goodRubric(), basis: basis.replace(/^Keep in view: .*$/m, '') });
+    expect(noKeep.stdout).toMatch(/outcome rules have no 'Keep in view:' line/);
+  });
+
+  it('accepts the stored outcome keys as the outcome lines of an older rubric', () => {
+    const old = basis
+      .replace('Recommended:', 'Pick:')
+      .replace('Keep in view:', 'Waitlist:')
+      .replace('Not recommended:', 'Pass:');
+    const r = run({ ...goodRubric(), basis: old });
+    expect(r.stdout.trim()).toBe('OK: rubric is explicit');
   });
 
   it('exits 2 on a file it cannot read', () => {

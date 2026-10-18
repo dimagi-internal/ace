@@ -109,6 +109,7 @@ login-only. See CLAUDE.md § Phases on why "public" is a misnomer.
 |---|---|
 | `marketplace_rounds_list` / `marketplace_round_responses` / `marketplace_orgs_get` | `eoi-criteria-proposal`, `eoi-round-review`, `marketplace-outreach-doc`, `llo-directory-add` |
 | `marketplace_round_criteria_set` | `eoi-criteria-proposal` |
+| `marketplace_round_summary_set` | `eoi-round-review` (links the internal report on the round) |
 
 ### Funds
 

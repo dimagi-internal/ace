@@ -127,6 +127,44 @@ describe('eoi-round-review check_claims.py', () => {
     expect(r.stdout).toMatch(/r1: no outcome claim/);
   });
 
+  describe('flags', () => {
+    const flagged = (flags: unknown[], text = 'Long but thin: every answer restates the question.') => {
+      const rev = goodReview() as any;
+      rev.flags = flags;
+      rev.claims.push({ id: 'c6', about: 'flag', basis: 'synthesized', text, cites: [{ question: 'q1', whole: true }] });
+      return rev;
+    };
+
+    it('accepts a defined flag explained by a flag claim naming it by label or key', () => {
+      expect(run([flagged(['padded'])]).stdout.trim()).toBe('OK: every claim checks');
+      expect(run([flagged(['padded'], 'padded: every answer restates the question.')]).status).toBe(0);
+    });
+
+    it('refuses a flag outside the defined list, including the old free-text names', () => {
+      for (const old of ['generic-or-ai-drafted', 'inflated-numbers', 'ai-use', 'Padded ']) {
+        const r = run([flagged(['padded', old])]);
+        expect(r.status).toBe(1);
+        expect(r.stdout).toContain(`flag '${old}' is not a defined flag (labs refuses it)`);
+      }
+    });
+
+    it('requires a flag claim for each flag, and each flag claim to name a flag on the review', () => {
+      const r = run([flagged(['padded', 'cost'])]);
+      expect(r.status).toBe(1);
+      expect(r.stdout).toMatch(/r1: flag 'cost' has no flag claim saying what raised it/);
+
+      const stray = run([flagged(['padded'], 'Thin capacity: one person does everything.')]);
+      expect(stray.stdout).toMatch(/r1 c6: explains flag 'capacity', which is not in this review's flags/);
+
+      const unnamed = run([flagged(['padded'], 'Answers read as generic text.')]);
+      expect(unnamed.stdout).toMatch(/r1 c6: a flag claim's text must start with the flag it explains/);
+    });
+
+    it('refuses a flag listed twice', () => {
+      expect(run([flagged(['padded', 'padded'])]).stdout).toMatch(/flag 'padded' is listed twice/);
+    });
+  });
+
   it('requires every response in the batch to be reviewed', () => {
     const b = [...batch, { ...batch[0], response_id: 'r2' }];
     const r = run([goodReview()], criteria, b);
