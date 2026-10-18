@@ -69,6 +69,13 @@ interface Args {
    * the PDD body, so it cannot be read from the artifact.
    */
   pdd_description?: string;
+  /**
+   * Optional: path to the opp's `inputs/confidentiality.yaml`, whose text
+   * becomes ctx.confidentialityYaml. Read by checks over LLO-facing artifacts
+   * (`pdd-to-work-order-qa`'s `no_deny_listed_party`, ace#3190). Omit when the
+   * opp has no such file.
+   */
+  confidentiality?: string;
 }
 
 function parseArgs(argv: string[]): Args {
@@ -106,6 +113,9 @@ function parseArgs(argv: string[]): Args {
       case '--pdd':
         args.pdd = argv[++i];
         break;
+      case '--confidentiality':
+        args.confidentiality = argv[++i];
+        break;
       case '-h':
       case '--help':
         printUsage();
@@ -128,7 +138,7 @@ function parseArgs(argv: string[]): Args {
 
 function printUsage(): void {
   process.stderr.write(
-    'usage: qa-run.ts --skill <skill> --artifact <path> --target <id> --capture-path <relative> [--include-passed] [--decisions <path>] [--archetype <value>] [--pdd <path>] [--artifact-mime-type <mime>] [--pdd-description <text>]\n',
+    'usage: qa-run.ts --skill <skill> --artifact <path> --target <id> --capture-path <relative> [--include-passed] [--decisions <path>] [--archetype <value>] [--pdd <path>] [--artifact-mime-type <mime>] [--pdd-description <text>] [--confidentiality <path>]\n',
   );
 }
 
@@ -186,6 +196,16 @@ async function main(): Promise<void> {
   }
   if (args.pdd_description !== undefined) {
     context.pddDescription = args.pdd_description;
+  }
+  if (args.confidentiality !== undefined) {
+    try {
+      context.confidentialityYaml = readFileSync(args.confidentiality, 'utf-8');
+    } catch (err) {
+      process.stderr.write(
+        `failed to read confidentiality at '${args.confidentiality}': ${(err as Error).message}\n`,
+      );
+      process.exit(1);
+    }
   }
   const hasContext = Object.keys(context).length > 0;
 

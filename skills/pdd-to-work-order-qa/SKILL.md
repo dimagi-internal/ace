@@ -8,7 +8,7 @@ disable-model-invocation: false
 
 # PDD-to-Work-Order QA
 
-Structural correctness checks on the work-order artifact. Binary verdict: pass / fail / incomplete. 17 static checks, all runnable in <100ms via the importable `checks.ts` module — no LLM.
+Structural correctness checks on the work-order artifact. Binary verdict: pass / fail / incomplete. 18 static checks, all runnable in <100ms via the importable `checks.ts` module — no LLM.
 
 See `skills/_qa-template.md` for the shared QA contract (verdict YAML format, auto-fix protocol, static-vs-LLM rules).
 
@@ -21,6 +21,7 @@ Pipeline-only: checks a run's work order, which exists only in a run.
 | Phase 1 producer | `1-design/pdd-to-work-order.gdoc` (latest) | the work order under structural check |
 | Phase 1 producer | `decisions.yaml` | required `wo-*` decision-row presence check |
 | Phase 1 producer | `1-design/idea-to-pdd` (the PDD body) | the `entity_id_grain` the payment-unit check compares the quoted rate against |
+| Opp inputs | `ACE/<opp>/inputs/confidentiality.yaml` (`llo_facing_deny_list:`), when it exists | the parties `no_deny_listed_party` refuses in the LLO-facing work order |
 
 ## Products
 
@@ -44,6 +45,7 @@ Pipeline-only: checks a run's work order, which exists only in a run.
 | 14 | `payment_unit_matches_entity_grain` | static | The rate unit quoted in § 6 Payment Terms is not finer than the `entity_id` grain that actually resolves payable units. The grain comes from `ctx.entityIdGrain`, else the PDD's `\| entity_id_grain \|` row via `--pdd`, else the work order's own payable-unit declaration; skips silently when none is available. Shares `lib/payment-grain.ts` with the PDD-side counterpart `idea-to-pdd-qa § payment_unit_matches_entity_grain` (ace#1420), so the two documents cannot disagree about what a payable unit is (ace#1946). | re-derive § 6 against the grain — quote the rate per the payable unit the opportunity actually resolves, and restate the caps and the not-to-exceed total in those units |
 | 15 | `commercial_terms_match_solicitation` | static | The work order's rate framing and device terms agree with the LIVE (not superseded) `sol-*` / `solicitation-*` decision rows. Fails, quoting the work-order sentence and naming the row, when e.g. the work order costs devices separately / "in addition to the not-to-exceed" while the solicitation recorded an all-in rate with devices inside it (`spark-facilitator/20261001-2208`). Not applicable (pass) when no solicitation row fixes rate framing or devices yet — the normal Phase 1 order — so it bites on any later re-run (re-render, clone, release readiness). Logic: `lib/commercial-terms-consistency.ts`. | re-render the work order so § 2 and § 6 follow the solicitation row (`pdd-to-work-order § Commercial terms follow the solicitation`); never defer the reconciliation to contract execution |
 | 16 | `annexures_exclude_internal_documents` | static | The § Annexures section does not annex a Dimagi-internal document — the PDD, an internal design or technical document, `run_state.yaml`, `decisions.yaml`, or a QA/eval verdict — by live Drive link **or** by title. Scoped to the Annexures section only: body prose citing the design is normal contract language, whereas the annexure list is a promise to hand the document over. An absent heading is not this check's failure (that is check 1). `N/A` passes. Until 2026-10-14 the template hardcoded an `Annexure A: Program Design Document` line carrying a `pdd_link` token, so EVERY work order ACE rendered carried a live link to its own internal PDD (ace#2906, caught on `tekzal/20261013-2314` after one had been mailed to a real partner). | remove the internal entries from § Annexures but KEEP the heading; annex only what the partner is a party to or must act on, and render `N/A` when nothing qualifies |
+| 17 | `no_deny_listed_party` | static | The work order names no party on the opp's `inputs/confidentiality.yaml` `llo_facing_deny_list`. The work order is LLO-facing; the PDD may legitimately name a funder the partner must never see, so a render that lifts a PDD paragraph passed every other row (ace#3190, `connect-fi/20261018-1440`, deny list `[GiveDirectly, Give Directly, GD]`). Matching is whole-word and case-insensitive through `lib/llo-facing-deny-list.ts`, which wraps the Phase 8 parser and matcher in `lib/synthetic-responses.ts` (`normalizeDenyList`, `findDenyListHits`): `GD` fires on "GD's pilot", never inside "budget" or "GDP", and `Give Directly` also catches `GiveDirectly`. No `confidentiality.yaml` → a no-op pass that says so. | rewrite each sentence naming the party so it is not identified ("the funder", or drop the clause), re-render, re-run; never edit the deny list to pass |
 
 The static check functions live at `skills/pdd-to-work-order-qa/checks.ts` as importable TS. Every check returns a `QACheckResult` (`{pass, detail?, auto_fix_hint?}`) per `lib/qa-types.ts`.
 
@@ -78,17 +80,21 @@ The static check functions live at `skills/pdd-to-work-order-qa/checks.ts` as im
 
 3. **Read the PDD body** (`run_state.yaml.phases.idea-to-design.products.pdd.file_id`) via `drive_read_file(..., exportAs: 'text/markdown')`. Two things come out of it: the `archetype:` frontmatter line, and the `| entity_id_grain | ... |` row in § Program Parameters that `payment_unit_matches_entity_grain` compares the quoted rate against. Save the body to a temp path and pass it as `--pdd` in step 5.
 
+3a. **Read the opp's deny list, if it has one.** Look up `inputs/confidentiality.yaml` under `ACE/<opp>/inputs/` (`resolve_opp_path` → `drive_list_folder`). If it exists, `drive_read_file` it with the default `text/plain` export (it is usually a Google Doc; never `text/markdown`, which escapes YAML) and save the text to `$TMP_CONF` for `--confidentiality` in step 5. If it does not exist, omit the flag: `no_deny_listed_party` then passes as not applicable. Do not omit the flag when the file exists — the check cannot tell a forgotten flag from an opp with nothing to hide.
+
 4. **Save artifact bodies to local temp paths** so the CLI runner can invoke `checks.ts`:
    ```bash
-   TMP_WO=$(mktemp); TMP_DEC=$(mktemp); TMP_PDD=$(mktemp)
-   # write drive contents to $TMP_WO, $TMP_DEC and $TMP_PDD
+   TMP_WO=$(mktemp); TMP_DEC=$(mktemp); TMP_PDD=$(mktemp); TMP_CONF=$(mktemp)
+   # write drive contents to $TMP_WO, $TMP_DEC, $TMP_PDD (and $TMP_CONF when confidentiality.yaml exists)
    ```
 
 5. **Invoke the check runner** that imports `checks.ts § CHECKS` and runs each against `{workOrderText, decisionsYamlText, archetype}`. Output: a `QACheckResult[]` aligned with the `CHECKS` array.
    ```bash
    ACE_ROOT="${CLAUDE_PLUGIN_ROOT:-$(python3 -c "import json,os; d=json.load(open(os.path.expanduser('~/.claude/plugins/installed_plugins.json'))); print(d['plugins']['ace@ace'][0]['installPath'])")}"
-   node "$ACE_ROOT/node_modules/tsx/dist/cli.mjs" "$ACE_ROOT/scripts/qa-run.ts" --skill pdd-to-work-order-qa --artifact "$TMP_WO" --target "<opp-name>/<run-id>" --capture-path "1-design/pdd-to-work-order.gdoc" --decisions "$TMP_DEC" --archetype "<archetype from step 3>" --pdd "$TMP_PDD" --include-passed
+   node "$ACE_ROOT/node_modules/tsx/dist/cli.mjs" "$ACE_ROOT/scripts/qa-run.ts" --skill pdd-to-work-order-qa --artifact "$TMP_WO" --target "<opp-name>/<run-id>" --capture-path "1-design/pdd-to-work-order.gdoc" --decisions "$TMP_DEC" --archetype "<archetype from step 3>" --pdd "$TMP_PDD" --include-passed --confidentiality "$TMP_CONF"
    ```
+
+   Drop `--confidentiality "$TMP_CONF"` only when step 3a found no `confidentiality.yaml`.
 
    **All five of `--target`, `--capture-path`, `--decisions`, `--archetype` and
    `--pdd` matter here.** The first two are hard-required — omit either and
