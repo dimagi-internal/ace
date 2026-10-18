@@ -2,7 +2,7 @@
 
 This file is the contract for authoring SKILL.md files in `skills/`. Read it before adding a new skill or making non-trivial edits to an existing one. Existing skills are the source of truth — if this contract drifts from them, fix the contract or fix the skills, but they should agree.
 
-ACE skills are prompt-based capability definitions. Each one handles one step of the ACE process (see the repo-root `CLAUDE.md` for the phase pipeline and `agents/orchestrator-reference.md` for state schemas). Skills are stateless — they read from and write to the opportunity's Google Drive folder (`ACE/<opp-name>/`) and call MCP tools for external system access. The agents in `agents/` are what dispatch to skills.
+ACE skills are prompt-based capability definitions. Each one is a capability: an action on a platform (Nova, CommCare HQ, Connect, OCS, Labs, Drive), a producer of an artifact, or a judgment over one. ACE uses them in two ways. It builds new opportunities through the `/ace:run` phase pipeline (see the repo-root `CLAUDE.md` and `agents/orchestrator-reference.md` for state schemas). It also maintains and changes live programs, including ones ACE never built (`skills/partner-on-connect-program`). Write a skill so it serves both: it should do its action on the object it is given, and the pipeline is one caller among several (§ Mechanics vs pipeline). Skills are stateless. In a run they read from and write to the opportunity's Google Drive folder (`ACE/<opp-name>/`), and they reach external systems only through MCP tools. The agents in `agents/`, the turn, and program-project work all dispatch to skills.
 
 ## File location and naming
 
@@ -225,20 +225,36 @@ The h1 is the human-readable display name (e.g., "Idea to PDD"), not the kebab-c
 
 ### 2. `## Inputs`
 
-A bullet list (or table) of every artifact the skill reads. Each entry
-gives the source phase, the path, and what the input is used for.
-Inputs are the explicit contract between this skill and its upstream
-producers — keeping them in one section means a phase agent can
-verify the contract without reading the full procedure.
+A table of every input the skill needs, written as **parameters**: object
+ids, HQ domain, org slug, files. Each row also says how the value is
+found. The `Resolver` column says where the value comes from when the
+caller doesn't pass it: a run artifact or a `run_state.yaml` path when
+the skill runs inside `/ace:run`, a program context doc when it runs on
+a live program, or `explicit arg` when the caller must always supply it.
+Inputs are the contract between the skill and whoever calls it. Keeping
+them in one section means a phase agent, a turn, or a person working on
+a live program can satisfy the contract without reading the full
+procedure.
 
 ```markdown
 ## Inputs
 
-| Source | Artifact | Used for |
+| Parameter | Used for | Resolver |
 |---|---|---|
-| Phase 1 | `1-design/idea-to-pdd.md` | archetype, framing, FLW count |
-| Phase 3 | `3-commcare/pdd-to-learn-app_summary.md` | nova_app_id, module list |
+| `hq_domain` | target project space | explicit arg; default: run_state `phases.commcare-setup.products.apps.*.domain` |
+| `learn_app_id` | the app to release | explicit arg; default: `3-commcare/app-deploy_summary.md` |
+| `archetype` | branch selection | default: `1-design/idea-to-pdd.md` frontmatter; else program context doc |
 ```
+
+If the skill can only run inside the pipeline, which is true of most
+build-artifact `-qa` / `-eval` skills, say so in one line inside the
+section, with the reason: `Pipeline-only: grades the run's Phase 3
+summary, which exists only in a run.` Say it explicitly; don't leave
+the reader to infer it. *Enforced:* `test/skills/inputs-parameterized.test.ts`
+fails a skill whose `## Inputs` cites run artifacts (`run_state`,
+`runs/`, `<N>-<phase>/` paths, `Phase N`) with no parameter or resolver
+marker and no `Pipeline-only:` line. The skills that predated the rule
+are in a grandfathered ledger. Shrink it; don't grow it.
 
 ### 3. `## Products`
 
@@ -316,6 +332,49 @@ A markdown table of dated changes. Append at the bottom on every non-trivial edi
 ```
 
 Trivial typo fixes don't need a change log entry; behavior changes do. When in doubt, append.
+
+## Mechanics vs pipeline
+
+ACE builds programs and keeps them running. The second job is mostly
+the same platform actions applied to objects that already exist:
+re-release an app that is already live, change a live opportunity's
+flags, refresh a bot's knowledge, read a solicitation's responses. A
+skill that hard-wires its ids to a run's files can't do the second job,
+even when the action itself is general. The 2026-10-18 audit found
+about 30 such skills, and the old `## Inputs` contract told authors to
+write them that way.
+
+The rules:
+
+1. **A skill that acts on an existing platform object must run without
+   `run_state.yaml` when it is given explicit ids.** Reading those ids
+   from a run is a resolver default, not a precondition. Halting
+   because "run_state has no `phases.X`" is correct only when the
+   caller passed no id either.
+2. **Writing back to `run_state.yaml` is an optional final step,** and
+   it runs only when a run is bound. On a live program, record the
+   result where that work is tracked: the program context doc's
+   Decisions, or the board task.
+3. **The description's "Needs X" must match `## Inputs`.** "Needs the
+   bot and the training docs" is a promise that the skill can be handed
+   a bot. If the only path to the bot is `5-ocs/ocs-agent-setup.md`,
+   either the description or the Inputs is wrong.
+4. **Don't gate on another skill's artifact when you can run the check
+   yourself.** "Halt unless `app-connect-coverage_*.md` says clean" ties
+   the skill to the run. "Run the coverage check against the app" does
+   not.
+5. **Reusable operations inside a big skill should be extractable.**
+   When a skill bundles several operations that also make sense alone,
+   keep each one a self-contained step that takes its object id, so a
+   later skill can call it or lift it out without rewriting it.
+   `connect-opp-setup` (create, verification flags, payment units,
+   passing-score repair) and `app-release-qa` (the re-release
+   invariants) are the current examples. Once a step is needed outside
+   its parent, extract it.
+
+Inherently pipeline-specific skills are fine. Grading a Phase 3 summary
+needs a Phase 3 summary. Declare them `Pipeline-only:` (§ `## Inputs`)
+so the call is visible and auditable.
 
 ## Body templates (`_*.md` reference docs)
 
@@ -411,6 +470,31 @@ present) or `## MCP Tools Used` (if neither).
 For skills whose ideal flow depends on APIs that don't exist yet, document the manual fallback. Place this **after** `## MCP Tools Used` and **before** `## Mode Behavior`. The workaround should be a numbered list of human-in-the-loop steps that produce the same external effect.
 
 Many existing skills have these blocks (everything blocked on CCC-301, Nova bot API, OCS MCP, etc.) — they're expected and not tech debt. They get removed once the underlying API ships.
+
+### `## Existing objects` (when the skill mutates shared or create-time-only platform state)
+
+Required for any skill whose atoms change state that other
+opportunities share, or that can't be changed after create. It tells
+someone running the skill on a live object what will happen to things
+they didn't ask to change. Cite the trap; don't restate the mechanism:
+
+- **Deliver units are shared** across opportunities wired to the same
+  released Deliver app (ace#573). A new opportunity on an existing
+  release cannot create payment units. Pair it with a new release.
+- **The Learn `passing_score` lives on the shared `CommCareApp` row**
+  (ace#1350). Changing it for one opportunity changes it for every
+  opportunity on that app, and a create against an existing row
+  discards the value you posted.
+- **`target_organization_slug` is create-time only** (ace#2919).
+  `connect_update_opportunity` has no org field, and nothing can repair
+  a wrong holding org after create.
+- **`app-deploy` updates an HQ app in place** (re-uploading a Nova app
+  keeps its HQ id). That is what makes a modify flow possible, and it
+  also means a re-upload goes straight to the live app's next build.
+
+Say which of these the skill can trigger, what it does about each one
+(refuse, warn, or pair with a fresh object), and which reads prove the
+result.
 
 ### `## Dry-Run Behavior` (when the skill has external side effects)
 
@@ -1005,7 +1089,7 @@ discovers its sites instead. It found 24 stale enumerations in 21 files on the d
 ## Where shared templates and prompts live
 
 - `templates/` — PDD templates, email templates, training collateral templates. Read by skills that need a starting structure to populate.
-- `playbook/integrations/` — integration specs (Connect, CommCare, OCS, Nova) that document what's available, what's needed, and what manual workaround applies. Skills read these to know what APIs they can call.
+- `playbook/integrations/` — per-platform references (Connect, CommCare HQ, OCS, Nova, Labs, mobile): how each surface behaves, its traps, and how to change a live object on it. Skills read these for the mechanics. Keep phase-specific procedure in the skill and platform facts in the playbook.
 - `test/fixtures/` — synthetic opportunity fixtures for regression-testing skills. Each fixture has a README documenting expected per-skill behavior.
 
 Don't put shared prompt fragments in `skills/<skill-name>/`. If a fragment is shared, it belongs at the project root level (e.g., a `templates/` or `prompts/` directory at the repo root). Inline what's specific to one skill.
@@ -1038,6 +1122,8 @@ Before committing a new SKILL.md, verify:
 - [ ] The skill declares NO gate-brief artifact anywhere (frontmatter, `## Products`, `## Modes`, process steps) — 0.13.116 removed that class; the orchestrator synthesizes the pause summary from the QA + eval verdict YAMLs
 - [ ] If the skill consumes the PDD's Evidence Model, an explicit early process step reads it and errors if missing
 - [ ] If the skill has external side effects, `## Dry-Run Behavior` is present
+- [ ] Can this run against an object ACE didn't build? If yes, `## Inputs` lists parameters with resolvers, and the skill runs with no `run_state.yaml` when given explicit ids (§ Mechanics vs pipeline). If not, `## Inputs` carries a `Pipeline-only:` line saying why
+- [ ] If the skill mutates shared or create-time-only platform state, `## Existing objects` is present
 - [ ] If the skill is blocked on un-built APIs, `## Current Workaround` is present (and gets removed when the API ships)
 - [ ] Initial change log entry exists with the date and author
 - [ ] If the skill is archetype-aware and a focus-group fixture exists, the `test/fixtures/ACE-Test-002/README.md` regression spec covers it
@@ -1049,3 +1135,4 @@ Before committing a new SKILL.md, verify:
 - [ ] If you changed the `description:` frontmatter or the Process, plan to re-run `/ace:docs`
 - [ ] If you changed archetype branching, dry-run the affected fixtures (`ACE-Test-001` for atomic-visit, `ACE-Test-002` for focus-group) and update fixture READMEs if behavior expectations changed
 - [ ] If you added a new MCP tool dependency, mark it as built or "NOT YET BUILT" with the ticket number
+- [ ] If you touched `## Inputs`, keep the skill runnable on an existing object with explicit ids, and if the skill is in the `inputs-parameterized` ledger and now complies, remove it from the ledger
