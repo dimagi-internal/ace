@@ -17,9 +17,10 @@ then review in labs, starting from those AI reviews and clicking a claim to see 
 passages highlighted in the response (see § What happens next in labs). Before anything
 is written to labs, a separate agent calibrates the scores and outcomes across the whole
 pool, because each scoring batch otherwise picks its own best. It also writes two reports:
-the internal shortlist a programme team acts on (who to go with, in which role, why, what
-to ask them first, who is on the bench), and a de-identified version for funders and
-partners. Across several rounds the internal one adds a short cross-round section.
+the internal shortlist a programme team acts on (who is recommended, in which role, why,
+what to ask them first, who is the backup), and a de-identified version for funders and
+partners. Across several rounds the internal one adds a short cross-round section. Every
+outcome and flag is a word from labs' defined list (§ Outcomes and flags).
 
 The criteria are the round's, not this skill's. EOI forms go out without a published
 evaluation framework, so the criteria are written after the submissions arrive, by
@@ -28,8 +29,8 @@ scores against a private rubric of its own: an AI review and a human review of t
 response must be scored on the same criteria to be comparable.
 
 The yardstick is the team's own hand-built shortlist for the 2026 ULAB scoping EOI ("EOI
-LLO recos" in the CGD Lead Research RFP doc): a bottom line, one table of picks, a short
-note per pick, a waitlist, a pass list with one reason each. Neal's R pipeline
+LLO recos" in the CGD Lead Research RFP doc): a bottom line, one table of the recommended,
+a short note on each, who to keep in view, and who is not recommended with one reason each. Neal's R pipeline
 (`dimagi-internal/connect-interviews-analysis`, `llm/eoi_*`) produces exhaustive reports
 with good quotes that are too long to act on. This skill keeps the quotes and drops the
 length.
@@ -55,14 +56,15 @@ record others will read: cite the organisation's answers, never a person.
 | connect-labs | `marketplace_round_responses(slug=…)` | every submission's answers (each `{question_id, question, answer}`; claims cite `question_id`), its `response_id` and matched org; `round.evaluation_criteria` and `round.rubric_version` |
 | connect-labs | `list_reviews(response_id=…)` | reviews already on each response (an earlier AI pass, human reviews built on it) |
 | connect-labs | `marketplace_orgs_get(slugs=…)` | each matched org's delivered and applied programmes, year established, team size |
-| Requester (optional) | the team's own picks, for comparison | the agreement table (step 11) |
+| Requester (optional) | the team's own shortlist, for comparison | the agreement table (step 11) |
 
 ## Products
 
 - **One AI review per response in labs**, written with `create_review(kind="ai", …)`:
   1–10 per criterion, `claims` (each criterion's reason, the strengths, the concerns, each
-  with the passages it rests on), questions to ask, flags, an outcome (`pick` / `backup` /
-  `waitlist` / `pass`) and provenance. Labs fills the per-criterion notes, strengths and
+  with the passages it rests on), questions to ask, flags from the defined list, an
+  outcome (key `pick` / `backup` / `waitlist` / `pass`, shown as Recommended / Backup /
+  Keep in view / Not recommended; § Outcomes and flags) and provenance. Labs fills the per-criterion notes, strengths and
   concerns from the claims, and computes the overall score from the criteria scores and
   the round's weights. Re-running replaces ACE's earlier AI review of that response.
 - `calibration.md`, written by the calibrating agent (step 8): the score distributions,
@@ -76,8 +78,9 @@ record others will read: cite the organisation's answers, never a person.
 - **The internal report**, a Google Doc published with `gdoc-writer` under
   `Projects/<project>/` (the project is the round's programme or the requester's project
   name), sharing off. Dimagi only. It has two tabs:
-  1. **Recommendation**, under ~2 pages: bottom line, picks table, a note per pick,
-     waitlist, pass list, before-launch conditions, and how it was scored.
+  1. **Recommendation**, under ~2 pages: bottom line, the Recommended table, a note on
+     each recommended applicant, Backup and Keep in view, Not recommended,
+     before-launch conditions, and how it was scored.
   2. **The pool and the review**: what the pool told us about the work, pool coverage and
      quality, how it was reviewed, the comparison with the team, next-form advice, the
      all-organisation table, and one ≤120-word entry per submission (outcome, role fit,
@@ -87,6 +90,10 @@ record others will read: cite the organisation's answers, never a person.
   https://labs.connect.dimagi.com/labs/marketplace/rounds/<slug>/, where reviewers verify,
   agree, edit or add their own reviews. The doc is a summary of the AI pass; labs holds the
   reviews.
+- **The round's summary link in labs**: once the internal report is published, step 13
+  links it on the round with `marketplace_round_summary_set(slug, url)`, so the round page
+  shows it to the round's owner org (Dimagi). The owner's approval to write the report
+  covers this link; no separate ask.
 - **The external report**, a de-identified Google Doc for funders and partners, published
   the same way with sharing off after the step 13 scan passes: no organisation or person
   names, no verbatim quotes, figures for the pool only, places only at the level of the
@@ -146,8 +153,9 @@ record others will read: cite the organisation's answers, never a person.
      text, so never pass subagents a cleaned-up, summarised or re-wrapped copy.
    - Group duplicate submissions (the same org name, or the same matched `org_slug`, more
      than once). Review the latest and note the duplicate. Never count one org twice. Each
-     duplicate still has its own `response_id`; write the AI review on the latest, with a
-     `flag` claim noting the earlier submission.
+     duplicate still has its own `response_id`; write the AI review on the latest, flagged
+     `templated` (the same response submitted twice), with a `flag` claim noting the
+     earlier submission.
 
 5. **Add what labs already knows about each organisation.**
    - For every matched `org_slug`, call `marketplace_orgs_get` (≤100 slugs per call).
@@ -185,8 +193,9 @@ record others will read: cite the organisation's answers, never a person.
      It mirrors labs' save-time check (lowercase, collapse runs of whitespace, ‘’ → ',
      “” → ", – and — → -, then a substring test) and also checks that every `question` is
      a real `question_id` of that response, claim ids are unique, every criterion has a
-     1–10 score and at least one `criterion:<id>` claim, the outcome is one of
-     pick/backup/waitlist/pass with an `outcome` claim, every web cite has a url, every
+     1–10 score and at least one `criterion:<id>` claim, the outcome is one of the four
+     outcome keys with an `outcome` claim, every flag is on the defined list (labs refuses
+     any other) with a `flag` claim that names it, every web cite has a url, every
      response in the batch was reviewed, and, when the round's guides are anchored, that
      every criterion claim names the anchor nearest its score. It prints each problem and exits 1, so a
      subagent fixes and re-runs; a quote is fixed by copying the words from the answer,
@@ -208,7 +217,9 @@ record others will read: cite the organisation's answers, never a person.
          scored, giving the reason for that score and naming the anchor it was read
          against (§ Claims and evidence: the text starts `Anchor <n>: ` or `Silent: `);
        - 2–4 `strength` and 2–4 `concern` claims;
-       - a `flag` claim for each flag, saying what in the response raised it;
+       - a `flag` claim for each flag, its text starting with the flag's label (or key)
+         and saying what in the response raised it: `Long but thin: every answer
+         restates the question and names no site.`;
        - one `outcome` claim giving the reason for the provisional outcome;
        - the role it suits (or neither) and the cost per unit go in a strength, concern or
          outcome claim, citing the answer they come from;
@@ -217,19 +228,23 @@ record others will read: cite the organisation's answers, never a person.
        unit when the call is not priced per site), or null when not given;
        `cost_note`: the unit, what was quoted and how it was converted;
      - `ask_next`: 2–3 questions to ask before shortlisting;
-     - `flags`: short strings from `generic-or-ai-drafted`, `inflated-numbers`,
-       `cost-outlier`, `single-person-capacity`, `safety`, `duplicate`, or another short
-       kebab-case label when none fits;
-     - `outcome`: a provisional outcome. A batch sees only its own responses, so it picks
-       its own best: in the 44-response dry run (2026-10-18) the batches made 10 picks
-       for 4 slots, and one region alone had 4 picks and 6 backups. Step 8 settles
+     - `flags`: keys from the fixed list in § Outcomes and flags (`unsupported`,
+       `inconsistent`, `templated`, `padded`, `incomplete`, `out-of-scope`, `capacity`,
+       `cost`, `early-start`, `safety`), or `[]`. **Labs refuses a review with any other
+       flag**, and `check_claims.py` refuses it first: there is no "another label when none
+       fits". A flag is something to check, never a penalty (the scores do that). Never
+       flag "AI use" as such; flag what the answer contains (`padded`, `templated`,
+       `unsupported`). When nothing on the list fits, say it in a `concern` claim;
+     - `outcome`: a provisional outcome key. A batch sees only its own responses, so it
+       picks its own best: in the 44-response dry run (2026-10-18) the batches recommended
+       10 for 4 slots, and one region alone had 4 recommended and 6 backups. Step 8 settles
        outcomes across the pool and rewrites the `outcome` claim of every one it changes;
      - `one_line`: one sentence for the all-organisation table (no names of people).
    - **Separate facts from inference.** What they wrote is what they say about
      themselves. A statement confirmed by labs history or by a source counts as evidence,
      and the claim cites that source as well as the answer.
    - Do not reward a confident statement that has no evidence behind it.
-   - Web-check only the candidates heading for the picks or the bench: registration, age,
+   - Web-check only the candidates heading for the shortlist (Recommended or Backup): registration, age,
      visible track record, and named partners. Cite every source as a `web` cite with its
      url.
    - When the batches come back, run `check_claims.py` on every batch yourself; do not
@@ -272,13 +287,14 @@ record others will read: cite the organisation's answers, never a person.
      quote exists. A claim that says more than its passage does is rewritten to what the
      passage shows, re-cited, or marked `synthesized` honestly.
    - **(d) Settles outcomes across the pool by the rubric's outcome rules** in
-     `criteria_basis` (Slots, Pick, Backup, Waitlist, Pass, Overrides); when the round has
-     none, about one `pick` per slot and two `backup`s per slot, then `waitlist` for the
-     credible rest and `pass`. Every outcome claim names the rule it applied, and an
-     outcome that goes against the score order names the override (for example "backup,
-     slot rule: a higher scorer covers Ghana north", "pick, rescoping override: conditional
-     on one site within budget"). It rewrites the `outcome` claim of every response whose
-     outcome changes.
+     `criteria_basis` (Slots, Recommended, Backup, Keep in view, Not recommended,
+     Overrides); when the round has none, about one Recommended (`pick`) per slot and two
+     Backups (`backup`) per slot, then Keep in view (`waitlist`) for the credible rest and
+     Not recommended (`pass`). Every outcome claim names the outcome in the words people
+     read and the rule it applied, and an outcome that goes against the score order names
+     the override (for example "Backup, slot rule: a higher scorer covers Ghana north",
+     "Recommended, rescoping override: conditional on one site within budget"). It
+     rewrites the `outcome` claim of every response whose outcome changes.
    - **(e) Writes `calibration.md`**: the distributions (before and after), every change
      with before → after and why (scores, outcomes, rewritten claims), the spot-check table
      (response, scorer's score, blind score, gap, per criterion), and the final slate per
@@ -310,9 +326,9 @@ record others will read: cite the organisation's answers, never a person.
      ```
 
    - It reports, per criterion: the score distribution (mean, SD, histogram, the share on
-     three adjacent values: does it spread or bunch?); whether it separates picks and
-     backups from passes (means, and the AUC: the chance a random selected response
-     out-scores a random pass); its effective weight (how much of the weighted score's
+     three adjacent values: does it spread or bunch?); whether it separates the shortlist
+     (Recommended and Backup) from Not recommended (means, and the AUC: the chance a
+     random shortlisted response out-scores a random not-recommended one); its effective weight (how much of the weighted score's
      spread it actually produces) against its nominal weight; the share of its scores with
      no exact passage behind them, and the share that are a low score for a missing answer
      (hard to judge from the form). Across criteria: the correlation matrix (|r| ≥ 0.7 is a
@@ -333,20 +349,24 @@ record others will read: cite the organisation's answers, never a person.
 
 10. **Write the two reports.** Both draw on the calibrated reviews and `calibration.md`.
    Plain language. No scores in the bottom line. Numbers only where they decide something
-   (a price, a count, a budget). The picks, backups, waitlist and pass list are exactly the
-   calibrated outcomes, so labs and the internal report agree.
+   (a price, a count, a budget). Recommended, Backup, Keep in view and Not recommended are
+   exactly the calibrated outcomes, so labs and the internal report agree. Reports use
+   these words, never the keys (`pick`, `waitlist`, `pass`); an applicant with no outcome
+   is "No recommendation yet".
 
    **The internal report** (Dimagi only):
    - *Recommendation tab*, under ~2 pages:
      - **Bottom line**: one or two sentences naming who to go with, for which role,
        within what budget.
-     - **Picks table**: partner, country and site, role, why them (one line, with
-       evidence), and approximate budget.
-     - **One note per pick**: why them; gaps; "ask them" (2–3 questions); the role.
-     - **Backups and waitlist**: named fallbacks per slot, each with one reason.
-     - **Pass list**: the notable passes, each with one line of reason. Give a strong
-       applicant that doesn't fit this budget or scope its own line, so the team keeps it
-       for later.
+     - **Recommended**: a table of partner, country and site, role, why them (one line,
+       with evidence), and approximate budget.
+     - **One note per recommended applicant**: why them; gaps; "ask them" (2–3
+       questions); the role.
+     - **Backup and Keep in view**: the Backup named for each place, and the credible
+       applicants to keep in view for a later round, each with one reason.
+     - **Not recommended**: the notable ones, each with one line of reason. Give a strong
+       applicant that doesn't fit this budget or scope its own line (usually Keep in
+       view), so the team keeps it for later.
      - **Before-launch conditions**: what must be true or settled before launch, what the
        pool cannot yet answer, which design assumption the responses challenge, and the
        standard rate card or template to issue.
@@ -403,11 +423,12 @@ record others will read: cite the organisation's answers, never a person.
      chosen; what separated strong responses from weak ones; what the pool told us about
      the work (the same section as internal, pooled and de-identified); and lessons for
      running the next call (form, timeline, outreach, pricing guidance).
-   - No picks, outcomes or anything that lets a reader work out who was chosen.
+   - No outcomes, shortlist or anything that lets a reader work out who was chosen.
 
-11. **Compare with the team's picks when there are any.**
+11. **Compare with the team's shortlist when there is one.**
     - When the requester gives the team's own shortlist (as for ULAB), add a short table
-      to the internal report with each pick, theirs vs ACE's, agree or differ, and why.
+      to the internal report with each applicant either side shortlisted, theirs vs
+      ACE's outcome, agree or differ, and why.
     - A difference is information, not an error to hide. A difference ACE cannot defend
       from the responses is a finding about this skill. Note it in the reply.
 
@@ -427,8 +448,8 @@ record others will read: cite the organisation's answers, never a person.
         criteria_scores={<criterion_id>: <1-10>, ...},   # every criterion on the round
         claims=[{id, about, text, basis, cites}, ...],   # § Claims and evidence
         ask_next="<2-3 questions>",
-        flags=[...],
-        outcome="pick" | "backup" | "waitlist" | "pass",
+        flags=[...],                                      # defined keys only; labs refuses others
+        outcome="pick" | "backup" | "waitlist" | "pass",  # Recommended / Backup / Keep in view / Not recommended
         provenance={
           model: "<the model running this skill>",
           skill: "eoi-round-review",
@@ -470,8 +491,8 @@ record others will read: cite the organisation's answers, never a person.
     - Contact details never go in any field, claim or quote. Name the organisation, never
       a person.
     - Re-running replaces ACE's AI review of that response; it never adds a second one.
-    - Read back with `list_reviews` for a sample of responses (and every `pick`) and check
-      the scores, the claims (with their cites), the outcome and `rubric_version` landed,
+    - Read back with `list_reviews` for a sample of responses (and every Recommended one)
+      and check the scores, the claims (with their cites), the outcome and `rubric_version` landed,
       and that labs filled the strengths, concerns and criteria notes from them. If any
       write failed, list the response ids in the reply; do not report the pass complete.
     - If `rubric_version` on the round changed while this ran, stop: the reviews written so
@@ -491,8 +512,15 @@ record others will read: cite the organisation's answers, never a person.
       finds nothing. Also re-read it for a figure, quote-like phrase or detail that only
       one applicant reported. Record in the reply that the scan ran and found nothing.
     - Publish both reports with `gdoc-writer`, each with `--share none` (sharing off), the
-      internal one with the round-page link at the top. Run `agent-turn-review` before
-      replying.
+      internal one with the round-page link at the top.
+    - **Link the internal report on the round**: call
+      `marketplace_round_summary_set(slug=<round slug>, url=<internal report url>)` for
+      each round it covers. Labs shows the link on the round page, which only the round's
+      owner org (Dimagi) can see, so the link reveals nothing the doc's own sharing does
+      not. The requester's approval to write the report covers this link. The url must be
+      `https`; an empty url clears the link. If the call fails, say so in the reply and give
+      the link there; the reports still stand. Never link the external report here.
+    - Run `agent-turn-review` before replying.
     - Reply with the three links (internal report, external report, round page), saying
       which is which: the internal report is for Dimagi people only (`@dimagi.com`,
       `@dimagi-ai.com`, `@dimagi-associate.com`); the external one is de-identified for
@@ -508,7 +536,11 @@ its cites are exact.
 
 - `id`: short, unique within the review: `"c1"`, `"c2"`, …
 - `about`: `"criterion:<criterion_id>"` (the reason for that criterion's score),
-  `"strength"`, `"concern"`, `"flag"` or `"outcome"`.
+  `"strength"`, `"concern"`, `"flag"` or `"outcome"`. A `flag` claim explains one flag on
+  the review: its text starts with that flag's label or key (`Claims to check: ` or
+  `unsupported: `), and every flag on the review has one (`check_claims.py` enforces
+  both). An `outcome` claim says the outcome in the words people read (Recommended,
+  Backup, Keep in view, Not recommended), not the key.
 - `text`: one sentence in plain language. No names, emails or phone numbers. A
   `criterion:<id>` claim on an anchored rubric starts by naming the anchor its score was
   read against: `Anchor 7: names one priority LGA, but not its urban/rural mix.` The anchor
@@ -559,12 +591,54 @@ Example, for an invented applicant (criterion ids are whatever the round saved):
    "text": "Does not say who would buy the batteries it plans to collect.",
    "cites": [{"question": "q7", "absent": true}]},
   {"id": "c5", "about": "flag", "basis": "synthesized",
-   "text": "Answers read as generic text that could fit any call.",
+   "text": "Long but thin: both answers restate the question and name no site, buyer or past job.",
    "cites": [{"question": "q2", "whole": true}, {"question": "q3", "whole": true}]},
   {"id": "c6", "about": "outcome", "basis": "synthesized",
    "text": "Backup, slot rule: strong sites and price, but a higher scorer holds the survey slot and it names no buyer for the value-chain role."}
 ]
 ```
+
+With that example the review's `flags` is `["padded"]` and its `outcome` is `"backup"`.
+
+## Outcomes and flags
+
+Labs defines the words a review is written in (connect-labs
+`connect_labs/solicitations/vocabulary.py`; `skills/eoi-round-review/vocabulary.py` is
+ACE's copy, which the checkers read). The API stores and takes the **keys**; people read the
+**labels**, so every report, outcome claim and reply uses the labels.
+
+**Outcomes:**
+
+| Key | Label | Meaning |
+|---|---|---|
+| `pick` | Recommended | Proposed for one of the round's places now. |
+| `backup` | Backup | Ready to step in for a named place if a recommended applicant falls through. |
+| `waitlist` | Keep in view | Credible, but not needed for this round's places; worth asking again in a later round. |
+| `pass` | Not recommended | Not a fit for this round, for the reasons the review gives. |
+| (none) | No recommendation yet | Nobody has reviewed it, or the review set no outcome. |
+
+The **shortlist** is Recommended plus Backup.
+
+**Flags** are things for a reviewer to check before relying on a response, never
+penalties: the criterion scores carry the judgement. Use only these keys; **labs refuses
+a review with any other flag** (it maps a few older free-text names to these, but this
+skill writes only the keys). Each one needs a `flag` claim saying what raised it.
+
+| Key | Label | Raise it when |
+|---|---|---|
+| `unsupported` | Claims to check | Numbers, partners, licences or past work look inflated, or nothing in the response or labs history backs them up. |
+| `inconsistent` | Answers disagree | Two answers in the same response contradict each other (dates, numbers, places, staff). |
+| `templated` | Shared or template text | Placeholders left in, text near-identical to another applicant's, or the same response submitted twice. |
+| `padded` | Long but thin | Answers at length with few checkable facts: restates the question, describes intentions rather than what they know or have done. |
+| `incomplete` | Incomplete | A key answer is missing, cut off or does not address the question. |
+| `out-of-scope` | Outside the brief | Proposes places, activities or a scale the call did not ask for. |
+| `capacity` | Thin capacity | The work rests on one person, or on a team already committed elsewhere at the same time. |
+| `cost` | Cost out of line | The quote is far from the others or from the budget, or cannot be compared with them. |
+| `early-start` | Starts before contract | Plans to begin work before a contract is in place. |
+| `safety` | Safety | The plan puts staff or respondents at risk without saying how. |
+
+Never flag "AI use" as such: whether an applicant used AI is not checkable and not the
+point. Flag what the answer contains (`padded`, `templated`, `unsupported`).
 
 ## What happens next in labs
 
@@ -575,7 +649,7 @@ passages it cites in the response (or marks the answer it says is silent, or sho
 labs or web source), so a reviewer checks the AI's reasoning against the applicant's own
 words instead of taking it on trust.
 
-Once reviews exist, the round page lists picks first, and its **Start reviewing** button
+Once reviews exist, the round page lists the recommended first, and its **Start reviewing** button
 (**Next to check** once started) walks the reviewer through the applicants no person has
 checked yet. On a response page a reviewer works in one of three ways:
 
@@ -603,13 +677,16 @@ button in one or two lines; the reviewers are the audience.
 - connect-labs: `marketplace_rounds_list`, `marketplace_round_responses` (owner-gated:
   ACE's labs user must belong to Dimagi, the owner of every directory round),
   `marketplace_orgs_get`, `list_reviews`, `create_review` (`kind="ai"`, with `claims`;
-  `BAD_REQUEST` on a quote it cannot find; 30 writes per minute per user)
+  `BAD_REQUEST` on a quote it cannot find or a flag not on the defined list; 30 writes per
+  minute per user), `marketplace_round_summary_set` (links the internal report on the
+  round; owner-org members only)
 - canopy-web: `current_page` (when started from the marketplace panel)
 - Google Drive: `drive_read_file`, `read_personal_drive_doc` (the announcement);
   publishing goes through `gdoc-writer`
 - Web search, for shortlist candidates only
-- `skills/eoi-round-review/check_claims.py` (python3, stdlib only): the quote, structure
-  and anchor-citation check every batch passes before labs sees it
+- `skills/eoi-round-review/check_claims.py` (python3, stdlib only): the quote, structure,
+  flag and anchor-citation check every batch passes before labs sees it
+- `skills/eoi-round-review/vocabulary.py`: ACE's copy of labs' outcome and flag words
 - `skills/eoi-criteria-proposal/check_rubric.py`: whether the round's rubric is explicit
   (step 3)
 - `skills/eoi-round-review/rubric_health.py` (python3, stdlib only): how well the rubric
@@ -618,7 +695,8 @@ button in one or two lines; the reviewers are the audience.
 ## Mode Behavior
 
 - **Auto:** with criteria on the round, score, calibrate, write the AI reviews, publish
-  both reports with sharing off and reply with the links. With no criteria, run `eoi-criteria-proposal`, which always waits for
+  both reports with sharing off, link the internal report on the round and reply with the
+  links. With no criteria, run `eoi-criteria-proposal`, which always waits for
   approval before saving; scoring starts after that.
 - **Review:** show the criteria from step 3 and wait for a go-ahead before scoring and
   writing reviews. Publish the draft and wait for the requester's edits before it goes to
@@ -638,6 +716,7 @@ platform is "Connect".
 
 | Date | Change | Author |
 |------|--------|--------|
+| 2026-10-18 | Labs' defined vocabulary: flags are a fixed list of ten keys (labs refuses any other; `check_claims.py` refuses it first, and requires a `flag` claim naming each flag); outcomes keep their keys but are shown as Recommended / Backup / Keep in view / Not recommended in reports, claims and `rubric_health.py`; new § Outcomes and flags; step 13 links the internal report on the round with `marketplace_round_summary_set` | ACE team |
 | 2026-10-18 | Explicit rubric and rubric health: step 3 checks the round's rubric with `check_rubric.py`; criterion claims name the anchor they were read against (`Anchor <n>: ` / `Silent: `, enforced by `check_claims.py`); calibration settles outcomes by the outcome rules in `criteria_basis` and writes `calibration.json`; new step 9 runs `rubric_health.py` (distribution, separation, effective weight, evidence, correlation, slate overrides, calibration and human changes) and writes keep/reweight/split/drop/add with numbers; the internal report gains Rubric health and "Program design: what this pool tells us" | ACE team |
 | 2026-10-18 | Learnings from a 44-response dry run: shipped `check_claims.py` (labs' quote matching plus structure checks) that every batch runs until OK; batch in/out shapes (`cost_per_site_usd`, `cost_note`, `one_line`); a separate calibration agent before any labs write (distributions, blind spot-check of 6, claim support, outcomes settled per slot, `calibration.md`); labs writes paced ≥2.5 s and retried after 60 s on the 30/m limit; internal and de-identified external reports, both published with sharing off after a de-identification scan; the three human review modes and the round page's Start reviewing walk | ACE team |
 | 2026-10-17 | Evidence: every statement in an AI review is a claim citing the response's exact words (`question_id` + verbatim quote), an absent or whole answer, or labs/web history; strengths, concerns and criterion notes go in `claims` (labs fills the flat fields); fix-and-retry on `BAD_REQUEST`; reviewers click a claim to see its passages | ACE team |

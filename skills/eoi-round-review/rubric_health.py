@@ -29,12 +29,17 @@ Standard library only.
 import argparse
 import json
 import math
+import os
 import re
 import sys
 from collections import Counter, defaultdict
 
-OUTCOMES = ("pick", "backup", "waitlist", "pass")
-SELECTED = ("pick", "backup")
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from vocabulary import OUTCOMES as _OUTCOME_WORDS, SHORTLIST, outcome_label  # noqa: E402
+
+# Keys as labs stores them, best first; the report prints their labels.
+OUTCOMES = tuple(_OUTCOME_WORDS)
+SELECTED = SHORTLIST
 
 # Thresholds behind the recommendations.
 BUNCHED_SD = 1.5          # sd below this: the criterion barely spreads the pool
@@ -57,7 +62,7 @@ _SILENT = re.compile(r"^\s*silent\s*:", re.IGNORECASE)
 # What an outcome claim says the decision turned on, beyond the score.
 OVERRIDE_REASONS = {
     "slot or geography": re.compile(
-        r"\b(behind|ahead of|covers?|second|third|slot|(pick|backup) for|"
+        r"\b(behind|ahead of|covers?|second|third|slot|(pick|backup|recommended) for|"
         r"outside (the )?priority|region)\b", re.IGNORECASE),
     "rescoping or cost": re.compile(
         r"\b(conditional|rescop\w*|cut to|must be cut|one site within|provided)\b",
@@ -372,15 +377,17 @@ def report(h, criteria):
     names = {c["id"]: c.get("name", c["id"]) for c in criteria}
     ids = h["criteria"]
     out = []
-    out.append(f"AI reviews analysed: {h['n_ai']}. Outcomes: "
-               + ", ".join(f"{o} {h['outcomes'].get(o, 0)}" for o in OUTCOMES) + ".")
+    counts = [f"{outcome_label(o)} {h['outcomes'].get(o, 0)}" for o in OUTCOMES]
+    if h["outcomes"].get("none"):
+        counts.append(f"{outcome_label(None)} {h['outcomes']['none']}")
+    out.append(f"AI reviews analysed: {h['n_ai']}. Outcomes: " + ", ".join(counts) + ".")
     w = h["weighted"]
     out.append(f"Weighted score: mean {fmt(w['mean'], 1)}, sd {fmt(w['sd'], 1)}, range "
                f"{fmt(w['min'], 0)}-{fmt(w['max'], 0)}.")
     out.append("")
     out.append("### Per criterion")
     out.append("")
-    out.append("| Criterion | Weight | Mean | SD | Range | On 3 adjacent | Pick / selected / pass mean | AUC selected vs pass | Effective weight | No exact passage | Low score for a missing answer |")
+    out.append("| Criterion | Weight | Mean | SD | Range | On 3 adjacent | Recommended / shortlist / not recommended mean | AUC shortlist vs not recommended | Effective weight | No exact passage | Low score for a missing answer |")
     out.append("|---|---|---|---|---|---|---|---|---|---|---|")
     for i in ids:
         p = h["per_criterion"][i]
@@ -413,7 +420,7 @@ def report(h, criteria):
     out.append("### What the slate turned on besides the score")
     out.append("")
     t = h["top_by_score_vs_selected"]
-    out.append(f"Of the top {t['n']} by weighted score, {t['overlap']} are picks or backups. "
+    out.append(f"Of the top {t['n']} by weighted score, {t['overlap']} are on the shortlist (recommended or backup). "
                f"{len(h['overrides'])} response(s) got a better outcome than a higher scorer, passing over "
                f"{h['passed_over']} response(s). What the passed-over responses' outcome claims say: "
                + (", ".join(f"{k} {v}" for k, v in h["override_reasons"].items()) or "none") + ".")
@@ -422,10 +429,10 @@ def report(h, criteria):
         out.append("| Promoted response | Outcome | Score (rank) | Went ahead of (score, outcome) | Its own outcome reason |")
         out.append("|---|---|---|---|---|")
         for o in sorted(h["overrides"], key=lambda o: o["rank"]):
-            ahead = "; ".join(f"{x['response_id']} ({x['weighted']:.0f}, {x['outcome']})" for x in o["went_ahead_of"][:6])
+            ahead = "; ".join(f"{x['response_id']} ({x['weighted']:.0f}, {outcome_label(x['outcome'])})" for x in o["went_ahead_of"][:6])
             if len(o["went_ahead_of"]) > 6:
                 ahead += f"; +{len(o['went_ahead_of']) - 6} more"
-            out.append(f"| {o['response_id']} | {o['outcome']} | {o['weighted']:.0f} (#{o['rank']}) | {ahead} | "
+            out.append(f"| {o['response_id']} | {outcome_label(o['outcome'])} | {o['weighted']:.0f} (#{o['rank']}) | {ahead} | "
                        f"{', '.join(o['reasons'])} |")
         out.append("")
     out.append("### Calibration and human reviews")
@@ -442,8 +449,8 @@ def report(h, criteria):
         out.append(f"Human reviews: {len(h['human'])} ({', '.join(f'{k} {v}' for k, v in st.items())}).")
         for x in h["human"]:
             d = ", ".join(f"{k} {v:+d}" for k, v in x["deltas"].items()) or "no score changes"
-            out.append(f"- {x['response_id']}: {x['stance']}, outcome {x['outcome_before']} -> "
-                       f"{x['outcome_after']}; {d}")
+            out.append(f"- {x['response_id']}: {x['stance']}, outcome {outcome_label(x['outcome_before'])} -> "
+                       f"{outcome_label(x['outcome_after'])}; {d}")
     else:
         out.append("No human reviews yet.")
     out.append("")

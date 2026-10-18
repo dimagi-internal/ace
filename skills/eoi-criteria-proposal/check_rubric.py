@@ -27,8 +27,9 @@ The rubric lives only in fields labs already stores:
       Measures: <what the criterion measures>
       Separates: <why it separates THIS pool, with counts>
 - `basis` (labs: `criteria_basis`) holds the outcome rules after a line
-  "Outcome rules:", with one line each for Score, Slots, Pick, Backup,
-  Waitlist, Pass and Overrides.
+  "Outcome rules:", with one line each for Score, Slots, Recommended, Backup,
+  Keep in view, Not recommended and Overrides (the outcome labels people read;
+  the stored keys Pick, Waitlist and Pass are accepted for the same lines).
 
 Prints every problem, or "OK: rubric is explicit". Exits 1 on problems, 2 when
 the file cannot be read. Standard library only.
@@ -40,11 +41,13 @@ import sys
 
 ANCHORS = (1, 3, 5, 7, 10)
 RATIONALE_LABELS = ("measures", "separates")
-OUTCOME_LABELS = ("score", "slots", "pick", "backup", "waitlist", "pass", "overrides")
+# (line label people read, the outcome key labs stores, or None when it is not an outcome).
+OUTCOME_LINES = (("Score", None), ("Slots", None), ("Recommended", "pick"), ("Backup", "backup"),
+                 ("Keep in view", "waitlist"), ("Not recommended", "pass"), ("Overrides", None))
 MIN_ANCHOR_WORDS = 5
 MIN_CRITERIA, MAX_CRITERIA = 5, 8
 _ID = re.compile(r"^[a-z][a-z0-9_]*$")
-_LINE = re.compile(r"^\s*(?:[-*]\s*)?([A-Za-z]+|\d{1,2})\s*[:=.)-]\s*(.*\S)?\s*$")
+_LINE = re.compile(r"^\s*(?:[-*]\s*)?([A-Za-z]+(?: [A-Za-z]+){0,2}|\d{1,2})\s*[:=.)-]\s*(.*\S)?\s*$")
 # Words that judge an answer without saying what is in it. An anchor made only
 # of these can't be applied the same way by two reviewers.
 _VERDICT_ONLY = {"excellent", "good", "great", "strong", "weak", "poor", "adequate",
@@ -174,9 +177,9 @@ def check(criteria, basis):
     if rules is None:
         problems.append("basis has no 'Outcome rules:' section")
     else:
-        for label in OUTCOME_LABELS:
-            if not rules.get(label):
-                problems.append(f"outcome rules have no '{label.capitalize()}:' line")
+        for label, key in OUTCOME_LINES:
+            if not (rules.get(label.lower()) or (key and rules.get(key))):
+                problems.append(f"outcome rules have no '{label}:' line")
     return problems
 
 

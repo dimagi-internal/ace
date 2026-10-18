@@ -30,6 +30,12 @@ also say which anchor the score was read against: its text starts
 or "Silent: " when the answer said nothing and the Silent rule set the score.
 Older banded guides ("1-3: ...") are not checked for this.
 
+Flags must be keys of the defined list in vocabulary.py (labs refuses any other
+flag), each at most once, and each needs a `flag` claim whose text starts with
+that flag's label or key ("Long but thin: ..." or "padded: ...") saying what in
+the response raised it. A `flag` claim that names no flag on the review is a
+problem too.
+
 Standard library only, so it runs anywhere python3 does.
 """
 
@@ -41,7 +47,9 @@ import sys
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "eoi-criteria-proposal"))
 from check_rubric import is_anchored, nearest_anchors  # noqa: E402
 
-OUTCOMES = ("pick", "backup", "waitlist", "pass")
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from vocabulary import FLAGS, OUTCOMES  # noqa: E402
+
 ABOUT_FIXED = ("strength", "concern", "flag", "outcome")
 BASES = ("quoted", "synthesized")
 
@@ -100,6 +108,48 @@ def check_anchor_cite(where, text, score):
     return []
 
 
+def flag_named(text):
+    """The flag a flag claim's text starts with ("<label>: " or "<key>: "), or None."""
+    head = (text or "").split(":", 1)
+    if len(head) != 2:
+        return None
+    name = head[0].strip().lower()
+    for key, meaning in FLAGS.items():
+        if name in (key, meaning["label"].lower()):
+            return key
+    return None
+
+
+def check_flags(rid, flags, flag_claims):
+    """Flags are defined keys, each explained by a flag claim that names it."""
+    problems = []
+    if not isinstance(flags, list):
+        return [f"{rid}: flags is not a list"]
+    seen = []
+    for flag in flags:
+        if not isinstance(flag, str) or flag not in FLAGS:
+            problems.append(f"{rid}: flag {flag!r} is not a defined flag (labs refuses it); use one of: "
+                            f"{', '.join(FLAGS)}")
+        elif flag in seen:
+            problems.append(f"{rid}: flag {flag!r} is listed twice")
+        else:
+            seen.append(flag)
+    named = {}
+    for where, text in flag_claims:
+        key = flag_named(text)
+        if key is None:
+            problems.append(f"{where}: a flag claim's text must start with the flag it explains "
+                            f"('<label>: ' or '<key>: ', e.g. 'Long but thin: ')")
+        elif key not in seen:
+            problems.append(f"{where}: explains flag {key!r}, which is not in this review's flags")
+        else:
+            named[key] = True
+    for flag in seen:
+        if flag not in named:
+            problems.append(f"{rid}: flag {flag!r} has no flag claim saying what raised it")
+    return problems
+
+
 def check_cite(where, cite, answers):
     problems = []
     if not isinstance(cite, dict):
@@ -151,7 +201,8 @@ def check_review(review, response, crit_ids, anchored=frozenset()):
 
     outcome = review.get("outcome")
     if outcome not in OUTCOMES:
-        problems.append(f"{rid}: outcome is {outcome!r}, not one of {'/'.join(OUTCOMES)}")
+        problems.append(f"{rid}: outcome is {outcome!r}, not one of {'/'.join(OUTCOMES)} "
+                        f"({' / '.join(o['label'] for o in OUTCOMES.values())})")
 
     claims = review.get("claims")
     if not isinstance(claims, list) or not claims:
@@ -159,6 +210,7 @@ def check_review(review, response, crit_ids, anchored=frozenset()):
         claims = []
     seen_ids = set()
     abouts = set()
+    flag_claims = []
     for n, claim in enumerate(claims):
         if not isinstance(claim, dict):
             problems.append(f"{rid} claim #{n + 1}: not an object")
@@ -173,6 +225,8 @@ def check_review(review, response, crit_ids, anchored=frozenset()):
         about = claim.get("about")
         if about in ABOUT_FIXED:
             abouts.add(about)
+            if about == "flag":
+                flag_claims.append((where, claim.get("text")))
         elif isinstance(about, str) and about.startswith("criterion:"):
             cid = about[len("criterion:"):]
             if cid not in crit_ids:
@@ -198,6 +252,7 @@ def check_review(review, response, crit_ids, anchored=frozenset()):
             problems.append(f"{rid}: no criterion:{cid} claim giving the reason for its score")
     if "outcome" not in abouts:
         problems.append(f"{rid}: no outcome claim")
+    problems.extend(check_flags(rid, review.get("flags") or [], flag_claims))
     return problems
 
 
