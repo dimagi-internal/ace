@@ -1,8 +1,7 @@
 ---
 name: app-connect-coverage
 description: >
-  Check that every form in a Nova-built Learn or Deliver app carries the right CommCare Connect
-  markers, auto-fixing via Nova edits until clean. Needs the Nova app id.
+  Check every form in a Nova Learn or Deliver app carries the right CommCare Connect markers, fixing via Nova until clean.
 disable-model-invocation: false
 ---
 

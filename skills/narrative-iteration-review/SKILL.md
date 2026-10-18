@@ -1,8 +1,7 @@
 ---
 name: narrative-iteration-review
 description: >
-  Iterate a Connect DDD narrative on domain-expert feedback — the thin ACE layer
-  over canopy's DDD framework. Use when expert feedback lands on a narrative.
+  Iterate a Connect DDD narrative on domain-expert feedback (ACE's thin layer over canopy's DDD).
 ---
 
 # Narrative iteration review (ACE-thin over canopy DDD)
