@@ -1,7 +1,7 @@
 ---
 name: solicitation-google-form-qa
 description: >
-  Pass/fail check of a solicitation's public Google Form against the live call.
+  Pass/fail check of a solicitation's public Google Form.
 ---
 
 # Solicitation Google Form QA

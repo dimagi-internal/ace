@@ -1,7 +1,7 @@
 ---
 name: solicitation-google-form
 description: >
-  Mirror a labs solicitation into a public Google Form and import its responses. Needs a solicitation id.
+  Mirror a labs solicitation into a public Google Form; import its responses.
 ---
 
 # Solicitation Google Form
