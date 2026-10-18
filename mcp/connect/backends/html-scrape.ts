@@ -1735,3 +1735,58 @@ export function parseTablePagination(html: string): TablePagination {
   }
   return out;
 }
+
+/**
+ * Django's `django.utils.text.slugify`, which Connect's `slugify_uniquely`
+ * starts from (`commcare_connect/utils/db.py`, `Organization.save`). Used only
+ * to PREDICT an org's slug: `slugify_uniquely` appends `-1`, `-2`… on a
+ * collision, so the real slug is the one Connect's redirect names
+ * (dimagi-internal/ace#3170).
+ */
+export function djangoSlugify(value: string): string {
+  return value
+    .normalize('NFKD')
+    .replace(/[^\x00-\x7F]/g, '')
+    .toLowerCase()
+    .replace(/[^\w\s-]/g, '')
+    .replace(/[-\s]+/g, '-')
+    .replace(/^[-_]+|[-_]+$/g, '');
+}
+
+export interface HeaderMembership {
+  slug: string;
+  name: string;
+}
+
+/**
+ * The organizations the signed-in user belongs to, read from the header's
+ * organization selector (`templates/layouts/header.html`), which renders one
+ * `<li><a href="/a/<slug>/opportunity/"><p …>{{ name }}</p>` per membership
+ * other than the CURRENT org (`request.org`). On a page with no current org
+ * (e.g. `/register/organization/`) that is every membership. Names are
+ * returned decoded and trimmed (dimagi-internal/ace#3170).
+ */
+export function parseHeaderMemberships(html: string): HeaderMembership[] {
+  const out: HeaderMembership[] = [];
+  const seen = new Set<string>();
+  const re = /<a\s+href="\/a\/([A-Za-z0-9_-]+)\/opportunity\/"\s*>\s*<p\b[^>]*>([\s\S]*?)<\/p>/g;
+  for (const m of html.matchAll(re)) {
+    const slug = m[1];
+    if (seen.has(slug)) continue;
+    seen.add(slug);
+    out.push({ slug, name: decodeHtmlEntities(m[2].replace(/<[^>]+>/g, '')).trim() });
+  }
+  return out;
+}
+
+/**
+ * The org slug from the redirect `organization_create` issues on success:
+ * `opportunity:list` (`/a/<slug>/opportunity/`) normally, `organization:home`
+ * (`/a/<slug>/organization/`) when the creator skipped membership. Accepts an
+ * absolute or relative `Location`. Returns null for anything else.
+ */
+export function parseOrgSlugFromCreateRedirect(location: string | undefined): string | null {
+  if (!location) return null;
+  const m = location.match(/^(?:https?:\/\/[^/]+)?\/a\/([A-Za-z0-9_-]+)\/(?:opportunity|organization)\/?(?:[?#].*)?$/);
+  return m ? m[1] : null;
+}

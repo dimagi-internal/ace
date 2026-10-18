@@ -527,6 +527,47 @@ export interface ConnectClient {
   }>;
 
   /**
+   * Create a Connect organization owned by the session user, through the only
+   * path Connect has: the `/register/organization/` form (`organization_create`,
+   * `@login_required`, no REST route). The creator becomes its ADMIN
+   * (dimagi-internal/ace#3170).
+   *
+   * Order, and why:
+   * 1. GET the form (CSRF + the header's membership list). If the caller
+   *    already belongs to an org with this name (case-insensitive) it is
+   *    returned as `{created: false, existing: true}` and NOTHING is posted, so
+   *    a retry can never fork a second org — there is no delete.
+   * 2. `dry_run` stops here and reports `slug_predicted` (Django `slugify`;
+   *    `slugify_uniquely` suffixes `-1`… on a collision, so it is a prediction).
+   * 3. POST without following redirects. 302 to `/a/<slug>/opportunity/` is
+   *    success and the slug is read from `Location`; the slug is permanent and
+   *    cannot be chosen. A 200 is the form re-rendered with errors →
+   *    `organization_create_rejected`.
+   * 4. Read back the new org's member table: the caller must be its admin.
+   */
+  createOrganization(args: {
+    name: string;
+    short_name?: string;
+    contact_emails?: string[];
+    notes?: string;
+    dry_run?: boolean;
+  }): Promise<{
+    name: string;
+    created: boolean;
+    dry_run: boolean;
+    /** True when a same-named org the caller belongs to was found and returned instead. */
+    existing: boolean;
+    /** The real slug (from Connect's redirect, or the existing membership). Absent on a dry run with no match. */
+    slug?: string;
+    /** Django-slugify of `name`; what Connect would derive absent a collision. */
+    slug_predicted: string;
+    /** Read-back of the org's member table (absent on a dry run). */
+    members?: Array<{ email: string; role: string | null }>;
+    /** Whether the read-back shows at least one admin member (the creator). */
+    admin_verified?: boolean;
+  }>;
+
+  /**
    * Take a person OUT of a Connect workspace (organization): the inverse of
    * `addOrgMember`, used to revoke the interim shared-org grants `/ace:release
    * --allow-shared connect` records. Handles both states an `addOrgMember`

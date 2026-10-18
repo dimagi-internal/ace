@@ -6,7 +6,7 @@ export interface CapabilityRoute {
 }
 
 /**
- * The 31 capability-routed atoms exposed by `ace-connect` (16 authoring,
+ * The 32 capability-routed atoms exposed by `ace-connect` (17 authoring,
  * 15 observation). `connect_preflight_learn_app_user` is server-local and not
  * routed here; `commcare_*` atoms route through `backends/commcare.ts`.
  *
@@ -35,13 +35,16 @@ export interface CapabilityRoute {
  *   session user to be an org admin. Connect records the add as a PENDING
  *   invite, so it is verified by read-back of BOTH `/organization/member_table`
  *   and `/organization/pending_invites_table` (ace#2503).
+ * - 0.13.x added `create_organization` — create a Connect org owned by the
+ *   session user via the `/register/organization/` HTML form (no REST
+ *   route); the slug is read from the success redirect (ace#3170).
  *
  * `REST` = JSON to the new automation API endpoints, mediated by the
  * authenticated session cookie + CSRF token. There is no token auth path
  * yet; the session is still established via OAuth-with-CommCareHQ.
  */
 export type Capability =
-  // Authoring (16)
+  // Authoring (17)
   | 'create_program'
   | 'update_program'
   | 'create_opportunity'
@@ -58,6 +61,7 @@ export type Capability =
   | 'list_flw_invites'
   | 'add_org_member'
   | 'remove_org_member'
+  | 'create_organization'
   // Observation (15)
   | 'list_programs'
   | 'get_program'
@@ -94,6 +98,7 @@ export const CAPABILITY_MAP: Record<Capability, CapabilityRoute> = {
   list_flw_invites:             { backend: 'PLAYWRIGHT', restTarget: 'GET /api/opportunities/{id}/workers/ (not yet shipped — the workers table is an htmx HTML fragment; see lib/connect-flw-invites.ts)' },
   add_org_member:               { backend: 'PLAYWRIGHT', restTarget: 'POST /a/{org}/organization/member (HTML form; no REST equiv)' },
   remove_org_member:            { backend: 'PLAYWRIGHT', restTarget: 'POST /a/{org}/organization/member/remove | /organization/invite/{id}/revoke (HTML; no REST equiv)' },
+  create_organization:          { backend: 'PLAYWRIGHT', restTarget: 'POST /register/organization/ (HTML form; no REST equiv) — slug from the 302 Location; refuses a same-named org the caller already belongs to (ace#3170)' },
 
   // Observation — still HTML-scrape; PR #1135 didn't ship reads
   list_programs:                { backend: 'PLAYWRIGHT', restTarget: 'GET /api/programs/ (not yet shipped)' },

@@ -547,7 +547,7 @@ Render the run-folder README index and, when `runFolderFileId` is supplied, WRIT
 
 ## ace-connect
 
-Source: `mcp/connect-server.ts` — 70 atoms
+Source: `mcp/connect-server.ts` — 71 atoms
 
 ### `connect_list_programs`
 
@@ -816,6 +816,18 @@ READ-ONLY. List a Connect workspace's (organization's) members and its pending i
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `organization_slug` | `z.string` | **required** | Workspace (organization) slug, e.g. "ace-nm-org". |
+
+### `connect_create_organization`
+
+Create a Connect organization (workspace) owned by the ACE session user, through Connect's only path: the `/register/organization/` HTML form (no REST route). The creator becomes its ADMIN. IRREVERSIBLE through the API — there is no delete — so it (1) GETs the form first and, if the caller already belongs to an org with this `name` (case-insensitive, read from the page header's org selector — which omits the current org — and from the admin-only member table at the predicted slug), returns it as `{created: false, existing: true, slug}` WITHOUT posting, so a retry never forks a second org; (2) on `dry_run: true` stops there and reports `slug_predicted` (Django slugify of the name; Connect suffixes `-1`… on a collision, so it is a prediction); (3) POSTs with redirects off and reads the REAL slug from the 302 `Location` (`/a/<slug>/opportunity/`) — the slug is derived from the name, cannot be chosen, and is permanent; (4) reads back the new org's member table (`members`, `admin_verified`). A 200 re-render is a rejected form and throws a typed `organization_create_rejected` with field errors — most often `name`: "An organization with this name already exists." (an org of that name the caller is NOT in). Use for ACE-owned orgs only (e.g. the synthetic winner LLO, `ACE_CONNECT_LLO_ORG`); never to stand up an org for a real partner. dimagi-internal/ace#3170.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `name` | `z.string` | **required** | Organization name. Must be unique across Connect (case-insensitive). The slug is derived from it and is permanent — keep it short (Connect's slug traps: ace 50-char learnings). |
+| `short_name` | `z.string` | optional | Optional short display name (max 40). |
+| `contact_emails` | `z.array` | optional | Optional contact emails, posted one per line. |
+| `notes` | `z.string` | optional | Optional free-text notes stored on the org profile (e.g. "ACE-owned synthetic org for the labs E2E"). |
+| `dry_run` | `z.boolean` | optional | When true: GET the form and check for an existing same-named membership, POST nothing. Default false. |
 
 ### `connect_remove_org_member`
 
