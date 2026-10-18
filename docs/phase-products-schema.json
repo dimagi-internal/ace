@@ -1533,10 +1533,85 @@
                     },
                     "additionalProperties": true
                   },
+                  "runner": {
+                    "type": "object",
+                    "properties": {
+                      "org_id": {
+                        "type": [
+                          "string",
+                          "number"
+                        ]
+                      },
+                      "role": {
+                        "type": "string",
+                        "enum": [
+                          "llo",
+                          "pm",
+                          "other"
+                        ]
+                      },
+                      "buyer_of_record": {
+                        "type": "string",
+                        "enum": [
+                          "programme_org",
+                          "partner_org"
+                        ]
+                      },
+                      "fallback_reason": {
+                        "type": "string"
+                      }
+                    },
+                    "additionalProperties": true
+                  },
                   "commodities": {
                     "type": "array",
                     "items": {
                       "type": "string"
+                    }
+                  },
+                  "items": {
+                    "type": "array",
+                    "items": {
+                      "type": [
+                        "string",
+                        "number"
+                      ]
+                    }
+                  },
+                  "supply_points": {
+                    "type": "object",
+                    "properties": {
+                      "central": {
+                        "type": [
+                          "string",
+                          "number"
+                        ]
+                      },
+                      "regional": {
+                        "type": [
+                          "string",
+                          "number"
+                        ]
+                      },
+                      "flw": {
+                        "type": "object",
+                        "additionalProperties": {
+                          "type": [
+                            "string",
+                            "number"
+                          ]
+                        }
+                      }
+                    },
+                    "additionalProperties": true
+                  },
+                  "suppliers": {
+                    "type": "array",
+                    "items": {
+                      "type": [
+                        "string",
+                        "number"
+                      ]
                     }
                   },
                   "tender_id": {
@@ -1604,13 +1679,10 @@
       },
       "requiredProductKeys": [],
       "productProducers": {
-        "launch": "llo-launch"
+        "launch": "llo-launch",
+        "supply_chain": "supply-chain-setup"
       },
       "unattributedProductKeys": [
-        {
-          "key": "supply_chain",
-          "reason": "Declared up front by the optional-steps framework (plan 2026-10-18 PR1) so the strict() root accepts it; its writers (supply-chain-setup / -procure / -fulfil / -operate) land in PR6-PR9. Attribute it in the PR that adds the first writer."
-        },
         {
           "key": "simulation",
           "reason": "Declared up front by the optional-steps framework (plan 2026-10-18 PR1); its writer, simulated-execution, lands in PR10. Attribute it there."

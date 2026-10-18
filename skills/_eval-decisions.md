@@ -139,6 +139,7 @@ Most ACE evals are companion `-eval` skills today. `inline self-eval` is rare bu
 | `llo-uat` | **has eval** | `llo-uat-eval`. 5 dimensions: uat_coverage_completeness (0.30), llo_signoff_clarity (0.25), blocker_resolution (0.20), evidence_citation_discipline (0.15), launch_readiness_recommendation (0.10). 3 hard-block rules: <50% metric coverage, LLO no-go but recommend launch, unresolved blocker without resolution path. Provisional. |
 | `flw-data-review` | **has eval** | `flw-data-review-eval`. Grades FLW data review quality (issue detection rate, recommendation actionability, prioritization). Recurring during active opp. |
 | `timeline-monitor` | **NO eval** | Recurring state-tracking. No artifact to grade. |
+| `supply-chain-setup` | **NO eval** | Registry build: the runner, team, commodities, items, supply points and suppliers are either right or wrong against the plan, which `supply-chain-setup-qa` checks. The plan's judgement calls (commodity quantities from the PDD, the quote spread) are graded where they bite, by `supply-chain-procure-eval` (PR7). **Revisit if:** setup starts choosing quantities or suppliers on its own judgement rather than transcribing the PDD. |
 
 ### Phase 10 — closeout
 

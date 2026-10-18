@@ -2143,6 +2143,33 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
   // ── Optional track, Phase 9 `mode: simulated` (spec 2026-10-18 § F, G) ──
   // Same rule as the Phase 8 block above: required: false, one anchor per PR.
   // [optional-track:PR6 supply-chain-setup]
+  {
+    path: '9-execution-manager/supply-chain-setup_manifest.yaml',
+    producedBy: 'supply-chain-setup',
+    role: 'manifest',
+    consumedBy: ['supply-chain-setup-qa'],
+    phase: 'execution-management',
+    required: false,
+    description: 'Optional track (supply_chain): what supply-chain-setup means to create in the labs programme, written BEFORE any write. Covers the runner choice (winner on the ace_winner path, else the PM org) and the bound orgs, plus the commodities with PDD-cited quantities, trade items, supply points (central, regional, one user_held point per FLW) and synthetic suppliers.',
+  },
+  {
+    path: '9-execution-manager/supply-chain-setup_record.md',
+    producedBy: 'supply-chain-setup',
+    role: 'record',
+    consumedBy: [],
+    phase: 'execution-management',
+    required: false,
+    description: 'Optional track (supply_chain): the labs ids supply-chain-setup created, the runner and ACE standing as read back, and the programme page links.',
+  },
+  {
+    path: '9-execution-manager/supply-chain-setup-qa_result.yaml',
+    producedBy: 'supply-chain-setup-qa',
+    role: 'qa-result',
+    consumedBy: [],
+    phase: 'execution-management',
+    required: false,
+    description: 'Optional track (supply_chain): structural QA of the supply-chain setup against a FRESH labs read. 8 static checks in skills/supply-chain-setup-qa/checks.ts: programme standing, runner matches the plan, orgs bound to Connect, every planned record reads back, one user_held point per FLW, synthetic supplier names, ace@ admin on the team, no checks_list conflict.',
+  },
   // [optional-track:PR7 supply-chain-procure]
   // [optional-track:PR8 supply-chain-fulfil]
   // [optional-track:PR9 supply-chain-operate]

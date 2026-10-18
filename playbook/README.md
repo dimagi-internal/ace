@@ -20,6 +20,7 @@ upstream, load the live schema with `ToolSearch "select:mcp__connect_labs__<atom
 | Nova (authoring CommCare apps) | [`integrations/nova-integration.md`](integrations/nova-integration.md) | the `nova` MCP (`mcp__nova__*`) | `voidcraft-labs/commcare-nova` |
 | Open Chat Studio (chatbots, knowledge) | [`integrations/ocs-integration.md`](integrations/ocs-integration.md) | `docs/atom-schemas.md` § ace-ocs (`ocs_*`) | `dimagi/open-chat-studio` |
 | Connect Labs (solicitations, synthetic data, workflows, registry, supply chain) | [`integrations/connect-labs.md`](integrations/connect-labs.md) | live `tools/list` (`mcp__connect_labs__*`) | `dimagi-internal/connect-labs` |
+| Connect Labs supply chain (runner, registry, tenders, contracts, logistics, finance, stock) | [`integrations/connect-labs-supply-chain.md`](integrations/connect-labs-supply-chain.md) | live `tools/list` (`mcp__connect_labs__supply_chain_*`) | `dimagi-internal/connect-labs` |
 | Mobile (emulator, Maestro recipes, test workers) | [`integrations/mobile-integration.md`](integrations/mobile-integration.md) | `docs/atom-schemas.md` § ace-mobile (`mobile_*`) | — |
 | Google Slides | [`integrations/slides-integration.md`](integrations/slides-integration.md) | `docs/atom-schemas.md` § ace-gdrive (`slides_*`) | — |
 | Google Forms (create, publish, responder access, responses) | [`integrations/google-forms.md`](integrations/google-forms.md) | `docs/atom-schemas.md` § ace-gdrive (`forms_*`, `get_google_form_definition`) | — |
@@ -56,7 +57,8 @@ verified, so check it before promising a change.
 | Point a labs workflow at other opportunities | Labs | `skills/labs-workflow-repoint`; `connect-labs.md` § Changing live labs objects | `workflow_update_opportunity_ids` | Rebuild history afterwards |
 | Freeze or refollow template-driven report pages | Labs | `skills/labs-workflow-repoint`; `connect-labs.md` § Workflow template lifecycle | `workflow_follow_template`, `scripts/labs-report-templates.ts` | Refollow only pages nobody relies on as a record |
 | Simulate N weeks of a program | Labs | `connect-labs.md` § History (simulated time) | `synthetic_generate_from_manifest`, `workflow_preview_as_of`, `workflow_rebuild_history` | No clock; backdate data |
-| Procurement / stock | Labs | `connect-labs.md` § Supply chain | `supply_chain_*` | Skills being added |
+| Set up a programme's supply chain (runner, team, registry) | Labs | `skills/supply-chain-setup`; `connect-labs-supply-chain.md` § Programme, § Registry | `supply_chain_programme_runner_get` / `_set`, `supply_chain_org_upsert`, `supply_chain_commodity_upsert`, `supply_chain_supply_point_upsert`, `supply_chain_supplier_create` | Declaring a runner is platform-support only until connect-labs ships self-serve declaration; never move an existing runner |
+| Procure, receive, pay, track stock | Labs | `connect-labs-supply-chain.md` § Sourcing … § Stock | `supply_chain_*` | Nothing here can be deleted; procure / fulfil / operate skills are being added |
 | Case sharing between workers | HQ + Nova | `hq-case-sharing.md`; `skills/app-case-sharing` | `commcare_*` location + user atoms | — |
 | Grant someone access to review | all | `skills/share-run-access` | `connect_add_org_member`, `ocs_add_team_member`, … | Role, not just membership (CLAUDE.md § Gotchas) |
 

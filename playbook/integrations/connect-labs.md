@@ -177,6 +177,8 @@ per Monday–Sunday week.
 
 ### Supply chain
 
+**Full reference: [`connect-labs-supply-chain.md`](connect-labs-supply-chain.md)** (the runner and standing model, evidence refs, money, each resource, what cannot be undone).
+
 `supply_chain_*` is a full procurement and stock surface. The only ACE call today is
 `supply_chain_org_upsert` in `solicitation-create` Step 5a, which registers the PM org as
 the owning labs org. **Supply-chain skills are being added.** Until then, read the live

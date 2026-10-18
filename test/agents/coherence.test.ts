@@ -195,6 +195,10 @@ const UNCLAIMED_BASELINE = new Set<string>([
   // validated end-to-end in a real /ace:run; deletion + artifact-manifest
   // cleanup is the staged follow-up. See agents/synthetic-data-and-workflows.md
   // § Deprecated skills.
+  // 2026-10-18 (optional labs track, plan PR6): supply-chain-setup lands before
+  // its dispatcher. agents/execution-manager.md gains the simulated-mode block
+  // that dispatches it in PR10, which owns that file; remove this entry there.
+  'supply-chain-setup',
   'synthetic-narrative-plan',
   'synthetic-data-generate',
   'synthetic-workflow-seed',
