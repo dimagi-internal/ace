@@ -199,6 +199,9 @@ const UNCLAIMED_BASELINE = new Set<string>([
   // its dispatcher. agents/execution-manager.md gains the simulated-mode block
   // that dispatches it in PR10, which owns that file; remove this entry there.
   'supply-chain-setup',
+  // 2026-10-18 (optional labs track, plan PR7): same reason as supply-chain-setup;
+  // PR10's simulated-mode block in agents/execution-manager.md dispatches it.
+  'supply-chain-procure',
   'synthetic-narrative-plan',
   'synthetic-data-generate',
   'synthetic-workflow-seed',

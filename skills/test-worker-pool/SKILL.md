@@ -1,7 +1,7 @@
 ---
 name: test-worker-pool
 description: >
-  Check out, add, or retire Connect test workers in ACE's named pool, one device session each. Use when a test needs more workers than are free, or a worker's invite list has grown too long.
+  Check out, add or retire Connect test workers in ACE's pool, one device session each. Use when too few are free or one's invite list is too long.
 disable-model-invocation: false
 ---
 

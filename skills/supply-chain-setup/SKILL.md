@@ -94,7 +94,9 @@ only when a run is bound.
    `supply_chain_org_upsert({data: {slug, name, connect_organization_id, connect_organization_slug}, source})`.
    Binding by `connect_organization_id` is what makes ace@'s Connect membership count as
    membership of the labs org. Record each returned labs org id. The upsert is keyed by slug, so a
-   re-run is a no-op (same call `solicitation-create` Step 5a makes).
+   re-run is a no-op (same call `solicitation-create` Step 5a makes). **Get the row right before
+   Step 1 declares it:** once an org runs a programme its LabsOrg row is support-edit-only
+   (connect-labs #2605), so a wrong name or Connect binding cannot be corrected afterwards.
 5. **Team.** Skip this step when the runner is Dimagi (labs org slug `dimagi`): Dimagi's members
    are everyone with a Dimagi address, so ace@ is already one, and `programme_team_list` refuses
    with "Dimagi's team is everyone with a Dimagi address; it is not kept as a list" (live, program

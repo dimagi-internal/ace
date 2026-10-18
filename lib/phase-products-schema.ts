@@ -752,6 +752,10 @@ const ExecutionProducts = z
           .optional(),
         suppliers: z.array(z.union([z.string(), z.number()])).optional(),
         tender_id: z.union([z.string(), z.number()]).optional(),
+        /** skills/supply-chain-procure Step 10. */
+        quote_ids: z.array(z.union([z.string(), z.number()])).optional(),
+        award_ids: z.array(z.union([z.string(), z.number()])).optional(),
+        contract_ids: z.array(z.union([z.string(), z.number()])).optional(),
       })
       .passthrough()
       .optional(),

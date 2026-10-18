@@ -2189,6 +2189,42 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     description: 'Optional track (supply_chain): structural QA of the supply-chain setup against a FRESH labs read. 8 static checks in skills/supply-chain-setup-qa/checks.ts: programme standing, runner matches the plan, orgs bound to Connect, every planned record reads back, one user_held point per FLW, synthetic supplier names, ace@ admin on the team, no checks_list conflict.',
   },
   // [optional-track:PR7 supply-chain-procure]
+  {
+    path: '9-execution-manager/supply-chain-procure_plan.yaml',
+    producedBy: 'supply-chain-procure',
+    role: 'manifest',
+    consumedBy: ['supply-chain-procure-qa', 'supply-chain-procure-eval'],
+    phase: 'execution-management',
+    required: false,
+    description: 'Optional track (supply_chain): what supply-chain-procure means to buy, written BEFORE any write: the tender lines with PDD-cited quantities, the invited synthetic suppliers, the quote spread (simulated track) and the buyer of record the runner implies.',
+  },
+  {
+    path: '9-execution-manager/supply-chain-procure_record.md',
+    producedBy: 'supply-chain-procure',
+    role: 'record',
+    consumedBy: ['supply-chain-procure-eval'],
+    phase: 'execution-management',
+    required: false,
+    description: "Optional track (supply_chain): the tender, quote, award and contract ids, each award's rationale, labs' frozen comparison per line, the landed cost, and the labs page links.",
+  },
+  {
+    path: '9-execution-manager/supply-chain-procure-qa_result.yaml',
+    producedBy: 'supply-chain-procure-qa',
+    role: 'qa-result',
+    consumedBy: ['supply-chain-procure-eval'],
+    phase: 'execution-management',
+    required: false,
+    description: 'Optional track (supply_chain): structural QA of the procurement against a FRESH labs read. 9 static checks in skills/supply-chain-procure-qa/checks.ts: tender awarded/closed, one award per line, rankable frozen comparison, contract carries the awarded quote, buyer of record from the runner, quotes per line, a dearer award states a reason, synthetic suppliers, no checks_list conflict.',
+  },
+  {
+    path: '9-execution-manager/supply-chain-procure-eval_verdict.yaml',
+    producedBy: 'supply-chain-procure-eval',
+    role: 'verdict',
+    consumedBy: [],
+    phase: 'execution-management',
+    required: false,
+    description: "Optional track (supply_chain): LLM-judge verdict on the procurement. 4 dimensions: award follows labs' frozen comparison (0.30), quantities traced to the PDD (0.25), quote spread realism (0.25), rationale quality (0.20).",
+  },
   // [optional-track:PR8 supply-chain-fulfil]
   // [optional-track:PR9 supply-chain-operate]
   // [optional-track:PR10 simulated-execution + simulated-weekly-review]

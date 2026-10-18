@@ -1,10 +1,7 @@
 ---
 name: idea-to-pdd
 description: >
-  Develop a Program Design Doc (PDD) for a Connect intervention from
-  source material. Iterates a 6-question stress-test rubric until approved;
-  check 6 (launch readiness) is a hard gate on the app-build and
-  opportunity-creation parameters.
+  Develop a Program Design Doc (PDD) for a Connect intervention from source material, iterating a 6-question stress test (check 6, launch readiness, is a hard gate) until approved.
 disable-model-invocation: false
 ---
 
