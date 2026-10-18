@@ -14,10 +14,12 @@ delivered on Connect), and writes one **AI review per response into labs**. Ever
 in a review is a **claim** that points at the evidence it rests on: the exact words in the
 response, an answer that is silent on the point, or labs history or a web source. People
 then review in labs, starting from those AI reviews and clicking a claim to see its
-passages highlighted in the response (see § What happens next in labs). It also
-writes the short document a programme team acts on: who to go with, in which role, why,
-what to ask them first, and who is on the bench. Across several rounds it adds a short
-cross-round section.
+passages highlighted in the response (see § What happens next in labs). Before anything
+is written to labs, a separate agent calibrates the scores and outcomes across the whole
+pool, because each scoring batch otherwise picks its own best. It also writes two reports:
+the internal shortlist a programme team acts on (who to go with, in which role, why, what
+to ask them first, who is on the bench), and a de-identified version for funders and
+partners. Across several rounds the internal one adds a short cross-round section.
 
 The criteria are the round's, not this skill's. EOI forms go out without a published
 evaluation framework, so the criteria are written after the submissions arrive, by
@@ -33,10 +35,13 @@ with good quotes that are too long to act on. This skill keeps the quotes and dr
 length.
 
 **Responses are confidential to Dimagi.** Applicants' answers are never shared with other
-applicants or outside Dimagi. The document goes in ACE's Drive area and is shared only
-with Dimagi people (`@dimagi.com`, `@dimagi-ai.com`, `@dimagi-associate.com`). Contact
-names, emails and phones are not read (`include_contacts` stays false) and never appear
-in it, or in any field of a labs review, including a claim's `text` or a `quote`. Reviews
+applicants or outside Dimagi. The internal report goes in ACE's Drive area for Dimagi
+people only (`@dimagi.com`, `@dimagi-ai.com`, `@dimagi-associate.com`). The external
+report carries no organisation or person names and no applicants' words, and passes a
+de-identification scan (step 12) before it is published. Both are published with sharing
+off; the requester decides who receives each. Contact names, emails and phones are not
+read (`include_contacts` stays false) and never appear in either report, or in any field
+of a labs review, including a claim's `text` or a `quote`. Reviews
 in labs are visible only inside the round's owner org (Dimagi), but treat every field as a
 record others will read: cite the organisation's answers, never a person.
 
@@ -50,7 +55,7 @@ record others will read: cite the organisation's answers, never a person.
 | connect-labs | `marketplace_round_responses(slug=…)` | every submission's answers (each `{question_id, question, answer}`; claims cite `question_id`), its `response_id` and matched org; `round.evaluation_criteria` and `round.rubric_version` |
 | connect-labs | `list_reviews(response_id=…)` | reviews already on each response (an earlier AI pass, human reviews built on it) |
 | connect-labs | `marketplace_orgs_get(slugs=…)` | each matched org's delivered and applied programmes, year established, team size |
-| Requester (optional) | the team's own picks, for comparison | the agreement table (step 9) |
+| Requester (optional) | the team's own picks, for comparison | the agreement table (step 10) |
 
 ## Products
 
@@ -60,18 +65,29 @@ record others will read: cite the organisation's answers, never a person.
   `waitlist` / `pass`) and provenance. Labs fills the per-criterion notes, strengths and
   concerns from the claims, and computes the overall score from the criteria scores and
   the round's weights. Re-running replaces ACE's earlier AI review of that response.
-- A Google Doc, published with `gdoc-writer` under `Projects/<project>/` (the project is
-  the round's programme or the requester's project name). It has two tabs:
+- `calibration.md`, written by the calibrating agent (step 8): the score distributions,
+  every change with before → after and why, the spot-check table and the final slate. A
+  working file; the internal report summarises it.
+- **The internal report**, a Google Doc published with `gdoc-writer` under
+  `Projects/<project>/` (the project is the round's programme or the requester's project
+  name), sharing off. Dimagi only. It has two tabs:
   1. **Recommendation**, under ~2 pages: bottom line, picks table, a note per pick,
-     waitlist, pass list, gaps to close before launch, and how it was scored.
-  2. **Every response**: one ≤120-word entry per submission, with outcome, role fit,
-     cost per unit, strengths and concerns citing the answer, and questions to ask.
+     waitlist, pass list, before-launch conditions, and how it was scored.
+  2. **The pool and the review**: what the pool told us about the work, pool coverage and
+     quality, how it was reviewed, the comparison with the team, next-form advice, the
+     all-organisation table, and one ≤120-word entry per submission (outcome, role fit,
+     cost, strengths and concerns citing the answer, questions to ask). Step 9 lists the
+     sections.
   The doc opens with a link to the round page in labs,
   https://labs.connect.dimagi.com/labs/marketplace/rounds/<slug>/, where reviewers verify,
-  edit or add their own reviews. The doc is a summary of the AI pass; labs holds the
+  agree, edit or add their own reviews. The doc is a summary of the AI pass; labs holds the
   reviews.
-- Both links (doc and round page), in the reply to the requester. The document is never
-  pasted into chat or email.
+- **The external report**, a de-identified Google Doc for funders and partners, published
+  the same way with sharing off after the step 12 scan passes: no organisation or person
+  names, no verbatim quotes, figures for the pool only, places only at the level of the
+  call's priority sites or regions.
+- The three links (both reports and the round page), in the reply to the requester, with
+  who each report is for. No report is pasted into chat or email.
 
 ## Process
 
@@ -129,12 +145,47 @@ record others will read: cite the organisation's answers, never a person.
    - An unmatched submission has no history here. Say "no labs record", not "new".
 
 6. **Review each response on the round's criteria.**
-   - Split the responses into batches of about 8 and give each batch to a subagent. Pass
-     it the criteria exactly as saved (ids, weights, scoring guides), the call facts from
-     step 2, the org history from step 5, each response's answers as
-     `{question_id, question, answer}` exactly as labs returned them, and these rules
-     (§ Claims and evidence below is part of the brief; paste it in).
-   - Each subagent returns, per response (keyed by `response_id`):
+   - Split the responses into batches of about 8 and give each batch to a subagent, in
+     parallel. Write the files to a working directory (the session scratch dir) and pass
+     each subagent the paths:
+     - `batch-<n>.json`, the responses exactly as labs returned them, in this shape (the
+       shape `check_claims.py` reads):
+
+       ```
+       [{response_id, org_name, org_slug, earlier_submissions, labs_history,
+         answers: [{question_id, question, answer}]}]
+       ```
+
+       `earlier_submissions` lists this org's other responses in this or earlier rounds
+       (step 4), `labs_history` what step 5 found (or null: "no labs record");
+     - `criteria.json`, the round's saved criteria list exactly as labs returned it (ids,
+       names, weights, scoring guides);
+     - and, in the prompt itself, the call facts from step 2.
+   - The brief includes these rules (§ Claims and evidence below is part of it; paste it
+     in), and the instruction to write its reviews to `out-<n>.json` and **run the checker
+     until it prints `OK: every claim checks` before returning**:
+
+     ```bash
+     python3 "${CLAUDE_PLUGIN_ROOT}/skills/eoi-round-review/check_claims.py" \
+       batch-<n>.json out-<n>.json criteria.json
+     ```
+
+     It mirrors labs' save-time check (lowercase, collapse runs of whitespace, ‘’ → ',
+     “” → ", – and — → -, then a substring test) and also checks that every `question` is
+     a real `question_id` of that response, claim ids are unique, every criterion has a
+     1–10 score and at least one `criterion:<id>` claim, the outcome is one of
+     pick/backup/waitlist/pass with an `outcome` claim, every web cite has a url, and every
+     response in the batch was reviewed. It prints each problem and exits 1, so a
+     subagent fixes and re-runs; a quote is fixed by copying the words from the answer,
+     never by loosening the claim's cite to make it pass.
+   - Each subagent returns `out-<n>.json`: a list with one entry per response,
+
+     ```
+     [{response_id, org_name, criteria_scores, claims, outcome, role,
+       cost_per_site_usd, cost_note, ask_next, flags, one_line}]
+     ```
+
+     where:
      - `criteria_scores`: `{criterion_id: 1–10}` for **every** criterion on the round,
        scored against that criterion's `scoring_guide` anchors; ids exactly as saved;
      - `claims`: the review's statements, in the shape in § Claims and evidence:
@@ -146,14 +197,18 @@ record others will read: cite the organisation's answers, never a person.
        - the role it suits (or neither) and the cost per unit go in a strength, concern or
          outcome claim, citing the answer they come from;
      - `role`: which role it suits, or neither (for the doc);
-     - `cost_per_unit`: their quote converted to the call's unit (per survey, per
-       interview), or "not given" (for the doc);
+     - `cost_per_site_usd`: their quote converted to USD per site (or per the call's own
+       unit when the call is not priced per site), or null when not given;
+       `cost_note`: the unit, what was quoted and how it was converted;
      - `ask_next`: 2–3 questions to ask before shortlisting;
      - `flags`: short strings from `generic-or-ai-drafted`, `inflated-numbers`,
        `cost-outlier`, `single-person-capacity`, `safety`, `duplicate`, or another short
        kebab-case label when none fits;
-     - a provisional outcome (step 8 settles it across the pool, and rewrites the
-       `outcome` claim if it changes).
+     - `outcome`: a provisional outcome. A batch sees only its own responses, so it picks
+       its own best: in the 44-response dry run (2026-10-18) the batches made 10 picks
+       for 4 slots, and one region alone had 4 picks and 6 backups. Step 8 settles
+       outcomes across the pool and rewrites the `outcome` claim of every one it changes;
+     - `one_line`: one sentence for the all-organisation table (no names of people).
    - **Separate facts from inference.** What they wrote is what they say about
      themselves. A statement confirmed by labs history or by a source counts as evidence,
      and the claim cites that source as well as the answer.
@@ -161,13 +216,9 @@ record others will read: cite the organisation's answers, never a person.
    - Web-check only the candidates heading for the picks or the bench: registration, age,
      visible track record, and named partners. Cite every source as a `web` cite with its
      url.
-   - When the batches come back, check every claim before step 10: each `quote` appears
-     in the answer its `question` names (a plain substring check that, like labs,
-     ignores case and runs of whitespace and normalises curly quotes and dashes), each
-     `question` is a real `question_id` of that response, ids are unique within the
-     review, and every scored criterion has a claim. Fix what fails by
-     copying the words from the answer, or send the response back to a subagent. This
-     catches most of what labs would refuse.
+   - When the batches come back, run `check_claims.py` on every batch yourself; do not
+     take a subagent's "OK" on trust. Fix what fails by copying the words from the answer,
+     or send the response back to a subagent. This catches most of what labs would refuse.
 
 7. **Read across the whole pool before choosing.**
    - Find what the pool has in common and what separates it, the same way the team's
@@ -177,48 +228,115 @@ record others will read: cite the organisation's answers, never a person.
      - how young the organisations are;
      - how they sample, and who addresses bias;
      - the spread of prices, expressed in the call's units.
-   - These patterns become the "how we scored" note and the "gaps to close" section.
+   - These patterns go to the calibrator (step 8) and become the "what the pool told us"
+     and "before-launch conditions" sections of the internal report (step 9).
    - If the pool shows a criterion is not separating anyone, or something decisive has no
      criterion, say so in the reply and suggest `eoi-criteria-proposal`. Do not adjust the
      scores to compensate.
 
-8. **Settle outcomes, then write the recommendation.**
-   - Give every response one `outcome`: `pick` (in the picks table), `backup` (a named
-     fallback for a slot), `waitlist` (credible, not for now), or `pass`. The doc's picks
-     table, waitlist and pass list are exactly these outcomes, so labs and the doc agree.
-   - **Bottom line**: one or two sentences naming who to go with, for which role, within
-     what budget.
-   - **Picks table**: partner, country and site, role, why them (one line, with
-     evidence), and approximate budget.
-   - **One note per pick**: why them; gaps; "ask them" (2–3 questions); the role.
-   - **Waitlist**: named fallbacks per slot, each with one reason.
-   - **Pass list**: the notable passes, each with one line of reason. Give a strong
-     applicant that doesn't fit this budget or scope its own line, so the team keeps it
-     for later.
-   - **Gaps to close before launch**: what the pool cannot yet answer, which design
-     assumption the responses challenge, and the standard rate card or template to issue.
-   - **How we scored**: the round's criteria and weights (with `rubric_version`), what the
-     criteria basis says was dropped, and the round-page link, in three lines.
-   - Keep the Recommendation tab under ~2 pages. Everything else goes in the Every
-     response tab.
+8. **Calibrate across the pool: a separate agent, before anything is written to labs.**
+   Each batch scored and chose outcomes seeing only its own responses, so the batches
+   disagree on how hard each anchor is and each picks its own best. Calibration fixes this
+   once, across the pool. Dispatch it as its own subagent that scored no batch. Pass it
+   the paths of every `batch-<n>.json` and checked `out-<n>.json`, `criteria.json`, the
+   call facts (roles and how many slots each has, priority sites or regions, budget), and
+   the patterns from step 7. Pass outputs as paths, not inline, so the spot-check in (b)
+   can read the raw answers first. The calibrator:
+   - **(a) Tabulates the per-criterion score distributions**, overall and per batch, and
+     finds pairs of responses where similar evidence got scores 3 or more points apart, or
+     where batches read an anchor differently (one batch gives 7 for a named district,
+     another 4). It rescores against the criterion's `scoring_guide`, rewriting the
+     `criterion:<id>` claim to match the new score.
+   - **(b) Blind spot-checks 6 responses**: the top 3 by weighted score, plus 3 from
+     other batches. For each, it reads the raw answers in `batch-<n>.json` and scores every
+     criterion **before** opening the scorer's review of it, then compares. A gap of 3 or
+     more points on any criterion is a finding: settle the score and look for the same
+     misreading in that batch.
+   - **(c) Checks that each claim's text is supported by its cites**, not only that the
+     quote exists. A claim that says more than its passage does is rewritten to what the
+     passage shows, re-cited, or marked `synthesized` honestly.
+   - **(d) Settles outcomes across the pool**: about one `pick` per slot and two `backup`s
+     per slot, then `waitlist` for the credible rest and `pass`. It rewrites the `outcome`
+     claim of every response whose outcome changes, saying why in terms of the pool (for
+     example "backup: a stronger applicant covers this region").
+   - **(e) Writes `calibration.md`**: the distributions (before and after), every change
+     with before → after and why (scores, outcomes, rewritten claims), the spot-check table
+     (response, scorer's score, blind score, gap, per criterion), and the final slate per
+     slot.
+   - Re-runs `check_claims.py` on every batch it changed, until each prints `OK: every
+     claim checks`, and returns the calibrated `out-<n>.json` files.
+   For scale, in the 44-response dry run (2026-10-18) calibration changed 16 outcomes and
+   8 scores and rewrote 3 claims, and its spot-check found no gap of 3 or more. A
+   calibration that changes nothing is possible but worth a second look: check the slate
+   against the slot count before believing it.
+
+9. **Write the two reports.** Both draw on the calibrated reviews and `calibration.md`.
+   Plain language. No scores in the bottom line. Numbers only where they decide something
+   (a price, a count, a budget). The picks, backups, waitlist and pass list are exactly the
+   calibrated outcomes, so labs and the internal report agree.
+
+   **The internal report** (Dimagi only):
+   - *Recommendation tab*, under ~2 pages:
+     - **Bottom line**: one or two sentences naming who to go with, for which role,
+       within what budget.
+     - **Picks table**: partner, country and site, role, why them (one line, with
+       evidence), and approximate budget.
+     - **One note per pick**: why them; gaps; "ask them" (2–3 questions); the role.
+     - **Backups and waitlist**: named fallbacks per slot, each with one reason.
+     - **Pass list**: the notable passes, each with one line of reason. Give a strong
+       applicant that doesn't fit this budget or scope its own line, so the team keeps it
+       for later.
+     - **Before-launch conditions**: what must be true or settled before launch, what the
+       pool cannot yet answer, which design assumption the responses challenge, and the
+       standard rate card or template to issue.
+     - **How we scored**: the round's criteria and weights (with `rubric_version`), what
+       the criteria basis says was dropped, and the round-page link, in three lines.
+   - *The pool and the review tab*:
+     - **What the pool told us about the work**: what applicants report about the field
+       the call is in. For a value-chain call that is the trade itself: prices, buyers,
+       destinations and household practice. Present these as the applicants' own reports
+       ("12 applicants describe…"), not as findings.
+     - **Pool coverage and quality**: responses by country and priority site or region,
+       sites with no credible applicant, duplicates, and how many answers were specific
+       versus generic.
+     - **How it was reviewed**: the criteria table (id, name, weight, one-line
+       rationale), the calibration summary (what changed and why), the spot-check table,
+       and evidence counts (claims, quoted vs synthesized, cites by kind, web checks).
+     - **Comparison with the team** (step 10), when there is one.
+     - **Next-form advice**: questions to add, cut or structure, from the criteria basis
+       and what this review could not judge.
+     - **All-organisation table**: every response, one row: organisation, country and
+       site, outcome, role, weighted score, cost per site, `one_line`.
+     - **Every response**: one ≤120-word entry per submission, with outcome, role fit,
+       cost, strengths and concerns citing the answer, and questions to ask.
    - For several rounds, add **Across rounds**: organisations that answered more than one
      round and how they did, how the pools differed, and any organisation strong in one
      round that is worth inviting to another.
-   - Plain language. No scores in the bottom line. Numbers only where they decide
-     something (a price, a count, a budget).
 
-9. **Compare with the team's picks when there are any.**
-   - When the requester gives the team's own shortlist (as for ULAB), add a short table
-     with each pick, theirs vs ACE's, agree or differ, and why.
-   - A difference is information, not an error to hide. A difference ACE cannot defend
-     from the responses is a finding about this skill. Note it in the reply.
+   **The external report** (de-identified, for funders and partners):
+   - No organisation or person names, and no verbatim quotes: paraphrase, and describe
+     applicants by kind ("a farmer cooperative in a priority region").
+   - Figures for the pool only (counts, ranges, medians), never one applicant's figure
+     that would identify it. Place names only at the level of the call's priority sites
+     or regions.
+   - What the call sought and what the pool looked like; the criteria and why each was
+     chosen; what separated strong responses from weak ones; what the pool told us about
+     the work (the same section as internal, pooled and de-identified); and lessons for
+     running the next call (form, timeline, outreach, pricing guidance).
+   - No picks, outcomes or anything that lets a reader work out who was chosen.
 
-10. **Write the AI reviews to labs.**
+10. **Compare with the team's picks when there are any.**
+    - When the requester gives the team's own shortlist (as for ULAB), add a short table
+      to the internal report with each pick, theirs vs ACE's, agree or differ, and why.
+    - A difference is information, not an error to hide. A difference ACE cannot defend
+      from the responses is a finding about this skill. Note it in the reply.
+
+11. **Write the AI reviews to labs.**
     - For each response, call `list_reviews(response_id=…)` first. If people have already
       reviewed on top of ACE's earlier AI review (`based_on` it, or feedback on it), say so
       in the reply before replacing it: their review stays, but it now sits on an AI review
       that changed.
-    - Then call, per response:
+    - Then call, per response, from the calibrated `out-<n>.json`:
 
       ```
       create_review(
@@ -246,8 +364,16 @@ record others will read: cite the organisation's answers, never a person.
       `criteria_notes` either: labs fills them from the claims, and a second copy in the
       flat fields would drift from the evidence. `sources` lists only what this review
       actually used.
+    - **Pace the writes.** The connect-labs MCP allows 30 writes per minute per user,
+      counted across every session writing as that user. In the dry run, 14 of 44
+      back-to-back `create_review` calls came back with "Write rate limit exceeded
+      (30/m)". Write from one place, in sequence (never fan `create_review` out to
+      parallel subagents), with at least 2.5 s between calls. When a call is rate-limited,
+      wait 60 s and retry the same call unchanged. A rate-limit refusal is not a quote
+      refusal: nothing about the review is wrong, and it does not count towards the
+      "refused twice" rule below.
     - **Labs checks every quote on save.** If any `quote` is not found in the answer its
-      `question` names, labs refuses the whole review with `BAD_REQUEST`, naming each
+      `question` names, labs returns `BAD_REQUEST` for the whole review, naming each
       quote it could not find. Then:
       1. For each quote named, reopen that response's answer to that `question_id` and
          copy the words exactly as they appear there (or the answer they actually came
@@ -255,26 +381,44 @@ record others will read: cite the organisation's answers, never a person.
       2. If the point is not in the answer in so many words, change the cite instead:
          `whole: true` with `basis: "synthesized"`, `absent: true` if the claim is that
          the answer is silent, or drop the claim if nothing supports it.
-      3. Retry `create_review` with the corrected claims. Nothing was saved by the
-         refused call, so retry the full review, not just the fixed claims.
-      4. If the same response is refused twice, stop retrying it, list its `response_id`
-         and the quotes labs named in the reply, and do not report the pass complete.
+      3. Re-run `check_claims.py` on the batch, then retry `create_review` with the
+         corrected claims. Nothing was saved by the refused call, so retry the full
+         review, not just the fixed claims.
+      4. If the same response is refused twice for quotes, stop retrying it, list its
+         `response_id` and the quotes labs named in the reply, and do not report the pass
+         complete.
     - Contact details never go in any field, claim or quote. Name the organisation, never
       a person.
     - Re-running replaces ACE's AI review of that response; it never adds a second one.
     - Read back with `list_reviews` for a sample of responses (and every `pick`) and check
-      the scores, the claims (with their cites) and `rubric_version` landed, and that
-      labs filled the strengths, concerns and criteria notes from them. If any write failed, list the response ids in
-      the reply; do not report the pass complete.
+      the scores, the claims (with their cites), the outcome and `rubric_version` landed,
+      and that labs filled the strengths, concerns and criteria notes from them. If any
+      write failed, list the response ids in the reply; do not report the pass complete.
     - If `rubric_version` on the round changed while this ran, stop: the reviews written so
       far carry a version that no longer applies. Re-run.
 
-11. **Publish and share the links.**
-    - Publish with `gdoc-writer`, with the round-page link at the top. Run
-      `agent-turn-review` before sending.
-    - Reply with both links (doc and round page) and three lines: who, why, and what to
-      ask first. Add one line on what happens next in labs (below).
-    - Share only with Dimagi addresses.
+12. **De-identify, publish and share the links.**
+    - **Run the de-identification scan on the external report before publishing it.** Build
+      a deny list from the batches and the answers:
+      - every `org_name`, and every distinctive word in one (skip generic words such as
+        "foundation", "initiative", "development", "community", "association", "network",
+        "limited"; keep a word that would point a reader at the organisation);
+      - every town, village or neighbourhood that only one applicant mentioned (places
+        several applicants share, and the call's own priority sites or regions, may stay);
+      - every programme, project, funder and partner name the answers mention.
+      Search the external report's text for each entry, ignoring case and as a whole word.
+      Any hit is rewritten (pooled, generalised or removed) and the scan re-run until it
+      finds nothing. Also re-read it for a figure, quote-like phrase or detail that only
+      one applicant reported. Record in the reply that the scan ran and found nothing.
+    - Publish both reports with `gdoc-writer`, each with `--share none` (sharing off), the
+      internal one with the round-page link at the top. Run `agent-turn-review` before
+      replying.
+    - Reply with the three links (internal report, external report, round page), saying
+      which is which: the internal report is for Dimagi people only (`@dimagi.com`,
+      `@dimagi-ai.com`, `@dimagi-associate.com`); the external one is de-identified for
+      funders and partners. The requester decides who receives each; share only on their
+      say-so, never the internal report outside Dimagi. Add three lines (who, why, what to
+      ask first) and one line on what happens next in labs (below).
 
 ## Claims and evidence
 
@@ -343,36 +487,48 @@ The AI review is a first pass, not the decision. On the round page
 response and its reviews side by side. Clicking a claim in a review highlights the
 passages it cites in the response (or marks the answer it says is silent, or shows the
 labs or web source), so a reviewer checks the AI's reasoning against the applicant's own
-words instead of taking it on trust. Any Dimagi reviewer can:
+words instead of taking it on trust.
 
-- **give feedback on the AI review**: agree, or say where it is wrong, without writing a
-  review of their own; or
-- **copy it into their own review and edit it**: a human review that starts from the AI
-  scores and claims (`based_on` the AI review) and becomes theirs, with their own scores
-  and outcome. While editing they can remove evidence that does not hold up and add their
-  own, highlighting passages in the response; or write one from scratch.
+Once reviews exist, the round page lists picks first, and its **Start reviewing** button
+(**Next to check** once started) walks the reviewer through the applicants no person has
+checked yet. On a response page a reviewer works in one of three ways:
 
-Several people may review the same response; every review is scored on the same criteria
-and `rubric_version`, so they can be compared side by side with the AI's. Re-running this
-skill replaces only ACE's AI review; human reviews stay. If the criteria are replaced,
-every review on the old version (AI and human) was scored against criteria that no longer
-apply, which is why `eoi-criteria-proposal` asks before replacing them.
+- **I agree**: one save creates their own review, linked to the AI one, with stance
+  "agrees".
+- **Copy and edit as mine**: starts their own review from the AI's. They edit the scores,
+  the reason under each score, and the strengths and concerns; drop a cited passage with
+  ×, or select text in an answer and use **Attach selected text** to cite it.
+- **I disagree**: the stance is preset to "disagrees"; they change the outcome and the
+  scores.
+
+Each way leaves the reviewer's own review beside the AI's. **The AI review never changes**
+when a person agrees, copies or disagrees with it. Several people may review the same
+response; every review is scored on the same criteria and `rubric_version`, so they can
+be compared side by side. Re-running this skill replaces only ACE's AI review; human
+reviews stay. If the criteria are replaced, every review on the old version (AI and human)
+was scored against criteria that no longer apply, which is why `eoi-criteria-proposal`
+asks before replacing them.
+
+When telling the requester what happens next, name the three ways and the Start reviewing
+button in one or two lines; the reviewers are the audience.
 
 ## MCP Tools Used
 
 - connect-labs: `marketplace_rounds_list`, `marketplace_round_responses` (owner-gated:
   ACE's labs user must belong to Dimagi, the owner of every directory round),
   `marketplace_orgs_get`, `list_reviews`, `create_review` (`kind="ai"`, with `claims`;
-  refuses with `BAD_REQUEST` on a quote it cannot find)
+  `BAD_REQUEST` on a quote it cannot find; 30 writes per minute per user)
 - canopy-web: `current_page` (when started from the marketplace panel)
 - Google Drive: `drive_read_file`, `read_personal_drive_doc` (the announcement);
   publishing goes through `gdoc-writer`
 - Web search, for shortlist candidates only
+- `skills/eoi-round-review/check_claims.py` (python3, stdlib only): the quote and
+  structure check every batch passes before labs sees it
 
 ## Mode Behavior
 
-- **Auto:** with criteria on the round, score, write the AI reviews, publish and reply
-  with the links. With no criteria, run `eoi-criteria-proposal`, which always waits for
+- **Auto:** with criteria on the round, score, calibrate, write the AI reviews, publish
+  both reports with sharing off and reply with the links. With no criteria, run `eoi-criteria-proposal`, which always waits for
   approval before saving; scoring starts after that.
 - **Review:** show the criteria from step 3 and wait for a go-ahead before scoring and
   writing reviews. Publish the draft and wait for the requester's edits before it goes to
@@ -392,6 +548,7 @@ platform is "Connect".
 
 | Date | Change | Author |
 |------|--------|--------|
+| 2026-10-18 | Learnings from a 44-response dry run: shipped `check_claims.py` (labs' quote matching plus structure checks) that every batch runs until OK; batch in/out shapes (`cost_per_site_usd`, `cost_note`, `one_line`); a separate calibration agent before any labs write (distributions, blind spot-check of 6, claim support, outcomes settled per slot, `calibration.md`); labs writes paced ≥2.5 s and retried after 60 s on the 30/m limit; internal and de-identified external reports, both published with sharing off after a de-identification scan; the three human review modes and the round page's Start reviewing walk | ACE team |
 | 2026-10-17 | Evidence: every statement in an AI review is a claim citing the response's exact words (`question_id` + verbatim quote), an absent or whole answer, or labs/web history; strengths, concerns and criterion notes go in `claims` (labs fills the flat fields); fix-and-retry on `BAD_REQUEST`; reviewers click a claim to see its passages | ACE team |
 | 2026-10-17 | Scores on the round's saved criteria (1–10, via `eoi-criteria-proposal`; no private rubric), writes one AI review per response to labs (`create_review(kind="ai")`), links the doc to the round page, explains the human review flow in labs | ACE team |
 | 2026-10-16 | Initial version, modelled on the team's ULAB shortlist and Sagar's ULAB EOI prompt; reads round responses through connect-labs `marketplace_round_responses` (connect-labs#2586) | ACE team |
