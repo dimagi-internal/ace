@@ -1,6 +1,6 @@
 ---
 name: partner-on-connect-program
-description: Work with a program team on a live Connect program as a standing project. Use for program help outside /ace:run.
+description: Work with a program team on a live Connect program, including changes to what is live. Use for program help outside /ace:run.
 ---
 
 # Partner on a Connect program
@@ -82,6 +82,85 @@ rewrites what someone else wrote.
 5. **Write back.** Log the turn on the task (`canopy agent turn … --task T<N>`). Put
    deliverables on the project's links. Append any decision to the context doc.
 
+## Changing a live program
+
+Most requests a program team makes are changes to something already live: "add a question to
+the Deliver form", "lower the pass mark", "the coach should mention X", "add a payment unit for
+the follow-up visit". These are modifications to existing objects. They are **not** new builds.
+Never route one into `/ace:run`, which creates a fresh opportunity and a fresh app and would
+leave the partner with two of each.
+
+**What counts as a change:** any write to an object listed in the context doc's Scope, Apps,
+AI coaches and bots, or Metrics. That covers an app edit plus re-release, an opportunity's
+verification flags, payment units, dates or budget, the Learn passing score, a bot's prompt,
+knowledge or tools, a solicitation's fields, and a Labs workflow's opportunities or template.
+Reading and answering are not changes.
+
+**Procedure:**
+
+1. **Name the object and its current state.** Resolve it from the context doc (§ Every
+   session step 2), then read it live and record the before state: the field values, the app
+   build number, the bot version.
+2. **Check the platform's limits before proposing anything.** The playbook index
+   (`playbook/README.md`, "how do I do X on surface Y") and the matching
+   `playbook/integrations/<surface>.md` say which operations exist and which do not. The traps
+   that make a plausible change wrong are:
+   - **A `DeliverUnit` is shared across opportunities wired to the same released Deliver
+     app** (ace#573). A payment unit cannot be bound to a deliver unit another opportunity
+     already holds, and no atom deletes a payment unit. Adding or changing payment units on a
+     live opportunity is constrained, so check before promising it.
+   - **The Learn `passing_score` lives on the shared `CommCareApp` row** (ace#1350). Changing
+     it with `connect_set_learn_passing_score` changes the gate for every opportunity in the
+     org wired to that Learn app. Name those opportunities in the proposal.
+   - **An opportunity's holding org is create-time only.** `target_organization_slug` cannot
+     be changed (`connect_update_opportunity` has no org field). A wrong org means a new
+     opportunity, which is a build, not a change.
+   - **An app edit only reaches workers once it is released.** The path is a Nova edit
+     (`nova:edit`, or the private-work atoms), upload to the **same** HQ app ID, re-apply the
+     HQ settings, rebuild and release, then confirm the opportunity sees the new deliver units.
+     Whether a live opportunity picks up a re-release on its own is not documented. Read it
+     back rather than assuming it.
+   - **An OCS bot's public link serves only the published version.** Republish after any
+     prompt or knowledge change (`ocs-knowledge-refresh` covers knowledge).
+3. **Propose the change with before and after.** One message to the requester or owner gives
+   the object, its before state, the intended after state, what else it touches (other
+   opportunities on the same app, workers mid-Learn, live Labs reports), and how it will be
+   verified. The owner approves any outbound or shared act (manual-mode turns), and a change to
+   a live opportunity or a released app is one. Program-team members can direct the work, but
+   approval follows § Guardrails, Who steers.
+4. **Make the change through the existing skills and atoms.** Don't hand-roll a procedure a
+   skill already owns. Examples: `nova:edit` then `app-deploy` / `app-hq-settings` /
+   `app-release` / `app-release-qa` for an app; the `connect_*` update atoms for an
+   opportunity; `ocs-knowledge-refresh` or the `ocs_set_chatbot_*` atoms for a bot;
+   `app-case-sharing` for case sharing. Where a skill still reads its IDs only from a run's
+   artifacts, pass the IDs from the context doc and note the gap on the task.
+5. **Verify against a fresh read.** Never trust the write's status alone: re-read the object
+   and compare it with the agreed after state.
+6. **Log it.** Append a dated line to the context doc's Decisions: what changed, the before
+   and after values, who asked, who approved, and the evidence (a link or ID). Log the turn on
+   the board task. A change that lands only in an email or a session reaches no future session.
+
+A change too large to finish in one turn (an app edit plus release, a multi-step
+reconfiguration) is dispatched to its own session with the project, the context-doc link and
+the asks verbatim, the same way `inbox-triage` dispatches a run.
+
+## When a build becomes a program project
+
+A program ACE built through `/ace:run` becomes a program project **once it is live**, meaning
+after Phase 9 go-live (`llo-launch`) has activated the partner's opportunity. From then on,
+requests about it are program work under this skill, not steps of the run:
+
+- Open the project (§ The project) if none exists, and seed its context doc's Scope, Apps and
+  AI coaches and bots from the run's `run_state.yaml` products. Copy the IDs as pointers, not
+  the artifacts.
+- Put the run's ace-web page (`ace_web_summary_url`) in the context doc's Builds section, so
+  the build history stays one click away.
+- The run itself stays frozen. A change to the live program is never written back into that
+  run's `run_state.yaml`. It is logged in the context doc's Decisions.
+
+Before go-live the run still owns its objects, and changes go through the run (its pause points
+or `/ace:step`).
+
 ## Guardrails
 
 - **Data.** People may share with ACE only what they would share with their own AI assistant
@@ -109,4 +188,8 @@ rewrites what someone else wrote.
 - `skills/task-tracker`: board and project mechanics.
 - `skills/gdoc-writer`: publishing deliverables into `Projects/<name>/`.
 - `skills/explain-ace`: interaction and security model questions.
+- `skills/inbox-triage`: how inbound mail is routed to a program project (§ 2b) and handled as
+  Program work (§ 2d).
+- `playbook/README.md` and `playbook/integrations/*.md`: what each platform can and cannot do
+  when changing a live object.
 - `/ace:run`, `/ace:program-update`: when program work turns into a new build.

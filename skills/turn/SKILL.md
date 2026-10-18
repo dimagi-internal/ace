@@ -2,7 +2,7 @@
 name: turn
 description: >
   ACE's turn-of-work entry point. Use when a human says "do a turn" or "check your inbox" —
-  process what's come in. Wraps around /ace:run pipeline runs; does not replace them.
+  process what's come in, for runs and program projects alike.
 ---
 
 # Turn — ACE (stub over the fleet-canonical core)
@@ -25,10 +25,11 @@ improvements ship once (a canopy PR) instead of N backports.
 - Email shim: `bin/ace-email` · board: `/agents/ace`
 
 ## ACE-local notes (the ONLY hand-edited section — fleet-process changes go to canopy)
-- **Entry points:** the turn is the counterpart-facing entry point; **`/ace:run` remains the
-  pipeline entry point** — a turn wraps around runs, it does not replace them. A turn may resume a
-  paused run at the instruction of an **act**-tier sender, executing the same procedure the pause
-  point defines. Design + counterpart model:
+- **Entry points:** the turn is the counterpart-facing entry point, for run threads **and** for
+  program-project work: questions about, and changes to, live programs ACE supports
+  (`skills/partner-on-connect-program`). **`/ace:run` remains the entry point for new builds**;
+  a turn does not replace it. A turn may resume a paused run at the instruction of an
+  **act**-tier sender, executing the same procedure the pause point defines. Design + counterpart model:
   `docs/superpowers/specs/2026-07-01-agent-operating-model-adoption.md`.
 - **EVERY raw `gog` or `canopy email` call goes through `bin/ace-env` — no exceptions**
   (dimagi-internal/ace#2844). gog keeps its OAuth client secret in a FILE keyring whose password
@@ -108,11 +109,13 @@ improvements ship once (a canopy PR) instead of N backports.
 - **Inbound processing (core Step 2) = `skills/inbox-triage` in full:** standing noise table first
   (drain ALL search pages), then per thread — tier the sender (**act** = canopy-web granted the whole of ACE, via `canopy caller tier`;
   **correspond** = derived from the routed run's state; neither = read-only), route to opp/run via
-  the comms-log `thread_id`, one action, approval-gated outbound. Per-sender isolation and tier
+  the comms-log `thread_id` (or to a program project, inbox-triage § 2b step 4), one action,
+  approval-gated outbound. Per-sender isolation and tier
   resolution live there.
 - **ACE's state layer is Drive, never local:** where the core says "record `thread_id` in your
   state layer", that's the routed run's comms-log (`email-communicator` step 7) — the routing key
-  inbox-triage matches inbound threads against. Turn state = comms-logs + `run_state.yaml`.
+  inbox-triage matches inbound threads against. Turn state = comms-logs + `run_state.yaml` for run threads; the board task and the
+  `<Program> — program context` doc for program-project threads.
 - **Pre-send review = `skills/agent-turn-review`, applied INLINE** — read that file top to bottom
   and run its A/B/C/D checklist yourself. Do NOT dispatch it (or `canopy:agent-turn-review`) via
   the `Skill` tool: that runs the fleet body alone and drops ACE's §D send-path rules. It also
