@@ -78,10 +78,12 @@ describe('kaduna-graduation/20261015-1411 — fails at Phase 1', () => {
 });
 
 describe('a clean PDD passes', () => {
-  it('ACE-PDD-Pass-001 has no platform finding at all', () => {
+  it('ACE-PDD-Pass-001 passes with only the verification-flags warn it genuinely earns', () => {
+    // It asks for `photo_required, gps_within_radius` — checks Connect clears
+    // under automatic visit verification (ace#3138). A warn, never a failure.
     const r = checkPlatformConstraints(CLEAN);
     expect(r.pass).toBe(true);
-    expect(r.detail).toBe('no Connect platform constraint contradicted');
+    expect(r.detail).toMatch(/^no blocker; 1 platform behaviour\(s\) to confirm: \[WARN\] verification-flags-off-under-auto-verify:/);
   });
 });
 

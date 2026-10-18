@@ -415,3 +415,44 @@ rules:
     remedy: >-
       Build a fresh Learn app (`learn_app_source | new`) whenever the module set
       shrinks or an app from an earlier opportunity would be reused.
+
+  - id: verification-flags-off-under-auto-verify
+    severity: warn
+    source:
+      - dimagi/commcare-connect@c7409bd35:commcare_connect/opportunity/forms.py:692-693
+      - dimagi/commcare-connect@c7409bd35:commcare_connect/opportunity/forms.py:1559-1561
+      - dimagi/commcare-connect@c7409bd35:commcare_connect/opportunity/forms.py:1580-1583
+      - dimagi/commcare-connect@c7409bd35:commcare_connect/opportunity/forms.py:1602-1603
+      - dimagi/commcare-connect@c7409bd35:commcare_connect/opportunity/forms.py:1630-1631
+      - dimagi/commcare-connect@c7409bd35:commcare_connect/program/api/serializers.py:270
+    fact: >-
+      Connect removes its GPS, duplicate, location-distance and attachment
+      verification checks, and clears them on save, on every opportunity that
+      uses automatic visit verification, which new opportunities get from a
+      site-wide switch.
+    when:
+      any:
+        - {fact: verification_flags_request_auto_verify_cleared, op: truthy}
+    question: >-
+      Connect will not hold the GPS, duplicate, distance or photo check the
+      design asks for — how is its intent met?
+    plain_question: >-
+      The platform cannot switch on the location, repeat-visit, distance or
+      photo check the design asks for, so how should that check be done instead?
+    plain: >-
+      The platform turns those checks off for every new programme, so the
+      worker's form captures what the check needed and the team reviews it
+      after the visit.
+    options:
+      - Meet the intent in the form
+      - Accept no platform check
+    recommended: Meet the intent in the form
+    remedy: >-
+      Meet the check's intent in the Deliver app instead: a required in-form
+      capture on the paid branch (e.g. a required location field, a required
+      photo), reviewed post-hoc. Leave the Connect flag out of the build plan, or
+      mark it as an attempt: `connect_set_verification_flags` refuses it
+      (`unsupported_verification_flag`) because the field is absent from the
+      opportunity's verification form, and it must never be reported as
+      configured. Record the choice as decision row
+      `platform-verification-flags-off-under-auto-verify`.
