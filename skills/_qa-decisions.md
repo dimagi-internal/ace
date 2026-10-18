@@ -141,6 +141,7 @@ The shape distinction:
 | `llo-uat` | **NO QA** | Process / coordination skill. Compiles `llo-uat_results.md` from collected LLO responses. Format is loose enough that `llo-launch` reads it as LLM context rather than parsing structurally. *Eval candidate per `_eval-decisions.md` for UAT coverage completeness*. |
 | `flw-data-review` | **NO QA** | Recurring; analyzes FLW submissions via Connect data API (MCP-validated reads). Output is analysis recommendations the LLO acts on — eval-shaped (already has `flw-data-review-eval`), not QA-shaped. |
 | `timeline-monitor` | **NO QA** | Recurring poll. State-tracking against PDD milestones via Connect MCP. No artifact produced ACE-side. |
+| `supply-chain-setup` | **has QA** | `supply-chain-setup-qa` (optional track, plan 2026-10-18 PR6). Labs validates each write at its boundary, but NOT the end state the next skill depends on: the programme standing, the runner, Connect-bound orgs, one `user_held` point per FLW, synthetic supplier names, ace@ as team admin. 8 static checks in `skills/supply-chain-setup-qa/checks.ts`, judged against a FRESH labs read and never against the write responses (spec § F0). The records cannot be deleted (§ F6), so a wrong registry is caught before procurement writes on top of it. |
 
 ### Phase 10 — closeout
 

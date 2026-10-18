@@ -1,10 +1,8 @@
 ---
 name: app-case-sharing
 description: >
-  Design and build location-based case sharing into an app — records owned by a worker's place so a
-  supervisor sees their team's records and other areas see nothing. Use when a request says "case sharing",
-  "see each other's participants/cases", "supervisor sees team", or "groups/locations" for an app. Covers the
-  Nova authoring, the three-check proof in Nova's disposable test, and the CommCare HQ-side setup.
+  Build location-based case sharing into an app, so a supervisor sees their team's cases and other areas
+  see none. Use for "case sharing", "supervisor sees team" or "groups/locations". Nova + HQ setup.
 disable-model-invocation: false
 ---
 

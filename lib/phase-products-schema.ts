@@ -712,7 +712,27 @@ const ExecutionProducts = z
           .object({ pm: z.union([z.string(), z.number()]).optional(), llo: z.union([z.string(), z.number()]).optional() })
           .passthrough()
           .optional(),
+        /** Who runs the programme's supply chain (skills/supply-chain-setup Step 1). */
+        runner: z
+          .object({
+            org_id: z.union([z.string(), z.number()]).optional(),
+            role: z.enum(['llo', 'pm', 'other']).optional(),
+            buyer_of_record: z.enum(['programme_org', 'partner_org']).optional(),
+            fallback_reason: z.string().optional(),
+          })
+          .passthrough()
+          .optional(),
         commodities: z.array(z.string()).optional(),
+        items: z.array(z.union([z.string(), z.number()])).optional(),
+        supply_points: z
+          .object({
+            central: z.union([z.string(), z.number()]).optional(),
+            regional: z.union([z.string(), z.number()]).optional(),
+            flw: z.record(z.string(), z.union([z.string(), z.number()])).optional(),
+          })
+          .passthrough()
+          .optional(),
+        suppliers: z.array(z.union([z.string(), z.number()])).optional(),
         tender_id: z.union([z.string(), z.number()]).optional(),
       })
       .passthrough()
@@ -958,6 +978,11 @@ export const PRODUCT_PRODUCERS: Partial<Record<PhaseName, Record<string, string>
   'execution-management': {
     // "Sole writer of `products.launch`" (skills/llo-launch/SKILL.md § Step 10).
     launch: 'llo-launch',
+    // Optional track (spec 2026-10-18 § F, § H). supply-chain-setup is the
+    // block's FIRST writer (skills/supply-chain-setup/SKILL.md § Products) and
+    // owns the registry keys; -procure / -fulfil (PR7, PR8) attribute the
+    // tender/contract and shipment/invoice/payment keys they add under it.
+    supply_chain: 'supply-chain-setup',
   },
   closeout: {
     // Each "Sole writer of `products.<key>`" per its SKILL.md.
@@ -986,13 +1011,6 @@ export const UNATTRIBUTED_PRODUCT_KEYS: Partial<
     },
   ],
   'execution-management': [
-    {
-      key: 'supply_chain',
-      reason:
-        'Declared up front by the optional-steps framework (plan 2026-10-18 PR1) so the strict() root ' +
-        'accepts it; its writers (supply-chain-setup / -procure / -fulfil / -operate) land in PR6-PR9. ' +
-        'Attribute it in the PR that adds the first writer.',
-    },
     {
       key: 'simulation',
       reason:

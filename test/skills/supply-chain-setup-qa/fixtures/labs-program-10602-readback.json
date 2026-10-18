@@ -1,0 +1,299 @@
+{
+  "_provenance": "Captured live, read-only, by ACE (ace@dimagi-ai.com, labs MCP PAT) on 2026-10-18 from labs program 10602 ('IPTSc Shortfall', runner Dimagi). Replies are verbatim except org_list, which is the 5 rows relevant here out of 306 (labs-wide). programme_team_list REFUSED for a Dimagi-run programme; its error text is recorded as returned.",
+  "programme_runner_get": {
+    "program_id": 10602,
+    "org_id": 2,
+    "org_name": "Dimagi",
+    "your_standing": "programme"
+  },
+  "org_list": {
+    "value": [
+      {
+        "id": 2,
+        "slug": "dimagi",
+        "name": "Dimagi",
+        "short_name": "Dimagi",
+        "connect_organization_id": null,
+        "connect_organization_slug": "",
+        "is_linked": false,
+        "aliases": [
+          "programme"
+        ],
+        "country": "",
+        "notes": ""
+      },
+      {
+        "id": 242,
+        "slug": "harmattan-health-supplies",
+        "name": "Harmattan Health Supplies",
+        "short_name": "",
+        "connect_organization_id": null,
+        "connect_organization_slug": "",
+        "is_linked": false,
+        "aliases": [],
+        "country": "NG",
+        "notes": "Invented in-country distributor for the supply walkthroughs."
+      },
+      {
+        "id": 349,
+        "slug": "noora-health-pm-test",
+        "name": "Newborn Care Companion Classes — demonstration (Dimagi)",
+        "short_name": "Newborn care demo (Dimagi)",
+        "connect_organization_id": 397,
+        "connect_organization_slug": "noora-health-pm-test",
+        "is_linked": true,
+        "aliases": [],
+        "country": "NG",
+        "notes": "Program-manager org of the ACE demonstration clone noora-health/noora-health/20261015-1129, built by Dimagi from public information only. Not Noora Health; registered so the demo solicitation can be owned by this org."
+      },
+      {
+        "id": 243,
+        "slug": "sahel-community-health-initiative",
+        "name": "Sahel Community Health Initiative",
+        "short_name": "SCHI",
+        "connect_organization_id": null,
+        "connect_organization_slug": "",
+        "is_linked": false,
+        "aliases": [],
+        "country": "NG",
+        "notes": "Invented local implementing partner for the supply use-case walkthroughs."
+      },
+      {
+        "id": 267,
+        "slug": "tamarind-pharmacy-wholesale",
+        "name": "Tamarind Pharmacy Wholesale",
+        "short_name": "",
+        "connect_organization_id": null,
+        "connect_organization_slug": "",
+        "is_linked": false,
+        "aliases": [],
+        "country": "",
+        "notes": ""
+      }
+    ]
+  },
+  "commodity_list": {
+    "value": [
+      {
+        "id": 259,
+        "slug": "dihydroartemisinin-piperaquine",
+        "name": "Dihydroartemisinin-piperaquine tablet",
+        "category": "antimalarial",
+        "base_unit": "tablet",
+        "pack_unit": "blister",
+        "base_per_pack": 3,
+        "base_unit_grams": null,
+        "shelf_life_months_minimum": null,
+        "spec_requirements": [],
+        "course_definition": {},
+        "spec_reference": "",
+        "unicef_material_number": "",
+        "reference_scope": "program"
+      },
+      {
+        "id": 260,
+        "slug": "iptsc-dosing-card",
+        "name": "IPTSc dosing card",
+        "category": "consumable",
+        "base_unit": "card",
+        "pack_unit": "bundle",
+        "base_per_pack": 100,
+        "base_unit_grams": null,
+        "shelf_life_months_minimum": null,
+        "spec_requirements": [],
+        "course_definition": {},
+        "spec_reference": "",
+        "unicef_material_number": "",
+        "reference_scope": "program"
+      },
+      {
+        "id": 261,
+        "slug": "iptsc-treatment-packet",
+        "name": "IPTSc three-day treatment packet",
+        "category": "antimalarial",
+        "base_unit": "packet",
+        "pack_unit": "carton",
+        "base_per_pack": 50,
+        "base_unit_grams": null,
+        "shelf_life_months_minimum": null,
+        "spec_requirements": [],
+        "course_definition": {
+          "source": "programme team: one standard packet is one three-day course",
+          "days_per_course": 3,
+          "base_units_per_course": 1
+        },
+        "spec_reference": "",
+        "unicef_material_number": "",
+        "reference_scope": "program"
+      }
+    ]
+  },
+  "item_list": {
+    "value": [
+      {
+        "id": 211,
+        "sku": "iptsc-3day-packet",
+        "name": "IPTSc three-day packet (standard)",
+        "commodity_slug": "iptsc-treatment-packet",
+        "manufacturer": "",
+        "base_unit": "packet",
+        "pack_unit": "carton",
+        "base_per_pack": 50,
+        "pack_per_case": null,
+        "base_unit_grams": null,
+        "shelf_life_months": 24,
+        "gtin_base": "",
+        "gtin_pack": "",
+        "gtin_case": "",
+        "gpc_brick": "",
+        "spec_attributes": {},
+        "status": "active",
+        "components": [
+          {
+            "quantity": "9",
+            "base_unit": "tablet",
+            "commodity_slug": "dihydroartemisinin-piperaquine"
+          },
+          {
+            "quantity": "1",
+            "base_unit": "card",
+            "commodity_slug": "iptsc-dosing-card"
+          }
+        ],
+        "is_kit": true,
+        "one_course_is": "base_unit",
+        "components_per": "base",
+        "components_unit": "packet",
+        "stock_class": "consumable",
+        "is_durable": false,
+        "reference_scope": "program"
+      }
+    ]
+  },
+  "supply_point_list": {
+    "value": [
+      {
+        "id": 144,
+        "slug": "schi-district-store",
+        "name": "SCHI district store",
+        "kind": "regional_store",
+        "is_user_held": false,
+        "opportunity_id": null,
+        "parent_supply_point_id": null,
+        "managed_by_org_id": 243,
+        "connect_username": "",
+        "connect_user_id": null,
+        "connect_user_uuid": "",
+        "admin_area": "Birnin Tudu",
+        "latitude": 9.593635673916621,
+        "longitude": 8.105324863568711,
+        "location_source": "country",
+        "location_precision": "country",
+        "location_label": "Nigeria, country centre",
+        "min_months_of_stock": null,
+        "max_months_of_stock": null,
+        "status": "active",
+        "source": "we_recorded",
+        "recorded_by_org_id": 2,
+        "witnessed": true,
+        "note": ""
+      }
+    ]
+  },
+  "supplier_list": {
+    "value": [
+      {
+        "id": 141,
+        "name": "Harmattan Health Supplies",
+        "type": "distributor",
+        "country": "NG",
+        "city": "Kano",
+        "status": "awarded",
+        "contacts": [
+          {
+            "name": "Orders desk",
+            "role": "sales",
+            "email": "orders@harmattan-health.example"
+          },
+          {
+            "name": "Sales desk",
+            "role": "sales",
+            "email": "sales@harmattan-health.example"
+          }
+        ],
+        "qualifications": [],
+        "connect_organization_id": null,
+        "org_id": 242,
+        "notes": "",
+        "origin": "program",
+        "reviewed_on": null,
+        "reference_scope": "program"
+      },
+      {
+        "id": 142,
+        "name": "Tamarind Pharmacy Wholesale",
+        "type": "trader",
+        "country": "",
+        "city": "",
+        "status": "responsive",
+        "contacts": [],
+        "qualifications": [],
+        "connect_organization_id": null,
+        "org_id": 267,
+        "notes": "",
+        "origin": "program",
+        "reviewed_on": null,
+        "reference_scope": "program"
+      }
+    ]
+  },
+  "programme_team_list": {
+    "error": "ValueError: Dimagi's team is everyone with a Dimagi address; it is not kept as a list"
+  },
+  "checks_list": {
+    "categories": [
+      "missing",
+      "conflict",
+      "threshold"
+    ],
+    "count": 2,
+    "by_category": {
+      "missing": 2,
+      "conflict": 0,
+      "threshold": 0
+    },
+    "checks": [
+      {
+        "kind": "shipment_delivered_unevidenced",
+        "category": "missing",
+        "subject": {
+          "type": "shipment",
+          "id": 62,
+          "label": "HHS-WB-3310 — IPTSc three-day packet (standard) — Harmattan Health Supplies"
+        },
+        "audience": "ours",
+        "facts": {
+          "status": "delivered",
+          "contract_id": 184
+        },
+        "since": "2026-09-19",
+        "days_open": 29
+      },
+      {
+        "kind": "shipment_without_certificate",
+        "category": "missing",
+        "subject": {
+          "type": "shipment",
+          "id": 62,
+          "label": "HHS-WB-3310 — IPTSc three-day packet (standard) — Harmattan Health Supplies"
+        },
+        "audience": "supplier",
+        "facts": {
+          "status": "delivered"
+        },
+        "since": "2026-09-19",
+        "days_open": 29
+      }
+    ]
+  }
+}
