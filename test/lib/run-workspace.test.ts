@@ -54,7 +54,7 @@ describe('resolveRunWorkspace — default workspace', () => {
       hq_api_key: { kind: 'instance', ref: '${ACE_HQ_API_KEY}' },
       warnings: [],
     });
-    expect(r.connect_orgs).toMatchObject({ pm_org: 'ace-pm-org', nm_org: 'ace-nm-org', source: { pm_org: 'env', nm_org: 'env' } });
+    expect(r.connect_orgs).toMatchObject({ pm_org: 'ace-pm-org', nm_org: 'ace-nm-org', llo_org: null, source: { pm_org: 'env', nm_org: 'env', llo_org: 'unset' } });
   });
 
   it('naming the default workspace explicitly is the same as a bare opp', () => {
@@ -97,18 +97,38 @@ describe('resolveRunWorkspace — default workspace', () => {
     expect(r.connect_orgs).toEqual({
       pm_org: 'ace-pm-org',
       nm_org: 'ace-nm-org',
-      source: { pm_org: 'tenancy', nm_org: 'tenancy' },
+      llo_org: null,
+      source: { pm_org: 'tenancy', nm_org: 'tenancy', llo_org: 'unset' },
     });
     expect(phase4Orgs(r.connect_orgs)).toMatchObject({ mode: 'pm-nm', holding_org: 'ace-nm-org' });
     expect(r.warnings.join('\n')).toMatch(/ACE_CONNECT_NM_ORG is unset; nm_org=ace-nm-org comes from ace-web/);
     const y = parseYaml(renderRunWorkspaceYaml(r));
-    expect(y.run_workspace.connect_orgs.source).toEqual({ pm_org: 'tenancy', nm_org: 'tenancy' });
+    expect(y.run_workspace.connect_orgs.source).toEqual({ pm_org: 'tenancy', nm_org: 'tenancy', llo_org: 'unset' });
   });
 
   it('nm_org unset in .env vs a tenancy holding org resolves to the tenancy, not self-managed', () => {
     const r = resolveRunWorkspace({ workspace: null, opp: 'x', env: { ...ENV, ACE_CONNECT_NM_ORG: undefined }, response: SHARED_TENANCY });
     expect(r.connect_orgs.nm_org).toBe('ace-nm-org');
-    expect(r.connect_orgs.source).toEqual({ pm_org: 'env', nm_org: 'tenancy' });
+    expect(r.connect_orgs.source).toEqual({ pm_org: 'env', nm_org: 'tenancy', llo_org: 'unset' });
+  });
+
+  it('a winner org equal to a tenancy-supplied holding org halts with CONNECT_ORG_CONFLICT', () => {
+    const e = err(() =>
+      resolveRunWorkspace({
+        workspace: null,
+        opp: 'x',
+        env: { ...ENV, ACE_CONNECT_NM_ORG: undefined, ACE_CONNECT_LLO_ORG: 'ace-nm-org' },
+        response: SHARED_TENANCY,
+      }),
+    );
+    expect(e.code).toBe('CONNECT_ORG_CONFLICT');
+    expect(e.fields).toEqual(['ACE_CONNECT_LLO_ORG']);
+  });
+
+  it('a distinct winner org passes through from .env', () => {
+    const r = resolveRunWorkspace({ workspace: null, opp: 'x', env: { ...ENV, ACE_CONNECT_LLO_ORG: 'ace-llo-org' }, response: SHARED_TENANCY });
+    expect(r.connect_orgs.llo_org).toBe('ace-llo-org');
+    expect(r.connect_orgs.source.llo_org).toBe('env');
   });
 
   it('an explicit .env org that contradicts the tenancy halts with CONNECT_ORG_CONFLICT', () => {
@@ -122,13 +142,13 @@ describe('resolveRunWorkspace — default workspace', () => {
 
   it('with no tenancy to compare, an unset PM key still uses the legacy default — and says so', () => {
     const r = resolveRunWorkspace({ workspace: null, opp: 'x', env: NO_ORGS, responseError: new Error('ECONNREFUSED') });
-    expect(r.connect_orgs.source).toEqual({ pm_org: 'legacy-default', nm_org: 'unset' });
+    expect(r.connect_orgs.source).toEqual({ pm_org: 'legacy-default', nm_org: 'unset', llo_org: 'unset' });
     expect(r.warnings.join('\n')).toMatch(/falls back to the legacy default/);
   });
 
   it('matching .env and tenancy orgs are unchanged and warning-free', () => {
     const r = resolveRunWorkspace({ workspace: null, opp: 'x', env: ENV, response: SHARED_TENANCY });
-    expect(r.connect_orgs).toEqual({ pm_org: 'ace-pm-org', nm_org: 'ace-nm-org', source: { pm_org: 'env', nm_org: 'env' } });
+    expect(r.connect_orgs).toEqual({ pm_org: 'ace-pm-org', nm_org: 'ace-nm-org', llo_org: null, source: { pm_org: 'env', nm_org: 'env', llo_org: 'unset' } });
     expect(r.warnings).toEqual([]);
   });
 
@@ -149,7 +169,7 @@ describe('resolveRunWorkspace — partner workspace', () => {
       hq_domain: 'connect-ace-spark',
       hq_api_key: { kind: 'space-restricted', mint_per_run: true },
     });
-    expect(r.connect_orgs).toMatchObject({ pm_org: 'spark-pm-org-test', nm_org: 'spark-nm-org-test', source: { pm_org: 'tenancy', nm_org: 'tenancy' } });
+    expect(r.connect_orgs).toMatchObject({ pm_org: 'spark-pm-org-test', nm_org: 'spark-nm-org-test', source: { pm_org: 'tenancy', nm_org: 'tenancy', llo_org: 'unset' } });
   });
 
   it('with no ocs_team in the tenancy, uses the configured team and says the bot is reviewed by public link', () => {

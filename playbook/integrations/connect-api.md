@@ -569,6 +569,56 @@ authoritative for every call against that program. Changing
 `ACE_CONNECT_PM_ORG` affects programs created from then on; it never
 re-homes (and must never orphan) one that exists.
 
+### The ACE-owned orgs (pm / nm / llo)
+
+An instance of ACE owns up to three Connect orgs. ace@ is a member (admin) of
+each. They play three different parts in the same program, and those parts
+cannot be shared:
+
+| `connect_orgs` key | `.env` key | Holds | Never |
+|---|---|---|---|
+| `pm_org` | `ACE_CONNECT_PM_ORG` | The **program**. Solicitations, the verification-rules page (PM-only), partner invites. It owns the labs call a solicitation is published under. | Holds the build/QA opportunity when `nm_org` is set. |
+| `nm_org` | `ACE_CONNECT_NM_ORG` | Phase 4's **build/QA opportunity** (`target_organization_slug`), via the real PM→NM invite + accept. | Owns a program, or wins a call. |
+| `llo_org` | `ACE_CONNECT_LLO_ORG` | The **ACE-owned winner** in runs that request the optional `ace_winner` step (`/ace:run --with ace_winner` or `labs_e2e`; spec `docs/superpowers/specs/2026-10-18-optional-labs-e2e-steps.md` § C). The winner's seeded response is bound to it (via its labs org), the award goes to it, and the simulated procurement buys and receives as it. | Is the PM or the NM org. |
+
+**Why they must be distinct.** `lib/connect-orgs.ts` refuses an `llo_org` equal to
+`pm_org` or `nm_org`, and `lib/run-workspace.ts` refuses one equal to a tenancy-supplied
+org (`CONNECT_ORG_CONFLICT`). The reasons:
+- labs refuses to award "a response from their own side": the call's owner can never be its winner;
+- a winner that was also the holding org would make the build/QA opportunity and the awarded LLO indistinguishable in every downstream read;
+- an opportunity's holding org is create-time only (ace#2919), so a wrong org has no repair path.
+
+**The winner org is instance config, never a partner's.** A partner workspace's tenancy
+never supplies one (`connectOrgsFromTenancy` returns `llo_org: null`).
+`aceControlledOrgs` includes it, because ace@ belongs to it, so ACE may accept a program
+invitation addressed to it. That is the same authority ACE has over its own NM org.
+
+**Preflight.** `connect_orgs:` carries `llo_org` and `source.llo_org`. When it is unset,
+the block adds `llo_org_status: warn` plus a remediation. That is a warning, not a
+failure, because only a run requesting `ace_winner` needs it. *Enforced:*
+`test/lib/connect-orgs.test.ts`, `test/lib/run-workspace.test.ts`, and
+`test/skills/no-hardcoded-connect-org.test.ts`. The last refuses the commented example
+slug of every `ACE_CONNECT_*_ORG` key in `.env.tpl` as a literal in skills, agents,
+commands, templates and CLAUDE.md. Prose says `connect_orgs.llo_org`.
+
+**Creating the winner org (one-time, operator step today).**
+- Connect has no REST route for creating an org.
+- The only path is the HTML wizard at `GET/POST /register/organization/` (`organization_create`, `@login_required`; `dimagi/commcare-connect` `config/urls.py:41`, `commcare_connect/organization/views.py:31`).
+- Any signed-in user may create one and becomes its **admin**.
+- The form is `OrganizationCreateForm`:
+  - `name` is required and checked unique case-insensitively;
+  - every profile field is optional (`short_name`, `has_used_connect`, `year_of_establishment`, `team_size`, `flws_managed`, `countries`, `regions`, `primary_sectors`, `website`, `office_address`, `contact_emails`, `eoi_links`, `notes`);
+  - `skip_membership` exists only for holders of `ORG_MANAGEMENT_SETTINGS_ACCESS`.
+- **The slug is not chosen.** It is `slugify_uniquely(name)` and permanent, so pick the name with the slug in mind.
+- `is_test` is not on the form.
+- Success redirects to `/a/<slug>/opportunity/`.
+
+Steps:
+1. Create the org in the Connect UI as ace@.
+2. Put its slug in the installed `.env` as `ACE_CONNECT_LLO_ORG` (a local-only key).
+3. Run `/ace:setup --force-env`, then fully restart Claude.
+4. Register it on the labs side through `supply_chain_org_upsert` with `connect_organization_id`. `supply-chain-setup` does this.
+
 ### PM→NM org-URL matrix (live, 2026-09-26)
 
 Phase 4 in `pm-nm` mode acts on an opportunity whose program org (PM) and

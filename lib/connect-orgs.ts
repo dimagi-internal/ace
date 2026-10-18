@@ -22,8 +22,19 @@
  *                        accepted, and the run's opportunity is created HELD BY
  *                        the NM org (`phase4Orgs` below). Unset keeps the legacy
  *                        self-managed shape (opportunity held by the PM org).
+ *   ACE_CONNECT_LLO_ORG  The ACE-OWNED winner org: a Connect org ace@ belongs
+ *                        to that plays the awarded LLO when a run asks for the
+ *                        optional `ace_winner` step (spec
+ *                        docs/superpowers/specs/2026-10-18-optional-labs-e2e-steps.md
+ *                        § C). Unset → `null`; only a run requesting
+ *                        `ace_winner` needs it (`/ace:doctor --preflight`
+ *                        WARNs). It must differ from both the PM and the NM org:
+ *                        the award, the procurement and the winner's labs org
+ *                        all key on it, and a winner that IS the programme
+ *                        would award the call to its own owner (labs refuses
+ *                        "a response from their own side").
  *
- * Neither key is declared in `.env.tpl` (they are documented there COMMENTED),
+ * None of the three keys is declared in `.env.tpl` (they are documented there COMMENTED),
  * so `bin/ace-setup --force-env` treats them as local-only keys and preserves
  * them across every re-inject — the per-instance value survives re-setup and
  * 1Password never overrides it. See `playbook/integrations/connect-api.md
@@ -50,15 +61,19 @@ export const LEGACY_DEFAULT_PM_ORG = 'ai-demo-space';
 
 export const PM_ORG_ENV = 'ACE_CONNECT_PM_ORG';
 export const NM_ORG_ENV = 'ACE_CONNECT_NM_ORG';
+export const LLO_ORG_ENV = 'ACE_CONNECT_LLO_ORG';
 
 export interface ConnectOrgs {
   /** Slug of the program-manager org (always set — legacy default when unconfigured). */
   pm_org: string;
   /** Slug of the network-manager org, or null when this instance has not configured one. */
   nm_org: string | null;
+  /** Slug of the ACE-owned winner org (the optional `ace_winner` step), or null when not configured. */
+  llo_org: string | null;
   source: {
     pm_org: 'env' | 'legacy-default' | 'tenancy';
     nm_org: 'env' | 'unset' | 'tenancy';
+    llo_org: 'env' | 'unset';
   };
 }
 
@@ -105,14 +120,36 @@ function read(env: Record<string, string | undefined>, key: string): string | nu
 export function resolveConnectOrgs(env: Record<string, string | undefined>): ConnectOrgs {
   const pm = read(env, PM_ORG_ENV);
   const nm = read(env, NM_ORG_ENV);
+  const llo = readLloOrg(env, pm ?? LEGACY_DEFAULT_PM_ORG, nm);
   return {
     pm_org: pm ?? LEGACY_DEFAULT_PM_ORG,
     nm_org: nm,
+    llo_org: llo,
     source: {
       pm_org: pm ? 'env' : 'legacy-default',
       nm_org: nm ? 'env' : 'unset',
+      llo_org: llo ? 'env' : 'unset',
     },
   };
+}
+
+/**
+ * Read `ACE_CONNECT_LLO_ORG`, refusing a value equal to the PM or NM org. The
+ * winner org is the one a seeded response is bound to and the award goes to;
+ * labs refuses an award to "a response from their own side", and a winner that
+ * is also the holding org would make the build/QA opportunity and the awarded
+ * LLO indistinguishable. Fails loud here rather than at award time.
+ */
+export function readLloOrg(env: Record<string, string | undefined>, pm: string, nm: string | null): string | null {
+  const llo = read(env, LLO_ORG_ENV);
+  if (llo === null) return null;
+  if (llo === pm) {
+    throw new ConnectOrgConfigError(LLO_ORG_ENV, llo, `it is the PM org (${PM_ORG_ENV}); the winner org must be a distinct org`);
+  }
+  if (nm !== null && llo === nm) {
+    throw new ConnectOrgConfigError(LLO_ORG_ENV, llo, `it is the NM org (${NM_ORG_ENV}); the winner org must be a distinct org`);
+  }
+  return llo;
 }
 
 /**
@@ -187,6 +224,10 @@ export function aceControlledOrgs(env: Record<string, string | undefined>): stri
   out.add(pm ?? LEGACY_DEFAULT_PM_ORG);
   const nm = read(env, NM_ORG_ENV);
   if (nm) out.add(nm);
+  // The winner org is ACE-owned by definition (ace@ is a member), so ACE may
+  // act as it — e.g. accept the program invitation addressed to it.
+  const llo = read(env, LLO_ORG_ENV);
+  if (llo) out.add(llo);
   const extra = env[CONTROLLED_ORGS_ENV];
   if (extra) {
     for (const part of extra.split(',')) {
@@ -466,7 +507,14 @@ export function connectOrgsFromTenancy(tenancy: {
   if (!pm) {
     throw new ConnectOrgConfigError('tenancy.connect_pm_org', '', 'the workspace tenancy names no Connect PM org');
   }
-  return { pm_org: pm, nm_org: nm, source: { pm_org: 'tenancy', nm_org: nm ? 'tenancy' : 'unset' } };
+  // A tenancy names no winner org: the ACE-owned winner is instance
+  // configuration, never a partner workspace's.
+  return {
+    pm_org: pm,
+    nm_org: nm,
+    llo_org: null,
+    source: { pm_org: 'tenancy', nm_org: nm ? 'tenancy' : 'unset', llo_org: 'unset' },
+  };
 }
 
 /**
@@ -538,12 +586,22 @@ export function renderConnectOrgsBlock(o: ConnectOrgs, indent = ''): string {
     '  status: ok',
     `  pm_org: "${o.pm_org}"`,
     `  nm_org: ${o.nm_org === null ? 'null' : `"${o.nm_org}"`}`,
+    `  llo_org: ${o.llo_org === null ? 'null' : `"${o.llo_org}"`}`,
     `  phase4_mode: ${p4.mode}`,
     `  phase4_holding_org: "${p4.holding_org}"`,
     '  source:',
     `    pm_org: ${o.source.pm_org}`,
     `    nm_org: ${o.source.nm_org}`,
+    `    llo_org: ${o.source.llo_org}`,
     `  note: "${note}"`,
+    ...(o.llo_org === null
+      ? [
+          '  llo_org_status: warn',
+          `  llo_org_remediation: "${LLO_ORG_ENV} is unset: a run requesting the optional ace_winner step (--with ace_winner / labs_e2e) has no winner org. ` +
+            'Create a Connect org as ace@, set its slug in the installed .env (local-only key; /ace:setup --force-env preserves it), then restart Claude. ' +
+            'Runs without ace_winner are unaffected."',
+        ]
+      : []),
   ]
     .map((l) => indent + l)
     .join('\n');
@@ -560,6 +618,7 @@ export function renderConnectOrgsYaml(env: Record<string, string | undefined>): 
       '  status: fail',
       '  pm_org: null',
       '  nm_org: null',
+      '  llo_org: null',
       `  remediation: ${JSON.stringify(`${msg} — fix it in the installed .env (local-only key; /ace:setup --force-env preserves it)`)}`,
     ].join('\n');
   }
