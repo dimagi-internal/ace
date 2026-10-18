@@ -29,7 +29,7 @@ LLO-facing wording: [`_terminology.md`](../_terminology.md).
 | `solicitation_id` | the call to mirror, read live with `get_solicitation` | explicit arg; default: run_state `phases.solicitation-management.products.solicitation.solicitation_id` |
 | `public_form_decision` | the operator's decision that this form is public | default: run_state `optional_steps.google_form: true`; outside a run, explicit arg naming who decided |
 | `parent_folder_id` | where the form lives (a Shared Drive folder) | explicit arg; default: the run's `8-solicitation-management/` folder |
-| `deny_list` | parties that must never appear in LLO-facing text | default: the opp's `llo_facing_deny_list` in `inputs/`, resolved the same way `solicitation-seed-responses` resolves it; explicit arg; `[]` only when the opp declares none |
+| `deny_list` | parties that must never appear in LLO-facing text | explicit arg; default: exactly what `solicitation-seed-responses` § Process step 2 resolves: the opp's `inputs/confidentiality.yaml` `llo_facing_deny_list:` (parsed with `normalizeDenyList`) plus any "do not reference/mention <party>" instruction in the operator brief or the PDD; `[]` only when the opp declares none |
 | `mode` | `create` (default), `--import`, or `--close` | explicit arg |
 
 No `run_state.yaml` is required when every parameter is passed explicitly. The record (§
@@ -67,7 +67,9 @@ Products) is the state between `create` and `--import`.
 2. **Read the call live** with `get_solicitation({solicitation_id})`: `title`, `description`,
    `application_deadline`, `questions[]`, `is_public`. The owner reads its own unlisted call by
    id alone. Never build the form from a cached copy.
-3. **Load the deny list** (§ Inputs). Record where it came from as `deny_list_source`.
+3. **Load the deny list** (§ Inputs), the same way `solicitation-seed-responses` does, so the form
+   and the seeded answers are held to one list. Record where each entry came from as
+   `deny_list_source`.
 4. **Check for an existing record** in the parent folder. If one exists with a `form_id`, do not
    create another: go to step 7 and verify it. `forms_create_from_spec` also refuses a
    same-named form, so a re-run never duplicates.

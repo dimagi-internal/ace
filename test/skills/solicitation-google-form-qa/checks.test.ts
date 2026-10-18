@@ -19,6 +19,10 @@ import {
  * opened, fetched anonymously (200) and read back with
  * get_google_form_definition. Negative controls are that same bundle with one
  * thing broken, so each check is proved against what Forms actually returns.
+ *
+ * `responder_link_open` exists because publishing alone leaves a form at 401
+ * to anyone outside the drive (observed live in ace#3171, the Forms atoms PR);
+ * only the anyone-with-link permission opens it.
  */
 const LIVE = JSON.parse(
   readFileSync(join(__dirname, '../../fixtures/forms/solicitation-google-form-qa-bundle-live-2026-10-18.json'), 'utf8'),

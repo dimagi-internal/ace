@@ -22,7 +22,7 @@ mirror of the solicitation, whose quality `solicitation-create-eval` grades. See
 | `solicitation` | live `get_solicitation` (`is_public`, `questions`) | read live from `record.solicitation_id` |
 | `form` | live `get_google_form_definition({formId})` | read live from `record.form_id` |
 | `anonymous_http_status` | `curl -s -o /dev/null -w '%{http_code}' '<responder_url>'`, no cookies | measured at QA time |
-| `deny_list` | the opp's `llo_facing_deny_list` | same resolver as the producer; `[]` when none is declared |
+| `deny_list` | the opp's deny list (`inputs/confidentiality.yaml` `llo_facing_deny_list:` plus brief/PDD instructions) | same resolver as the producer; `[]` when none is declared |
 | `run_products_google_form` | run_state `phases.solicitation-management.products.solicitation.google_form` | run_state when a run is bound; `null` when none is |
 
 ## Products

@@ -16,6 +16,8 @@ skills:
   - { name: llo-invite,          has_judge: false }
   # Optional (spec 2026-10-18 § D): runs only when the run's optional_steps enables seed_responses.
   - { name: solicitation-seed-responses, has_judge: false, qa_skill: solicitation-seed-responses-qa, optional: true }
+  # Optional (spec 2026-10-18 § E): runs only when the run's optional_steps enables google_form.
+  - { name: solicitation-google-form, has_judge: false, qa_skill: solicitation-google-form-qa, optional: true }
 recurring_skills:
   - { name: solicitation-monitor, has_judge: false }
 manual_skills:
@@ -84,9 +86,14 @@ set to `false`, means skip it** and write `skipped (not enabled)` for it in the
 phase summary. Never infer a step from anything else.
 
 - **Step 1b: Google Form (`google_form`).** Invoke `solicitation-google-form`
-  once it ships (optional-track PR5b). Until then, record
-  `google_form: not available in this ACE version` in the summary rather
-  than skipping silently.
+  (create mode) on the solicitation Step 1 just published, then
+  `solicitation-google-form-qa`. The form is PUBLIC, anyone with the link can
+  respond; `optional_steps.google_form: true` is the operator's decision that
+  makes it so, and nothing else does. Record the responder link in the phase
+  summary. A failing QA halts the phase. A `no_deny_listed_party` or
+  `responder_link_open` failure means a public defect is live now, so name it
+  first. **Before `solicitation-review` runs** (manual, later), run
+  `solicitation-google-form --import`, so the review sees every submission.
 - **Step 1c: Seed synthetic responses (`seed_responses`).** Invoke
   `solicitation-seed-responses` with `count` from
   `optional_steps.seed_responses.count`, then `solicitation-seed-responses-qa`.
