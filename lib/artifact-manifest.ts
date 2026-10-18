@@ -2300,6 +2300,51 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     description: "Optional track (supply_chain): structural QA of one stock week against a FRESH labs read. 7 static checks in skills/supply-chain-operate-qa/checks.ts: flows balance (unit-converted: labs' flow is in base units, on-hand in packs), consignments received as planned, distributions and counts read back, the stockout's zero count, every open finding listed by audience, no stock_negative.",
   },
   // [optional-track:PR10 simulated-execution + simulated-weekly-review]
+  {
+    path: '9-execution-manager/simulated-execution_plan.yaml',
+    producedBy: 'simulated-execution',
+    role: 'manifest',
+    consumedBy: ['simulated-execution-qa'],
+    phase: 'execution-management',
+    required: false,
+    description: 'Optional track (simulate_weeks): the simulation plan, written BEFORE any write: the delivery window from lib/sim-calendar.ts, the synthetic-data manifest (persona ids = the setup plan\'s FLW usernames), and the per-week enrolment the PDD implies.',
+  },
+  {
+    path: '9-execution-manager/simulated-execution_summary.md',
+    producedBy: 'simulated-execution',
+    role: 'summary',
+    consumedBy: [],
+    phase: 'execution-management',
+    required: false,
+    description: 'Optional track (simulate_weeks): links every weekly review, the labs saved report run for each week, and the supply-chain programme pages.',
+  },
+  {
+    path: '9-execution-manager/simulated-execution-qa_result.yaml',
+    producedBy: 'simulated-execution-qa',
+    role: 'qa-result',
+    consumedBy: [],
+    phase: 'execution-management',
+    required: false,
+    description: 'Optional track (simulate_weeks): structural QA of the whole simulation. 8 static checks in skills/simulated-execution-qa/checks.ts: backdated calendar, week-0 and weekly stock QA passed, one saved run per delivery week, visits on a labs-only copy under the ACE winner, a review per week, no real-LLO contact, the summary links every week.',
+  },
+  {
+    path: '9-execution-manager/simulated-week-<w>_review.md',
+    producedBy: 'simulated-weekly-review',
+    role: 'report',
+    consumedBy: ['simulated-weekly-review-eval', 'simulated-execution-qa'],
+    phase: 'execution-management',
+    required: false,
+    description: "Optional track (simulate_weeks): one simulated week's review from labs' saved run and stock reads: progress against the PDD's targets, supply and stockouts, what labs flagged, next actions for the LLO lead and the program manager.",
+  },
+  {
+    path: '9-execution-manager/simulated-weekly-review-eval_verdict-week-<w>.yaml',
+    producedBy: 'simulated-weekly-review-eval',
+    role: 'verdict',
+    consumedBy: [],
+    phase: 'execution-management',
+    required: false,
+    description: "Optional track (simulate_weeks): LLM-judge verdict on one weekly review. 4 dimensions: figure fidelity against labs' own figures for the week (0.40), PDD target coverage (0.20), actionability (0.25), honesty about the simulation (0.15).",
+  },
 
   // ── Closeout phase (Phase 10) ──────────────────────────────────
 

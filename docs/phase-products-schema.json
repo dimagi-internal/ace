@@ -1795,14 +1795,10 @@
       "requiredProductKeys": [],
       "productProducers": {
         "launch": "llo-launch",
-        "supply_chain": "supply-chain-setup"
+        "supply_chain": "supply-chain-setup",
+        "simulation": "simulated-execution"
       },
-      "unattributedProductKeys": [
-        {
-          "key": "simulation",
-          "reason": "Declared up front by the optional-steps framework (plan 2026-10-18 PR1); its writer, simulated-execution, lands in PR10. Attribute it there."
-        }
-      ]
+      "unattributedProductKeys": []
     },
     "closeout": {
       "schema": {

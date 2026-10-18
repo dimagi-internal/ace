@@ -316,6 +316,7 @@ export const RAILS: Readonly<Record<string, RailProvenance>> = {
   'test/skills/solicitation-zero-responses-doctrine.test.ts': { issues: ['ace#2171'] },
   'test/skills/nova-upload-hq-refresh-before-authoring.test.ts': { issues: ['ace#3043'] },
   'test/skills/nova-private-work.test.ts': { issues: ['ace#2526', 'voidcraft-labs/commcare-nova#693'], note: 'observed live 2026-09-28 against a throwaway Nova app, not a run' },
+  'test/skills/simulated-execution-qa/checks.test.ts': { issues: ['ace#3152'], note: "history control grounded on a live read-only capture of labs workflow 7410's rebuilt weekly history (spark-facilitator/20261004-1706), read 2026-10-18" },
   'test/skills/starter-module-removal.test.ts': { issues: ['ace#1787'], observed: 'bednet-check-2-visit/20260828-0629' },
   'test/skills/supply-chain-fulfil-qa/checks.test.ts': { issues: ['ace#3152'], note: "controls grounded on a live read-only capture of labs program 10605 contract 187 (receipt + labs' three-way match), 2026-10-18" },
   'test/skills/supply-chain-operate-qa/checks.test.ts': { issues: ['ace#3152'], note: 'controls grounded on a live read-only capture of labs program 10605 store 149 (1000 tests in = 20 kits on hand: the flow/on-hand unit rule), 2026-10-18' },
