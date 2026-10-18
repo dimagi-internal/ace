@@ -93,6 +93,7 @@ export const ROLE_VOCAB = new Set<string>([
   'scoring-rubric',      // for solicitation-review_scoring-rubric.md
   'recommendation',      // for solicitation-review_recommendation.md
   'award-record',        // for solicitation-review_award-record.md
+  'roster',              // for solicitation-seed-responses_roster.md (optional seed_responses step)
   'expected-journeys',   // for pdd-to-app-journeys_expected-journeys.md
   'app-test-cases',      // for app-test-cases.yaml
 ]);

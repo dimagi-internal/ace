@@ -1,0 +1,64 @@
+{
+  "_doc": "Captured live 2026-10-18 by the PR4 probe (dimagi-internal/ace optional labs E2E). Private throwaway solicitation 1000003 owned by ace-pm-org (labs org 352 / Connect org 386) on program 308, closed after the probe, nothing awarded. ace-nm-org (labs org 353 / Connect org 387) stood in for the ACE winner org. Pins spec § K1: award_response.org_id is the winner's CONNECT organisation integer id as a string (connect-labs origin/main connect_labs/mcp/tools/solicitations.py award_response schema: 'The winning organisation's CONNECT organisation id (Connect's integer id, as a string) ... it is not a labs organisation pk or slug, and it does not choose who is awarded: the response's own organisation (its llo_entity) is the awardee'). create_response persists org_id as given (response 1000049); without it the response's org_id is '' (1000048). When org_name is omitted on a bound response, labs fills org_name from submitted_by_name (1000048) — so always pass org_name. Owner seeding accepts a response missing a required answer (1000047) and accepts a second response for the same llo_entity (1000048, 1000049): idempotency is the caller's job.",
+  "labs_orgs": {
+    "pm": {
+      "labs_id": 352,
+      "slug": "ace-pm-org",
+      "connect_organization_id": 386
+    },
+    "winner_standin": {
+      "labs_id": 353,
+      "slug": "ace-nm-org",
+      "connect_organization_id": 387
+    }
+  },
+  "solicitation": {
+    "id": 1000003,
+    "program_id": 308,
+    "is_public": false,
+    "owner_org": "ace-pm-org",
+    "status_after_probe": "closed"
+  },
+  "award_response_org_id_source": "connect-labs origin/main connect_labs/mcp/tools/solicitations.py (award_response input schema, org_id description), shipped in jjackson/connect-labs#2605: org_id is the winner's CONNECT organisation id as a string, recorded as given; the response's own org (llo_entity) decides the awardee. create_response llo_entity_id takes the labs org slug (Connect slug or id also accepted).",
+  "responses": {
+    "free_named": {
+      "id": 1000046,
+      "llo_entity_id": "",
+      "org_id": "",
+      "org_name": "Probe Alpha Collective [Synthetic]",
+      "submitted_by_email": "ace+synthetic-1@dimagi-ai.com",
+      "status": "submitted",
+      "is_public": false
+    },
+    "missing_required_answer": {
+      "id": 1000047,
+      "llo_entity_id": "",
+      "org_id": "",
+      "org_name": "Probe Beta Network [Synthetic]",
+      "responses": {
+        "q_org": "Synthetic probe respondent (missing required q_fte on purpose)."
+      },
+      "status": "submitted"
+    },
+    "bound_winner_without_org_id": {
+      "id": 1000048,
+      "llo_entity_id": "ace-nm-org",
+      "llo_entity_name": "ace-nm-org",
+      "org_id": "",
+      "org_name": "ACE winner probe (synthetic)",
+      "submitted_by_name": "ACE winner probe (synthetic)",
+      "status": "submitted",
+      "award_stage": "verification",
+      "awarded_at": null
+    },
+    "bound_winner_with_org_id": {
+      "id": 1000049,
+      "llo_entity_id": "ace-nm-org",
+      "llo_entity_name": "ace-nm-org",
+      "org_id": "387",
+      "org_name": "ace-nm-org",
+      "status": "submitted",
+      "awarded_at": null
+    }
+  }
+}
