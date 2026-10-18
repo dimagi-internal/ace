@@ -68,8 +68,10 @@ returns `{org_id, org_name, your_standing}`, and `org_id: null` means nobody has
     name one.
 - **Declaring.** Until 2026-10-18 `supply_chain_programme_runner_set` was "Platform support
   only", and ACE read `programme_runner_get(program_id=353)` → `{org_id: null, your_standing: "partner"}`.
-  connect-labs PR #2605 (merged 2026-10-18; check it is deployed before relying on it) made it
-  self-serve:
+  connect-labs PR #2605 made it self-serve. It is deployed and was verified live on 2026-10-18:
+  on ace-pm-org's sandbox program 308, `programme_runner_get` read `{org_id: null, your_standing: "partner"}`,
+  then `programme_runner_set({program_id: 308, org_id: 352})` returned
+  `{org_id: 352, org_name: "ace-pm-org", your_standing: "programme"}`. The rules:
   - **On an undeclared programme**, a member of the programme's **Connect managing org** may
     declare: that managing org, Dimagi, an org delivering an opportunity in the programme, or an
     org **awarded a call** for the programme (the winning LLO).
@@ -85,7 +87,16 @@ returns `{org_id, org_name, your_standing}`, and `org_id: null` means nobody has
   → `supply_chain_programme_runner_set({program_id, org_id: <labs id>})` → expect
   `your_standing: "programme"`. `supply-chain-setup` Step 1 classifies any refusal
   (`classifyRunnerRefusal`, `lib/supply-chain-runner.ts`) and still halts on the old
-  support-only text, which is what an undeployed labs returns.
+  support-only text as a fallback.
+- **Units.** `supply_chain_stock_flow` reports in the item's **base** unit, while
+  `stock_on_hand` / `stock_position` report a store's holding in the unit it was received in
+  (the **pack** for a supplier receipt). Live, program 10605 item 220: the flow carries 1000
+  tests into store 149, which holds 20 kits, at `base_per_pack: 50`. Convert before comparing
+  (`onHandInFlowUnit`, `skills/supply-chain-operate-qa/checks.ts`).
+- **No consumption, no rate.** Until something is dispensed, `resupply_plan` returns every rate
+  figure (AMC, months of stock, reorder point, resupply quantity) as
+  `{unconfirmed: ["nothing has been dispensed from here yet, so there is no consumption rate"]}`.
+  Record that as unconfirmed; never fill it in.
 - **Declaring revokes every live update link issued to the declared org** in that programme
   (`revoke_links_to_runner`). The setter also refuses a non-Dimagi runner on a labs-only
   programme that is open to every email domain, because that org's quotes and prices would

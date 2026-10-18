@@ -1,0 +1,80 @@
+{
+  "_provenance": {
+    "captured": "2026-10-18",
+    "by": "ace@dimagi-ai.com via the connect-labs MCP, READ-ONLY calls only",
+    "program_id": 10605,
+    "calls": [
+      "supply_chain_item_list({program_id: 10605})  (item 220 only kept, verbatim)",
+      "supply_chain_supply_point_list({program_id: 10605})",
+      "supply_chain_consignment_list({program_id: 10605})        -> {value: []}",
+      "supply_chain_distribution_list({program_id: 10605, limit: 5}) -> {value: []}",
+      "supply_chain_stock_count_list({program_id: 10605, limit: 5})  -> {value: []}",
+      "supply_chain_stock_on_hand({program_id: 10605, supply_point_id: 149, item_id: 220})",
+      "supply_chain_stock_position({program_id: 10605, supply_point_id: 149, item_id: 220})",
+      "supply_chain_stock_flow({program_id: 10605, item_id: 220})",
+      "supply_chain_resupply_plan({program_id: 10605, supply_point_id: 149, item_id: 220})"
+    ],
+    "edits": "Verbatim, except item_list keeps item 220 only (221 is the losing quote's kit and holds no stock).",
+    "what_it_shows": "One store holding 20 kits after one receipt. stock_flow reports in the item's BASE unit ('test'): the order-to-store link carries 1000 = 20 kits x base_per_pack 50, while stock_on_hand and stock_position report in the PACK unit ('kit'). A balance check must convert. resupply_plan returns every rate figure as {unconfirmed: [...]} because nothing has been dispensed yet. Consignments, distributions and counts are empty here; the tests build those rows from the live tool SCHEMAS (a named residual)."
+  },
+  "item": {
+    "id": 220, "sku": "lumen-fc50", "name": "Lumen FC-50 free chlorine kit", "commodity_slug": "chlorine-test-kit",
+    "manufacturer": "Lumen Diagnostics", "base_unit": "test", "pack_unit": "kit", "base_per_pack": 50, "pack_per_case": null,
+    "base_unit_grams": null, "shelf_life_months": 24, "gtin_base": "", "gtin_pack": "", "gtin_case": "", "gpc_brick": "",
+    "spec_attributes": { "tests_per_kit": 50, "range_max_mg_per_l": 3.5, "range_min_mg_per_l": 0.1 }, "status": "active",
+    "components": [
+      { "quantity": "50", "base_unit": "tablet", "commodity_slug": "dpd1-reagent" },
+      { "quantity": "1", "base_unit": "unit", "commodity_slug": "colour-comparator" }
+    ],
+    "is_kit": true, "one_course_is": "", "components_per": "pack", "components_unit": "kit", "stock_class": "consumable",
+    "is_durable": false, "reference_scope": "program"
+  },
+  "supply_point_list": {
+    "value": [
+      {
+        "id": 149, "slug": "harmattan-kano-warehouse", "name": "Harmattan warehouse, Kano", "kind": "central_store", "is_user_held": false,
+        "opportunity_id": null, "parent_supply_point_id": null, "managed_by_org_id": 242, "connect_username": "", "connect_user_id": null,
+        "connect_user_uuid": "", "admin_area": "Kano", "latitude": 9.593635673916621, "longitude": 8.105324863568711,
+        "location_source": "country", "location_precision": "country", "location_label": "Nigeria, country centre",
+        "min_months_of_stock": null, "max_months_of_stock": null, "status": "active", "source": "we_recorded",
+        "recorded_by_org_id": 2, "witnessed": true, "note": ""
+      }
+    ]
+  },
+  "consignment_list": { "value": [] },
+  "distribution_list": { "value": [] },
+  "stock_count_list": { "value": [] },
+  "stock_on_hand": {
+    "149": {
+      "supply_point_id": 149, "ledger": { "amount": "20", "unit": "kit" }, "ledger_on_count_day": null, "reported": null,
+      "variance": null, "basis": "ledger", "as_of": null, "reported_kind": null, "reported_source": null
+    }
+  },
+  "stock_position": {
+    "149": {
+      "supply_point_id": 149, "on_hand": { "amount": "20", "unit": "kit" }, "in_transit": { "amount": "0", "unit": "kit" },
+      "committed": { "amount": "0", "unit": "kit" }, "available": { "amount": "20", "unit": "kit" }
+    }
+  },
+  "stock_flow": {
+    "item_id": 220, "item_name": "Lumen FC-50 free chlorine kit", "unit": "test", "as_of": "2026-10-18",
+    "weeks": ["2026-09-21", "2026-09-28", "2026-10-05", "2026-10-12"],
+    "nodes": [
+      { "id": "p149", "name": "Harmattan warehouse, Kano", "kind": "store", "column": 1, "parent": null, "parent_name": "", "url": "/supply/network/" },
+      { "id": "c187", "name": "Order from Harmattan Health Supplies (PO-TK-2026-01)", "kind": "source", "column": 0, "url": "/supply/orders/187/" }
+    ],
+    "links": [{ "source": "c187", "target": "p149", "series": [1000, 1000, 1000, 1000] }],
+    "adjusted": 0, "left_out": {}
+  },
+  "resupply_plan": {
+    "149": {
+      "supply_point_id": 149, "restocked_from": "supplier", "amc_window_days": 90, "amc_basis": "releases", "status": "unknown",
+      "min_months_of_stock": null, "max_months_of_stock": null, "on_hand": { "amount": "20", "unit": "kit" },
+      "amc": { "unconfirmed": ["nothing has been dispensed from here yet, so there is no consumption rate"] },
+      "months_of_stock": { "unconfirmed": ["nothing has been dispensed from here yet, so there is no consumption rate"] },
+      "days_to_stockout": { "unconfirmed": ["nothing has been dispensed from here yet, so there is no consumption rate"] },
+      "reorder_point": { "unconfirmed": ["nothing has been dispensed from here yet, so there is no consumption rate"] },
+      "resupply_quantity": { "unconfirmed": ["nothing has been dispensed from here yet, so there is no consumption rate"] }
+    }
+  }
+}

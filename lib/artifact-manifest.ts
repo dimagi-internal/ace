@@ -2272,6 +2272,33 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     description: "Optional track (supply_chain): structural QA of fulfilment against labs' three-way match. 8 static checks in skills/supply-chain-fulfil-qa/checks.ts: received equals accepted, rejections as planned with reasons, shipments delivered and receipted, no invoice left queried, not over-invoiced, paid within what arrived, advances recorded, no conflict or payment_unconfirmed.",
   },
   // [optional-track:PR9 supply-chain-operate]
+  {
+    path: '9-execution-manager/supply-chain-operate_week-<w>_plan.yaml',
+    producedBy: 'supply-chain-operate',
+    role: 'manifest',
+    consumedBy: ['supply-chain-operate-qa'],
+    phase: 'execution-management',
+    required: false,
+    description: "Optional track (supply_chain): one simulated week's stock plan, written BEFORE any write: the store-to-store consignments (each with its plan key as reference), the per-worker distribution with the enrolment figure it follows, the counts, and whether this is the stockout week.",
+  },
+  {
+    path: '9-execution-manager/supply-chain-operate_week-<w>_stock.yaml',
+    producedBy: 'supply-chain-operate',
+    role: 'record',
+    consumedBy: ['supply-chain-operate-qa'],
+    phase: 'execution-management',
+    required: false,
+    description: "Optional track (supply_chain): the week's labs reads as returned, as_of the week's last day: stock_position per store, stock_forecast, resupply_plan, worker_stock, stock_flow and checks_list. What the weekly review reads.",
+  },
+  {
+    path: '9-execution-manager/supply-chain-operate-qa_week-<w>_result.yaml',
+    producedBy: 'supply-chain-operate-qa',
+    role: 'qa-result',
+    consumedBy: [],
+    phase: 'execution-management',
+    required: false,
+    description: "Optional track (supply_chain): structural QA of one stock week against a FRESH labs read. 7 static checks in skills/supply-chain-operate-qa/checks.ts: flows balance (unit-converted: labs' flow is in base units, on-hand in packs), consignments received as planned, distributions and counts read back, the stockout's zero count, every open finding listed by audience, no stock_negative.",
+  },
   // [optional-track:PR10 simulated-execution + simulated-weekly-review]
 
   // ── Closeout phase (Phase 10) ──────────────────────────────────
