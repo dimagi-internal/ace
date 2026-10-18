@@ -1389,6 +1389,44 @@ export class PlaywrightBackend implements ConnectClient {
     throw await httpErrorFor(postRes, path, 'POST');
   };
 
+  /**
+   * Read-only twin of setVerificationFlags (dimagi-internal/ace#3161). Same
+   * GET, same `maxRedirects: 0` PM-only guard (ace#2419), same parsers — and
+   * no POST, ever. Modify flows need a before-read of a live opportunity, and
+   * calling the setter to read is a write path.
+   */
+  getVerificationFlags: ConnectClient['getVerificationFlags'] = async ({ organization_slug, opportunity_id }) => {
+    const path = `/a/${organization_slug}/opportunity/${opportunity_id}/verification_flags_config/`;
+    const res = await this.request.get(path, { maxRedirects: 0 });
+    if (res.status() >= 300 && res.status() < 400) {
+      throw new VerificationPagePmOnlyError(path, organization_slug, res.headers()['location']);
+    }
+    if (res.status() !== 200) throw await httpErrorFor(res, path);
+    const html = await res.text();
+    const current = extractFormFieldValues(html);
+    // A 200 that carries neither formset is not the verification page (a
+    // login or error page rendered with 200). Returning empty lists for it
+    // would read as "this opportunity has no rules", which is exactly the
+    // silent shape ace#1011 / ace#1013 hid behind.
+    if (current['form_json-TOTAL_FORMS'] == null && current['deliver_unit-TOTAL_FORMS'] == null) {
+      throw new ConnectError(
+        `GET ${path} returned 200 but carries no form_json / deliver_unit formset; ` +
+          `this is not the verification_flags_config page (dimagi-internal/ace#3161).`,
+      );
+    }
+    const initial = Number(current['form_json-INITIAL_FORMS']);
+    return {
+      opportunity_id,
+      organization_slug,
+      form_field_rules_saved: Number.isFinite(initial) ? initial : undefined,
+      form_field_rules: parseFormJsonRules(html),
+      deliver_unit_checks: parseDeliverUnitChecks(html),
+      form_submission_start: current['form_submission_start'] ?? '',
+      form_submission_end: current['form_submission_end'] ?? '',
+      source_path: path,
+    };
+  };
+
   listDeliverUnits: ConnectClient['listDeliverUnits'] = async ({ organization_slug, opportunity_id }) => {
     const path = `/a/${organization_slug}/opportunity/${opportunity_id}/deliver_unit_table`;
     const res = await this.request.get(path);

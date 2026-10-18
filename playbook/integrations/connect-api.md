@@ -23,7 +23,7 @@ This document covers `ace-connect`. For `connect-labs`, see that repo's docs.
 
 ## What ace-connect exposes today
 
-**31 `connect_*` atoms** (30 routed through `mcp/connect/capability-map.ts`, plus the
+**32 `connect_*` atoms** (31 routed through `mcp/connect/capability-map.ts`, plus the
 server-local `connect_preflight_learn_app_user`), and the `commcare_*` HQ atoms covered in
 [`commcare-api.md`](commcare-api.md). Exact signatures are in [`docs/atom-schemas.md`
 § ace-connect](../../docs/atom-schemas.md). That file is generated and authoritative; the
@@ -59,6 +59,7 @@ build-only: each acts on whatever program or opportunity id it is given.
 | Atom | Backend | Typical callers |
 |---|---|---|
 | `connect_set_verification_flags` | Playwright | `connect-opp-setup` |
+| `connect_get_verification_flags` | Playwright, **read-only** (same PM-only page, never POSTs; ace#3161) | `connect-opp-modify` / `app-modify` before-reads, `app-release-qa` Step 4.7 rule-path check |
 | `connect_set_learn_passing_score` / `connect_get_learn_passing_score` | Playwright (program-scoped init-edit form) | `connect-opp-setup` (repair path); see § Learn `passing_score` below |
 | `connect_list_deliver_units` | Playwright | `connect-opp-setup` (also returned inline by `create_opportunity`) |
 | `connect_create_payment_units` / `connect_create_payment_unit` | REST | `connect-opp-setup` (batch preferred) |
@@ -417,7 +418,7 @@ Playwright-backed writes report the POST status, not the saved state.
 | Change | How | Limits / not possible |
 |---|---|---|
 | Name, description, dates, budget, `active` | `connect_update_opportunity` (Playwright; no REST endpoint yet) | `short_description` and slug are truncated at 50 chars without warning (`docs/learnings/2026-05-12-connect-opp-short-description-50-char-trap.md`). **`target_organization_slug` (the holding org) can only be set at create time**, so a wrong holding org cannot be repaired; recreate the opportunity. |
-| Verification flags | `connect_set_verification_flags` (Playwright) | PM-only page, served only when the request org ≠ the holding org (§ PM→NM org-URL matrix) |
+| Verification flags | Read the before state with `connect_get_verification_flags`, then write with `connect_set_verification_flags` (both Playwright) | PM-only page, served only when the request org ≠ the holding org (§ PM→NM org-URL matrix). Additive: existing rules are replayed, so a rule cannot be removed through the atom |
 | Learn passing score | `connect_set_learn_passing_score` | Shared by every opportunity in the holding org on the same Learn app (§ above), so changing it for one changes it for all |
 | Add a payment unit | `connect_create_payment_units` | Needs an unbound deliver unit, and a reused Deliver release has none (ace#573) |
 | **Change or delete a payment unit (amount, caps, deliver units)** | **No atom; ACE cannot do this.** | Do it in the Connect UI, or create a new opportunity on a fresh Deliver release. |

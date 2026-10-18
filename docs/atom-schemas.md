@@ -515,7 +515,7 @@ Render the run-folder README index and, when `runFolderFileId` is supplied, WRIT
 
 ## ace-connect
 
-Source: `mcp/connect-server.ts` — 69 atoms
+Source: `mcp/connect-server.ts` — 70 atoms
 
 ### `connect_list_programs`
 
@@ -654,6 +654,15 @@ Set per-opportunity verification config via the `/opportunity/<id>/verification_
 | `organization_slug` | `z.string` | **required** | _—_ |
 | `opportunity_id` | `z.string` | **required** | _—_ |
 | `flags` | `VerificationFlagsZ` | **required** | Shared schema `VerificationFlagsZ` — see its definition in the server source for the full shape. |
+
+### `connect_get_verification_flags`
+
+READ-ONLY. Read an opportunity's verification config from the same `/opportunity/<id>/verification_flags_config/` page that connect_set_verification_flags writes, parsed the same way, and NEVER POSTed (dimagi-internal/ace#3161). Use it for the before-read of any change to a live opportunity and for re-release checks (does every rule's `question_path` still exist in the new build?); calling the setter just to read is a write path. Returns `{opportunity_id, organization_slug, form_field_rules_saved, form_field_rules: [{index, id, name, question_path, question_value, deliver_unit_ids}], deliver_unit_checks: [{deliver_unit_id, duration_minutes}], form_submission_start, form_submission_end, source_path}`. `form_field_rules_saved` is `form_json-INITIAL_FORMS`, the rules Django loaded from the DB. Each rule's deliver unit comes from the CHECKED box(es) of its checkbox group (ace#2863), and each duration is in MINUTES from the row's selected deliver unit (ace#2945). Rules are returned as stored, not normalised: a `question_path` that is an XForm XPath instead of a JSONPath is a live defect to report (ace#1301). WHICH ORG: the page is PM-only. Pass the PROGRAM org as `organization_slug`; at the holding org (or on a self-managed opp) Connect redirects and this throws a typed `verification_page_pm_only` error (ace#2419). A 200 page with no verification formset throws rather than returning empty lists, because empty lists would read as "this opportunity has no rules".
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `organization_slug` | `z.string` | **required** | PROGRAM (PM) org slug; the page is PM-only (ace#2419). |
+| `opportunity_id` | `z.string` | **required** | Opportunity UUID. |
 
 ### `connect_list_deliver_units`
 

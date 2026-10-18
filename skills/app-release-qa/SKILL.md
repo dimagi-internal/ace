@@ -38,7 +38,7 @@ argument first; inside `/ace:run` it defaults to the run's artifacts.
 | programme rules | Payable-visit rules — whether camera-only photo capture is demanded (the `appearance="acquire"` check in Step 4) — and the stated per-module training durations (the `time_estimate` plausibility check in Step 4) | default: Phase 1 `1-design/idea-to-pdd.md`; outside a run: the program context doc, else `--camera-only=yes|no` (unknown ⇒ record the check `unavailable`) |
 | `[FIXED]` instruments (optional) | Step 4.8 question-text + option-set diff (ace#2366) | default: the markdown the PDD cites in Phase 1 `inputs/` (via `inputs-manifest.yaml`); skipped with `not-applicable` when there is none |
 | `opportunity_id` + `organization_slug` | Step 4.7 re-release invariants against an EXISTING opportunity | explicit `--opportunity-id` / `--org`; default: run_state `phases.connect-setup.products.connect.opportunity.id` |
-| `form_field_rules` | Step 4.7a rule-path check | explicit `--form-field-rules=<json>` (from the program context doc, or the read-back a prior `connect_set_verification_flags` returned); default: run_state `phases.connect-setup.products.connect.opportunity.verification.form_field_rules`. There is NO read-only Connect atom for these rules (`connect_get_opportunity` does not return them), so with neither source the rule-path check is UNEVALUATED, never a pass |
+| `form_field_rules` | Step 4.7a rule-path check | explicit `--form-field-rules=<json>` (an override); default: read live with `connect_get_verification_flags({organization_slug: <program org>, opportunity_id})` (read-only, ace#3161); else run_state `phases.connect-setup.products.connect.opportunity.verification.form_field_rules`. Only when none of the three resolves is the rule-path check UNEVALUATED, never a pass |
 | `output_folder` | where the result YAML goes | default: the run's `3-commcare/`; outside a run, the program project's Drive folder |
 
 ## Existing objects
@@ -1500,12 +1500,22 @@ are the `@id`s and the rule paths — not the xmlns.
 2. Download the baseline with `commcare_download_ccz({domain, app_id,
    build_id: <baseline>, write_to_path})` and unzip it next to the candidate
    (Step 2/3 already hold the candidate's forms).
-3. Resolve `form_field_rules` per § Inputs: `--form-field-rules`, else
-   `phases.connect-setup.products.connect.opportunity.verification.form_field_rules`
-   (empty list if none were configured — the `@id` check still runs). Run-free
-   with no rules source, the `@id` check still runs and the rule-path check is
-   recorded `unevaluated (no rules source)`. Never pass an empty list as if the
-   opportunity had no rules.
+3. Resolve `form_field_rules` per § Inputs, in this order:
+   1. `--form-field-rules`, when the caller passed it (an override);
+   2. otherwise the LIVE rules, from `connect_get_verification_flags({organization_slug:
+      <program org>, opportunity_id})`. That atom is read-only and never POSTs (ace#3161). Use
+      its `form_field_rules` (each rule's `question_path`, `question_value` and
+      `deliver_unit_ids`), and record `rules_source: live` with its `source_path`. The page is
+      PM-only, so pass the PROGRAM org, never the holding org. A `verification_page_pm_only`
+      error means the wrong org: re-resolve it and do not fall through;
+   3. otherwise `phases.connect-setup.products.connect.opportunity.verification.form_field_rules`
+      (`rules_source: run_state`).
+
+   A live read that returns `form_field_rules: []` means the opportunity really has no rules;
+   the `@id` check still runs. When the live read cannot run (no Connect session, or the
+   opportunity is unreachable) and no other source exists, the `@id` check still runs and the
+   rule-path check is recorded `unevaluated (no rules source)`. Never pass an empty list as if
+   the opportunity had no rules.
 4. Classify:
 
 ```ts

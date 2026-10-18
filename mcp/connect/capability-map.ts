@@ -6,8 +6,8 @@ export interface CapabilityRoute {
 }
 
 /**
- * The 30 capability-routed atoms exposed by `ace-connect` (16 authoring,
- * 14 observation). `connect_preflight_learn_app_user` is server-local and not
+ * The 31 capability-routed atoms exposed by `ace-connect` (16 authoring,
+ * 15 observation). `connect_preflight_learn_app_user` is server-local and not
  * routed here; `commcare_*` atoms route through `backends/commcare.ts`.
  *
  * History:
@@ -58,13 +58,14 @@ export type Capability =
   | 'list_flw_invites'
   | 'add_org_member'
   | 'remove_org_member'
-  // Observation (14)
+  // Observation (15)
   | 'list_programs'
   | 'get_program'
   | 'list_delivery_types'
   | 'list_opportunities'
   | 'get_opportunity'
   | 'get_learn_passing_score'
+  | 'get_verification_flags'
   | 'list_deliver_units'
   | 'list_payment_units'
   | 'list_invites'
@@ -103,6 +104,7 @@ export const CAPABILITY_MAP: Record<Capability, CapabilityRoute> = {
   // the org_viewer_required dashboard on 403/404 (ace#1461). short_description
   // and country are absent on the degraded path.
   get_opportunity:              { backend: 'PLAYWRIGHT', restTarget: 'GET /api/opportunities/{id}/ (not yet shipped)' },
+  get_verification_flags:       { backend: 'PLAYWRIGHT', restTarget: 'GET /api/opportunities/{id}/verification-flags/ (not yet shipped) — read-only; same PM-only HTML page as set_verification_flags, never POSTs (ace#3161)' },
   list_deliver_units:           { backend: 'PLAYWRIGHT', restTarget: 'GET /api/opportunities/{id}/deliver-units/ (not yet shipped)' },
   list_payment_units:           { backend: 'PLAYWRIGHT', restTarget: 'GET /api/opportunities/{id}/payment-units/ (not yet shipped)' },
   list_invites:                 { backend: 'PLAYWRIGHT', restTarget: 'GET /api/programs/{id}/applications/ (not yet shipped)' },

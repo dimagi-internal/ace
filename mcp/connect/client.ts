@@ -242,6 +242,37 @@ export interface ConnectClient {
      */
     deliver_unit_checks?: Array<{ deliver_unit_id: number; duration_minutes: number }>;
   }>;
+  /**
+   * READ-ONLY counterpart to setVerificationFlags (dimagi-internal/ace#3161):
+   * the same PM-only `verification_flags_config` page, parsed the same way,
+   * and never POSTed. It lets a modify flow take a before-read of a live
+   * opportunity's verification config without going through the write path.
+   */
+  getVerificationFlags(args: {
+    organization_slug: string;
+    opportunity_id: string;
+  }): Promise<{
+    opportunity_id: string;
+    organization_slug: string;
+    /** `form_json-INITIAL_FORMS`: rules Django loaded from the DB. Undefined when the field is absent. */
+    form_field_rules_saved?: number;
+    /** Each persisted rule, its deliver unit read from the CHECKED box(es) of its group (ace#2863). */
+    form_field_rules: Array<{
+      index: number;
+      id: string;
+      name: string;
+      question_path: string;
+      question_value: string;
+      deliver_unit_ids: string[];
+    }>;
+    /** One entry per deliver_unit formset row (ace#2945). */
+    deliver_unit_checks: Array<{ deliver_unit_id: number; duration_minutes: number }>;
+    /** Raw form values; `''` when unset. */
+    form_submission_start: string;
+    form_submission_end: string;
+    /** The page this was read from. */
+    source_path: string;
+  }>;
   listDeliverUnits(args: {
     organization_slug: string;
     opportunity_id: string;
