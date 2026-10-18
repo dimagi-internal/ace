@@ -1,9 +1,8 @@
 ---
 name: upload-transcript
 description: >
-  Upload a Claude session transcript (.jsonl) to a deployed ace-web via
-  /api/ingest/upload. Auto-discovers Claude Code's session log when no
-  path is given. Used by /ace:run --ace-web-url.
+  Upload a Claude session transcript (.jsonl) to ace-web; finds the session log when no path
+  is given. Used by /ace:run --ace-web-url.
 disable-model-invocation: false
 ---
 
