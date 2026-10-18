@@ -15,6 +15,14 @@ skills:
   - { name: llo-onboarding,  has_judge: false }
   - { name: llo-uat,         has_judge: false }
   - { name: llo-launch,      has_judge: true,  eval_skill: llo-launch-eval }
+  # Optional (spec 2026-10-18 § F, § G): run ONLY in `mode: simulated`, when the
+  # run's optional_steps enables supply_chain / simulate_weeks (§ Simulated mode).
+  - { name: supply-chain-setup,     has_judge: false, qa_skill: supply-chain-setup-qa, optional: true }
+  - { name: supply-chain-procure,   has_judge: true,  qa_skill: supply-chain-procure-qa, eval_skill: supply-chain-procure-eval, optional: true }
+  - { name: supply-chain-fulfil,    has_judge: false, qa_skill: supply-chain-fulfil-qa, optional: true }
+  - { name: supply-chain-operate,   has_judge: false, qa_skill: supply-chain-operate-qa, optional: true }
+  - { name: simulated-execution,    has_judge: false, qa_skill: simulated-execution-qa, optional: true }
+  - { name: simulated-weekly-review, has_judge: true, eval_skill: simulated-weekly-review-eval, optional: true }
 recurring_skills:
   - { name: timeline-monitor,   has_judge: true }
   - { name: flw-data-review,    has_judge: true,  eval_skill: flw-data-review-eval }
@@ -36,6 +44,56 @@ recurring_skills:
 > execution is turned on. To enable Phase 9: remove this guard, drop the
 > "not yet live" markers in `agents/ace-orchestrator.md`, and re-validate
 > the external-comms pause points.
+>
+> **The one exception is simulated mode.** If, and only if, your dispatch
+> prompt says `mode: simulated` AND the run's `run_state.yaml` has an
+> `optional_steps` block enabling `supply_chain` or `simulate_weeks` AND
+> `phases.solicitation-management.products.selected_llo.synthetic_winner` is
+> `true`, run **§ Simulated mode** below and nothing else. Any one of the
+> three missing means real mode: halt as above. Simulated mode contacts no
+> one, and the real Steps 1-4 below never run in it.
+
+## Simulated mode
+
+The optional labs track (spec `docs/superpowers/specs/2026-10-18-optional-labs-e2e-steps.md`
+§ F, § G). The winner is the ACE-owned org, every record is labelled simulated and backdated, and
+the visits live on a labs-only copy. **This block sends no email, makes no Connect program invite,
+creates or mutates no Connect opportunity, and dispatches none of the three real-LLO skills that
+open this agent's `skills:` list.** If a step here seems to need one of those, halt and
+report it; never improvise around it.
+
+Skip a step whose optional step is off: S1-S3 need `supply_chain`, S4 needs `simulate_weeks`.
+
+### S0: The calendar
+`npx tsx "$CLAUDE_PLUGIN_ROOT/scripts/sim-calendar.ts" --run-started-at <run_state started_at> --weeks <optional_steps.simulate_weeks, or 1 when only supply_chain is on>`.
+Write the printed `calendar:` to `phases.execution-management.products.simulation.calendar`
+(`update_yaml_file`, `merge: deep`) and `phases.execution-management.mode: simulated`. Exit 2
+halts with its message. A resume recomputes the same calendar from the same `started_at`.
+
+### S1: `supply-chain-setup` (+ `-qa`)
+The programme registry, with the runner declared per the skill (the winner org on this path).
+
+### S2: `supply-chain-procure` (+ `-qa`, `-eval`)
+Week 0: tender, quotes, award, contract.
+
+### S3: `supply-chain-fulfil` (+ `-qa`)
+Week 0: shipment, receipt, invoice, payment.
+
+### S4: `simulated-execution` (+ `-qa`)
+Weeks 1..N: one generation of synthetic visits for the window, a saved report run per week, and
+per week `supply-chain-operate` (with `supply_chain`) and `simulated-weekly-review` (+ `-eval`).
+
+A step whose QA fails halts the block with that QA's failures; the records cannot be deleted, so
+never stack the next week on a failed one.
+
+### Completion (simulated)
+1. Write `9-execution-manager/execution-manager_summary.md`: `mode: simulated` in its first line,
+   the ACE winner, the calendar, each step's QA and eval verdicts, and links to
+   `simulated-execution_summary.md` and the weekly reviews.
+2. Write the `phases.execution-management` block per the Phase Write-Back Contract, with
+   `mode: simulated`. Its `done` needs only the simulated artifacts and `products.simulation`;
+   the real `llo-*` artifacts are exempt in this mode.
+3. Do not dispatch Phase 10. The orchestrator stops after a simulated Phase 9.
 
 You run the execution phase of an ACE opportunity. By the time
 this phase starts, Phase 8 (Solicitation Management) has published a

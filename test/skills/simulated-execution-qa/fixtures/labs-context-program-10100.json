@@ -1,0 +1,18 @@
+{
+  "_provenance": "LIVE read-only capture: connect-labs labs_context({search: 'spark-facilitator'}), read 2026-10-18 by ACE, trimmed to the org that holds program 10100 (the same program as labs-workflow-7410-history.json). A labs-only org: labs mints its slug as 'labs-synthetic-' + the name, and its opportunity ids sit in the 10000+ range. labs_context carries no labs_only flag; the slug prefix and the id range are what it exposes.",
+  "organization": {
+    "id": "labs-synthetic-spark-facilitator-five-example-partners--synthetic--ace-spark-facilitator-20261004-1706-v2",
+    "slug": "labs-synthetic-spark-facilitator-five-example-partners--synthetic--ace-spark-facilitator-20261004-1706-v2",
+    "name": "Spark facilitator five example partners (synthetic, ace spark-facilitator/20261004-1706 v2)",
+    "programs": [
+      {
+        "id": 10100,
+        "name": "Spark facilitator pilot (illustrative: five example partners)",
+        "opportunities": [
+          { "id": 10100, "name": "Tiyende Community Trust (example) — Spark facilitator pilot (synthetic)", "is_active": true, "visit_count": 153 },
+          { "id": 10101, "name": "Kuunika Outreach Network (example) — Spark facilitator pilot (synthetic)", "is_active": true, "visit_count": 138 }
+        ]
+      }
+    ]
+  }
+}

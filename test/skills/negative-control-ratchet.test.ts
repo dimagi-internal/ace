@@ -230,6 +230,16 @@ const LEDGER: Record<string, LedgerEntry> = {
  * that merges every two minutes.
  */
 const GROUNDING_BASELINE: ReadonlySet<string> = new Set([
+  // simulated-execution-qa (plan 2026-10-18 PR10): these five read ACE's OWN per-week outputs
+  // from a simulated Phase 9 (each week's -qa verdict, the review file ids, the summary's links,
+  // run_state's selected_llo with synthetic_winner), and no run has emitted one yet: the first
+  // simulated run (connect-fi) will. Its history, calendar and isolation checks ARE grounded on
+  // live labs captures. Ground these from that run's artifacts and remove them.
+  'skills/simulated-execution-qa/checks.ts::checkEveryWeekOperated',
+  'skills/simulated-execution-qa/checks.ts::checkNoRealLloContact',
+  'skills/simulated-execution-qa/checks.ts::checkReviewPerWeek',
+  'skills/simulated-execution-qa/checks.ts::checkSummaryLinksEveryWeek',
+  'skills/simulated-execution-qa/checks.ts::checkWeek0SupplyChain',
   'lib/answer-key-pattern.ts::checkAnswerKeyPattern',
   'lib/assessment-retry-leak.ts::checkAssessmentRetryLeak',
   'lib/build-phase-decisions.ts::checkBuildPhaseDecisions',

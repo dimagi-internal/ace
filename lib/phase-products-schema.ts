@@ -1028,6 +1028,10 @@ export const PRODUCT_PRODUCERS: Partial<Record<PhaseName, Record<string, string>
     // owns the registry keys; -procure / -fulfil (PR7, PR8) attribute the
     // tender/contract and shipment/invoice/payment keys they add under it.
     supply_chain: 'supply-chain-setup',
+    // `simulation`: the calendar is written by agents/execution-manager.md
+    // § Simulated mode S0; every other key (synthetic_opportunity_id,
+    // workflow_id, weekly_reviews) by simulated-execution, its skill writer.
+    simulation: 'simulated-execution',
   },
   closeout: {
     // Each "Sole writer of `products.<key>`" per its SKILL.md.
@@ -1053,14 +1057,6 @@ export const UNATTRIBUTED_PRODUCT_KEYS: Partial<
         'but no skill or agent in this repo writes it — the decisions gdoc is discovered by name at the ' +
         'run-folder root, and `render_decisions_log` returns ids without writing this block. Attribute ' +
         'it the day a writer appears.',
-    },
-  ],
-  'execution-management': [
-    {
-      key: 'simulation',
-      reason:
-        'Declared up front by the optional-steps framework (plan 2026-10-18 PR1); its writer, ' +
-        'simulated-execution, lands in PR10. Attribute it there.',
     },
   ],
   'idea-to-design': [
@@ -1188,9 +1184,10 @@ function boundAt(phase: string, key: string, completedAt?: string): boolean {
 export const REQUIRED_PRODUCT_KEYS_BY_MODE: Record<PhaseMode, Partial<Record<PhaseName, string[]>>> = {
   'app-QA-only': { 'qa-and-training': [] },
   // Phase 9's simulated block (spec 2026-10-18 § G) requires no REAL-execution
-  // product (`launch`). Its own keys are not required here yet: each lands with
-  // its producer skill (plan PR6–PR10), which also sets the requirement.
-  simulated: { 'execution-management': [] },
+  // product (`launch`). It always writes `simulation` (S0's calendar, even when
+  // only supply_chain is on, because week 0 dates every supply-chain write).
+  // `supply_chain` is not required: a simulate_weeks-only run has none.
+  simulated: { 'execution-management': ['simulation'] },
 };
 
 /**

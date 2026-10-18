@@ -1,7 +1,7 @@
 ---
 name: idea-to-pdd
 description: >
-  Develop a Program Design Doc (PDD) for a Connect intervention from source material, stress-testing it (6 checks; launch readiness is a hard gate) until approved.
+  Develop a Connect program design doc (PDD) from source material, stress-tested until approved.
 disable-model-invocation: false
 ---
 

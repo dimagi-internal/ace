@@ -1,0 +1,12 @@
+{
+  "_provenance": "LIVE read-only capture: connect-labs workflow_history_runs(definition_id 7410, program_id 10100, limit 20), read 2026-10-18 by ACE. The spark-facilitator/20261004-1706 cascade's weekly history, rebuilt 2026-10-06 by workflow_rebuild_history. Trimmed to the last five periods: one run per Monday-Sunday week, generated:true. A calendar for a run started 2026-10-06 with 4 delivery weeks puts week 0 at 2026-08-31 and weeks 1-4 at exactly these last four periods.",
+  "definition_id": 7410,
+  "runs": [
+    { "run_id": 7677, "period_start": "2026-08-31", "period_end": "2026-09-06", "status": "completed", "generated": true },
+    { "run_id": 7684, "period_start": "2026-09-07", "period_end": "2026-09-13", "status": "completed", "generated": true },
+    { "run_id": 7691, "period_start": "2026-09-14", "period_end": "2026-09-20", "status": "completed", "generated": true },
+    { "run_id": 7698, "period_start": "2026-09-21", "period_end": "2026-09-27", "status": "completed", "generated": true },
+    { "run_id": 7705, "period_start": "2026-09-28", "period_end": "2026-10-04", "status": "completed", "generated": true }
+  ],
+  "done": true
+}
