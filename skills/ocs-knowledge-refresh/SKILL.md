@@ -1,15 +1,19 @@
 ---
 name: ocs-knowledge-refresh
 description: >
-  Add training documents to a program chatbot's RAG collection and republish the bot. Needs the
-  bot and the training docs.
+  Add documents to a chatbot's RAG collection and republish it. Needs the bot's experiment and
+  collection ids and the docs.
 disable-model-invocation: false
 ---
 
 # OCS Knowledge Refresh
 
-Uploads the Phase 6 training documents into the chatbot's existing RAG
-collection, waits for indexing, and publishes a new chatbot version.
+Uploads documents into a chatbot's existing RAG collection, waits for
+indexing, and publishes a new chatbot version. Inside `/ace:run` the bot is
+the run's Phase 5 chatbot and the documents are the four Phase 6 training
+documents. On a live program the caller names the bot and the documents
+directly (e.g. a revised FAQ for a bot ACE did not build), and the skill does
+the same thing with no run.
 
 Uses: `ocs_upload_collection_files`, `ocs_wait_for_collection_indexing`,
 `ocs_publish_chatbot_version`, `ocs_get_chatbot_embed_info`.
@@ -48,13 +52,47 @@ A first-class step, not a corrective second pass. `ocs-agent-setup --reindex`
 
 ## Inputs
 
-| Source | Artifact | Used for |
+| Parameter | Used for | Resolver |
 |---|---|---|
-| Phase 5 | `runs/<run-id>/5-ocs/ocs-agent-setup.md` | `experiment_id`, `collection_id`, `pipeline_id` |
-| Phase 6 | `runs/<run-id>/6-qa-and-training/training-llo-guide.md` | RAG content |
-| Phase 6 | `runs/<run-id>/6-qa-and-training/training-flw-guide.md` | RAG content |
-| Phase 6 | `runs/<run-id>/6-qa-and-training/training-faq.md` | RAG content |
-| Phase 6 | `runs/<run-id>/6-qa-and-training/training-quick-reference.md` | RAG content |
+| `experiment_id` | the bot to republish | explicit arg; default: `runs/<run-id>/5-ocs/ocs-agent-setup.md` |
+| `collection_id` | the RAG collection to upload into | explicit arg; default: same file; else `ocs_get_chatbot` / the program context doc |
+| `pipeline_id` | recorded alongside the bot | optional; default: same file; `ocs_get_chatbot_pipeline_id` when omitted |
+| `files[]` | the documents to index (Drive file ids or local paths) | explicit arg; default: the four Phase 6 documents below |
+| `run_id` | whether to write back to a run | optional; absent = live-program mode (no run write-back) |
+
+Default `files[]` inside a run:
+
+| Phase 6 artifact | Used for |
+|---|---|
+| `runs/<run-id>/6-qa-and-training/training-llo-guide.md` | RAG content |
+| `runs/<run-id>/6-qa-and-training/training-flw-guide.md` | RAG content |
+| `runs/<run-id>/6-qa-and-training/training-faq.md` | RAG content |
+| `runs/<run-id>/6-qa-and-training/training-quick-reference.md` | RAG content |
+
+**Two modes, one procedure.** *Run mode* (`run_id` bound, ids resolved from
+Phase 5) is the pipeline step described below. *Live-program mode* (explicit
+`experiment_id` + `collection_id` + `files[]`, no run) runs the same Steps 1-3;
+Step 0's re-run check and Step 4's write-back switch to the live-program
+variants named in each step. Never halt for a missing `5-ocs/ocs-agent-setup.md`
+when the caller passed the ids.
+
+## Existing objects
+
+- **A publish changes the live bot for everyone.** `ocs_publish_chatbot_version`
+  makes the new collection contents the published default, and the public
+  widget link serves ONLY the published version, so a refresh without Step 3
+  changes nothing a user sees, and a refresh with it changes the bot for every
+  opportunity and worker that embeds it. On a live program, get owner approval
+  for the document set before Step 1 (`partner-on-connect-program § Changing a
+  live program`).
+- **Uploads append; they do not replace.** Re-uploading a document already in
+  the collection indexes a duplicate. Step 0's per-document check is what
+  prevents it, and in live-program mode it is the ONLY guard (there is no
+  `last_reindexed_at` to read).
+- **A shared collection is shared.** If `collection_id` is also attached to
+  other bots (check `ocs_get_chatbot` on each bot that embeds it, or the
+  context doc), the upload reaches them too, though they serve it only after
+  their own republish. Name every affected bot in the product record.
 
 ## Products
 
@@ -83,7 +121,14 @@ A first-class step, not a corrective second pass. `ocs-agent-setup --reindex`
 
 ### Step 0: Preconditions — say what is missing, do not improvise
 
-Read `5-ocs/ocs-agent-setup.md`.
+**Live-program mode** (explicit ids, no run): confirm the bot and collection
+exist (`ocs_get_chatbot({experiment_id})`, `ocs_list_collection_files({collection_id})`).
+Either one missing is a hard stop: never create a bot here. Then run the
+per-document check below ("was THIS file ever uploaded?") against
+`ocs_list_collection_files` by name. That is the whole re-run guard in this
+mode, then go to Step 1.
+
+**Run mode:** read `5-ocs/ocs-agent-setup.md`.
 
 - **Absent.** Phase 5 did not run or did not complete. **No-op with a loud
   note** — record `status: skipped` with the reason. Do NOT create a chatbot;
@@ -248,7 +293,13 @@ worth knowing:
 
 ### Step 4: Write back
 
-Write the product artifact, and update `5-ocs/ocs-agent-setup.md` with
+**Live-program mode:** there is no run file to update. Record the result
+(documents uploaded, documents skipped and why, collection file count, new
+`version_number`, every bot affected) in the program context doc's Decisions,
+or on the board task that asked for the refresh, and stop. The run write-back
+below does not apply.
+
+**Run mode:** write the product artifact, and update `5-ocs/ocs-agent-setup.md` with
 `last_reindexed_at` (ISO timestamp) and the new `version_number`.
 
 **`last_reindexed_at` is the operator's check.** Its absence on a run whose
@@ -329,3 +380,9 @@ No paired `-eval`. The check is structural and lives in the product artifact:
 documents uploaded vs. documents expected. A count mismatch is a `[WARN]` with
 the missing filenames; zero uploaded when Phase 6 produced documents is a
 `[BLOCKER]`.
+
+## Change Log
+
+| Date | Change | Author |
+|---|---|---|
+| 2026-10-18 | Inputs are parameters (`experiment_id`, `collection_id`, `files[]`) with the Phase 5/6 run paths as defaults; live-program mode (no run) for Step 0 and Step 4; `## Existing objects` (publish is live for every embedder, uploads append, shared collections). ace#3148. | ACE (build-vs-maintain audit) |

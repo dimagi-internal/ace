@@ -17,10 +17,25 @@ The LLM-as-Judge grading happens separately in `ocs-chatbot-eval`.
 
 ## Inputs
 
-| Source | Artifact | Used for |
+| Parameter | Used for | Resolver |
 |---|---|---|
-| Phase 5 | `5-ocs/ocs-agent-setup.md` | `experiment_id`, widget URL, embed credentials |
-| Phase 1 (`--deep` only) | `2-scenarios/pdd-to-test-prompts.md` | opp-specific prompt suite + expected-answer summaries |
+| `experiment_id` | the bot under test (primary input) | explicit arg; default: `runs/<run-id>/5-ocs/ocs-agent-setup.md` |
+| `public_id`, `embed_key` | anonymous chat API | resolved from `experiment_id` via `ocs_get_chatbot_embed_info` |
+| `mode` | `--quick` / `--deep` / `--monitor` | explicit arg; default `--quick` |
+| `prompts_file` (`--deep` / `--monitor`) | opp-specific prompt suite + expected-answer summaries | explicit arg (Drive id or local path in the `pdd-to-test-prompts` shape); default: `runs/<run-id>/2-scenarios/pdd-to-test-prompts.md` |
+| `run_id` | run-bound mode: ownership assertion + run transcript path | optional; absent = live-program mode |
+| `out_folder_id` | where the transcript is written in live-program mode | explicit arg when `run_id` is absent (e.g. the program project's `Projects/<name>/` folder) |
+
+**`experiment_id` is the primary path.** Hand the skill a bot and it tests that
+bot. The run file is the default resolver for `/ace:run` and `/ace:qa-deep`,
+not a precondition. In **live-program mode** (no `run_id`): there is no run to
+assert ownership against, so Step 1's ownership assertion is replaced by
+recording, in the transcript header, exactly which bot was tested
+(`experiment_id`, `public_id`, published `version_number`) and who named it
+(the caller, or the program context doc). The transcript goes to
+`out_folder_id`. Without a `prompts_file`, `--deep` / `--monitor` run the
+universal suite only and say so in the header; they never borrow another
+run's prompts.
 
 ## Products
 
@@ -95,7 +110,12 @@ Skills — No Fake Background Tasks`). Concrete budget:
      third branch for a graded suite
    - The `embed_key` and `public_id` are needed for the anonymous chat API
 
-   **Then assert the bot belongs to the run being graded — MANDATORY on
+   **Live-program mode** (explicit `experiment_id`, no `run_id`): skip the
+   ownership assertion below and record the tested bot in the transcript
+   header instead (§ Inputs). Never fall back to `$OCS_GOLDEN_TEMPLATE_ID`
+   in either mode.
+
+   **Run mode: assert the bot belongs to the run being graded — MANDATORY on
    `--deep` and `--monitor`, before the liveness probe.** Read the run's
    `run_state.yaml` and compare:
 
@@ -803,6 +823,7 @@ When `--dry-run` is active:
 
 | Date | Change | Author |
 |------|--------|--------|
+| 2026-10-18 | **Inputs are parameters; `experiment_id` is the primary path (ace#3148).** New `prompts_file`, `run_id`, `out_folder_id` parameters. Live-program mode (no run) tests the named bot and records it in the transcript header in place of the run-ownership assertion, which still applies unchanged whenever a run is bound. | ACE (build-vs-maintain audit) |
 | 2026-09-06 | **The empty `cited_files` is a PROVIDER property, not a widget property (closes dimagi-internal/ace#2037; sibling of #2027/PR #2032).** Step 5.4's note, Step 6's `has_citations` check, and the Step 7 transcript schema all attributed the emptiness to the `widget` channel. It is decided in the pipeline's LLM node before any channel exists: `AnthropicLlmService.get_output_parser` returns `parse_output_for_anthropic` (`main.py:449` -> `parsers.py:83`), which never calls `extract_file_ids_from_ocs_citations`, so the field is empty by construction on `widget`, `web`, `api` and `openai-compat` alike. The observation was always right; only the cause was wrong. This skill's check is non-fatal so no grade moved — the cost was that the two files disagreed about the mechanism, and the obvious next "improvement" (fail `structural_pass` when a non-`widget` capture has no citations) would have reintroduced the ace#1298 false-gate class that #2027 closed. Step 6 now names that anti-improvement explicitly and points at `lib/cited-files-provider-support.ts` as the only correct discriminator. *Enforced:* `test/lib/cited-files-provider-support.test.ts` § "the qa skill agrees about the mechanism". | ACE team |
 | 2026-09-05 | **Name what `message.tags` actually carries, and harvest the body evidence the transcript was dropping (closes dimagi-internal/ace#1953, supports #1952).** Step 5.4 already warned that `cited_files` is at `message.metadata.cited_files`; the same trap had two more doors on the same payload. `message.tags` is the CHATBOT VERSION tag — `["v3"]` on all 64 entries of `hh-poverty-targeting/20260828-0702` — and the semantic `[training-gap]` / `[product-feedback]` / `[no tag]` markers are emitted INLINE in the response body, as is file-id citation markup on 8 of those 64 entries. Step 7's transcript schema had one flat `Tags:` field, so a harness populating it from the documented path recorded the version label as the tagging evidence. The schema now carries four fields — `Cited files:` and `Tags (structured):` for provenance, `Inline citations:` and `Inline tags:` for grading — parsed with the shared `lib/widget-body-evidence.ts` so this skill and `ocs-chatbot-eval` cannot disagree about the grammar (six citation spellings and three tag spellings were live in that one suite). *Enforced:* `test/lib/widget-body-evidence.test.ts`. | ACE team |
 | 2026-08-29 | **Corrected the EXPLANATION under the missing-`X-Embed-Key` observation (ace#1812).** The measured status codes are unchanged and still correct; only the mechanism cited for them was stale. Step 5 explained the anonymous 201 as "consistent with `start_session_public` being a genuine anonymous surface for a published bot with an empty `participant_allowlist`" — OCS deleted `is_public` and the allowlist gate in #4275 (ADR-0057, 2026-08-26). The endpoint is still a genuine anonymous surface, for a different reason: it resolves published-or-working and gates only on the team's WEB channel being enabled (#4230). Keeping a right observation attached to a deleted mechanism is what makes a future reader mis-triage it. *Enforced:* `test/skills/ocs-public-chat-gate-docs.test.ts`. | ACE team |

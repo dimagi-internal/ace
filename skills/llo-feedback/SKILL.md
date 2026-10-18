@@ -10,6 +10,22 @@ disable-model-invocation: false
 
 Collect feedback from LLOs about the completed opportunity.
 
+## Inputs
+
+| Parameter | Used for | Resolver |
+|---|---|---|
+| `opportunity_id`, `organization_slug` | the opportunity the feedback is about; delivery metrics | explicit arg; default: run_state `phases.solicitation-management.products.selected_llo.opportunity_id` + the run's holding org; else the program context doc |
+| `llo_contacts[]` | who is asked (name, email, org) | explicit arg; default: run_state `selected_llo` + the run's comms-log; else the program context doc |
+| `archetype` | which question set (§ Archetypes) | explicit arg; default: PDD / launch record frontmatter; else `atomic-visit` |
+| `run_id` | run-bound mode: comms-log + `10-closeout/` record | optional; absent = live-program mode |
+| `out_folder_id` | where the feedback record goes in live-program mode | explicit arg when `run_id` is absent |
+
+**Live-program mode** (no `run_id`): metrics come live from
+`connect_get_deliver_progress` on `opportunity_id`; message ids are logged to
+the program project's board task (or the context doc) instead of a run
+comms-log, and Step 6 writes to `out_folder_id`. Sends stay approval-gated in
+both modes (external LLO contact).
+
 ## Process
 
 1. **Read opportunity context** from GDrive:
@@ -25,7 +41,7 @@ Collect feedback from LLOs about the completed opportunity.
    `## Archetypes` below. Fall back to `atomic-visit` if unspecified.
 
 3. **Compose feedback request email (archetype-aware):**
-   - From: `$ACE_GMAIL_ACCOUNT` (via `email-communicator` skill)
+   - From: ACE's mailbox (`config/agent.json` `email`; sent via the `email-communicator` skill, never a shell var)
    - To: each LLO contact email
    - CC: CRISPR Admin Dimagi Google Group
    - Questions branch per archetype — see `## Archetypes`. Keep the
@@ -145,4 +161,5 @@ binding on this skill's output.
 
 | Date | Change | Author |
 |------|--------|--------|
+| 2026-10-18 | Add `## Inputs` as parameters (opportunity, LLO contacts, archetype) with run defaults, plus live-program mode; sender is ACE's mailbox, not the retired `$ACE_GMAIL_ACCOUNT` (ace#1147). ace#3148. | ACE (build-vs-maintain audit) |
 | 2026-04-20 | Added `## Archetypes` with per-archetype feedback questions. `focus-group` replaces the app-usability / FLW-experience block with question-guide quality, facilitation experience, audio+upload workflow, participant recruitment, and session cadence. `multi-stage` asks per-stage questions plus cross-stage transition quality. Prevents the "facilitator asked about a Learn app they never used" anti-pattern that drifts responses thin | ACE team |

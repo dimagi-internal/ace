@@ -54,7 +54,7 @@ const LEDGER = new Set<string>([
   'connect-opp-setup', 'connect-opp-setup-eval', 'connect-program-setup-eval',
   'decisions-render', 'decisions-sync', 'demo-data-setup-qa', 'demo-fidelity-check',
   'feedback-ledger', 'idea-to-pdd', 'idea-to-pdd-eval', 'learnings-summary-eval',
-  'llo-invite', 'llo-uat-eval', 'ocs-agent-setup', 'ocs-knowledge-refresh',
+  'llo-invite', 'llo-uat-eval',
   'ocs-widget-handoff-eval', 'partnership-angles', 'partnership-angles-eval',
   'partnership-deck-build', 'partnership-deck-build-eval', 'partnership-microdemo',
   'partnership-microdemo-eval', 'partnership-research-eval', 'partnership-research-qa',

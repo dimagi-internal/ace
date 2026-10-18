@@ -10,6 +10,23 @@ disable-model-invocation: false
 
 Coordinate UAT with LLOs before the opportunity goes live.
 
+## Inputs
+
+| Parameter | Used for | Resolver |
+|---|---|---|
+| `opportunity_id`, `organization_slug` | the opportunity under test; UAT deadline | explicit arg; default: `runs/<run-id>/4-connect/connect-opp-setup.md` / run_state `selected_llo.opportunity_id`; else the program context doc |
+| `llo_contacts[]` | who tests (name, email, org) | explicit arg; default: run_state `phases.solicitation-management.products.selected_llo` |
+| `app_ids` (`learn`, `deliver`, `hq_domain`) | what the LLO installs | explicit arg; default: `runs/<run-id>/3-commcare/app-deploy_summary.md` |
+| `training_materials[]` | links in the instructions email | explicit arg; default: `runs/<run-id>/6-qa-and-training/` |
+| `archetype` | checklist + sign-off criterion (§ Archetypes) | explicit arg; default: `1-design/idea-to-pdd.md` `archetype:`; else `atomic-visit` |
+| `run_id` | run-bound mode: comms-log + `9-execution-manager/` results | optional; absent = live-program mode |
+| `out_folder_id` | where UAT results go in live-program mode | explicit arg when `run_id` is absent |
+
+**Live-program mode** (no `run_id`, e.g. UAT of a changed app on a live
+program): every input is passed explicitly or read from the program context
+doc; message ids go to the board task, and Step 7 writes to `out_folder_id`.
+Sends stay approval-gated in both modes.
+
 ## Process
 
 1. **Read inputs from GDrive:**
@@ -26,7 +43,7 @@ Coordinate UAT with LLOs before the opportunity goes live.
    `atomic-visit` if unspecified.
 
 3. **Compose UAT instruction email for each onboarded LLO:**
-   - From: `$ACE_GMAIL_ACCOUNT` (via `email-communicator` skill)
+   - From: ACE's mailbox (`config/agent.json` `email`; sent via the `email-communicator` skill, never a shell var)
    - To: each LLO contact email
    - CC: CRISPR Admin Dimagi Google Group
    - Subject: "[Opportunity Name] — Please Test Before Go-Live"
@@ -166,4 +183,5 @@ binding on this skill's output.
 
 | Date | Change | Author |
 |------|--------|--------|
+| 2026-10-18 | Add `## Inputs` as parameters (opportunity, LLO contacts, app ids, training materials, archetype) with run defaults, plus live-program mode; sender is ACE's mailbox, not the retired `$ACE_GMAIL_ACCOUNT` (ace#1147). ace#3148. | ACE (build-vs-maintain audit) |
 | 2026-04-20 | Added `## Archetypes` with per-archetype UAT checklists + sign-off criteria. `focus-group` replaces "test the apps" with "dry-run a facilitation session" (question guide + recording + consent + write-up + logistics); sign-off is "you could run Session 1 tomorrow." `multi-stage` uses per-stage checklists — full UAT for Stage 1, reference-only for later stages. Prevents LLOs from getting "download the app" UAT instructions when they have no app to download | ACE team |

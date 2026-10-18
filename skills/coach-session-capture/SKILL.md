@@ -37,15 +37,20 @@ and ACE holds no token for it.)
 
 ## Inputs
 
-| Input | Source |
-|---|---|
-| Report run | a programme or opportunity report the Coach is wired to — `phases.synthetic-data-and-workflows.products.ocs_coach.coaching_on[]` (`workflow_id`, `run_id`, scope) |
-| Worker | one worker key with a red or yellow coachable indicator — `workflow_run_indicators(band: "red")` |
-| Persona | `agree` (default), `dispute`, `safety` |
-| Worker turns | `turns.json` — the worker's lines for each persona, authored for THIS opp (see below); optional |
-| Coach | `ocs_coach.experiment_id` (pk) + its PUBLISHED version number (`ocs_get_chatbot`) |
-| Channel name (mobile) | the Coach's `commcare_connect` bot name (`ocs-coach-build.ts --connect-bot-name`) |
-| HQ domain (mobile) | `ACE_HQ_DOMAIN` — where the test user's mobile worker lives |
+| Parameter | Used for | Resolver |
+|---|---|---|
+| `workflow_id`, `labs_run_id`, scope | the programme or opportunity report the Coach is wired to | explicit arg; default: run_state `phases.synthetic-data-and-workflows.products.ocs_coach.coaching_on[]`; else the program context doc |
+| `worker` | one worker key with a red or yellow coachable indicator | explicit arg; default: first hit of `workflow_run_indicators(band: "red")` |
+| `persona` | `agree` (default), `dispute`, `safety` | explicit arg |
+| `turns` | `turns.json`: the worker's lines for each persona, authored for THIS opp (see below) | optional explicit arg; default: the programme-neutral script |
+| `coach_experiment_id` | the Coach (pk) + its PUBLISHED version number (`ocs_get_chatbot`) | explicit arg; default: run_state `ocs_coach.experiment_id` |
+| `channel_bot_name` (mobile) | the Coach's `commcare_connect` bot name (`ocs-coach-build.ts --connect-bot-name`) | explicit arg; default: run_state `ocs_coach.connect_channel` |
+| `hq_domain` (mobile) | where the test user's mobile worker lives | default: `ACE_HQ_DOMAIN` / `run_workspace.hq_domain` |
+| `out_folder_id` | where `coach-capture/` is written | explicit arg; default: the run's or demo's Drive folder |
+
+With explicit ids the skill runs on any live Coach and report, with no run.
+The carve-out above is unchanged in every mode: mobile delivery goes only to
+ACE's own test user.
 
 ### Worker turns: the opp's own words, or neutral
 
@@ -174,3 +179,6 @@ Worker-facing text follows `skills/_terminology.md` — the platform is "Connect
   CommCare 2.64.0, web sessions for all three personas.
 - 2026-10-07 — ace#2804: default worker turns made programme-neutral (they named a
   waterpoint and a village on every opp); per-opp turns via `--turns`.
+- 2026-10-18 — Inputs rewritten as parameters with resolvers (run_state is the default,
+  not the only source); `out_folder_id` added so a live Coach can be captured outside a
+  run. ace#3148.
