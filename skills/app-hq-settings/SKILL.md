@@ -77,10 +77,28 @@ that track the two toggles so the residual state reflects reality.
 | Phase 1 (context) | `1-design/idea-to-pdd.md` | whether the PDD demands camera-only capture — the acquire pass is PDD-conditional, mirroring `app-release-qa` Step 4 |
 | Env | `ACE_HQ_USERNAME` / `ACE_HQ_API_KEY` | required so `run-form-walk` can overlay draft `form_unique_id` + `module_unique_id` from the draft-app API (issue #108) |
 
+The table above is the run-bound resolver. To run on any existing app (a finished run's or a live
+program's, e.g. after `app-deploy` § Re-uploading to an existing HQ app), pass the explicit flags
+below instead. Then neither run_state nor the summary is read, and nothing is written back to a run.
+
 Flags:
 
-- `<opp-name>/<run-id>` — positional, required. Resolves the opp's run
-  folder.
+- `<opp-name>/<run-id>` — positional. Resolves the opp's run folder.
+  Required UNLESS `--domain` and at least one `--hq-app-id` are given.
+- `--domain=<hq_domain>` — explicit project space (run-free mode).
+- `--hq-app-id=<id>` — explicit HQ app id for the app `--app` selects
+  (run-free mode; with `--app=both` pass `--learn-app-id=` and
+  `--deliver-app-id=` instead). Confirm the id exists in the domain
+  (`commcare_list_apps`) before mutating — the ace#1046
+  silent-wrong-target class applies here too.
+- `--camera-only=yes|no` — run-free replacement for the PDD read in
+  Step 1. When omitted outside a run, **infer from the app**: if the
+  current draft's image uploads already carry `appearance="acquire"`,
+  keep it (`yes`); otherwise do NOT add it, and report the choice as a
+  question for the owner (camera-only is a programme decision, not a
+  default to impose on a live app).
+- `--summary-folder=<drive folder id>` — where the run-free summary goes
+  (default: the program project's Drive folder).
 - `--app=learn|deliver|both` — default `both`. (Camera-only always
   targets Deliver only regardless; grid targets whatever `--app` selects.)
 - `--dry-run` — compute what WOULD be patched/gridded and write a dry-run
@@ -94,7 +112,14 @@ Flags:
   and any follow-ups (e.g. the app-root menu caveat). Frontmatter shape in
   § Process Step 5.
 - Resolved `phases.commcare-setup.residuals[]` entries for camera-only +
-  grid (marked applied) — see Step 5.
+  grid (marked applied) — see Step 5. Run-bound only; skipped in run-free mode.
+
+## Existing objects
+
+On a live app this skill edits the draft only, so nothing reaches workers until `app-release`
+builds and releases it. Grid display is harmless to re-apply. Camera-only is not: adding
+`appearance="acquire"` removes the gallery option from every worker on every opportunity using
+the app. Apply it to a live app only when the PDD or the owner says so (`--camera-only`).
 
 ## Prerequisites
 
@@ -118,6 +143,11 @@ irrelevant here (no orphan-pruning hazard as in `app-multimedia-coverage`
 — this skill uploads nothing).
 
 ### Step 1: Read HQ app ids
+
+**Run-free mode** (`--domain` + `--hq-app-id` given): use those ids, confirm
+each is listed by `commcare_list_apps` in that domain, take camera-only
+from `--camera-only` (or infer per § Inputs), and skip to Step 2. The
+rest of this step is the run-bound resolver.
 
 Read `run_state.yaml`
 `phases.commcare-setup.products.apps.{learn,deliver}.hq_app_id` as the
@@ -491,7 +521,9 @@ Deliver `fc14076ff22d4b199451ea2cba4cd48f`: both read
 
 ### Step 5: Write summary + resolve residuals
 
-Write `3-commcare/app-hq-settings_summary.md`:
+Write `3-commcare/app-hq-settings_summary.md` (run-free mode: write
+`app-hq-settings_summary.md` into `--summary-folder` and skip the
+residual resolution below; there is no run to resolve them in):
 
 ```yaml
 ---

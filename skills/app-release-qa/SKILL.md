@@ -25,18 +25,34 @@ this catches, see reference.md.
 
 ## Inputs
 
-| Source | Artifact | Used for |
+The skill QAs any released Learn/Deliver build: this run's, or a live program's after a
+re-release (`app-deploy` § Re-uploading to an existing HQ app). Each value is an explicit
+argument first; inside `/ace:run` it defaults to the run's artifacts.
+
+| Parameter | Used for | Resolver |
 |---|---|---|
-| Phase 3 § Step 2 | `3-commcare/app-deploy_summary.md` | HQ app ids (Learn + Deliver) |
-| Phase 3 § Step 2.7 | `3-commcare/app-release_summary.md` | Released build ids per app |
-| Phase 1 | `1-design/idea-to-pdd.md` | Payable-visit rules — whether the PDD demands camera-only photo capture (the `appearance="acquire"` check in Step 4) — and the stated per-module training durations (the `time_estimate` plausibility check in Step 4) |
-| Nova MCP | `get_app({app_id})` for each Nova app id | Blueprint structure (modules, forms, fields per form, Connect marker presence) — the canonical structural truth for cross-reference |
-| Phase 1 `inputs/` (via `inputs-manifest.yaml`) | the `[FIXED]` instrument markdown the PDD cites | Step 4.8 question-text + option-set diff (ace#2366) |
-| HQ `ACE_HQ_DOMAIN` env | — | `connect-ace-prod` (the project space the apps released to) |
+| `hq_domain` | the project space the apps released to | explicit `--domain`; default: `run_workspace.hq_domain`, else `ACE_HQ_DOMAIN` env (`connect-ace-prod`) |
+| `learn_app_id` / `deliver_app_id` | HQ app ids (Learn + Deliver; either or both) | explicit `--learn-app-id` / `--deliver-app-id`; default: Phase 3 § Step 2 `3-commcare/app-deploy_summary.md` |
+| released `build_id` per app | the build to QA | explicit `--learn-build-id` / `--deliver-build-id`; default: Phase 3 § Step 2.7 `3-commcare/app-release_summary.md`; else the app's latest released build (`commcare_list_apps` / the HQ application API) |
+| `nova_app_id` per app (optional) | Blueprint structure (modules, forms, fields per form, Connect marker presence) — the canonical structural truth for cross-reference, read live with `get_app({app_id})` | explicit argument; default: the deploy summary's `nova_app_id`. Absent for a non-Nova app: the blueprint cross-checks record `unavailable`, never pass |
+| programme rules | Payable-visit rules — whether camera-only photo capture is demanded (the `appearance="acquire"` check in Step 4) — and the stated per-module training durations (the `time_estimate` plausibility check in Step 4) | default: Phase 1 `1-design/idea-to-pdd.md`; outside a run: the program context doc, else `--camera-only=yes|no` (unknown ⇒ record the check `unavailable`) |
+| `[FIXED]` instruments (optional) | Step 4.8 question-text + option-set diff (ace#2366) | default: the markdown the PDD cites in Phase 1 `inputs/` (via `inputs-manifest.yaml`); skipped with `not-applicable` when there is none |
+| `opportunity_id` + `organization_slug` | Step 4.7 re-release invariants against an EXISTING opportunity | explicit `--opportunity-id` / `--org`; default: run_state `phases.connect-setup.products.connect.opportunity.id` |
+| `form_field_rules` | Step 4.7a rule-path check | explicit `--form-field-rules=<json>` (from the program context doc, or the read-back a prior `connect_set_verification_flags` returned); default: run_state `phases.connect-setup.products.connect.opportunity.verification.form_field_rules`. There is NO read-only Connect atom for these rules (`connect_get_opportunity` does not return them), so with neither source the rule-path check is UNEVALUATED, never a pass |
+| `output_folder` | where the result YAML goes | default: the run's `3-commcare/`; outside a run, the program project's Drive folder |
+
+## Existing objects
+
+This skill reads only, but on a live program its verdict is the gate before working FLWs get a
+build. **A Step 4.7 `[BLOCKER]` on a live opportunity means do NOT leave that build released.**
+A disappeared or added `<deliver id>` breaks payment (the visit errors `Payment unit is not
+configured`, and DeliverUnits are shared per app within the holding org, ace#573). A disappeared
+Learn module caps every new worker below 100%. Re-release the previous build, or fix and
+re-release, and tell the owner which opportunities were exposed and for how long.
 
 ## Products
 
-- `3-commcare/app-release-qa_result.yaml` — structural verdict (see § Output schema below)
+- `<output folder>/app-release-qa_result.yaml` (in a run: `3-commcare/`) — structural verdict (see § Output schema below)
 
 No screenshots, no per-app summaries — the structural deltas live in
 the verdict YAML.
@@ -45,12 +61,16 @@ the verdict YAML.
 
 ### Step 1: Read upstream artifacts
 
+Explicit arguments (§ Inputs) win over every read below. Run-free, only the
+HQ ids and build ids are required; each other input that is absent marks its
+dependent checks `unavailable` rather than halting.
+
 - Read `3-commcare/app-deploy_summary.md` → extract Learn HQ app id + Deliver HQ app id.
 - Read `3-commcare/app-release_summary.md` → extract Learn released build id + Deliver released build id.
 - Read both Nova blueprints via `get_app({app_id: <nova_id>})` for cross-reference. (The Nova app ids are referenced in the deploy summary as `nova_app_id`.)
 - Read `3-commcare/pdd-to-learn-app_summary.md` + `3-commcare/pdd-to-deliver-app_summary.md` → extract each app's DECLARED module names. This is the only artifact that says what the brief asked for; the Nova blueprint says what was built, and the difference is what Step 4's module-identity check exists to see. A summary that names no modules is not a halt — Step 4 records `declared_structure: unavailable` and relies on the starter-module signature alone.
 
-If any of these inputs are missing, halt with a structured error
+Inside a run, if any of these inputs are missing, halt with a structured error
 naming the missing artifact + the upstream skill that should have
 produced it.
 
@@ -1445,12 +1465,20 @@ when that app is being re-released. Both share the same gate below.
 
 #### 4.7a Deliver
 
-**Runs only on a Deliver RE-release** — when this run's `run_state.yaml`
-already has `phases.connect-setup.products.connect.opportunity.id` (Phase 4
-configured an opportunity against an earlier Deliver build) and the build
-being QA'd is a newer release of the same HQ app. On the first Phase 3 pass
+**Runs only on a Deliver RE-release**: when there is an existing
+opportunity and the build being QA'd is a newer release of the same HQ app.
+The opportunity is an explicit `--opportunity-id` (a live program, or any
+opportunity outside this run), or this run's `run_state.yaml`
+`phases.connect-setup.products.connect.opportunity.id` (Phase 4
+configured an opportunity against an earlier Deliver build). On the first Phase 3 pass
 there is no opportunity yet: record `rerelease_invariants: not-applicable
 (no opportunity)` and skip.
+
+Run-free, confirm the opportunity is wired to this HQ app before comparing:
+`connect_get_opportunity({organization_slug, opportunity_id})`, whose
+dashboard half names the `deliver_app` / `learn_app` wiring. A mismatch means
+the build is not this opportunity's app. Record `not-applicable (opportunity
+not wired to this app)` and name both apps.
 
 Connect matches a forwarded submission by **HQ domain + HQ app id**, picks the
 DeliverUnit — and so the payment unit — by the **`<deliver id>` `@id`**, and
@@ -1466,13 +1494,18 @@ are the `@id`s and the rule paths — not the xmlns.
 1. **Baseline build.** Use the Deliver build Phase 4 configured the
    opportunity against — the Deliver `build_id` in the `app-release_summary.md`
    that preceded Phase 4 (Drive revision history, or the run's
-   `phases.commcare-setup` record). If that cannot be determined, use the
+   `phases.commcare-setup` record). If that cannot be determined (always the
+   case run-free, unless the caller passes `--baseline-build-id`), use the
    **previously released** build of the same HQ app. Record which one you used.
 2. Download the baseline with `commcare_download_ccz({domain, app_id,
    build_id: <baseline>, write_to_path})` and unzip it next to the candidate
    (Step 2/3 already hold the candidate's forms).
-3. Read `phases.connect-setup.products.connect.opportunity.verification.form_field_rules`
-   (empty list if none were configured — the `@id` check still runs).
+3. Resolve `form_field_rules` per § Inputs: `--form-field-rules`, else
+   `phases.connect-setup.products.connect.opportunity.verification.form_field_rules`
+   (empty list if none were configured — the `@id` check still runs). Run-free
+   with no rules source, the `@id` check still runs and the rule-path check is
+   recorded `unevaluated (no rules source)`. Never pass an empty list as if the
+   opportunity had no rules.
 4. Classify:
 
 ```ts
@@ -1502,8 +1535,9 @@ Static parsing of two released CCZs — unit tests are complete evidence.
 #### 4.7b Learn (dimagi-internal/ace#2705)
 
 **Runs only on a Learn RE-release** against an existing opportunity — same
-gate as 4.7a (`phases.connect-setup.products.connect.opportunity.id` is set
-and the Learn build being QA'd is a newer release of the same HQ app).
+gate as 4.7a (`--opportunity-id` given, or
+`phases.connect-setup.products.connect.opportunity.id` is set, and the Learn
+build being QA'd is a newer release of the same HQ app).
 Otherwise record `rerelease_invariants: not-applicable (no opportunity)`
 under `per_app.learn` and skip.
 

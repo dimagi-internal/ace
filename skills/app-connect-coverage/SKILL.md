@@ -17,14 +17,35 @@ Don't trust first-pass output — verify and fix in a loop.
 
 ## Inputs
 
-| Source | Artifact | Used for |
+| Parameter | Used for | Resolver |
 |---|---|---|
-| Phase 3 | `3-commcare/pdd-to-learn-app_summary.md` or `pdd-to-deliver-app_summary.md` | source `nova_app_id` |
-| Nova MCP | `get_app({app_id: <nova_app_id>})` | live blueprint (form list, marker presence) |
+| `nova_app_id` | the app to check and fix | explicit argument; default: `3-commcare/pdd-to-{learn,deliver}-app_summary.md` frontmatter |
+| (live) | the blueprint: form list and marker presence | always read live: `get_app({app_id: <nova_app_id>})` |
+| `payable_forms` (Deliver only) | which forms are paid, so which carry a `deliver_unit` (Step 2) | explicit argument (a list of form names), else the PDD's § Deliver App Specification and run_state `phases.idea-to-design.products.pdd.program_parameters.payable_stage`, else **inferred from the app's existing `deliver_unit` markers**. See § Existing objects |
+| `gating_assessment_form` (Learn only) | the one form that may carry `assessment` | explicit argument, else the PDD's Deliver-unlock threshold, else the last assessment in module order |
+| `report_folder_id` | where the Step 7 report goes | default: the run's `3-commcare/` folder; outside a run, the program project's Drive folder |
+
+## Existing objects
+
+On an app that already backs a live opportunity, Connect markers are **payment wiring**.
+A `deliver_unit` is what a payment unit attaches to. Removing one makes a paid form unpayable.
+Adding one creates a payable unit the program may never have meant to pay for. And
+`configure_connect` is REPLACE-ALL, so a wrong expectation rewrites every form's block (ace#1327).
+
+So when `payable_forms` is **inferred** (no PDD and no explicit list), the existing markers are
+the expectation. The skill fixes only *malformed* blocks (wrong expression shape, a missing
+`name`) and adds `task`/`learn_module` blocks that carry no payment. It **reports, never applies**:
+- adding or removing a `deliver_unit`;
+- moving `assessment` to a different form (the Learn passing score is shared across every
+  opportunity on the app, ace#1350).
+
+Those changes go to the owner as a proposal with the affected opportunities named. After
+any applied fix, re-upload and re-release the app (`app-deploy` § Re-uploading to an existing HQ
+app, then `app-release`), or the fix never reaches workers.
 
 ## Products
 
-- `3-commcare/app-connect-coverage_<app-type>.md` (`_learn.md` / `_deliver.md`) — per-form marker coverage report and any Nova edits applied. The app-type suffix is REQUIRED: Phase 3 runs this skill twice into the same folder and `drive_create_file` is find-or-update by name, so an undiscriminated name makes the second pass silently overwrite the first (ace#1528).
+- `<report folder>/app-connect-coverage_<app-type>.md` (in a run: `3-commcare/`; `_learn.md` / `_deliver.md`) — per-form marker coverage report and any Nova edits applied. The app-type suffix is REQUIRED: Phase 3 runs this skill twice into the same folder and `drive_create_file` is find-or-update by name, so an undiscriminated name makes the second pass silently overwrite the first (ace#1528).
 
 ## Why this skill exists
 
@@ -71,9 +92,9 @@ verify+fix pattern.
 
 ## Process
 
-Inputs:
-- `app_id` — Firestore Nova app id (from `app-summaries/{learn,deliver}-app-summary.md`)
-- `pdd.md` — for context when heuristics are ambiguous
+Inputs (see § Inputs for resolvers):
+- `app_id` — the Nova app id (`nova_app_id`)
+- the PDD, when there is one — for context when heuristics are ambiguous
 
 The skill targets ONE app at a time. Phase 3 runs it twice (once per
 app). Each run is bounded by a max iteration count (default 3) to
@@ -117,10 +138,13 @@ ambiguous:
 branch below states for the pre-test, and for the same reason: an unpaid
 registration form has exactly the shape of a paid one.
 
-1. **Read what the PDD declares payable** — § Deliver App Specification,
-   plus the typed handoff
-   `run_state.yaml…products.pdd.program_parameters.payable_stage`. Map
-   each form to `payable` / `not-payable`. That mapping is your job; what
+1. **Read what is declared payable**: the explicit `payable_forms`
+   argument when given; else the PDD's § Deliver App Specification plus the
+   typed handoff
+   `run_state.yaml…products.pdd.program_parameters.payable_stage`; else,
+   on an existing app with no PDD, the forms that ALREADY carry a
+   `deliver_unit` (§ Existing objects: report-only for any change to that
+   set). Map each form to `payable` / `not-payable`. That mapping is your job; what
    it IMPLIES is `deliver-expectations.ts`, so call it rather than
    re-deriving:
 
@@ -333,8 +357,8 @@ convergence (see below).
 
 ### Step 7: Report
 
-Write `3-commcare/app-connect-coverage_<app-type>.md` in the current run
-folder (`_learn.md` or `_deliver.md`):
+Write `app-connect-coverage_<app-type>.md` (`_learn.md` or `_deliver.md`)
+into the report folder: in a run, `3-commcare/` in the current run folder.
 
 ```yaml
 ---

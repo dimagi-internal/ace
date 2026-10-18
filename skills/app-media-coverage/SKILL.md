@@ -22,13 +22,21 @@ form XML after the fact.
 
 ## Inputs
 
-| Source | Artifact | Used for |
+| Parameter | Used for | Resolver |
 |---|---|---|
-| Phase 3 Step 1 | `3-commcare/pdd-to-learn-app_summary.md`, `pdd-to-deliver-app_summary.md` | `nova_app_id` per app |
-| Opp inputs | `ACE/<opp>/inputs/media/` (optional) | supplied assets + guidance |
-| Phase 1 | `pdd.md` | Application Context, domain, worker profile; § Program Parameters `opportunity_country` + `opportunity_currency` (the locale every generated image must match — Step 6) |
-| Operator (optional) | `3-commcare/app-media-coverage_app-context.md` | overrides the derived context |
-| Operator (optional) | `3-commcare/app-media-coverage_plan-<app>.yaml` | hand-edited plan wins |
+| `nova_app_id` per app | the blueprint to attach media to | explicit `--learn-nova-app-id` / `--deliver-nova-app-id`; default: `3-commcare/pdd-to-{learn,deliver}-app_summary.md` frontmatter |
+| supplied media (optional) | supplied assets + guidance | explicit `--media-folder=<drive id>`; default: `ACE/<opp>/inputs/media/` |
+| application context | domain, worker profile (Step 5 directives) | explicit `--app-context=<drive doc id>`; default: the PDD's Application Context, else `3-commcare/app-media-coverage_app-context.md` (operator override wins) |
+| `opportunity_country` + `opportunity_currency` | the locale every generated image must match (Step 6) | explicit `--country` / `--currency`; default: PDD § Program Parameters. Outside a run with neither given: the program context doc, else run with `--no-generate` (never guess a country) |
+| hand-edited plan (optional) | hand-edited plan wins | `<output folder>/app-media-coverage_plan-<app>.yaml` |
+| `output_folder` | where plan, report and cache go | explicit `--output-folder=<drive id>`; default: the run's `3-commcare/`; outside a run, the program project's Drive folder |
+
+## Existing objects
+
+Media attaches to the Nova blueprint, so on a live app nothing changes for workers until the app is
+re-uploaded and released: `app-deploy` § Re-uploading to an existing HQ app, then `app-release`.
+Attaching media does NOT demote existing translations (§ Position), so translating last is not a
+concern here.
 
 ## Products
 
@@ -57,7 +65,8 @@ because the failure would have been silent; it is not a hazard.
 ## Process
 
 Inputs:
-- `<opp-name>` — positional, required
+- `<opp-name>` — positional; required unless the explicit § Inputs flags
+  (`--*-nova-app-id`, `--output-folder`, and a locale) are given
 - `--app=learn|deliver|both` — default `both`
 - `--max-images=N` — default `12`; runaway guard before any generation
 - `--no-generate` — supplied files and built-in icons only
@@ -374,7 +383,7 @@ unused-supplied and unsupported-input lists, then any guidance conflicts from
 step 3.
 
 Update `run_state.yaml` at `phases.commcare-setup.steps.app-media-coverage`
-with status and the counts above.
+with status and the counts above (only when run-bound; there is no run to update in run-free mode).
 
 ## Failure modes
 
