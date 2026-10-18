@@ -2140,6 +2140,36 @@ else
   warn "gdrive_auth: skipped — gws_key missing or node_modules/@googleapis/drive not installed" "see gws_key warning above; npm ci if deps are missing"
 fi
 
+# 1b. forms_api — is the Google Forms API enabled on the SA's GCP project?
+# forms_create_from_spec / forms_set_publish_settings / forms_list_responses
+# fail with 403 SERVICE_DISABLED until it is. A get of a form id that cannot
+# exist answers 404 when the API is on, so a 404 is the PASS signal.
+if [ -n "$KEY" ] && [ -d "$ROOT/node_modules/@googleapis/forms" ]; then
+  FORMS_PROJECT="$(node -e "try { console.log(JSON.parse(require('fs').readFileSync(process.argv[1],'utf8')).project_id || '') } catch { console.log('') }" "$KEY" 2>/dev/null)"
+  FORMS_PROBE="$(cd "$ROOT" && GOOGLE_APPLICATION_CREDENTIALS="$KEY" node --input-type=module -e "
+    import { forms as makeForms } from '@googleapis/forms';
+    import { GoogleAuth } from 'google-auth-library';
+    const auth = new GoogleAuth({ keyFile: process.env.GOOGLE_APPLICATION_CREDENTIALS, scopes: ['https://www.googleapis.com/auth/forms.body.readonly'] });
+    const forms = makeForms({ version: 'v1', auth });
+    try {
+      await forms.forms.get({ formId: 'ace-doctor-forms-api-probe' });
+      console.log('ok');
+    } catch (e) {
+      const status = e.code ?? e.response?.status ?? '';
+      const blob = JSON.stringify(e.response?.data ?? '') + ' ' + (e.message || '');
+      console.log(status === 404 ? 'ok' : (/SERVICE_DISABLED|has not been used|is disabled/.test(blob) ? 'disabled' : 'other:' + status + ' ' + (e.message || '').slice(0, 160)));
+    }
+  " 2>/dev/null)"
+  FORMS_ENABLE_URL="https://console.cloud.google.com/apis/library/forms.googleapis.com?project=${FORMS_PROJECT:-<sa-project>}"
+  case "$FORMS_PROBE" in
+    ok) pass "forms_api: Google Forms API enabled on project ${FORMS_PROJECT:-?}" ;;
+    disabled) warn "forms_api: Google Forms API is disabled on the SA's GCP project ${FORMS_PROJECT:-?} — forms_* atoms will 403" "enable the Forms API on the SA's GCP project: $FORMS_ENABLE_URL (needs a project admin)" ;;
+    *) warn "forms_api: probe inconclusive (${FORMS_PROBE:-no output})" "check gdrive_auth above; if it passes, enable the Forms API: $FORMS_ENABLE_URL" ;;
+  esac
+else
+  warn "forms_api: skipped — gws_key missing or node_modules/@googleapis/forms not installed" "see gws_key warning above; npm ci if deps are missing"
+fi
+
 # 2. ace-ocs — GET /a/<team>/chatbots/ with session cookies, --max-redirs 0
 # Same probe shape as mcp/ocs/auth/playwright-session.ts:isAuthenticated().
 # 200 (and not /accounts/login/) = authed. 302 = expired.

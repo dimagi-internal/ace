@@ -55,6 +55,8 @@ export const DRIVE_WRITE_TARGETS: Record<string, readonly string[]> = {
   docs_finalize_bullets: ['documentId'],
   docs_finalize_bold: ['documentId'],
   slides_batch_update: ['presentationId'],
+  forms_create_from_spec: ['parentFolderId'],
+  forms_set_publish_settings: ['formId'],
   decisions_append_rows: ['runFolderId'],
   decisions_enrich: ['runFolderId'],
   // decisions_open_asks is read-only since ace#2757 (open asks are a filter

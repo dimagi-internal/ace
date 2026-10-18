@@ -102,7 +102,7 @@ const SERVERS: Record<string, ServerSpec> = {
   },
   'google-drive': {
     file: 'mcp/google-drive-server.ts',
-    expectedCount: 52, // +2: drive_list_permissions, drive_revoke_access (ace#2918)
+    expectedCount: 55, // +3: forms_create_from_spec, forms_set_publish_settings, forms_list_responses
     // gdrive bridges five Google APIs — one prefix per surface plus a
     // small set of cross-surface helpers (manifest generator, forms
     // reader, OAuth-personal Drive read, YAML patch helper, opp-path
@@ -114,6 +114,7 @@ const SERVERS: Record<string, ServerSpec> = {
       'sheets_',
       'docs_',
       'slides_',
+      'forms_',
       'read_personal_drive_doc',
       'update_yaml_file',
       'generate_inputs_manifest',

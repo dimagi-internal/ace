@@ -22,6 +22,7 @@ upstream, load the live schema with `ToolSearch "select:mcp__connect_labs__<atom
 | Connect Labs (solicitations, synthetic data, workflows, registry, supply chain) | [`integrations/connect-labs.md`](integrations/connect-labs.md) | live `tools/list` (`mcp__connect_labs__*`) | `dimagi-internal/connect-labs` |
 | Mobile (emulator, Maestro recipes, test workers) | [`integrations/mobile-integration.md`](integrations/mobile-integration.md) | `docs/atom-schemas.md` § ace-mobile (`mobile_*`) | — |
 | Google Slides | [`integrations/slides-integration.md`](integrations/slides-integration.md) | `docs/atom-schemas.md` § ace-gdrive (`slides_*`) | — |
+| Google Forms (create, publish, responder access, responses) | [`integrations/google-forms.md`](integrations/google-forms.md) | `docs/atom-schemas.md` § ace-gdrive (`forms_*`, `get_google_form_definition`) | — |
 | canopy-web (board, mailbox, capabilities) | [`integrations/canopy-web.md`](integrations/canopy-web.md) | the `canopy-web` MCP | `dimagi-internal/canopy-web` |
 | External source material | [`integrations/external-sourcing.md`](integrations/external-sourcing.md) | — | — |
 | Work order template | [`integrations/work-order-template.md`](integrations/work-order-template.md) | — | — |
