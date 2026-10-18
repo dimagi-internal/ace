@@ -152,6 +152,52 @@ describe('resolveRunWorkspace — default workspace', () => {
     expect(r.warnings).toEqual([]);
   });
 
+  // ace#3175 — measured on bednet-check-2-visit/20261018-0554: .env left both
+  // org keys commented out, the tenancy supplied ace-pm-org / ace-nm-org, and
+  // connect_accept_program_application refused ace-nm-org because the orgs ACE
+  // may ACT AS come from .env only (controlled: ai-demo-space). Phase 4 had
+  // already created a program and sent the invite.
+  describe('phase4_accept_authority (ace#3175)', () => {
+    it('tenancy-sourced holding org that .env does not control → ok: false, with the machine-config remedy', () => {
+      const r = resolveRunWorkspace({ workspace: null, opp: 'x', env: NO_ORGS, response: SHARED_TENANCY });
+      expect(r.phase4_accept_authority).toMatchObject({ ok: false, holding_org: 'ace-nm-org', controlled_orgs: ['ai-demo-space'] });
+      expect(r.phase4_accept_authority!.remediation).toMatch(/ACE_CONNECT_CONTROLLED_ORGS=ace-pm-org,ace-nm-org/);
+      expect(r.phase4_accept_authority!.remediation).toMatch(/restart/);
+      expect(r.warnings.join('\n')).toMatch(/phase4_accept_authority/);
+      const y = parseYaml(renderRunWorkspaceYaml(r));
+      expect(y.run_workspace.phase4_accept_authority).toMatchObject({ ok: false, holding_org: 'ace-nm-org', controlled_orgs: ['ai-demo-space'] });
+    });
+
+    it('ACE_CONNECT_CONTROLLED_ORGS naming the tenancy orgs makes it ok — the env, never the tenancy, grants authority', () => {
+      const r = resolveRunWorkspace({
+        workspace: null,
+        opp: 'x',
+        env: { ...NO_ORGS, ACE_CONNECT_CONTROLLED_ORGS: 'ace-pm-org,ace-nm-org' },
+        response: SHARED_TENANCY,
+      });
+      expect(r.phase4_accept_authority).toMatchObject({ ok: true, holding_org: 'ace-nm-org' });
+      expect(r.phase4_accept_authority!.remediation).toBeUndefined();
+      expect(r.warnings.join('\n')).not.toMatch(/phase4_accept_authority/);
+    });
+
+    it('.env-configured PM/NM orgs are controlled → ok, warning-free', () => {
+      const r = resolveRunWorkspace({ workspace: null, opp: 'x', env: ENV, response: SHARED_TENANCY });
+      expect(r.phase4_accept_authority).toMatchObject({ ok: true, holding_org: 'ace-nm-org' });
+      expect(r.warnings).toEqual([]);
+    });
+
+    it('self-managed legacy default (no NM anywhere) is the PM org itself → ok', () => {
+      const r = resolveRunWorkspace({ workspace: null, opp: 'x', env: NO_ORGS, responseError: new Error('ECONNREFUSED') });
+      expect(r.phase4_accept_authority).toMatchObject({ ok: true, holding_org: 'ai-demo-space' });
+    });
+
+    it('a partner workspace carries no verdict — the partner accepting its own invitation is the legitimate path', () => {
+      const r = resolveRunWorkspace({ workspace: 'spark', opp: 'spark-facilitator', env: ENV, response: SPARK });
+      expect(r.phase4_accept_authority).toBeUndefined();
+      expect(parseYaml(renderRunWorkspaceYaml(r)).run_workspace.phase4_accept_authority).toBeUndefined();
+    });
+  });
+
   it('errors when no workspace is given and none is configured', () => {
     const e = err(() => resolveRunWorkspace({ workspace: null, opp: 'x', env: { ...ENV, ACE_WEB_WORKSPACE: '' } }));
     expect(e.code).toBe('NO_DEFAULT_WORKSPACE');

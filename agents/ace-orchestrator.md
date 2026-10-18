@@ -1276,6 +1276,16 @@ in `inputs/` (the manifest), not to pick one canonical PDD file.
    shared HQ space and Connect orgs. A bare `<opp>` (and zero-arg) resolves
    the default workspace (`ACE_WEB_WORKSPACE`) from `.env` exactly as before.
 
+   **`phase4_accept_authority.ok: false` also halts the run here — before
+   anything is written — whenever Phase 4 (`connect-setup`) is still to run**
+   (a new run, or a resume whose `phases.connect-setup.status` is not `done`).
+   Surface its `holding_org`, `controlled_orgs` and `remediation` verbatim. It
+   means the holding org came from the tenancy but the installed `.env` does
+   not let ACE act as it, so `connect_accept_program_application` will refuse at
+   Phase 4 Step 3a — after the program is created and the invite sent
+   (ace#3175, bednet-check-2-visit/20261018-0554). The fix is machine config
+   plus a full restart; never work around the accept guard.
+
    **Partner workspace → run the `preflight_reads` in ONE parallel message
    before step 2** (they are cheap reads; nothing is written): HQ
    `commcare_list_apps(domain)` must answer; Nova `get_hq_connection` must list
