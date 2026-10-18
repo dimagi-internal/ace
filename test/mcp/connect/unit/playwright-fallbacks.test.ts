@@ -998,6 +998,47 @@ describe('PlaywrightBackend.activateOpportunity', () => {
   });
 });
 
+// ─── updateOpportunity({active: false}) — the sweep-connect deactivate path ─
+// The atom used to drop `active` before postEditForm, so sweep-connect's
+// documented deactivate call was rejected by the schema (ace#3133).
+
+describe('PlaywrightBackend.updateOpportunity active', () => {
+  const activeEditFormHtml =
+    csrfInput +
+    '<input name="name" value="Test Opp">' +
+    '<input name="short_description" value="short">' +
+    '<textarea name="description">desc</textarea>' +
+    '<select name="delivery_type"><option value="" selected>--</option></select>' +
+    '<input name="end_date" value="2026-12-31">' +
+    '<select name="currency"><option value="USD" selected>USD</option></select>' +
+    '<select name="country"><option value="USA" selected>USA</option></select>' +
+    '<input type="checkbox" name="active" checked>';
+
+  const postOnce = async (args: { active?: boolean }) => {
+    const captured: CapturedRequest[] = [];
+    const request = makeRequestContext(
+      [
+        { status: 200, body: activeEditFormHtml },
+        { status: 302, body: '' },
+        { status: 200, body: activeEditFormHtml },
+        { status: 200, body: '' },
+      ],
+      captured,
+    );
+    const backend = new PlaywrightBackend({ baseUrl, csrfToken, request });
+    await backend.updateOpportunity({ organization_slug: 'o', opportunity_id: 'opp-uuid-1234', ...args });
+    return captured.find((c) => c.method === 'POST')!.body as Record<string, string>;
+  };
+
+  it('active: false omits the checkbox, deactivating a checked opp', async () => {
+    expect((await postOnce({ active: false })).active).toBeUndefined();
+  });
+
+  it('active omitted preserves the current checked state', async () => {
+    expect((await postOnce({})).active).toBe('on');
+  });
+});
+
 // ─── sendLloInvite ─────────────────────────────────────────────────────────
 
 describe('PlaywrightBackend.sendLloInvite', () => {

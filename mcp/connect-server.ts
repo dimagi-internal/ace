@@ -573,6 +573,9 @@ server.tool('connect_update_opportunity',
     ),
     description: z.string().optional(),
     end_date: z.string().optional(),
+    active: z.boolean().optional().describe(
+      'false deactivates the opportunity (the sweep-connect soft-delete; reversible). Omit to keep the current state. To activate, use connect_activate_opportunity, which carries the activation preconditions.',
+    ),
     is_test: z.boolean().optional(),
   },
   async (args) => runAtom(async () => (await client()).updateOpportunity(args))

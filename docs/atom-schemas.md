@@ -625,6 +625,7 @@ Read one opportunity from the edit form (authoritative for name/description/curr
 | `short_description` | `z.string` | optional | Max 50 chars — DB-enforced (see connect_create_opportunity for the full bisect note). |
 | `description` | `z.string` | optional | _—_ |
 | `end_date` | `z.string` | optional | _—_ |
+| `active` | `z.boolean` | optional | false deactivates the opportunity (the sweep-connect soft-delete; reversible). Omit to keep the current state. To activate, use connect_activate_opportunity, which carries the activation preconditions. |
 | `is_test` | `z.boolean` | optional | _—_ |
 
 ### `connect_set_learn_passing_score`
