@@ -103,6 +103,55 @@ describe('renderIndicatorCards: review flags and units (#2778)', () => {
   });
 });
 
+describe('renderIndicatorCards: a single target with no watch zone (#3246)', () => {
+  const card = (meta: NonNullable<RegistryMeasure['meta']>) =>
+    renderIndicatorCards(coachableIndicators([{ name: 'm', meta: { flw_applicable: true, ...meta } }]));
+
+  it('drops every amber phrase when the bands are equal, and never calls a just-missed figure "well below"', () => {
+    // connect-fi/20261018-1440, registry 11336 v6: FI_READY bands [55,55], target 55.
+    const md = card({ indicator: 'FI_READY', label: 'Ready', unit: '%', direction: 'higher', bands: [55, 55], target: 55 });
+    expect(md).toContain('Target 55%. Green at or above 55%; red below 55%.');
+    expect(md).not.toMatch(/amber/i);
+    expect(md).not.toContain('between 55% and 55%');
+    expect(md).toContain('Say a red figure as "below the goal of 55%".');
+  });
+
+  it('words an equal-band lower-is-better review flag the same way', () => {
+    const md = card({ indicator: 'X_R', label: 'Off-site', unit: '%', category: 'Data quality', direction: 'lower', bands: [10, 10] });
+    expect(md).toContain('Green at or below 10%; red above 10%.');
+    expect(md).not.toMatch(/amber/i);
+    expect(md).toContain('Say a red figure as "above the review level (10%)".');
+    expect(md).toContain('Never call the review level a goal or a target.');
+  });
+});
+
+describe('renderIndicatorCards: "How it is counted" carries no internal wording (#3246)', () => {
+  const counted = (scope_note: string) =>
+    renderIndicatorCards(
+      coachableIndicators([
+        { name: 'm', meta: { indicator: 'FI_READY', label: 'Ready', unit: '%', direction: 'higher', flw_applicable: true, scope_note } },
+      ]),
+    )
+      .split('\n')
+      .find((l) => l.startsWith('- How it is counted:'));
+
+  it('drops (Phase N residual) and [PROPOSED] markers', () => {
+    expect(counted('[PROPOSED] Counted once per member. Members who left are excluded (Phase 3 residual).')).toBe(
+      '- How it is counted: Counted once per member. Members who left are excluded.',
+    );
+  });
+
+  it('drops a sentence that exposes a raw field name or formula, keeping the rest', () => {
+    // The connect-fi scope note, verbatim tail.
+    const line = counted('Counted once per member. Ready when deposit_received = yes , not from a paid form (Phase 3 residual).');
+    expect(line).toBe('- How it is counted: Counted once per member.');
+  });
+
+  it('omits the line entirely when nothing reader-safe remains', () => {
+    expect(counted('deposit_received = yes (Phase 3 residual). [PROPOSED]')).toBeUndefined();
+  });
+});
+
 describe('parseCoachCollections (#2779)', () => {
   it('refuses an omitted or empty --collections instead of keeping the clone source\'s', () => {
     expect(() => parseCoachCollections(undefined)).toThrow(/required/);
