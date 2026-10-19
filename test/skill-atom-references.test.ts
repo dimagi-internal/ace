@@ -91,6 +91,7 @@ const ALLOWLIST = new Set([
   // Per-opp tenancy field names (ace-web apps/opps/tenancy.py), read by clone-to-new-workspace.
   'connect_pm_org',
   'connect_holding_org',
+  'connect_program_ids', // ace-web#914; registered by connect-program-setup via bin/ace-bind --add-program
   'ocs_team',
   // Release-plan action KINDS (lib/release-plan.ts ReleaseAction.kind), not atoms.
   'connect_org_member',

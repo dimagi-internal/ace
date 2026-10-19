@@ -546,6 +546,28 @@ alone makes the artifact land outside `4-connect` and fail
    value mismatch, overwrite (the live value wins; opp.yaml gets
    corrected).
 
+7. **Register the program in the opp's tenancy** (create AND reuse
+   paths), so ACE's tenancy guard checks every later program-scoped labs
+   write — `create_solicitation`, `create_response`, every
+   `supply_chain_*` write, most of which labs cannot delete — against it
+   (ace-web#914):
+
+   ```bash
+   "$CLAUDE_PLUGIN_ROOT/bin/ace-bind" --add-program <connect_int_id> [<workspace>/<opp>]
+   ```
+
+   It adds the id to ace-web's `connect_program_ids` (an audited owner
+   PATCH; a no-op when already there) and refreshes this session's
+   binding, keeping its warn/enforce mode. The target defaults to the
+   bound opp; pass `<workspace>/<opp>` when the session is unbound. It is
+   safe because the program was just created in — or verified against —
+   the opp's own PM org, which the guard checked. Without `connect_int_id`
+   there is nothing to register: say so in the step's summary. A failure
+   (not an owner, ace-web not yet carrying the field) does **not** fail
+   this step — record it as a residual naming the command to re-run; until
+   then program-scoped labs writes are refused as not set up (warn mode
+   only logs them).
+
 ## MCP Tools Used
 - Google Drive: `drive_read_file`, `drive_create_file` (always with `parentFolderId = phaseFolderId` — the `4-connect` folder ID, never a path string), `update_yaml_file` (write `opp.yaml.connect.program` block, `merge: 'shallow'`)
 - Connect (`ace-connect` MCP, 0.10.47+):

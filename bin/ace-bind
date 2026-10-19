@@ -7,6 +7,15 @@
   bin/ace-bind --clear               unbind
   --warn                             record would-be refusals instead of refusing
                                      (rollout mode for /ace:run and /ace:turn)
+  bin/ace-bind --add-program <id> [<workspace>/<opp>]
+                                     add a Connect program (its INTEGER id) to the
+                                     opp's tenancy connect_program_ids (an owner
+                                     PATCH, audited in ace-web), then refresh this
+                                     session's binding if it is bound to that opp.
+                                     Target defaults to the bound opp. Run it when
+                                     ACE creates or reuses the opp's program
+                                     (connect-program-setup), so program-scoped
+                                     labs writes are checked against it.
 
 The binding is a file keyed by $CLAUDE_CODE_SESSION_ID that
 hooks/tenancy_guard.py reads on every ACE tool call. Tenancy comes from
@@ -36,7 +45,10 @@ def _fail(msg: str) -> int:
     return 1
 
 
-def _fetch(workspace: str, opp: str) -> dict:
+PROGRAM_FIELD = "connect_program_ids"
+
+
+def _request(workspace: str, opp: str, method: str = "GET", body: dict | None = None) -> dict:
     base = (tg.plugin_env("ACE_WEB_BASE_URL") or "").rstrip("/")
     token = tg.plugin_env("ACE_WEB_PAT_TOKEN")
     if not base or not token:
@@ -44,23 +56,102 @@ def _fetch(workspace: str, opp: str) -> dict:
             "ACE_WEB_BASE_URL and ACE_WEB_PAT_TOKEN are required to fetch tenancy "
             "(mint a token with /ace:ace-web-pat-mint)."
         )
+    headers = {"Authorization": f"Bearer {token}", "Accept": "application/json"}
+    data = None
+    if body is not None:
+        data = json.dumps(body).encode("utf-8")
+        headers["Content-Type"] = "application/json"
     req = urllib.request.Request(
-        f"{base}/api/w/{workspace}/opps/{opp}/tenancy",
-        headers={"Authorization": f"Bearer {token}", "Accept": "application/json"},
+        f"{base}/api/w/{workspace}/opps/{opp}/tenancy", data=data, headers=headers,
+        method=method,
     )
+    what = "tenancy read" if method == "GET" else "tenancy update"
     try:
         with urllib.request.urlopen(req, timeout=20) as resp:
-            body = json.load(resp)
+            return json.load(resp)
     except urllib.error.HTTPError as exc:
         if exc.code == 404:
             raise RuntimeError(
                 f"ace-web has no workspace {workspace!r} you belong to (404). Check the "
                 "workspace slug, or ask a workspace owner to invite this token's owner."
             ) from exc
-        raise RuntimeError(f"ace-web returned HTTP {exc.code} for the tenancy read.") from exc
+        if exc.code == 403 and method != "GET":
+            raise RuntimeError(
+                f"only an owner of ace-web workspace {workspace!r} may change an opp's "
+                "tenancy (403). Ask an owner to add the program in ace-web."
+            ) from exc
+        if exc.code in (400, 422) and body and PROGRAM_FIELD in body:
+            raise RuntimeError(
+                f"ace-web rejected {PROGRAM_FIELD} (HTTP {exc.code}) — it does not carry "
+                "that field until dimagi-internal/ace-web#914 is deployed."
+            ) from exc
+        raise RuntimeError(f"ace-web returned HTTP {exc.code} for the {what}.") from exc
     except urllib.error.URLError as exc:
         raise RuntimeError(f"could not reach ace-web at {base}: {exc.reason}") from exc
-    return body
+
+
+def _fetch(workspace: str, opp: str) -> dict:
+    return _request(workspace, opp)
+
+
+def _write_bind(path: str, record: dict) -> None:
+    os.makedirs(tg.bind_dir(), exist_ok=True)
+    tmp = path + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(record, f, indent=2, sort_keys=True)
+    os.replace(tmp, path)
+
+
+def _program_notice(tenancy: dict) -> str:
+    if tenancy.get(PROGRAM_FIELD):
+        return ""
+    return (
+        f"\nnote: this opp's tenancy has no {PROGRAM_FIELD}, so every program-scoped labs "
+        "write (create_solicitation / create_response / supply_chain_* with a program_id) "
+        "is refused as not set up (logged only, in --warn). Once the opp has a Connect "
+        "program: bin/ace-bind --add-program <connect_int_id>."
+    )
+
+
+def _add_program(program_arg: str, target: str | None, session: str) -> int:
+    try:
+        program_id = int(program_arg)
+    except ValueError:
+        program_id = 0
+    if program_id <= 0:
+        return _fail(f"--add-program needs Connect's positive INTEGER program id, not {program_arg!r}")
+    bound = tg.read_bind(session) if session else None
+    if target:
+        if "/" in target:
+            workspace, _, opp = target.partition("/")
+        else:
+            workspace, opp = tg.plugin_env("ACE_WEB_WORKSPACE") or "", target
+    elif bound:
+        workspace, opp = bound.get("workspace", ""), bound.get("opp", "")
+    else:
+        return _fail("--add-program: this session is not bound; give <workspace>/<opp>")
+    if not workspace or not opp:
+        return _fail("need a workspace: <workspace>/<opp>, or set ACE_WEB_WORKSPACE")
+
+    try:
+        current = (_request(workspace, opp).get("tenancy") or {})
+        ids = sorted({int(v) for v in current.get(PROGRAM_FIELD) or []} | {program_id})
+        if ids == sorted(int(v) for v in current.get(PROGRAM_FIELD) or []):
+            tenancy = current
+            print(f"{workspace}/{opp}: program {program_id} is already in {PROGRAM_FIELD} {ids}")
+        else:
+            body = _request(workspace, opp, "PATCH", {PROGRAM_FIELD: ids})
+            tenancy = body.get("tenancy") or {}
+            print(f"{workspace}/{opp}: {PROGRAM_FIELD} = {tenancy.get(PROGRAM_FIELD)}")
+    except (RuntimeError, ValueError) as exc:
+        return _fail(str(exc))
+
+    if bound and bound.get("workspace") == workspace and bound.get("opp") == opp:
+        bound["tenancy"] = tenancy
+        bound["refreshed_at"] = dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds")
+        _write_bind(tg.bind_path(session), bound)
+        print(f"refreshed this session's binding ({bound.get('mode', 'enforce')})")
+    return 0
 
 
 def main() -> int:
@@ -71,9 +162,13 @@ def main() -> int:
     p.add_argument("--tenancy-json")
     p.add_argument("--warn", action="store_true")
     p.add_argument("--drive-root", help="workspace Drive root (with --tenancy-json)")
+    p.add_argument("--add-program", metavar="ID",
+                   help="add a Connect program id to the opp's tenancy connect_program_ids")
     args = p.parse_args()
 
     session = os.environ.get("CLAUDE_CODE_SESSION_ID", "")
+    if args.add_program is not None:
+        return _add_program(args.add_program, args.target, session)
     if not session:
         return _fail("CLAUDE_CODE_SESSION_ID is not set; run this from inside a Claude Code session.")
     path = tg.bind_path(session)
@@ -112,7 +207,6 @@ def main() -> int:
     except (RuntimeError, ValueError) as exc:
         return _fail(str(exc))
 
-    os.makedirs(tg.bind_dir(), exist_ok=True)
     record = {
         "workspace": workspace,
         "opp": opp,
@@ -122,11 +216,9 @@ def main() -> int:
         "session_id": session,
         "mode": "warn" if args.warn else "enforce",
     }
-    tmp = path + ".tmp"
-    with open(tmp, "w", encoding="utf-8") as f:
-        json.dump(record, f, indent=2, sort_keys=True)
-    os.replace(tmp, path)
-    print(f"bound to {workspace}/{opp} ({record['mode']}): {json.dumps(tenancy, sort_keys=True)}")
+    _write_bind(path, record)
+    print(f"bound to {workspace}/{opp} ({record['mode']}): {json.dumps(tenancy, sort_keys=True)}"
+          + _program_notice(tenancy))
     return 0
 
 
