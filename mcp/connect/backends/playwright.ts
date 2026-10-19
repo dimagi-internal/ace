@@ -642,9 +642,12 @@ export class PlaywrightBackend implements ConnectClient {
     let pageSizeHonored = false;
     let truncatedReason: string | undefined;
     for (let page = 1; page <= OPPORTUNITY_LIST_MAX_PAGES; page++) {
+      // `filtered=1` turns off the list view's DEFAULT filters (status=Active,
+      // is_test=No). Without it every ACE opportunity (all `is_test: true`) is
+      // hidden and the walk reports a COMPLETE empty listing (ace#3211).
       const path =
         `/a/${organization_slug}/opportunity/` +
-        `?page_size=${OPPORTUNITY_LIST_PAGE_SIZE}&${pageField}=${page}`;
+        `?filtered=1&page_size=${OPPORTUNITY_LIST_PAGE_SIZE}&${pageField}=${page}`;
       const res = await this.request.get(path);
       // An out-of-range page is NOT an error on this surface: django-tables2
       // configures the table with `RequestConfig(..., silent=True)`, which maps
