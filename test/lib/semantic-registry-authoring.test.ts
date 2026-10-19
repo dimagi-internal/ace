@@ -115,6 +115,37 @@ describe('checkRegistryAuthoring', () => {
     expect(checks(reg)).toContain('bands');
   });
 
+  // ace#3244: connect-fi/20261018-1440 FI_READY `bands: [55]` validated in labs and
+  // in this QA, then crashed every snapshot build with IndexError (labs reads bands[1]).
+  describe('bands must hold two numbers for higher/lower (ace#3244)', () => {
+    const bandFindings = (reg: RegistryDocs) =>
+      checkRegistryAuthoring(reg, { pddSections: SPARK_SECTIONS, opportunityIds: SPARK_OPPS })
+        .findings.filter((f) => f.check === 'bands' && f.indicator === 'SF_P1');
+    const withBands = (bands: unknown) => {
+      const reg = clone();
+      const meta = indicator(reg, 'SF_P1').meta;
+      meta.direction = 'higher';
+      meta.target = 55;
+      meta.scope_note = `${meta.scope_note} Target 55.`;
+      if (bands === undefined) delete meta.bands;
+      else meta.bands = bands;
+      return reg;
+    };
+
+    it('fails a one-element bands list on a higher indicator', () => {
+      const found = bandFindings(withBands([55]));
+      expect(found).toHaveLength(1);
+      expect(found[0].severity).toBe('fail');
+      expect(found[0].detail).toContain('[target, target]');
+    });
+    it('passes [target, target] (no yellow band)', () => {
+      expect(bandFindings(withBands([55, 55]))).toEqual([]);
+    });
+    it('leaves an indicator with no bands unaffected', () => {
+      expect(bandFindings(withBands(undefined))).toEqual([]);
+    });
+  });
+
   it('fails an indicator whose denominator measure is missing', () => {
     const reg = clone();
     const measures = reg.indicators_doc.measures as Array<{ name: string }>;
