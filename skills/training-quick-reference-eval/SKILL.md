@@ -97,6 +97,7 @@ Provisional until first real run produces ground truth.
 |---|---|
 | `atomic-visit` | Default. Must-include set is daily-cap, payment-per-visit, payment-timing, support-contact, GPS/photo thresholds. |
 | `focus-group` | Must-include set swaps "payment-per-visit" for "payment-per-session" + adds attendance-minimum threshold. |
+| `longitudinal-visits` | Must-include set adds per-visit-type pay and caps, plus each visit type's trigger (e.g. "First visit" / "Follow-up, due N days after the last"). Expect one list per visit type, matching the producer (`skills/training-quick-reference/SKILL.md` § Determine archetype); a single undifferentiated list is a deduction. |
 | `multi-stage` | Must-include set adds per-stage-payment + Stage-Gate-trigger summary. Printability dimension's per-page check looks at per-stage condensation. |
 
 ## MCP Tools Used

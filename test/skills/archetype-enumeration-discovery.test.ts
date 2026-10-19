@@ -93,7 +93,6 @@ const BASELINE: Record<string, number> = {
   'skills/training-flw-guide-eval/SKILL.md': 1,
   'skills/training-llo-guide-eval/SKILL.md': 1,
   'skills/training-onboarding-email-eval/SKILL.md': 1,
-  'skills/training-quick-reference-eval/SKILL.md': 1,
 };
 
 const BASELINE_NOTE = [
