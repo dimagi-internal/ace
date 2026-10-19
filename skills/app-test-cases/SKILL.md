@@ -996,6 +996,15 @@ there because `learn-suite-menu` matches that module form list, and
 
 Call the chosen recipe once per content form (pass `SCREENSHOT_NAME`):
 
+**Name a Learn module's frames `journey-learn-m<N>-<slug>`** — `m`, the module's
+number, then a hyphen (`m0`/`m1`/`m01`; 0- or 1-based, padding allowed). The
+training-deck binder finds each lesson's frames by this prefix
+(`LEARN_MODULE_STEP` in `lib/training-deck-frames.ts`). It also accepts
+`l<N>` (connect-fi/20261018-1440) and `module<N>` / `lesson<N>`, but any other
+shape is invisible to it: the lesson slides then merge away into one "other
+sections" slide (ace#3240). *Enforced:* `test/lib/training-deck-frames.test.ts`.
+
+
 ```yaml
 # ── multi-module, post_submit: module ────────────────────────────────
 - runFlow:

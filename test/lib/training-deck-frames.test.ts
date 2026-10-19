@@ -29,6 +29,8 @@ import {
   buildFramePool,
   checkDeckScreenBacking,
   forkParentRunId,
+  learnModuleBase,
+  learnModuleNumber,
   promisesScreen,
   screenPromise,
   walkForkLineage,
@@ -266,6 +268,13 @@ describe('bindDeckFrames on the real deck', () => {
     ]);
   });
 
+  it('every expanded phone slide keeps the source slide\'s notes, not just the first (ace#3240)', () => {
+    const src = 'Talk through this slide in plain words and check understanding before moving on.';
+    for (const id of ['personal-id-start-1', 'personal-id-start-2', 'personal-id-start-3']) {
+      expect(byId(BOUND, id)?.notes, id).toContain(src);
+    }
+  });
+
   it('keeps a keyboard frame when nothing else shows that screen, and says so', () => {
     expect(aliasOf('meeting-finish')).toBe('@journey-deliver-notes-last-item');
     expect(report.actions).toContainEqual({ kind: 'kept', slide: 'meeting-finish', alias: 'journey-deliver-notes-last-item', weak: ['keyboard'] });
@@ -388,5 +397,65 @@ describe('a screen promise is the on-the-phone sense of the word (ace#3059)', ()
     expect(screenPromise(slide, 'deliver', [])).toBeNull();
     const promising = { id: 'y', layout: 'content', title: 'Recording', body: 'Tap Start, then the form opens.' } as never;
     expect(screenPromise(promising, 'deliver', [])).toBe('promise');
+  });
+});
+
+describe('Learn-module frames bind under every step-name form Phase 3 emits (ace#3240)', () => {
+  it('reads the module number off m<N>, m<NN>, l<N> (connect-fi) and the spelled-out forms', () => {
+    expect(learnModuleNumber('journey-learn-m0-orientation-finished')).toBe(0);
+    expect(learnModuleNumber('journey-learn-m02-q1-answered')).toBe(2);
+    expect(learnModuleNumber('journey-learn-l3-q1-answered')).toBe(3);
+    expect(learnModuleNumber('journey-learn-lesson2-intro')).toBe(2);
+    expect(learnModuleNumber('journey-learn-module-4-intro')).toBe(4);
+  });
+
+  it('does not mistake other journey-learn steps for module frames', () => {
+    for (const step of ['journey-learn-final', 'journey-learn-launch-home', 'journey-learn-lesson-list', 'journey-learn-pass']) {
+      expect(learnModuleNumber(step), step).toBeNull();
+    }
+  });
+
+  // connect-fi/20261018-1440's recipe named lesson frames `journey-learn-l<N>-`;
+  // the binder found none and merged every Learn slide away.
+  const L1 = 'Lesson 1: Why this program';
+  const L2 = 'Lesson 2: Running a session';
+  const manifest = {
+    captures: [
+      { step: `learn-tap-module-before-${L1}`, file_id: 'CONNECTFI_FRAME_00000001' },
+      { step: 'journey-learn-l1-q1-answered', file_id: 'CONNECTFI_FRAME_00000002' },
+      { step: 'journey-learn-l1-finished', file_id: 'CONNECTFI_FRAME_00000003' },
+      { step: `learn-tap-module-before-${L2}`, file_id: 'CONNECTFI_FRAME_00000004' },
+      { step: 'journey-learn-l2-q1-answered', file_id: 'CONNECTFI_FRAME_00000005' },
+      { step: 'journey-learn-l2-finished', file_id: 'CONNECTFI_FRAME_00000006' },
+    ],
+  };
+  const pool = buildFramePool({ specManifest: { common: {}, opp: {} }, sources: [{ run_id: '20261018-1440', manifest }] });
+  const learnSlide = (id: string, title: string) => ({ id, layout: 'content' as const, title, body: 'What this lesson covers.' });
+  const spec = {
+    ...SPEC,
+    manifest: { common: {}, opp: {} },
+    modules: [
+      {
+        id: 'your-opportunity',
+        title: 'Your Opportunity',
+        slides: [{ id: 'learn-divider', layout: 'section', title: 'Learn' }, learnSlide('learn-l1', L1), learnSlide('learn-l2', L2)],
+      },
+    ],
+  } as unknown as TrainingDeckSpec;
+  const { spec: bound } = bindDeckFrames(spec, { pool });
+  const image = (id: string) => (byId(bound, id) as { image?: string } | undefined)?.image;
+
+  it('numbers from 1 when no l0 frame exists', () => {
+    expect(learnModuleBase(pool)).toBe(1);
+  });
+
+  it('each lesson slide gets its own l<N> content frame', () => {
+    expect(image('learn-l1')).toBe('@journey-learn-l1-q1-answered');
+    expect(image('learn-l2')).toBe('@journey-learn-l2-q1-answered');
+  });
+
+  it('no lesson slide is merged away', () => {
+    expect(byId(bound, 'learn-other-sections')).toBeUndefined();
+    expect(checkDeckScreenBacking(bound, { pool }).pass).toBe(true);
   });
 });
