@@ -443,22 +443,60 @@ function splitTopLevelArgs(inner: string): string[] | null {
 }
 
 /**
+ * What a branch of a calculate may resolve to besides literals (ace#3208).
+ * Supplied by `extractCalculateWrittenValues`, which knows the form; a caller
+ * with no form context (e.g. `nova-app-lint`) omits it and gets the strict
+ * literal-only reading.
+ */
+export interface CalculateEnumContext {
+  /** The case property the calculate is being enumerated FOR. */
+  property: string;
+  /** `ref`s of every `select1` / `select` in the same form. */
+  selectRefs: ReadonlySet<string>;
+}
+
+/**
+ * `instance('casedb')/casedb/case[@case_id = <the session's case_id>]/<prop>` —
+ * the current case's own stored value of `<prop>`. The `@case_id` predicate is
+ * pinned to the session case: a read of ANY other case (a parent, a lookup by a
+ * form answer) is a different case's value and does not match.
+ */
+const OWN_CASE_READ =
+  /^instance\(\s*(['"])casedb\1\s*\)\/casedb\/case\[\s*@case_id\s*=\s*instance\(\s*(['"])commcaresession\2\s*\)\/session\/data\/case_id\s*\]\/([\w-]+)$/;
+
+/**
  * The value set an XPath expression can store, when that is knowable STATICALLY.
  *
- * Two shapes are recognised, and deliberately only two — they are the shapes
- * ACE's own `entity-state-taxonomy` builds emit:
+ * Two shapes are always recognised — they are the shapes ACE's own
+ * `entity-state-taxonomy` builds emit:
  *
  *  - a string literal: `'checked'`
  *  - `if(cond, then, else)` where both branches are themselves enumerable,
  *    nested to any depth. The CONDITION is not read: which branch fires is a
  *    runtime question, and the value set is the union either way.
  *
- * Anything else returns a `reason`. That is the honest answer, and the
+ * With a form `ctx`, two more BRANCH shapes are recognised — together they are
+ * the carry-forward calculate `pdd-to-deliver-app` emits on Follow-up forms,
+ * `if(<answer> != '', <answer>, <the case's own current value>)` (ace#3208):
+ *
+ *  - a bare ref to a `select1`/`select` in the same form contributes THAT
+ *    select (returned in `selectRefs`; the caller pairs it with its choice list)
+ *  - a casedb read of the SAME property on the SAME (session) case contributes
+ *    nothing: it writes back a value some writer already stored, and the
+ *    every-writer union (ace#2940) already holds it. Flagged `carriesOwnValue`.
+ *
+ * Anything else returns a `reason` — a ref to a non-select node, a read of a
+ * different property or a different case. That is the honest answer, and the
  * important one: a fabricated value set would turn an uncomparable column into
  * a green comparison, which is strictly worse than the coverage hole ace#2188
  * reports.
  */
-export function enumerateCalculateLiterals(expr: string): { values: string[] } | { reason: string } {
+export function enumerateCalculateLiterals(
+  expr: string,
+  ctx?: CalculateEnumContext,
+):
+  | { values: string[]; selectRefs?: string[]; carriesOwnValue?: boolean }
+  | { reason: string } {
   const e = expr.trim();
   const literal = /^'([^']*)'$/.exec(e) ?? /^"([^"]*)"$/.exec(e);
   if (literal) return { values: [literal[1]] };
@@ -471,12 +509,29 @@ export function enumerateCalculateLiterals(expr: string): { values: string[] } |
       return { reason: `if() with ${args.length} arguments in "${e}"` };
     }
     const values = new Set<string>();
+    const selectRefs = new Set<string>();
+    let carriesOwnValue = false;
     for (const branch of [args[1], args[2]]) {
-      const inner = enumerateCalculateLiterals(branch);
+      const b = branch.trim();
+      if (ctx && BARE_NODE_PATH.test(b) && ctx.selectRefs.has(b)) {
+        selectRefs.add(b);
+        continue;
+      }
+      if (ctx && OWN_CASE_READ.exec(b)?.[3] === ctx.property) {
+        carriesOwnValue = true;
+        continue;
+      }
+      const inner = enumerateCalculateLiterals(b, ctx);
       if ('reason' in inner) return inner;
       for (const v of inner.values) values.add(v);
+      for (const r of inner.selectRefs ?? []) selectRefs.add(r);
+      if (inner.carriesOwnValue) carriesOwnValue = true;
     }
-    return { values: [...values] };
+    return {
+      values: [...values],
+      ...(selectRefs.size > 0 ? { selectRefs: [...selectRefs] } : {}),
+      ...(carriesOwnValue ? { carriesOwnValue } : {}),
+    };
   }
 
   return { reason: `not a literal or an if() of literals: "${e}"` };
@@ -502,6 +557,9 @@ export function extractCalculateWrittenValues(
   questions: QuestionCaseWriter[];
 } {
   const calculates = bindCalculates(formXml);
+  const selectRefs = new Set(
+    [...formXml.matchAll(/<(?:select1|select)\b[^>]*\bref="([^"]+)"/g)].map((m) => m[1]),
+  );
   const writers: CalculateWriter[] = [];
   const opaque: OpaqueCalculateWriter[] = [];
   const questions: QuestionCaseWriter[] = [];
@@ -530,16 +588,27 @@ export function extractCalculateWrittenValues(
     }
     if (expression === '') continue;
 
-    const enumerated = enumerateCalculateLiterals(expression);
+    const enumerated = enumerateCalculateLiterals(expression, { property, selectRefs });
     if ('reason' in enumerated) {
       opaque.push({ formPath, property, expression, reason: enumerated.reason });
       continue;
+    }
+    // ace#3208. A select branch is that select's value set: hand it to the
+    // select-pairing path, exactly as a bare-path copy of the question is.
+    for (const node of enumerated.selectRefs ?? []) {
+      questions.push({ formPath, property, node });
     }
     // An empty stored value is "no state yet", not a value a tile can label.
     // A calculate whose literals are ALL empty enumerates to nothing, and
     // comparing a tile against an empty set would fail every row on no
     // evidence — report it as opaque instead.
     const values = enumerated.values.filter((v) => v !== '').sort();
+    // Every non-literal branch was accounted for (a select, or the case's own
+    // carried value): with no literal left there is no calculate writer to
+    // add, and nothing opaque either.
+    if (values.length === 0 && (enumerated.selectRefs?.length || enumerated.carriesOwnValue)) {
+      continue;
+    }
     if (values.length === 0) {
       opaque.push({
         formPath,
