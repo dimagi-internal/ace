@@ -6,13 +6,13 @@
     "url": "https://github.com/dimagi-internal"
   },
   "metadata": {
-    "version": "0.13.2118"
+    "version": "0.13.2119"
   },
   "plugins": [
     {
       "name": "ace",
       "source": "./",
-      "version": "0.13.2118",
+      "version": "0.13.2119",
       "description": "AI Connect Engine — builds new Connect opportunities (idea through app building, Connect setup, LLO management, closeout) and maintains and supports live Connect programs"
     }
   ]
