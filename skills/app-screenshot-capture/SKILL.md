@@ -26,7 +26,7 @@ built apps are usable end-to-end. Deep, per-journey UX grading lives in
 | `opportunity_id`, `opportunity_name` | the opportunity under test; `${OPP_NAME}` (verbatim, logging/screenshot context only) | explicit arg; default: run_state `phases.connect-setup.products.connect.opportunity.{id, name}` |
 | `opp_run_id` | `${OPP_RUN_ID}`, the deterministic tile matcher (§ OPP_RUN_ID) | explicit arg; default: top-level `run_state.yaml.run_id`. Outside a run, pass the token that uniquely identifies the opportunity's tile |
 | `out_folder_id` | where previews, forensics and the summary go | explicit arg; default: the run's `3-commcare/previews/` and `6-qa-and-training/` folders |
-| test user | `${ACE_E2E_PHONE_LOCAL}`, `${ACE_E2E_PIN}`; the opportunity must already have invited the test user (`connect-opp-setup` Step 7 inside a run; `connect_send_flw_invite` on a live one) | the session's test worker (see the `connect-login.yaml` notes below) |
+| test user | the pool test worker the device signs in as (`test_worker` in the `mobile_ensure_avd_running` result; PHONE/PIN auto-injected into recipes). It may differ from `${ACE_E2E_PHONE}`, the only phone `connect-opp-setup` Step 7 invites, so Step 3a invites the signed-in worker when needed (ace#3228) | the session's test worker (see the `connect-login.yaml` notes below) |
 
 Outside a run, pass every explicit parameter. The run_state write-back is
 skipped; the summary goes to `out_folder_id` and the caller records it.
@@ -549,6 +549,26 @@ to `verdict: incomplete`** — Maestro driver health is solvable on the
 workstation, not via a placeholder ship. Pre-0.13.165 the skill wrote
 `incomplete` here and Phase 6 shipped without screenshots; that escape
 valve hid real capability gaps behind a yellow verdict.
+
+### Step 3a: Invite the worker the device signed in as (ace#3228)
+
+**Skipped when Step 3b (per-run user) ran.** Otherwise the device signed in as a
+pool test worker (ace#2955), which is often NOT `${ACE_E2E_PHONE}` — the only
+phone Phase 4 invites. When worker-1 is held by another session the device is
+worker-2..N, and without an invite the claim recipe hunts a tile that cannot exist.
+
+1. Read the slot from the `mobile_ensure_avd_running` result:
+   `test_worker.signed_in` names the slot; its `phone` is the matching
+   `test_worker.held[]` row (`held.find(h => h.slot === signed_in).phone`).
+2. `connect_list_flw_invites({organization_slug: <PM org>, opportunity_id, phone})`.
+3. `match === null` → `connect_send_flw_invite({organization_slug, opportunity_id, phone_numbers: [phone]})`,
+   then re-read. Still `null` → **HALT** `verdict: fail`, `severity: BLOCKER`
+   (call `mobile_stop_avd` first). `status: pending` is normal — the claim recipe accepts it.
+
+Recipes get the worker's PHONE/PIN auto-injected (`withDeviceIdentity`,
+`mcp/mobile/client.ts`), so do NOT pass `PHONE_LOCAL`/`PIN` to recipes. Record
+`test_worker: {slot, phone, invited_in_step_3a: true|false}` in the Step 6 manifest.
+Verified live on bednet-check-2-visit/20261018-0554 (worker-2, `+74260000102`).
 
 ### Step 3b: Per-run demo test user — OFF BY DEFAULT (ace#1289)
 

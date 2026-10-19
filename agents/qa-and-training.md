@@ -198,7 +198,10 @@ twin gate: dimagi-internal/ace#1604.
 - [ ] **The FLW invite EXISTS server-side — verify BEFORE booting the AVD
       (hard gate, ace#824/#855).** Phase 4 pre-invites `${ACE_E2E_PHONE}`, but
       `connect_send_flw_invite` returns `{status:'queued', invited_count:1}`
-      even when Connect ends up with no invite for that phone. Run:
+      even when Connect ends up with no invite for that phone. This pre-boot
+      gate checks the Phase-4 phone; the device may then sign in as a
+      different pool worker (ace#2955), and `app-screenshot-capture` Step 3a
+      invites and read-backs THAT worker after boot (ace#3228). Run:
 
       ```
       connect_list_flw_invites({
