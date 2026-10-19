@@ -349,7 +349,10 @@ device, no Connect.
 1. **`findUnreachableCaseLists(suiteXml)` → `case-list-unreachable`.**
    Returns one finding per entry that configures `detail` blocks it can never
    show (a module whose only session datum is `function="uuid()"` pushes no
-   entity-selection screen). **Branch on each finding's `severity` — this check
+   entity-selection screen). A caseless survey module (no case type, no case
+   datum: every Learn app) is never a finding, even though HQ emits a default
+   `mN_case_short` detail for it (dimagi-internal/ace#3167). An empty result
+   on a Learn app is the expected pass. **Branch on each finding's `severity` — this check
    is app-wide, not per-module (dimagi-internal/ace#1281):**
 
    - **`severity: 'blocker'`** → halt with `[BLOCKER]`
