@@ -550,6 +550,9 @@ function programFromResponse(
 ): Program {
   return {
     id: p.program_id,
+    // Upstream's ProgramResponseSerializer does not list `id`, so this is
+    // undefined on every real response; kept so it starts working the day
+    // Connect adds it. Callers resolve the integer via labs (ace#3213).
     int_id: p.id,
     name: p.name,
     slug: p.slug,

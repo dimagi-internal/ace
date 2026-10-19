@@ -79,8 +79,8 @@ describe('RestBackend.createProgram', () => {
       end_date: '2026-12-31',
     });
     expect(out.id).toBe('prog-uuid');
-    // ConnectProd integer program id surfaced as `int_id` (recorded as
-    // opp.yaml connect_int_id) when the response carries it.
+    // IF a response ever carries `id`, it surfaces as `int_id`. Upstream's
+    // serializer does not emit it today (see the ace#3213 case below).
     expect(out.int_id).toBe(156);
     expect(out.organization_slug).toBe('pm-org');
     expect(captured).toHaveLength(1);
@@ -99,6 +99,46 @@ describe('RestBackend.createProgram', () => {
       start_date: '2026-05-01',
       end_date: '2026-12-31',
     });
+  });
+
+  it('leaves int_id undefined on the body upstream actually sends (ace#3213)', async () => {
+    // Field set copied from dimagi/commcare-connect
+    // commcare_connect/program/api/serializers.py ProgramResponseSerializer —
+    // it lists no `id`, so the integer program id never reaches ACE here.
+    const captured: CapturedRequest[] = [];
+    const request = makeRequestContext(
+      [{
+        status: 201,
+        body: {
+          program_id: 'prog-uuid',
+          name: 'Test',
+          slug: 'test',
+          description: 'A program',
+          organization: 'pm-org',
+          delivery_type: 'nutrition',
+          budget: 500000,
+          currency: 'USD',
+          country: 'United States of America',
+          start_date: '2026-05-01',
+          end_date: '2026-12-31',
+        },
+      }],
+      captured,
+    );
+    const backend = new RestBackend({ baseUrl, csrfToken, request });
+    const out = await backend.createProgram({
+      organization_slug: 'pm-org',
+      name: 'Test',
+      description: 'A program',
+      delivery_type: 'nutrition',
+      budget: 500000,
+      currency: 'USD',
+      country: 'United States of America',
+      start_date: '2026-05-01',
+      end_date: '2026-12-31',
+    });
+    expect(out.id).toBe('prog-uuid');
+    expect(out.int_id).toBeUndefined();
   });
 
   it('throws ConnectValidationError on 400 with field-keyed body', async () => {
