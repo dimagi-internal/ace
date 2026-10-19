@@ -143,6 +143,28 @@ describe('eoi-criteria-proposal check_rubric.py', () => {
     expect(noKeep.stdout).toMatch(/outcome rules have no 'Keep in view:' line/);
   });
 
+  it('requires a Not recommended (pass) rule that says when it applies', () => {
+    const missing = run({ ...goodRubric(), basis: basis.replace(/^Not recommended: .*$/m, '') });
+    expect(missing.status).toBe(1);
+    expect(missing.stdout).toMatch(/outcome rules have no 'Not recommended:' line \(key pass\)/);
+    const empty = run({ ...goodRubric(), basis: basis.replace(/^Not recommended: .*$/m, 'Not recommended: none') });
+    expect(empty.status).toBe(1);
+    expect(empty.stdout).toMatch(/the 'Not recommended:' rule must say when it applies/);
+  });
+
+  it('warns, without failing, when a scoring guide docks points for starting before contract', () => {
+    const g = goodRubric();
+    g.criteria[3].scoring_guide = g.criteria[3].scoring_guide.replace(
+      /^3: .*$/m,
+      '3: a plan with dates, but it starts work before the contract is signed',
+    );
+    const r = run(g);
+    expect(r.status).toBe(0);
+    expect(r.stdout).toMatch(/warning: sampling_plan: scoring_guide mentions starting before a contract or award/);
+    expect(r.stdout).toMatch(/OK: rubric is explicit/);
+    expect(run(goodRubric()).stdout).not.toMatch(/warning/);
+  });
+
   it('accepts the stored outcome keys as the outcome lines of an older rubric', () => {
     const old = basis
       .replace('Recommended:', 'Pick:')

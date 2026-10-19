@@ -331,7 +331,9 @@ record others will read: cite the organisation's answers, never a person.
      random shortlisted response out-scores a random not-recommended one); its effective weight (how much of the weighted score's
      spread it actually produces) against its nominal weight; the share of its scores with
      no exact passage behind them, and the share that are a low score for a missing answer
-     (hard to judge from the form). Across criteria: the correlation matrix (|r| ≥ 0.7 is a
+     (hard to judge from the form); and its correlation with answer length (the words in the
+     response, from the responses `round.json` carries: r ≥ 0.5 means the anchors reward
+     length rather than what the answer names, which `eoi-criteria-proposal` forbids). Across criteria: the correlation matrix (|r| ≥ 0.7 is a
      redundant pair). For the slate: which responses got a better outcome than a higher
      scorer and what the outcome claims say it turned on (slot or geography, rescoping,
      safety or scope). And where calibration and people changed scores or outcomes, by
@@ -716,6 +718,7 @@ platform is "Connect".
 
 | Date | Change | Author |
 |------|--------|--------|
+| 2026-10-18 | `rubric_health.py` reports each criterion's correlation with answer length (from the responses in `round.json`) and notes r ≥ 0.5 in its recommendation: method criteria were rewarding longer answers | ACE team |
 | 2026-10-18 | Labs' defined vocabulary: flags are a fixed list of ten keys (labs refuses any other; `check_claims.py` refuses it first, and requires a `flag` claim naming each flag); outcomes keep their keys but are shown as Recommended / Backup / Keep in view / Not recommended in reports, claims and `rubric_health.py`; new § Outcomes and flags; step 13 links the internal report on the round with `marketplace_round_summary_set` | ACE team |
 | 2026-10-18 | Explicit rubric and rubric health: step 3 checks the round's rubric with `check_rubric.py`; criterion claims name the anchor they were read against (`Anchor <n>: ` / `Silent: `, enforced by `check_claims.py`); calibration settles outcomes by the outcome rules in `criteria_basis` and writes `calibration.json`; new step 9 runs `rubric_health.py` (distribution, separation, effective weight, evidence, correlation, slate overrides, calibration and human changes) and writes keep/reweight/split/drop/add with numbers; the internal report gains Rubric health and "Program design: what this pool tells us" | ACE team |
 | 2026-10-18 | Learnings from a 44-response dry run: shipped `check_claims.py` (labs' quote matching plus structure checks) that every batch runs until OK; batch in/out shapes (`cost_per_site_usd`, `cost_note`, `one_line`); a separate calibration agent before any labs write (distributions, blind spot-check of 6, claim support, outcomes settled per slot, `calibration.md`); labs writes paced ≥2.5 s and retried after 60 s on the 30/m limit; internal and de-identified external reports, both published with sharing off after a de-identification scan; the three human review modes and the round page's Start reviewing walk | ACE team |

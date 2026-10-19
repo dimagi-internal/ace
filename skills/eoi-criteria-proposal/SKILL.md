@@ -126,6 +126,20 @@ which labs returns as `criteria_basis`). § The rubric shape says what goes in e
      describes the weakest answers actually received and the 10 the strongest, not an
      ideal no one approaches. Each anchor says what is **in** the answer (a named district,
      a price with a unit), never only how good it is ("strong", "adequate").
+   - **Points come from checkable elements, never from length.** Each anchor names the
+     elements that earn its score, so a short answer that has them out-scores a long one
+     that does not. A method criterion (sampling, recruitment, data collection) names its
+     parts: e.g. a named sampling frame, how households or traders are listed, how many and
+     how they are chosen, how bias is avoided. Never "detailed", "thorough", "comprehensive"
+     or "more detail" as the step between anchors; length without those elements is the
+     `padded` flag in `eoi-round-review`, not a score. `rubric_health.py` there reports each
+     criterion's correlation with answer length, so a guide that rewards length shows up.
+   - **Starting before a contract costs no points.** A delivery-plan or timeline criterion
+     scores the plan itself (sequence, staffing, dates against the call's timeline); it
+     never docks an applicant for planning to start before a contract or award. That is
+     surfaced by the review's `early-start` flag ("Starts before contract") only, so
+     scoring it too would count it twice. `check_rubric.py` warns when a scoring guide
+     mentions it.
    - Write the **Silent** rule for each criterion: the score an answer that says nothing
      (blank, "No", "N/A", "we will find out") gets, and that the claim cites the answer with
      `absent: true`. One fixed score, so silence is not scored 1 by one batch and 3 by the
@@ -134,7 +148,10 @@ which labs returns as `criteria_basis`). § The rubric shape says what goes in e
    - Try the anchors against three real answers (low, middle, high) and adjust until each
      lands where a reader would expect.
    - Write the outcome rules into `basis` (§ The rubric shape): the score formula, the
-     slots, the rule for each outcome and the overrides. The slots and budget come from
+     slots, the rule for each outcome and the overrides. Every outcome needs a rule,
+     **Not recommended included**: say when an applicant is not recommended (e.g.
+     "otherwise, or when <disqualifier>, Not recommended"), so no applicant is left
+     between rules. The slots and budget come from
      the call or the requester; if neither says how many partners each role takes, ask.
    - Run the structural check, and fix the rubric until it prints `OK: rubric is explicit`:
 
@@ -146,7 +163,10 @@ which labs returns as `criteria_basis`). § The rubric shape says what goes in e
      It checks 5–8 criteria with snake_case ids, whole weights summing to 100, an anchor
      at each of 1/3/5/7/10 of at least five words that says what the answer contains, a
      Silent rule, `Measures:` and `Separates:` (with a count) in each rationale, and an
-     `Outcome rules:` section in `basis` with every line in § The rubric shape.
+     `Outcome rules:` section in `basis` with every line in § The rubric shape, a
+     `Not recommended:` rule that says when it applies among them. It also prints a
+     `warning:` for a scoring guide that mentions starting before a contract or award;
+     fix it even though the check still passes.
 
 7. **Compare with criteria already on the round.** If `round.evaluation_criteria` is not
    empty:
@@ -240,7 +260,7 @@ Slots: <each role or site and how many partners it takes, e.g. "4: Kano, a secon
 Recommended: <e.g. the highest-scoring credible applicant for each slot, at most one per slot>
 Backup: <e.g. the next two per slot, in score order, each ready to step in for a named place>
 Keep in view: <e.g. credible (no criterion at 1-2 that the call needs) but not needed for this round's places>
-Not recommended: <e.g. outside every slot, or 1-2 on a criterion the call cannot do without>
+Not recommended: <e.g. otherwise: outside every slot, or 1-2 on a criterion the call cannot do without>
 Overrides: <when the score order gives way, and to what: slot or geography coverage, a conditional recommendation that must be rescoped (and the condition), a safety or scope problem, a duplicate>
 ```
 
@@ -336,6 +356,7 @@ The proposal is prose a person reads. Follow `skills/_terminology.md`: the platf
 
 | Date | Change | Author |
 |------|--------|--------|
+| 2026-10-18 | Three rule gaps from a round's review: the `Not recommended:` rule must say when it applies (`check_rubric.py` refuses a missing or empty one, key `pass`); a plan's timing before award costs no points, the `early-start` flag shows it (`check_rubric.py` warns); anchors name the checkable elements that earn points, never length or detail (method criteria had rewarded longer answers) | ACE team |
 | 2026-10-18 | Labs' defined vocabulary: the outcome rules are written as Recommended / Backup / Keep in view / Not recommended (`check_rubric.py` requires those lines and still accepts the older Pick / Waitlist / Pass); answer quality points at the defined flags (`padded`, `templated`, `unsupported`), never "AI-drafted" | ACE team |
 | 2026-10-18 | The rubric is explicit (§ The rubric shape): anchors at 1/3/5/7/10 written as observable evidence and a Silent rule in each `scoring_guide`, `Measures:`/`Separates:` in each `rationale`, and outcome rules (score formula, slots, pick/backup/waitlist/pass, overrides) in `basis`; `check_rubric.py` checks the shape before approval and after saving. The ULAB v1 guides had four 1-3/4-6/7-8/9-10 bands, no silent rule and no outcome rules | ACE team |
 | 2026-10-18 | Pool profiling from the 44-response dry run: batches of ~9 to parallel subagents, each returning a structured profile per dimension (tally, strong/weak example, separates, judgeable from form) plus `everyone_passes`, `cost_quotes` and `form_limits`, then merged | ACE team |

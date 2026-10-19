@@ -7,7 +7,9 @@ Usage:
                              [--json health.json]
 
 round.json        marketplace_round_responses(slug=...) output (or its "round"
-                  object): evaluation_criteria with ids and weights.
+                  object): evaluation_criteria with ids and weights. When it
+                  also carries "responses" (each with response_id and answers),
+                  each criterion's correlation with answer length is reported.
 reviews.json      the round's reviews as labs returns them from list_reviews:
                   a list of reviews, or {response_id: [reviews]}, or
                   {response_id: {"reviews": [...]}}. AI reviews are kind "ai";
@@ -51,6 +53,7 @@ OVER_INFLUENCE = 1.3      # effective weight / nominal weight above this
 UNDER_INFLUENCE = 0.7
 THIN_EVIDENCE = 0.4       # share of scores that are a low score for a missing answer
 LOW_SCORE = 3             # at or below this, a score "for a missing answer" counts
+LENGTH_R = 0.5            # Pearson r of score with answer length at or above this: rewards length
 
 # A claim whose text says something is missing ("gives no price", "does not
 # name") rests on absence even when it quotes the answer that is silent.
@@ -88,6 +91,18 @@ def criteria_of(raw):
     if isinstance(raw, dict):
         raw = raw.get("evaluation_criteria", raw.get("criteria", []))
     return [c for c in raw or [] if isinstance(c, dict) and c.get("id")]
+
+
+def answer_words_of(raw):
+    """{response_id: words across all its answers}, from the responses the round
+    file carries (none when it carries only the round)."""
+    rows = raw.get("responses") if isinstance(raw, dict) else None
+    out = {}
+    for r in rows or []:
+        if isinstance(r, dict) and r.get("response_id") is not None:
+            out[r["response_id"]] = sum(len(str(a.get("answer") or "").split())
+                                        for a in r.get("answers") or [] if isinstance(a, dict))
+    return out
 
 
 def reviews_of(raw):
@@ -140,6 +155,10 @@ def bunched_share(xs):
     return max(sum(c.get(v + k, 0) for k in range(3)) for v in range(1, 9)) / len(xs)
 
 
+def nan_to_none(x):
+    return None if isinstance(x, float) and math.isnan(x) else x
+
+
 def fmt(x, nd=2):
     return "n/a" if x is None or (isinstance(x, float) and math.isnan(x)) else f"{x:.{nd}f}"
 
@@ -167,7 +186,7 @@ def evidence_profile(review, cid):
     return kinds or {"quoted passage"}
 
 
-def analyse(criteria, reviews, calibration=None):
+def analyse(criteria, reviews, calibration=None, answer_words=None):
     ids = [c["id"] for c in criteria]
     weight = {c["id"]: float(c.get("weight") or 0) for c in criteria}
     ai = [r for r in reviews if r.get("kind") == "ai" and isinstance(r.get("criteria_scores"), dict)]
@@ -183,6 +202,8 @@ def analyse(criteria, reviews, calibration=None):
     sel = [r for r in ai if r.get("outcome") in SELECTED]
     passed = [r for r in ai if r.get("outcome") == "pass"]
     picks = [r for r in ai if r.get("outcome") == "pick"]
+    sized = [r for r in ai if (answer_words or {}).get(r.get("response_id")) is not None]
+    lengths = [answer_words[r.get("response_id")] for r in sized]
 
     per = {}
     var_t = sd(totals) ** 2
@@ -225,6 +246,10 @@ def analyse(criteria, reviews, calibration=None):
             "evidence": dict(ev),
             "thin_evidence_share": thin / len(ai) if ai else 0.0,
             "no_passage_share": strict / len(ai) if ai else 0.0,
+            # Does the score rise with how much the applicant wrote? A method or
+            # detail criterion should score what the answer names, not its length.
+            # None (not NaN, which JSON cannot carry) when there is nothing to correlate.
+            "length_r": nan_to_none(pearson([r["criteria_scores"][i] for r in sized], lengths)),
         }
 
     corr = {}
@@ -357,6 +382,10 @@ def recommend(ids, per, corr, reason_counts, overrides, human_by_crit):
         else:
             recs.append({"criterion": i, "action": "keep", "why": nums})
         hd = human_by_crit.get(i)
+        lr = p.get("length_r")
+        if lr is not None and lr >= LENGTH_R:
+            recs[-1]["why"] += (f"; scores rise with answer length (r = {lr:.2f}): check its anchors name the "
+                                "checkable elements that earn points, not length or detail")
         if hd and len(hd) >= 2 and abs(mean(hd)) >= 2:
             recs[-1]["why"] += f"; people moved it by {mean(hd):+.1f} on average across {len(hd)} reviews"
     for reason, n in reason_counts.items():
@@ -403,6 +432,15 @@ def report(h, criteria):
         hist = h["per_criterion"][i]["histogram"]
         out.append(f"- {i}: " + " ".join(f"{v}:{hist[v]}" for v in range(1, 11) if hist[v]))
     out.append("")
+    if any(h["per_criterion"][i]["length_r"] is not None for i in ids):
+        out.append(f"Score against answer length (Pearson r with the words in the response; "
+                   f"r >= {LENGTH_R} rewards length):")
+        out.append("")
+        for i in ids:
+            lr = h["per_criterion"][i]["length_r"]
+            flag = " (rewards length)" if lr is not None and lr >= LENGTH_R else ""
+            out.append(f"- {i}: {fmt(lr)}{flag}")
+        out.append("")
     out.append("### Correlation between criteria (Pearson r)")
     out.append("")
     out.append("| | " + " | ".join(ids) + " |")
@@ -469,13 +507,14 @@ def main(argv):
     ap.add_argument("--calibration")
     ap.add_argument("--json")
     a = ap.parse_args(argv[1:])
-    criteria = criteria_of(load(a.round, "round"))
+    round_raw = load(a.round, "round")
+    criteria = criteria_of(round_raw)
     if not criteria:
         print("the round has no evaluation_criteria", file=sys.stderr)
         return 2
     reviews = reviews_of(load(a.reviews, "reviews"))
     cal = load(a.calibration, "calibration") if a.calibration else None
-    h = analyse(criteria, reviews, cal)
+    h = analyse(criteria, reviews, cal, answer_words_of(round_raw))
     if h["n_ai"] == 0:
         print("no AI review scores every criterion; nothing to analyse", file=sys.stderr)
         return 2

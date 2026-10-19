@@ -67,9 +67,9 @@ const human = {
   criteria_scores: { sites: 8, prices: 4, effort: 6, chain: 3 }, claims: [],
 };
 
-function run(revs: unknown, extra: string[] = []) {
+function run(revs: unknown, extra: string[] = [], responses?: unknown[]) {
   const dir = mkdtempSync(join(tmpdir(), 'eoi-rubric-health-'));
-  writeFileSync(join(dir, 'round.json'), JSON.stringify({ round: { evaluation_criteria: criteria } }));
+  writeFileSync(join(dir, 'round.json'), JSON.stringify({ round: { evaluation_criteria: criteria }, responses }));
   writeFileSync(join(dir, 'reviews.json'), JSON.stringify(revs));
   writeFileSync(join(dir, 'cal.json'), JSON.stringify({
     changes: [
@@ -138,6 +138,21 @@ describe('eoi-round-review rubric_health.py', () => {
     expect(r.stdout).toMatch(/Outcomes: Recommended \d+, Backup \d+, Keep in view \d+, Not recommended \d+\./);
     expect(r.stdout).toMatch(/are on the shortlist \(recommended or backup\)/);
     expect(r.stdout).not.toMatch(/\b(pick|waitlist)\b/);
+  });
+
+  it('reports each criterion\'s correlation with answer length', () => {
+    // Answer length tracks the effort score row by row, and nothing else.
+    const responses = rows.map(([, , effort], n) => ({
+      response_id: 1 + n,
+      answers: [{ question_id: 'q1', question: 'Method?', answer: 'word '.repeat(20 * effort + n) }],
+    }));
+    const { r, h } = run(reviews, [], responses);
+    expect(h.per_criterion.effort.length_r).toBeGreaterThan(0.9);
+    expect(Math.abs(h.per_criterion.sites.length_r)).toBeLessThan(0.5);
+    expect(r.stdout).toMatch(/- effort: 0\.\d+ \(rewards length\)/);
+    // Without the responses there is nothing to correlate, and no section.
+    const bare = run(reviews);
+    expect(bare.r.stdout).not.toMatch(/answer length/);
   });
 
   it('exits 2 when no AI review scores every criterion', () => {
