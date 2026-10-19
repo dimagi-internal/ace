@@ -223,7 +223,109 @@ export interface CczEnumFidelityFinding extends EnumDriftFinding {
   writer: 'select' | 'calculate';
 }
 
+/**
+ * A DECLARED out-of-form writer of a case property (ace#3220).
+ *
+ * Some case-list values are set by something that is not a form at all — the
+ * canonical case is a Phase 10 close-out bulk case update on HQ that moves
+ * every still-open case to a terminal stage. No calculate or select in the CCZ
+ * can ever store that value, so the CCZ alone reads it as `missing-from-form`,
+ * and it would be right to: from the CCZ's point of view nobody writes it.
+ *
+ * The only thing that distinguishes "stale enum" from "written elsewhere" is a
+ * DECLARATION from outside the CCZ, so that is what this type is. It is never
+ * inferred: the caller hands it in from the run's own build record
+ * (`pdd-to-deliver-app_summary.md` frontmatter `externally_written_case_values`,
+ * written by `pdd-to-deliver-app § Step 4l` sub-step 8 from a PDD statement),
+ * and every entry must name its writer and cite its source, or it is refused.
+ *
+ * Recorded instance: connect-fi Deliver (HQ app `82068840dba64be2b70eab9f58b39d39`)
+ * labels `stage = handed_over` "Handed over at close-out"; its PDD build
+ * residual reads "No form sets stage Handed over at close-out; every adult
+ * still in progress on 28 Feb 2027 needs a bulk case update".
+ */
+export interface ExternalCaseValueWriter {
+  /** Case property the out-of-form writer sets, e.g. `stage`. */
+  property: string;
+  /** The stored values it sets. Only these pass; nothing else is excused. */
+  values: string[];
+  /** What writes them, e.g. `Phase 10 close-out bulk case update on HQ`. */
+  writer: string;
+  /** Where that is declared — a PDD section or a verbatim residual quote. */
+  source: string;
+}
+
+/** One case-list value that passed ONLY because a declared writer sets it. */
+export interface ExternallyWrittenValue {
+  property: string;
+  value: string;
+  /** The label the tile shows for it. */
+  caseListLabel: string;
+  writer: string;
+  source: string;
+  /** Every detail that renders it. */
+  detailIds: string[];
+}
+
+/**
+ * Validate a raw declaration list (e.g. parsed YAML frontmatter). An entry
+ * missing its property, values, writer or source is REFUSED, not repaired: an
+ * unattributed exemption is exactly how a stale enum would slip through, so a
+ * refused entry excuses nothing and the value still fails as `missing-from-form`.
+ */
+export function parseExternalCaseValueWriters(raw: unknown): {
+  writers: ExternalCaseValueWriter[];
+  problems: string[];
+} {
+  const writers: ExternalCaseValueWriter[] = [];
+  const problems: string[] = [];
+  if (raw === undefined || raw === null) return { writers, problems };
+  if (!Array.isArray(raw)) {
+    problems.push('externally-written declarations must be a list');
+    return { writers, problems };
+  }
+  raw.forEach((entry, i) => {
+    const e = (entry ?? {}) as Record<string, unknown>;
+    const str = (v: unknown) => (typeof v === 'string' ? v.trim() : '');
+    const property = str(e.property);
+    const writer = str(e.writer);
+    const source = str(e.source);
+    const values = Array.isArray(e.values)
+      ? e.values.filter((v): v is string | number => typeof v === 'string' || typeof v === 'number')
+          .map((v) => String(v).trim())
+          .filter((v) => v !== '')
+      : [];
+    const missing = [
+      !property && 'property',
+      values.length === 0 && 'values',
+      !writer && 'writer',
+      !source && 'source',
+    ].filter(Boolean);
+    if (missing.length > 0) {
+      problems.push(
+        `declaration #${i + 1}${property ? ` (${property})` : ''} refused: missing ${missing.join(', ')}`,
+      );
+      return;
+    }
+    writers.push({ property, values, writer, source });
+  });
+  return { writers, problems };
+}
+
 export interface CczEnumFidelityExtras {
+  /**
+   * INFO, never a failure (ace#3220): tile values no form writes but a DECLARED
+   * out-of-form writer sets. Reported so the verdict shows every exemption and
+   * who claimed it, instead of the value silently passing.
+   */
+  externallyWritten: ExternallyWrittenValue[];
+  /**
+   * Declared `property=value` pairs no id-mapping column renders, or that a
+   * form already writes — a stale or redundant declaration, reported, not fatal.
+   */
+  unusedExternalDeclarations: string[];
+  /** Declarations refused for missing fields; they excused nothing. */
+  externalDeclarationProblems: string[];
   /** Columns actually diffed against a form choice list. */
   columnsCompared: number;
   /** Stored values compared across all those columns. */
@@ -668,7 +770,24 @@ export function checkCczCaseListEnumFidelity(input: {
   appStrings: string;
   /** Every form XML in the CCZ, with its in-zip path. */
   forms: Array<{ path: string; xml: string }>;
+  /**
+   * DECLARED out-of-form writers (ace#3220) — raw, validated here with
+   * `parseExternalCaseValueWriters`. A declared value passes as INFO
+   * (`externallyWritten`) for ITS property only; an undeclared value no form
+   * writes still fails as `missing-from-form`. They supplement a column's
+   * in-CCZ writer set and never stand in for it: a column no form writes is
+   * still unpaired, and an unreadable writer still makes it `unable`.
+   */
+  externallyWritten?: unknown;
 }): CheckOutcome<CczEnumFidelityFinding, CczEnumFidelityExtras> {
+  const external = parseExternalCaseValueWriters(input.externallyWritten);
+  const externalByProp = new Map<string, Map<string, ExternalCaseValueWriter>>();
+  for (const w of external.writers) {
+    let m = externalByProp.get(w.property);
+    if (!m) externalByProp.set(w.property, (m = new Map()));
+    for (const v of w.values) if (!m.has(v)) m.set(v, w);
+  }
+  const usedExternal = new Set<string>();
   const strings = parseAppStrings(input.appStrings);
   const columns = extractCaseListEnums(input.suiteXml, strings);
   if (columns.length === 0) {
@@ -765,6 +884,31 @@ export function checkCczCaseListEnumFidelity(input: {
     findings.push(finding);
   };
 
+  // ace#3220. A tile value no form writes, but a DECLARED out-of-form writer
+  // sets, is INFO — reported with its writer and source, never a finding.
+  const externallyWritten: ExternallyWrittenValue[] = [];
+  const declaredFor = (column: CaseListEnumColumn, value: string): boolean => {
+    const w = externalByProp.get(column.property)?.get(value);
+    if (!w) return false;
+    usedExternal.add(`${column.property}=${value}`);
+    const prior = externallyWritten.find(
+      (e) => e.property === column.property && e.value === value,
+    );
+    if (prior) {
+      if (!prior.detailIds.includes(column.detailId)) prior.detailIds.push(column.detailId);
+    } else {
+      externallyWritten.push({
+        property: column.property,
+        value,
+        caseListLabel: column.enums[value],
+        writer: w.writer,
+        source: w.source,
+        detailIds: [column.detailId],
+      });
+    }
+    return true;
+  };
+
   for (const column of columns) {
     const ws = writerSets.get(column.property);
 
@@ -804,6 +948,7 @@ export function checkCczCaseListEnumFidelity(input: {
         calculateWritten[column.property] = written;
         for (const value of Object.keys(column.enums).sort()) {
           if (calcValues.has(value)) continue;
+          if (declaredFor(column, value)) continue;
           record(column, {
             value,
             caseListLabel: column.enums[value],
@@ -845,6 +990,13 @@ export function checkCczCaseListEnumFidelity(input: {
     }
     for (const value of calcValues) {
       if (!(value in formChoices)) formChoices[value] = column.enums[value] ?? value;
+    }
+    // ace#3220. A declared out-of-form value takes the tile's own label (it has
+    // no form label to disagree with) — but only where no form writes it: a
+    // select that offers the value stays the authority for its label.
+    for (const value of Object.keys(column.enums)) {
+      if (value in formChoices) continue;
+      if (declaredFor(column, value)) formChoices[value] = column.enums[value];
     }
     if (calcValues.size > 0) calculateWritten[column.property] = [...calcValues].sort();
     const formPath = [...new Set([...labelled.map((l) => l.formPath), ...calcFormPaths])].join(
@@ -909,6 +1061,10 @@ export function checkCczCaseListEnumFidelity(input: {
     );
   }
 
+  const unusedExternalDeclarations = external.writers
+    .flatMap((w) => w.values.map((v) => `${w.property}=${v}`))
+    .filter((pv, i, all) => all.indexOf(pv) === i && !usedExternal.has(pv));
+
   return {
     ...checked(findings.length === 0, findings),
     columnsCompared,
@@ -916,7 +1072,20 @@ export function checkCczCaseListEnumFidelity(input: {
     unpaired,
     unlabelledInCaseList,
     calculateWritten,
+    externallyWritten,
+    unusedExternalDeclarations,
+    externalDeclarationProblems: external.problems,
   };
+}
+
+/** Render the INFO lines for declared out-of-form values (ace#3220). */
+export function describeExternallyWritten(values: ExternallyWrittenValue[]): string[] {
+  return values.map(
+    (e) =>
+      `[INFO] ${e.property}="${e.value}": tile shows "${e.caseListLabel}" ` +
+      `(${e.detailIds.join(', ')}); no form writes it — externally written ` +
+      `(declared) by ${e.writer} [source: ${e.source}]`,
+  );
 }
 
 /** Render the findings as the lines a decision rows / QA verdict should carry. */

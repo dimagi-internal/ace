@@ -2232,6 +2232,26 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
        form's labels to match a stale enum re-introduces the invented
        vocabulary this step exists to remove.
 
+    8. **Record every tile value no form writes BY DESIGN
+       (dimagi-internal/ace#3220).** A state the PDD says is set OUTSIDE the
+       forms — a Phase 10 close-out bulk case update, an HQ automatic case
+       update, an integration — has a case-list label and no form writer, so
+       the released-CCZ gate cannot tell it from a stale enum. For each such
+       state, and ONLY where the PDD states it (the `entity_state_taxonomy`
+       row, § Entity Lifecycle, or the build residual this step files for it —
+       e.g. connect-fi's *"No form sets stage Handed over at close-out; every
+       adult still in progress on 28 Feb 2027 needs a bulk case update"*), add
+       an entry to the summary's `externally_written_case_values` frontmatter
+       (Step 7): `property` (the case property the column renders), `values`
+       (the stored values, exactly as the tile maps them), `writer` (what sets
+       them, e.g. `Phase 10 close-out bulk case update on HQ`) and `source`
+       (the PDD section, or the residual quoted verbatim). Keep the residual
+       too — it is the human-facing ask that the out-of-form write actually
+       happens; this entry is its machine-readable twin. **Never add an entry
+       to clear a gate finding:** a tile value with no PDD statement behind it
+       is an invented or stale enum, and the fix is to remove it (sub-step 7),
+       not to declare it. No such state → `externally_written_case_values: []`.
+
        *Enforced downstream:* `app-release-qa § Step 4` check 3 runs
        `checkCczCaseListEnumFidelity` over the released CCZ and halts with
        `[BLOCKER]` `case-list-enum-drift` if any of this was missed — that gate
@@ -2496,6 +2516,14 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
    # app-deploy copies it into products.apps.deliver.components_built via
    # buildCommcareProducts (ace#2157). Omit on the synthesized path.
    components_built: [<component_id>, ...]
+   externally_written_case_values: []  # Step 4l sub-step 8 (ace#3220).
+                            # Tile values no form writes BY DESIGN, each
+                            # {property, values, writer, source} — e.g.
+                            # {property: stage, values: [handed_over],
+                            #  writer: "Phase 10 close-out bulk case update
+                            #  on HQ", source: "<PDD residual, verbatim>"}.
+                            # app-release-qa check 3 passes ONLY these as
+                            # [INFO]; empty list is the usual value.
    option_source_gaps: []   # Step 4f — one entry per PDD-declared select
                             # that still shipped as free text, with the
                             # table + value column + label column it needs.
@@ -2942,6 +2970,7 @@ Each row this skill writes uses `phase: 3-commcare` and
 
 | Date | Change | Author |
 |------|--------|--------|
+| 2026-10-19 | **Step 4l sub-step 8 — tile values no form writes BY DESIGN are recorded, not dropped (ace#3220).** connect-fi's Deliver app labels `stage = handed_over` "Handed over at close-out"; no form writes it because the PDD sets it by the Phase 10 close-out bulk case update, so `app-release-qa` check 3 graded a `case-list-enum-drift` BLOCKER on every re-release. Operator decision (2026-10-19): keep the label. The summary now carries `externally_written_case_values` (`{property, values, writer, source}`, each tied to a PDD statement), which `checkCczCaseListEnumFidelity` accepts as `[INFO]` for exactly those values on exactly that property; anything undeclared still fails. *Enforced:* `test/lib/ccz-enum-fidelity.test.ts § declared out-of-form writers`. | ACE team |
 | 2026-10-16 | **Step 7 writes a `nova_uuids` block, copied from § 4a step 2's `get_app` and read back (ace#2144).** `app-deploy` Step 2.5 and `app-connect-coverage` both read the Deliver summary's `nova_uuids:` instead of calling `get_app`, but Step 7 never specified one (Learn's Step 7 did). On `spark-facilitator/20260906-2233` the map that was written had all four module/form uuids pattern-truncated (`11110000-…` for `11111111-…`) and the lint's `get_form` failed. The block is now part of the required frontmatter, sourced verbatim from the `get_app` response, with a one-pair `get_form` read-back after the write. *Enforced:* `test/skills/deliver-summary-nova-uuids.test.ts`. | ACE team |
 | 2026-10-16 | **§ entity_id: a date-only key component is a per-worker-per-day grain (ace#2935).** The quoted-separator example used `#form/visit_date`, which keys per worker per day; it now uses a time-bearing timestamp and says so, and names the bare-`now()` trap (a hidden field renders it date-only). | ACE team |
 | 2026-10-16 | **Step 4f: a lookup's value column must be whitespace-free (ace#2984).** On `kaduna-graduation/20261015-1411` `kgrad_services` had no code-shaped column, three selects saved the display `name` (`"Placeholder: services directory entry 1 …"`), every ACE gate passed (the values were unique), and Nova's `upload_app_to_hq` preflight refused the Deliver app: *"Saved values can't contain whitespace."* Same class as ace#2143, Nova's second rule. `verifyLookupBind` (and so `auditLookupBinds`) now returns `whitespace-values`; authored tables carry a slug `code` column as the saved value. *Enforced:* `test/lib/option-register.test.ts`. | ACE team |
