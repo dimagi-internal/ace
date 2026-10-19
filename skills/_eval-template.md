@@ -304,8 +304,11 @@ level of the verdict:
   two together say what was composed AND what was published. Without this field a
   verdict cannot show which surface it judged — every ace#2213 verdict named only
   the `.md`.
-- `published_render: {ok, literal_markdown_hits, rendered_image_count}` — the
-  script's result (`--json` prints it).
+- `published_render: {ok: true, literal_markdown_hits: [], rendered_image_count: N}`
+  — the script's result (`--json` prints it). `literal_markdown_hits` is an
+  ARRAY of the offending snippets (empty when the Doc renders clean), never a
+  count: `lib/verdict-schema.ts` types it `z.array(z.string())`, so
+  `literal_markdown_hits: 0` fails `validateVerdict` (ace#3229).
 
 `validateVerdict` (`lib/verdict-schema.ts`) rejects a `published_url` that is not
 a URL and a `published_render.ok: false` verdict that still says `pass`/`warn`,
