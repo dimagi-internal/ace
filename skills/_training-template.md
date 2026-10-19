@@ -310,8 +310,20 @@ Publishing one of these is a **two-step write**, and step 2 is not optional:
    ```bash
    ACE_ROOT="${CLAUDE_PLUGIN_ROOT:-$(python3 -c "import json,os; d=json.load(open(os.path.expanduser('~/.claude/plugins/installed_plugins.json'))); print(d['plugins']['ace@ace'][0]['installPath'])")}"
    node "$ACE_ROOT/node_modules/tsx/dist/cli.mjs" "$ACE_ROOT/scripts/embed-doc-screenshots.ts" <docId> \
-     --screenshots <screenshots folderId from the capture manifest's drive_folders>
+     --screenshots <drive_folders.previews_learn from app-screenshot-capture_manifest.yaml> \
+     --screenshots <drive_folders.previews_deliver from app-screenshot-capture_manifest.yaml> \
+     --screenshots <folderId of ACE/_common/connect-screenshots/<v>/, if the prose cites common frames>
    ```
+
+   Pass every folder the prose can cite — the flag repeats and the script
+   lists each folder recursively. There is no single "screenshots" folder
+   since output previews contract v1: passing frames are split per app under
+   `3-commcare/previews/`, and `app-screenshot-capture` § Step 6 records each
+   id under `drive_folders` (ace#3238). Do not pass `drive_folders.forensics`
+   — those are failure frames and ui-dumps, never guide illustrations.
+   A manifest written before ace#3238 has no `drive_folders` block: read the
+   two ids with `drive_list_folder` on the run's `3-commcare/previews/` folder
+   instead of guessing one.
 
    It anchors on the references the prose ALREADY carries and appends those
    frames right after the citing paragraph — no prose added, moved or
