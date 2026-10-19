@@ -258,11 +258,20 @@ Outcome rules:
 Score: weighted score = sum(weight x criterion score) / 10, from 10 to 100; labs computes it.
 Slots: <each role or site and how many partners it takes, e.g. "4: Kano, a second Nigeria site, Ghana south, Ghana north, one partner each">
 Recommended: <e.g. the highest-scoring credible applicant for each slot, at most one per slot>
-Recommended backup: <e.g. the next two per slot, in score order, each ready to step in for a named place>
+Recommended backup: <e.g. per slot, the next two applicants in score order that meet every condition for Recommended>
 Waitlist: <e.g. credible (no criterion at 1-2 that the call needs) but not needed for this round's places>
 Not recommended: <e.g. otherwise: outside every slot, or 1-2 on a criterion the call cannot do without>
 Overrides: <when the score order gives way, and to what: slot or geography coverage, a conditional recommendation that must be rescoped (and the condition), a safety or scope problem, a duplicate>
 ```
+
+**A Recommended backup meets the Recommended bar.** It must satisfy every condition the
+Recommended line sets on the applicant itself (a minimum score, "no criterion at 1", no
+disqualifier) and differs from a recommended applicant only in rank or slot: it is behind
+the recommended applicant(s) for its place. Never give backups a looser threshold of their
+own ("the next two that score 5 or more on one criterion"): an applicant who would be next
+in score order but fails a Recommended condition goes to Waitlist or Not recommended.
+Say so in the line, as in the example above ("meet every condition for Recommended", "meet
+the Recommended bar"); `check_rubric.py` refuses a backup line that does not.
 
 An override is legitimate, but it must be written here before scoring, so a
 recommendation that outranks a higher score points at a rule rather than at a judgement
@@ -357,6 +366,7 @@ The proposal is prose a person reads. Follow `skills/_terminology.md`: the platf
 
 | Date | Change | Author |
 |------|--------|--------|
+| 2026-10-18 | A Recommended backup meets the Recommended bar (every condition the Recommended line sets) and differs only in rank or slot; `check_rubric.py` refuses a `Recommended backup:` line that does not say so. A round's backup rule had used a looser threshold, so an applicant with a criterion at 1 became a backup | ACE team |
 | 2026-10-18 | Outcome labels renamed in labs: `backup` is shown as Recommended backup (was Backup), `waitlist` as Waitlist (was Keep in view); keys unchanged, and `check_rubric.py` still accepts the earlier labels and the keys | ACE team |
 | 2026-10-18 | Three rule gaps from a round's review: the `Not recommended:` rule must say when it applies (`check_rubric.py` refuses a missing or empty one, key `pass`); a plan's timing before award costs no points, the `early-start` flag shows it (`check_rubric.py` warns); anchors name the checkable elements that earn points, never length or detail (method criteria had rewarded longer answers) | ACE team |
 | 2026-10-18 | Labs' defined vocabulary: the outcome rules are written as Recommended / Backup / Keep in view / Not recommended (`check_rubric.py` requires those lines and still accepts the older Pick / Waitlist / Pass); answer quality points at the defined flags (`padded`, `templated`, `unsupported`), never "AI-drafted" | ACE team |

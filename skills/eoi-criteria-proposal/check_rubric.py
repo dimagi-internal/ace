@@ -34,6 +34,11 @@ The rubric lives only in fields labs already stores:
   The Not recommended (pass) line is required like the others: a rubric that
   says when to recommend but not when to turn an applicant down leaves the
   bottom of the pool to each reviewer.
+  The Recommended backup line must say that a backup meets the Recommended bar
+  (e.g. "the next two applicants in score order that meet every condition for
+  Recommended"): a backup differs from a recommended applicant only in rank or
+  slot, so it never skips a condition the Recommended line sets (a minimum
+  score, "no criterion at 1", a disqualifier).
 
 Also warns (without failing) when a scoring guide docks points for planning
 to start before a contract or award: that is the review's `early-start` flag,
@@ -60,6 +65,17 @@ OUTCOME_LINES = (("Score", None, ()), ("Slots", None, ()), ("Recommended", "pick
 MIN_ANCHOR_WORDS = 5
 MIN_PASS_RULE_WORDS = 4
 MIN_CRITERIA, MAX_CRITERIA = 5, 8
+# A Recommended backup rule that says the backup clears the Recommended bar:
+# "meets every condition for Recommended", "meets the Recommended bar",
+# "would qualify as Recommended". A negation just before it ("need not meet")
+# does not count.
+_REC = r"(?:recommended|a pick|pick)"
+_MEETS_BAR = re.compile(
+    rf"\b{_REC}(?:'s)? (?:bar|conditions?|thresholds?|requirements?|tests?)\b"
+    rf"|\b(?:conditions?|bar|thresholds?|requirements?|tests?) (?:for|of) (?:being )?{_REC}\b"
+    rf"|\bqualif\w* (?:as|for) {_REC}\b",
+    re.IGNORECASE)
+_NEGATED = re.compile(r"(?:\b(?:not|never|without|except)\b|n't\b)[^.;\n]{0,30}$", re.IGNORECASE)
 _ID = re.compile(r"^[a-z][a-z0-9_]*$")
 _LINE = re.compile(r"^\s*(?:[-*]\s*)?([A-Za-z]+(?: [A-Za-z]+){0,2}|\d{1,2})\s*[:=.)-]\s*(.*\S)?\s*$")
 # Words that judge an answer without saying what is in it. An anchor made only
@@ -222,7 +238,16 @@ def check(criteria, basis):
             elif key == "pass" and len(rule.split()) < MIN_PASS_RULE_WORDS:
                 problems.append("the 'Not recommended:' rule must say when it applies, e.g. 'otherwise, "
                                 "or when <disqualifier>'")
+            elif key == "backup" and not meets_recommended_bar(rule):
+                problems.append("the 'Recommended backup:' rule must say a backup meets the Recommended bar, "
+                                "e.g. 'per slot, the next two applicants in score order that meet every "
+                                "condition for Recommended'")
     return problems
+
+
+def meets_recommended_bar(rule):
+    """True when a backup rule says the backup clears every Recommended condition."""
+    return any(not _NEGATED.search(rule[:m.start()]) for m in _MEETS_BAR.finditer(rule))
 
 
 def main(argv):
