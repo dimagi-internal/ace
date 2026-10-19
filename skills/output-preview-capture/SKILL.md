@@ -170,8 +170,15 @@ reads any mapping there with a `file_id` as an output.
       output has NO previews.
    3. **Upload** each accepted PNG under its `plan.json` name —
       `drive_upload_binary({name, localFilePath, mimeType: 'image/png', parentFolderId, shareAnyoneWithLink: true})`.
-   4. **Index.** Write the uploads as `[{name, file_id}]` to a local JSON file
-      (accepted frames only, in display order), then:
+      Keep each response's `sharing`. It must read `anyone-with-link`: an SA-only
+      frame cannot be opened by ace-web's reader or embedded by
+      `scripts/embed-doc-screenshots.ts`, which on connect-fi/20261018-1440
+      failed the LLO guide with "problem retrieving the image" (ace#3234). If
+      it reads `sa-only`, run `drive_set_anyone_with_link` on that id.
+   4. **Index.** Write the uploads as `[{name, file_id, sharing}]` to a local
+      JSON file (accepted frames only, in display order, `sharing` copied from
+      each upload response). `index` refuses any frame whose `sharing` is not
+      `anyone-with-link`, missing included. Then:
       ```bash
       node "$ACE_ROOT/node_modules/tsx/dist/cli.mjs" "$ACE_ROOT/scripts/output-preview-capture.ts" index \
         --plan <scratch dir>/plan.json --gap <gap id> --uploaded <uploads.json>

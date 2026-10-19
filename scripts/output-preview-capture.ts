@@ -27,8 +27,9 @@
  * JSON, its old `_previews.yaml` and every artifact that may cite its files,
  * it prints `{write, trash[], keep[]}`. A child any citer names by id is KEPT.
  *
- * `index` turns the uploaded frames (`[{name, file_id}]`, JSON) into
- * DIR/<slug>/_previews.yaml; `verify` asserts the copy read back from Drive.
+ * `index` turns the uploaded frames (`[{name, file_id, sharing}]`, JSON) into
+ * DIR/<slug>/_previews.yaml, refusing any frame whose upload did not come back
+ * `sharing: anyone-with-link` (ace#3234); `verify` asserts the copy read back from Drive.
  *
  * Sessions — all headless, all restored rather than assumed (CLAUDE.md
  * § Phase preconditions are restored, not adapted):
@@ -64,6 +65,7 @@ import {
   productNodeAt,
   screenPage,
   selectGaps,
+  unsharedUploads,
   CAPTURED_BY,
   CHAT_BOT_REPLY_SELECTOR,
   CHAT_INPUT_SELECTOR,
@@ -525,8 +527,17 @@ function loadGap(planPath: string, id: string): { plan: { captured_phase: string
 
 function runIndex(): void {
   const { plan, g } = loadGap(need('plan'), need('gap'));
-  const uploaded = JSON.parse(fs.readFileSync(need('uploaded'), 'utf8')) as Array<{ name: string; file_id: string }>;
-  if (!Array.isArray(uploaded) || uploaded.length === 0) die('--uploaded must be a non-empty JSON list of {name, file_id}');
+  const uploaded = JSON.parse(fs.readFileSync(need('uploaded'), 'utf8')) as Array<{ name: string; file_id: string; sharing?: string }>;
+  if (!Array.isArray(uploaded) || uploaded.length === 0) die('--uploaded must be a non-empty JSON list of {name, file_id, sharing}');
+  // ace#3234 — an SA-only frame is unreadable to every consumer but the SA.
+  const unshared = unsharedUploads(uploaded);
+  if (unshared.length) {
+    die(
+      `${unshared.length} frame(s) are not anyone-with-link (copy each upload's \`sharing\` into --uploaded): ` +
+        unshared.map((u) => `${u.name} (${u.file_id}, sharing: ${u.sharing})`).join('; ') +
+        ' — run drive_set_anyone_with_link on each id, record sharing: anyone-with-link, and re-run index',
+    );
+  }
   const frames = uploaded.map((u) => {
     const f = g.frames.find((x) => x.name === u.name);
     if (!f) die(`${u.name} is not a frame of ${g.gap.id}`);

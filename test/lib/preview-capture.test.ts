@@ -26,6 +26,7 @@ import {
   selectGaps,
   withLabsProgramContext,
   planPreviewFolderClear,
+  unsharedUploads,
   type PreviewGap,
 } from '../../lib/preview-capture';
 import { assertPreviewsIndexReadable, serializePreviewsIndex } from '../../lib/output-previews';
@@ -560,5 +561,30 @@ describe('planPreviewFolderClear (ace#3044)', () => {
     expect(plan.write).toBe(true);
     expect(plan.trash.map((c) => c.id).sort()).toEqual([OLD_INDEX, STALE]);
     expect(plan.keep).toEqual([]);
+  });
+});
+
+describe('unsharedUploads (ace#3234)', () => {
+  it('passes frames whose upload came back anyone-with-link', () => {
+    expect(
+      unsharedUploads([
+        { name: '01-overview.png', file_id: 'A', sharing: 'anyone-with-link' },
+        { name: '02-verification.png', file_id: 'B', sharing: 'anyone-with-link' },
+      ]),
+    ).toEqual([]);
+  });
+
+  it('refuses an SA-only frame and a frame with no recorded sharing', () => {
+    // connect-fi/20261018-1440: both Phase 4 frames were SA-only.
+    expect(
+      unsharedUploads([
+        { name: '01-overview.png', file_id: 'A', sharing: 'sa-only' },
+        { name: '02-verification.png', file_id: 'B' },
+        { name: '03-ok.png', file_id: 'C', sharing: 'anyone-with-link' },
+      ]),
+    ).toEqual([
+      { name: '01-overview.png', file_id: 'A', sharing: 'sa-only' },
+      { name: '02-verification.png', file_id: 'B', sharing: 'not recorded' },
+    ]);
   });
 });

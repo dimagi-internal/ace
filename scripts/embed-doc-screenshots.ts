@@ -33,10 +33,14 @@ import { google } from '../lib/google-shim.js';
 import { resolvePluginDataDir } from '../lib/plugin-data-dir.js';
 import {
   buildEmbedRequests,
+  classifyFrameSharing,
   collectImageAnchors,
   countInlineImages,
   DEFAULT_IMAGE_WIDTH_PT,
+  explainEmbedFailure,
+  unsharedFramesMessage,
   type DocLike,
+  type DrivePermissionLike,
 } from '../lib/doc-image-embed.js';
 
 import { loadPluginEnv } from '../lib/load-plugin-env.js';
@@ -143,6 +147,36 @@ async function listImages(drive: any, folderIds: string[]): Promise<ImageFile[]>
   return out;
 }
 
+/**
+ * Every pending frame that is not shared anyone-with-link (ace#3234). Docs
+ * fetches inserted images without the SA's credentials, so an SA-only frame
+ * fails the whole batch with a message that does not name sharing. Read each
+ * frame's permissions first; an unreadable list is `unknown` and does not
+ * block (the post-write verify still runs).
+ */
+async function unsharedFrames(
+  drive: any,
+  fileIds: string[],
+  byId: Map<string, ImageFile>,
+): Promise<Array<{ id: string; name: string }>> {
+  const out: Array<{ id: string; name: string }> = [];
+  for (const id of [...new Set(fileIds)]) {
+    let perms: DrivePermissionLike[] | null = null;
+    try {
+      const r = await drive.permissions.list({
+        fileId: id,
+        supportsAllDrives: true,
+        fields: 'permissions(type,role)',
+      });
+      perms = r.data.permissions ?? [];
+    } catch (e: any) {
+      console.log(`WARN could not read sharing of ${byId.get(id)?.name ?? id}: ${e?.message ?? e}`);
+    }
+    if (classifyFrameSharing(perms) === 'not-shared') out.push({ id, name: byId.get(id)?.name ?? id });
+  }
+  return out;
+}
+
 /** `<img>` count in the ANONYMOUS HTML export — what an outsider actually gets. */
 async function anonymousImageCount(docId: string): Promise<number | null> {
   try {
@@ -206,6 +240,14 @@ async function main() {
     console.log(`  + ${a.fileIds.length} @${a.endIndex}  ${a.excerpt.replace(/\s+/g, ' ')}`);
   }
 
+  // Sharing pre-flight (ace#3234) — before the dry-run exit too, so a dry run
+  // reports the frames a real run would fail on.
+  const unshared = await unsharedFrames(drive, pending.flatMap((a) => a.fileIds), byId);
+  if (unshared.length) {
+    console.error(unsharedFramesMessage(unshared));
+    process.exit(1);
+  }
+
   if (args.dryRun) { console.log('DRY RUN — nothing written.'); return; }
   if (!pending.length) { console.log('nothing to do.'); }
   else {
@@ -221,7 +263,11 @@ async function main() {
     // (descending) indices pointing at the wrong paragraphs. All-or-nothing
     // plus the idempotent skip is the safe pair — a failed run is simply
     // re-run once the offending frame is readable.
-    await docs.documents.batchUpdate({ documentId: args.docId, requestBody: { requests } });
+    try {
+      await docs.documents.batchUpdate({ documentId: args.docId, requestBody: { requests } });
+    } catch (e: any) {
+      throw new Error(explainEmbedFailure(String(e?.message ?? e)));
+    }
     console.log(`batchUpdate applied: ${requests.length} request(s)`);
   }
 
