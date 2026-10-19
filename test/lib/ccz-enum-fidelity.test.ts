@@ -62,6 +62,7 @@ import {
   extractFormChoiceLists,
   extractCaseWriteMap,
   extractCalculateWrittenValues,
+  enumerateCalculateLiterals,
   checkCczCaseListEnumFidelity,
   describeCczEnumFidelity,
 } from '../../lib/ccz-enum-fidelity.js';
@@ -966,5 +967,140 @@ describe('case writes nested in a repeat (ace#2980)', () => {
     assertChecked(res);
     expect(res.ok).toBe(false);
     expect(res.findings.map((f: CczEnumFidelityFinding) => f.value)).toEqual(['yes']);
+  });
+});
+
+/**
+ * ace#3208 — the carry-forward calculate `pdd-to-deliver-app` emits on
+ * Follow-up forms, `if(<answer> != '', <answer>, <own case's current value>)`,
+ * made the gate `unable` on every column it writes. The two binds below are
+ * VERBATIM from released Deliver build `36e6e2a909224b0cbfc060664559f87f`
+ * (connect-fi/20261018-1440, HQ app 82068840dba64be2b70eab9f58b39d39,
+ * modules-2/forms-0.xml), as quoted in the issue. The select's items, the
+ * Register form and the suite are SYNTHETIC, shaped on that build.
+ */
+describe('carry-forward calculate: if(answer, answer, own case value) (ace#3208)', () => {
+  const CASEDB =
+    "instance('casedb')/casedb/case[@case_id = instance('commcaresession')/session/data/case_id]";
+  const enumLocale = (detail: string, v: string) => `${detail}.id_step_latest.enum.k${v}`;
+  const detailXml = (detail: string) => `
+  <detail id="${detail}">
+    <field>
+      <template>
+        <text>
+          <xpath function="replace(join(' ', if(selected(id_step_latest, 'step_1'), $kstep_1, ''), if(selected(id_step_latest, 'step_2'), $kstep_2, '')), '\\s+', ' ')">
+            <variable name="kstep_1"><locale id="${enumLocale(detail, 'step_1')}"/></variable>
+            <variable name="kstep_2"><locale id="${enumLocale(detail, 'step_2')}"/></variable>
+          </xpath>
+        </text>
+      </template>
+    </field>
+  </detail>`;
+  const suiteXml = `<suite>${detailXml('m3_case_short')}</suite>`;
+  const appStrings = [
+    `${enumLocale('m3_case_short', 'step_1')}=Step 1`,
+    `${enumLocale('m3_case_short', 'step_2')}=Step 2`,
+  ].join('\n');
+
+  const form = (model: string, body = '') => `<?xml version='1.0'?>
+<h:html xmlns:h="http://www.w3.org/1999/xhtml" xmlns="http://www.w3.org/2002/xforms">
+  <h:head><model>
+    <itext><translation lang="en" default="">
+      <text id="id_step-step_1-label"><value>Step 1</value></text>
+      <text id="id_step-step_2-label"><value>Step 2</value></text>
+    </translation></itext>
+    ${model}
+  </model></h:head>
+  <h:body>${body}</h:body>
+</h:html>`;
+
+  const REGISTER = 'modules-1/forms-0.xml';
+  const FOLLOWUP = 'modules-2/forms-0.xml';
+  const registerXml = form(
+    `<bind nodeset="/data/case/update/id_step_latest" calculate="'step_1'"/>`,
+  );
+  const carryBind = (carry: string) =>
+    `<bind nodeset="/data/w_id_step_latest" type="xsd:string" calculate="if(/data/id_step_screen/id_step != '', /data/id_step_screen/id_step, ${carry})"/>
+    <bind nodeset="/data/case/update/id_step_latest" calculate="/data/w_id_step_latest" relevant="count(/data/w_id_step_latest) &gt; 0"/>`;
+  const select = `<select1 ref="/data/id_step_screen/id_step">
+      <item><label ref="jr:itext('id_step-step_1-label')"/><value>step_1</value></item>
+      <item><label ref="jr:itext('id_step-step_2-label')"/><value>step_2</value></item>
+    </select1>`;
+  const followupXml = form(carryBind(`${CASEDB}/id_step_latest`), select);
+  const run = (followup: string) =>
+    checkCczCaseListEnumFidelity({
+      suiteXml,
+      appStrings,
+      forms: [
+        { path: REGISTER, xml: registerXml },
+        { path: FOLLOWUP, xml: followup },
+      ],
+    });
+
+  it('the fixture carries the verbatim carry-forward bind', () => {
+    expect(followupXml).toContain(
+      `calculate="if(/data/id_step_screen/id_step != '', /data/id_step_screen/id_step, instance('casedb')/casedb/case[@case_id = instance('commcaresession')/session/data/case_id]/id_step_latest)"`,
+    );
+  });
+
+  it('resolves the select branch to the select, and the own-value branch to nothing', () => {
+    const side = extractCalculateWrittenValues(followupXml, FOLLOWUP);
+    expect(side.opaque).toEqual([]);
+    expect(side.writers).toEqual([]);
+    expect(side.questions).toEqual([
+      { formPath: FOLLOWUP, property: 'id_step_latest', node: '/data/id_step_screen/id_step' },
+    ]);
+  });
+
+  it('POSITIVE CONTROL — THE GATE NOW RUNS on the Follow-up column, and passes', () => {
+    const res = run(followupXml);
+    assertChecked(res);
+    expect(res.unpaired).toEqual([]);
+    expect(res.findings).toEqual([]);
+    expect(res.ok).toBe(true);
+  });
+
+  it('NEGATIVE CONTROL: a select label that disagrees with the tile still FAILS', () => {
+    const res = run(followupXml.replace('<value>Step 2</value>', '<value>Second step</value>'));
+    assertChecked(res);
+    expect(res.findings.map((f: CczEnumFidelityFinding) => [f.value, f.kind])).toEqual([
+      ['step_2', 'label-mismatch'],
+    ]);
+  });
+
+  it('NEGATIVE CONTROL: the carry branch reads a DIFFERENT property — stays UNABLE', () => {
+    const res = run(form(carryBind(`${CASEDB}/stage`), select));
+    assertUnable(res);
+    expect(res.reason).toContain('/stage');
+  });
+
+  it('NEGATIVE CONTROL: the carry branch reads a DIFFERENT case — stays UNABLE', () => {
+    const otherCase =
+      "instance('casedb')/casedb/case[@case_id = /data/parent_id]/id_step_latest";
+    const res = run(form(carryBind(otherCase), select));
+    assertUnable(res);
+    expect(res.reason).toContain('/data/parent_id');
+  });
+
+  it('NEGATIVE CONTROL: the answer branch is a NON-select node — stays UNABLE', () => {
+    const res = run(
+      form(
+        carryBind(`${CASEDB}/id_step_latest`),
+        `<input ref="/data/id_step_screen/id_step"/>`,
+      ),
+    );
+    assertUnable(res);
+    expect(res.reason).toContain('/data/id_step_screen/id_step');
+  });
+
+  it('without form context the enumerator stays literal-only (nova-app-lint)', () => {
+    const expr = `if(/data/x != '', /data/x, ${CASEDB}/p)`;
+    expect('reason' in enumerateCalculateLiterals(expr)).toBe(true);
+    expect(
+      enumerateCalculateLiterals(`if(/data/c = 'y', 'a', ${CASEDB}/p)`, {
+        property: 'p',
+        selectRefs: new Set(),
+      }),
+    ).toEqual({ values: ['a'], carriesOwnValue: true });
   });
 });
