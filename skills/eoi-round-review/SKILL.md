@@ -77,15 +77,19 @@ record others will read: cite the organisation's answers, never a person.
   recommends a change, to `eoi-criteria-proposal` for the next version.
 - **The internal report**, a Google Doc published with `gdoc-writer` under
   `Projects/<project>/` (the project is the round's programme or the requester's project
-  name), sharing off. Dimagi only. It has two tabs:
-  1. **Recommendation**, under ~2 pages: bottom line, the Recommended table, a note on
-     each recommended applicant, Recommended backup and Waitlist, Not recommended,
-     before-launch conditions, and how it was scored.
-  2. **The pool and the review**: what the pool told us about the work, pool coverage and
-     quality, how it was reviewed, the comparison with the team, next-form advice, the
-     all-organisation table, and one ≤120-word entry per submission (outcome, role fit,
-     cost, strengths and concerns citing the answer, questions to ask). Step 10 lists the
-     sections.
+  name), sharing off. Dimagi only. It is the doc the round links to as its summary, and it
+  has two tabs:
+  1. **Overview**, under ~2 pages, written as an analyst making the case: the outcome of
+     the review, not how it was done. Bottom line, one section per place (who, why them,
+     what to settle before contracting, the backups), the program-wide questions the pool
+     raised, what to ask every shortlisted applicant, what the next call should ask
+     differently, and the next step in labs. No criteria names, weights, scores, version
+     labels or flags.
+  2. **Review details**: how it was scored (criteria, weights, `rubric_version`, outcome
+     rules), the version comparison, calibration, rubric health, pool coverage and
+     quality, the comparison with the team, the all-organisation table, and one ≤120-word
+     entry per submission (outcome, role fit, cost, strengths and concerns citing the
+     answer, questions to ask). Step 10 lists the sections.
   The doc opens with a link to the round page in labs,
   https://labs.connect.dimagi.com/labs/marketplace/rounds/<slug>/, where reviewers verify,
   agree, edit or add their own reviews. The doc is a summary of the AI pass; labs holds the
@@ -361,25 +365,41 @@ record others will read: cite the organisation's answers, never a person.
    is "No recommendation yet".
 
    **The internal report** (Dimagi only):
-   - *Recommendation tab*, under ~2 pages:
-     - **Bottom line**: one or two sentences naming who to go with, for which role,
-       within what budget.
-     - **Recommended**: a table of partner, country and site, role, why them (one line,
-       with evidence), and approximate budget.
-     - **One note per recommended applicant**: why them; gaps; "ask them" (2–3
-       questions); the role.
-     - **Recommended backup and Waitlist**: the Recommended backup named for each place, and the credible
-       applicants to keep in view for a later round, each with one reason.
-     - **Not recommended**: the notable ones, each with one line of reason. Give a strong
-       applicant that doesn't fit this budget or scope its own line (usually Keep in
-       view), so the team keeps it for later.
-     - **Before-launch conditions**: what must be true or settled before launch, what the
-       pool cannot yet answer, which design assumption the responses challenge, and the
-       standard rate card or template to issue.
+   - *Overview tab* (first), under ~2 pages. Write it as an analyst making the case to
+     the program team: say who to fund and why, plainly and briefly, as conclusions. The
+     reader wants the outcome, not the method; everything about how the review was run
+     goes in the second tab. No criteria ids or weights, no score numbers, no version
+     labels, no flag words, no "the rubric". Numbers only where they decide something
+     (a price, a count, a budget).
+     - **Bottom line**: who to fund, for which place, within what budget, in two or
+       three sentences, plus the biggest program-level finding in one more.
+     - **One section per place** (a `###` heading naming the place and the Recommended
+       applicant): why them, in terms of what the work needs (site, trade knowledge,
+       a way to reach the households, team, cost); their gap; the condition to settle
+       before contracting, or "none"; and the Recommended backups, each with what it
+       would need to step in. Use headed sections and bullets, not a table: the Overview
+       tab is written by `scripts/gdoc-tab.ts`, which refuses pipe tables.
+     - **Program-wide questions**: decisions for the program team that the whole pool
+       surfaced, numbered, each one counted from the responses ("only 9 of 44 …") and
+       ending in the decision to make. Draw them from the program-design reading: places
+       nobody credible covers, which site serves the call's purpose, the unit of
+       payment, the safety line, scope drift, and every assumption in the call the
+       responses contradict.
+     - **Ask every shortlisted applicant before contracting**: the shared questions,
+       numbered (each review's own `ask_next` stays in labs).
+     - **What the next call should ask differently**: short bullets.
+     - **Next step**: one or two lines on reviewing in labs, with the round page and
+       Scores page links.
+     - Notable Not recommended applicants and the Waitlist go in the second tab, unless
+       one is a strong applicant that only misses this round's scope; then name it in
+       one line under the bottom line, so the team keeps it for later.
+   - *Review details tab* (second):
      - **How we scored**: the round's criteria and weights (with `rubric_version`), the
-       outcome rules applied, what the criteria basis says was dropped, the one-line
-       rubric-health verdict, and the round-page link, in four lines.
-   - *The pool and the review tab*:
+       outcome rules applied, what the criteria basis says was dropped, and, when an
+       earlier version exists, the moves from `marketplace_round_scores(compare_with=…)`.
+     - **The slate in full**: the Recommended table (partner, country and site, role,
+       score, condition), Recommended backup and Waitlist with one reason each, and the
+       notable Not recommended with one line of reason.
      - **What the pool told us about the work**: what applicants report about the field
        the call is in. For a value-chain call that is the trade itself: prices, buyers,
        destinations and household practice. Present these as the applicants' own reports
@@ -393,7 +413,8 @@ record others will read: cite the organisation's answers, never a person.
      - **Comparison with the team** (step 11), when there is one.
      - **Rubric health** (step 9): the recommendations with their numbers, the
        per-criterion table and the slate-override table, in under a page.
-     - **Program design: what this pool tells us**: what the program team should think
+     - **Program design: what this pool tells us** (the full counted reading; its
+       decisions are the Overview's Program-wide questions): what the program team should think
        about before contracting, grounded in the responses and counted ("31 of 44 ..."):
        - questions the team should answer before contracting (what the pool shows is
          undecided: the unit of payment, whether "we don't know" answers are acceptable,
@@ -529,7 +550,21 @@ record others will read: cite the organisation's answers, never a person.
       finds nothing. Also re-read it for a figure, quote-like phrase or detail that only
       one applicant reported. Record in the reply that the scan ran and found nothing.
     - Publish both reports with `gdoc-writer`, each with `--share none` (sharing off), the
-      internal one with the round-page link at the top.
+      internal one with the round-page link at the top. For the internal report, publish
+      the **Review details** content with `gdoc-writer` first (it renders its tables),
+      then add the Overview as the first tab and name the second:
+
+      ```bash
+      ACE_ROOT="${CLAUDE_PLUGIN_ROOT:-$(python3 -c "import json,os; d=json.load(open(os.path.expanduser('~/.claude/plugins/installed_plugins.json'))); print(d['plugins']['ace@ace'][0]['installPath'])")}"
+      node "$ACE_ROOT/node_modules/tsx/dist/cli.mjs" "$ACE_ROOT/scripts/gdoc-tab.ts" --doc <docId> --md overview.md \
+        --title "Overview" --index 0 --rename-tab "Tab 1=Review details"
+      ```
+
+      The script prints the doc's tabs; confirm it lists `Overview` then `Review details`.
+      Re-running it replaces the Overview tab in place (same doc, same link). After any
+      `gdoc-writer --replace` of the doc, re-run it and check both tabs again. To revise
+      an existing summary, edit that doc in place this way rather than publishing a new
+      one, so the round's summary link keeps working.
     - **Link the internal report on the round**: call
       `marketplace_round_summary_set(slug=<round slug>, url=<internal report url>)` for
       each round it covers. Labs shows the link on the round page, which only the round's
@@ -738,6 +773,7 @@ platform is "Connect".
 
 | Date | Change | Author |
 |------|--------|--------|
+| 2026-10-19 | The internal report's first tab is an analyst Overview: the outcome and the case for each recommendation, with the program-wide questions the pool raised, and no scoring mechanics; how it was scored, versions, calibration and rubric health move to the second tab, Review details. The two tabs are now actually produced: `scripts/gdoc-tab.ts` (lib `markdown-docs-tab.ts`) writes the Overview tab, which `gdoc-writer` could not. Requested by Jonathan on the ULAB summary | ACE team |
 | 2026-10-19 | Human review: four ways, not three — labs' response page also offers **Add to it** (stance `adds`), verified against `templates/solicitations/round_response.html` (connect-labs `docs/marketplace-round-review.md`, #2615) | ACE team |
 | 2026-10-19 | Versions: a re-score on replaced criteria supersedes the earlier AI review (kept as history on the old version); when an earlier version exists, the reply and internal report quote labs' own comparison (`marketplace_round_scores(compare_with=…)`) and link the Scores page, never a hand-built diff | ACE team |
 | 2026-10-18 | A Recommended backup must clear the Recommended bar and is only behind the recommended applicant(s) for its slot; an applicant next in score order that fails it goes to Waitlist or Not recommended | ACE team |
