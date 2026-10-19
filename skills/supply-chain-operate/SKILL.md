@@ -26,7 +26,7 @@ mode only.
 | `item_ids` | the trade items moving | explicit arg; default: run_state `products.supply_chain.items` |
 | `supply_points` | `{central, regional, flw: {username: id}}` | explicit arg; default: run_state `products.supply_chain.supply_points` |
 | `opportunity_id` | the opportunity the workers deliver | explicit arg; default: run_state `products.simulation.synthetic_opportunity_id` |
-| `week_activity` | per worker, the week's enrolments (what drives distribution) | explicit arg; default: read from labs for the week's window (the synthetic opportunity's visits) |
+| `week_activity` | per worker and commodity, the week's **issue events**: `{<connect_username>: {<commodity_slug>: {issue_events, quantity}}}` plus each commodity's `issue_events_source` (what drives distribution) | explicit arg (from `simulated-execution`, `simulated-execution_issue-events.yaml`); outside a simulation, derived with `deriveIssueEvents` (`lib/supply-chain-issue-events.ts`) from the week's visits and the setup plan's `commodities[].issue_event` |
 | `scope` | the `source.ref` scope | the run id inside `/ace:run`; outside one, `programScope(program_id)` (`lib/supply-chain-ref.ts`) |
 | `simulated` | label every write, backdate, plant the week's events | `true` when Phase 9 `mode: simulated`; explicit arg otherwise |
 
@@ -40,8 +40,9 @@ something real to show. Outside a simulation every movement and count is what wa
 ## Products
 
 - `9-execution-manager/supply-chain-operate_week-<w>_plan.yaml`: the week's consignments (each with
-  a plan key used as its `reference`), the distribution per worker with the enrolment figure it came
-  from, the counts, and whether this is the stockout week. Written **before any write**.
+  a plan key used as its `reference`), per worker the week's `issue_events` and `issue_events_source`,
+  the distribution per worker those issue events give, the counts (with the stock-count form they
+  stand for), and whether this is the stockout week. Written **before any write**.
 - `9-execution-manager/supply-chain-operate_week-<w>_stock.yaml`: the week's reads, as labs
   returned them, `as_of` the week's last day: `stock_position` per store, `stock_forecast`,
   `resupply_plan` per store, `worker_stock`, `stock_flow` and `checks_list`. This is what
@@ -51,8 +52,18 @@ something real to show. Outside a simulation every movement and count is what wa
 
 1. **Precondition.** `supply_chain_programme_runner_get` must say `programme` (or `operator`).
 2. **Plan the week** (Products, first file):
-   - **Distribution follows activity.** Each worker's quantity is that week's enrolments times the
-     per-person allocation in the setup plan. A worker with no enrolments gets nothing.
+   - **Distribution follows the commodity's issue event** (ace#3216). A worker is resupplied with
+     what they handed over: each worker's quantity is that week's issue events for the commodity
+     times the quantity one issue hands over (`issueQuantity`, `lib/supply-chain-issue-events.ts`).
+     A worker with no issue events gets nothing. The issue event is the one the setup plan declares
+     per commodity (`commodities[].issue_event`): a form, a field and the answers that mean "handed
+     over", e.g. Connect FI's phone on the UNPAID Follow-up Contact form, `phone_obtained` = "handed
+     over today" / "voucher redeemed", to about 55-75% of enrolled adults, usually on a later visit.
+     **Enrolments are not a proxy for it.** Only an issue event of `kind: per_enrolment` (the PDD
+     says every enrolee gets one) distributes by enrolment. A commodity with no `issue_event` halts
+     the week with `[BLOCKER] commodity <slug> declares no issue_event in the setup plan`; never fall
+     back to enrolments silently. Copy `issue_events_source` into the plan, so a generated week
+     (`simulated_from_eligibility`) is never read as one read off a form.
    - **Transfers follow need.** Central → regional carries what the regional store's distributions
      need beyond what it holds, read from `supply_chain_stock_position` (never assumed).
    - **Planted events (simulated track only):** in one week one consignment is received short (a
@@ -65,7 +76,12 @@ something real to show. Outside a simulation every movement and count is what wa
    one run, one line per worker. The LLO is the partner telling us what it distributed.
 5. **Count.** For each worker, `supply_chain_stock_count_record({program_id, data: {supply_point_id: <worker's user_held point>, commodity_slug, item_id, kind: "self_reported", counted_on, quantity, quantity_unit, connect_username, opportunity_id, source: "commcare_form"}, source})`.
    A zero is a real observation, not a missing one: record it. Never use `kind: override` to make a
-   count agree with the ledger; the variance is the finding.
+   count agree with the ledger; the variance is the finding. The count stands for the worker's
+   stock-count form: when the setup plan names a `count_form` (Connect FI's Deliver app carries a
+   weekly "Phone stock count" form), read the quantity from that form's answer in the week's
+   visits and put the form and field in the plan. On a synthetic stream with no form identity
+   (labs' de-novo visits carry none; see `lib/supply-chain-issue-events.ts`), the plan's count is
+   what the worker holds after the week's distribution and issue events, plus the planted zero.
 6. **Read the week** (Products, second file), every read `as_of` the week's last day where the atom
    takes one: `supply_chain_stock_position` per store, `supply_chain_stock_forecast` per item,
    `supply_chain_resupply_plan` per store, `supply_chain_worker_stock` per item,
@@ -111,4 +127,5 @@ When `--dry-run` is active, run Step 1, Step 2 and Step 6's reads. Write both fi
 
 | Date | Change | Author |
 |------|--------|--------|
+| 2026-10-19 | Distribution follows each commodity's declared issue event, not enrolments x allocation; `week_activity` carries issue events and their source; counts reference the stock-count form (ace#3216, connect-fi/20261018-1440) | ACE |
 | 2026-10-18 | Initial version (optional-track PR9): one week of transfers, distributions driven by enrolments, counts (with a planted short receipt and stockout), and the week's as-of reads | ACE |

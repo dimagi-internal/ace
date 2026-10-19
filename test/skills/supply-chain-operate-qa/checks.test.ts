@@ -18,6 +18,7 @@ import {
   checkConsignmentsReceived,
   checkCountsReadBack,
   checkDistributionsReadBack,
+  checkDistributionsReconcileToIssueEvents,
   checkFindingsListedByAudience,
   checkFlowsBalance,
   checkNoStockConflicts,
@@ -184,5 +185,49 @@ describe('supply-chain-operate-qa checks, grounded on program 10605 store 149', 
       expect((c.run('not json') as { pass: boolean }).pass, c.id).toBe(false);
       expect((c.run('{}') as { pass: boolean }).pass, c.id).toBe(false);
     }
+  });
+});
+
+describe('distributions_reconcile_to_issue_events (ace#3216, connect-fi/20261018-1440)', () => {
+  const withIssues = (mut: (p: OperatePlan, rb: OperateReadback) => void) =>
+    doc(LIVE, (p, rb) => {
+      p.issue_events_source = 'simulated_from_eligibility';
+      p.issue_events = [
+        { connect_username: 'syn-flw-001', issue_events: 3, quantity: '3' },
+        { connect_username: 'syn-flw-002', issue_events: 0, quantity: '0' },
+      ];
+      p.distributions = [{ connect_username: 'syn-flw-001', quantity: '3' }];
+      rb.distribution_lines = [{ connect_username: 'syn-flw-001', quantity: '3' }];
+      mut(p, rb);
+    });
+
+  it("passes when each distribution is the worker's issue events", () => {
+    expect(checkDistributionsReconcileToIssueEvents(withIssues(() => {})).pass).toBe(true);
+  });
+
+  it('fails the enrolment proxy: a plan with no issue events', () => {
+    const r = checkDistributionsReconcileToIssueEvents(doc(LIVE, (p) => (p.distributions = [{ connect_username: 'syn-flw-001', quantity: '5' }])));
+    expect(r.pass).toBe(false);
+    expect(r.detail).toMatch(/no issue events/);
+  });
+
+  it('fails enrolments x allocation where only some enrolees were issued one', () => {
+    // 5 enrolments, 3 phones handed over: the old rule distributed 5.
+    const r = checkDistributionsReconcileToIssueEvents(withIssues((p) => (p.distributions = [{ connect_username: 'syn-flw-001', quantity: '5' }])));
+    expect(r.pass).toBe(false);
+    expect(r.detail).toMatch(/issue events give 3/);
+  });
+
+  it('fails a distribution to a worker with no issue events, and an issued worker left unsupplied', () => {
+    const r = checkDistributionsReconcileToIssueEvents(withIssues((p) => (p.distributions = [{ connect_username: 'syn-flw-002', quantity: '2' }])));
+    expect(r.pass).toBe(false);
+    expect(r.detail).toMatch(/syn-flw-002: distributed 2 with no issue events/);
+    expect(r.detail).toMatch(/syn-flw-001: 3 issue events/);
+  });
+
+  it('fails when labs holds a different distribution than the issue events give', () => {
+    const r = checkDistributionsReconcileToIssueEvents(withIssues((_p, rb) => (rb.distribution_lines = [{ connect_username: 'syn-flw-001', quantity: '4' }])));
+    expect(r.pass).toBe(false);
+    expect(r.detail).toMatch(/labs holds 4/);
   });
 });

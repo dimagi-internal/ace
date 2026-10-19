@@ -39,6 +39,7 @@ The functions live in `skills/supply-chain-operate-qa/checks.ts` (`OperatePlan`,
 | 1 | `flows_balance` | static | each store's flow in minus out equals its on-hand, converted to the flow's unit | find the unrecorded movement; correct with a count override and a reason |
 | 2 | `consignments_received` | static | every planned consignment is received at the planned quantity | `consignment_receive` with what arrived |
 | 3 | `distributions_read_back` | static | each planned per-worker distribution reads back | record the week's distribution run |
+| 3a | `distributions_reconcile_to_issue_events` | static | each worker's planned and read-back distribution equals that worker's issue events times the quantity per issue; a plan with no issue events fails (ace#3216) | re-plan the week from the issue events; correct a distribution already in labs with a count override and a reason |
 | 4 | `counts_read_back` | static | each planned count reads back | record the count; a zero is real |
 | 5 | `stockout_recorded` | static | in the stockout week, the zero count is in labs | record the zero self-report |
 | 6 | `findings_listed_by_audience` | static | the week's review lists every open `checks_list` finding by kind and audience | add the dropped findings to the review |
@@ -69,4 +70,5 @@ detail rather than failed.
 
 | Date | Change | Author |
 |------|--------|--------|
+| 2026-10-19 | Check `distributions_reconcile_to_issue_events`: distributions follow the commodity's issue events, never enrolments (ace#3216) | ACE |
 | 2026-10-18 | Initial version (optional-track PR9): 7 static checks, the flow balance unit-converted per the live capture of labs program 10605 store 149 | ACE |

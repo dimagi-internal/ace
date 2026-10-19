@@ -26,7 +26,7 @@ simulated mode.
 | `pm_org` | the Connect org that manages the program | explicit arg; default: run_state `products.connect.pm_org_slug`, else `connect_orgs.pm_org` (`lib/connect-orgs.ts`) |
 | `llo_org` | the ACE-owned winner org, on the `ace_winner` path only | explicit arg; default: run_state `phases.solicitation-management.products.selected_llo.org_slug` when `synthetic_winner: true`, else `connect_orgs.llo_org` |
 | `ace_winner` | whether the winner runs procurement | explicit arg; default: `isOptionalStepEnabled(run_state, 'ace_winner')` (`lib/optional-steps.ts`) |
-| `commodity_needs` | what the programme distributes, with quantities | explicit arg (a list of `{commodity, unit, quantity, basis}`); default: derived in Step 2 from the PDD (run_state `phases.idea-to-design.products.pdd`) |
+| `commodity_needs` | what the programme distributes, with quantities | explicit arg (a list of `{commodity, unit, quantity, basis, issue_event, count_form?}`); default: derived in Step 2 from the PDD (run_state `phases.idea-to-design.products.pdd`) |
 | `flw_usernames` | the field workers who will hold stock | explicit arg; default: the synthetic FLWs of run_state `phases.execution-management.products.simulation.synthetic_opportunity_id` (`synthetic_local_records_count` / the generation manifest); outside simulation, the opportunity's workers |
 | `scope` | the `source.ref` scope | the run id inside `/ace:run`; outside one, `programScope(program_id)` (`lib/supply-chain-ref.ts`) |
 | `simulated` | label every write as simulated and backdate it | `true` when Phase 9 `mode: simulated`; explicit arg otherwise |
@@ -85,9 +85,25 @@ only when a run is bound.
      `consumable`. A missing category is an upstream ask to connect-labs, not a blocker.
    - **Stock class.** On `item_upsert`, a device is `stock_class: durable`; a kit used once is
      `consumable`.
+   - **Issue event (required per commodity, ace#3216).** Name the event that hands one over, as
+     `issue_event` (the `IssueEvent` type in `lib/supply-chain-issue-events.ts`). It is what
+     `supply-chain-operate` distributes by, so a missing one halts the week:
+     - `kind: form_answer` — the PDD's form (name or xmlns), the field as a `form_json` path, the
+       answers that mean "handed over", `quantity_per_issue`, `eligible_share` (the PDD's share of
+       enrolees who get one, as a decimal string; `null` if the PDD gives none), `later_visit`
+       (the PDD says it usually happens on a later visit), and `basis` (the PDD sentence).
+     - `kind: per_enrolment` — `per_person` and `basis`. Only when the PDD says every enrolee gets
+       one; never as a default for a commodity the PDD gates on eligibility.
+   - **Count form (optional).** When the Deliver app has a stock-count form, name it as
+     `count_form: {form, field}`; `supply-chain-operate` reads worker counts from it.
    - *Example (Connect FI):* a basic feature handset (`equipment`, durable), given only to enrolled
-     adults without a working phone, and a SIM starter kit (`consumable`). The PDD's enrolment
-     targets cap the quantities.
+     adults with no working phone AND an ID card on record. Its `issue_event` is `form_answer`:
+     `form: "Follow-up Contact"` (an UNPAID form), `field: form.phone_obtained`, `values` = the
+     "handed over today" and "voucher redeemed" answers, `quantity_per_issue: "1"`,
+     `eligible_share` from the PDD's 55-75% (cite the sentence), `later_visit: true`. Its
+     `count_form` is the weekly "Phone stock count" form. A SIM starter kit (`consumable`) is
+     `per_enrolment` only if the PDD says every enrolee gets one. The PDD's enrolment targets cap
+     the quantities.
 3. **Write the plan** (Products, first file). Every later step writes what the plan says, and the
    QA reads the plan back against labs.
 4. **Register the orgs.** `labs_context()` gives each Connect org's integer id; never guess it
@@ -168,4 +184,5 @@ When `--dry-run` is active, run Step 1's read (not the setter), Steps 2-3, and t
 
 | Date | Change | Author |
 |------|--------|--------|
+| 2026-10-19 | Step 2 declares each commodity's `issue_event` (form + field + issue answers + eligibility share, or `per_enrolment` when the PDD says so) and optional `count_form` (ace#3216) | ACE |
 | 2026-10-18 | Initial version (optional-track PR6): runner gate with self-serve declaration and winner-runs-procurement, registry build, deterministic source refs | ACE |

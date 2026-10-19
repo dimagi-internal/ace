@@ -2279,7 +2279,7 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     consumedBy: ['supply-chain-operate-qa'],
     phase: 'execution-management',
     required: false,
-    description: "Optional track (supply_chain): one simulated week's stock plan, written BEFORE any write: the store-to-store consignments (each with its plan key as reference), the per-worker distribution with the enrolment figure it follows, the counts, and whether this is the stockout week.",
+    description: "Optional track (supply_chain): one simulated week's stock plan, written BEFORE any write: the store-to-store consignments (each with its plan key as reference), per worker the week's issue events and their source (lib/supply-chain-issue-events.ts) and the distribution they give (never enrolments x allocation, ace#3216), the counts and the stock-count form they stand for, and whether this is the stockout week.",
   },
   {
     path: '9-execution-manager/supply-chain-operate_week-<w>_stock.yaml',
@@ -2297,7 +2297,7 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     consumedBy: [],
     phase: 'execution-management',
     required: false,
-    description: "Optional track (supply_chain): structural QA of one stock week against a FRESH labs read. 7 static checks in skills/supply-chain-operate-qa/checks.ts: flows balance (unit-converted: labs' flow is in base units, on-hand in packs), consignments received as planned, distributions and counts read back, the stockout's zero count, every open finding listed by audience, no stock_negative.",
+    description: "Optional track (supply_chain): structural QA of one stock week against a FRESH labs read. 8 static checks in skills/supply-chain-operate-qa/checks.ts: flows balance (unit-converted: labs' flow is in base units, on-hand in packs), consignments received as planned, distributions and counts read back, distributions reconcile to the week's issue events, the stockout's zero count, every open finding listed by audience, no stock_negative.",
   },
   // [optional-track:PR10 simulated-execution + simulated-weekly-review]
   {
@@ -2308,6 +2308,15 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     phase: 'execution-management',
     required: false,
     description: 'Optional track (simulate_weeks): the simulation plan, written BEFORE any write: the delivery window from lib/sim-calendar.ts, the synthetic-data manifest (persona ids = the setup plan\'s FLW usernames), and the per-week enrolment the PDD implies.',
+  },
+  {
+    path: '9-execution-manager/simulated-execution_issue-events.yaml',
+    producedBy: 'simulated-execution',
+    role: 'manifest',
+    consumedBy: ['supply-chain-operate'],
+    phase: 'execution-management',
+    required: false,
+    description: "Optional track (simulate_weeks + supply_chain): per commodity, its declared issue_event and how the issue events were obtained (read off the issue form, or generated from the PDD's eligibility share because labs' de-novo synthetic visits carry no per-form identity), and per delivery week and worker the issue events and quantity. Each week's supply-chain-operate week_activity (ace#3216).",
   },
   {
     path: '9-execution-manager/simulated-execution_summary.md',
