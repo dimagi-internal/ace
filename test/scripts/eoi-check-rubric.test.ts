@@ -1,7 +1,7 @@
 // skills/eoi-criteria-proposal/check_rubric.py — refuses a proposed EOI rubric
 // that leaves any part implicit: anchors at 1/3/5/7/10 written as observable
 // evidence, a Silent rule, Measures/Separates in each rationale, and the outcome
-// rules in the basis. Python (stdlib only) because the skill runs it with nothing
+// rules in the basis, with a Recommended backup that meets the Recommended bar. Python (stdlib only) because the skill runs it with nothing
 // installed; vitest drives it.
 
 import { describe, it, expect } from 'vitest';
@@ -38,7 +38,7 @@ const basis = [
   'Score: weighted score = sum(weight x criterion score) / 10, from 10 to 100.',
   'Slots: 2: site A and site B, one partner each.',
   'Recommended: the highest-scoring credible applicant per slot.',
-  'Recommended backup: the next two per slot, in score order.',
+  'Recommended backup: per slot, the next two applicants in score order that meet every condition for Recommended.',
   'Waitlist: credible but not recommended or a backup.',
   'Not recommended: outside every slot, or 1-2 on a criterion the call needs.',
   'Overrides: slot coverage beats score order; a pick may be conditional on rescoping to one site.',
@@ -150,6 +150,29 @@ describe('eoi-criteria-proposal check_rubric.py', () => {
     const empty = run({ ...goodRubric(), basis: basis.replace(/^Not recommended: .*$/m, 'Not recommended: none') });
     expect(empty.status).toBe(1);
     expect(empty.stdout).toMatch(/the 'Not recommended:' rule must say when it applies/);
+  });
+
+  it('requires the Recommended backup rule to say a backup meets the Recommended bar', () => {
+    const withBackup = (rule: string) =>
+      run({ ...goodRubric(), basis: basis.replace(/^Recommended backup: .*$/m, `Recommended backup: ${rule}`) });
+    // A backup picked on a looser threshold than Recommended sets is refused.
+    for (const rule of [
+      'the next two per slot, in score order.',
+      'the next two in score order that score 5 or more on named_sites.',
+      'the next two per slot; they need not meet every condition for Recommended.',
+    ]) {
+      const r = withBackup(rule);
+      expect(r.status).toBe(1);
+      expect(r.stdout).toMatch(/the 'Recommended backup:' rule must say a backup meets the Recommended bar/);
+    }
+    for (const rule of [
+      'the next two per slot that meet the Recommended bar.',
+      'per slot, anyone after the pick who would qualify as Recommended, in score order.',
+    ]) {
+      expect(withBackup(rule).stdout.trim()).toBe('OK: rubric is explicit');
+    }
+    const old = basis.replace('Recommended backup:', 'Backup:').replace('every condition for Recommended', 'every condition');
+    expect(run({ ...goodRubric(), basis: old }).stdout).toMatch(/'Recommended backup:' rule must say a backup meets/);
   });
 
   it('warns, without failing, when a scoring guide docks points for starting before contract', () => {

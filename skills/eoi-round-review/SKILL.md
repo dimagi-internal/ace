@@ -290,9 +290,13 @@ record others will read: cite the organisation's answers, never a person.
      `criteria_basis` (Slots, Recommended, Recommended backup, Waitlist, Not recommended,
      Overrides); when the round has none, about one Recommended (`pick`) per slot and two
      Recommended backups (`backup`) per slot, then Waitlist (`waitlist`) for the credible rest and
-     Not recommended (`pass`). Every outcome claim names the outcome in the words people
-     read and the rule it applied, and an outcome that goes against the score order names
-     the override (for example "Recommended backup, slot rule: a higher scorer covers Ghana north",
+     Not recommended (`pass`). A Recommended backup must clear the Recommended bar (every
+     condition the Recommended rule sets on the applicant itself: minimum scores, "no
+     criterion at 1", no disqualifier) and is only behind the recommended applicant(s) for
+     its slot; an applicant who would be next in score order but fails that bar is not a
+     backup, it goes to Waitlist or Not recommended per the rules. Every outcome claim
+     names the outcome in the words people read and the rule it applied, and an outcome
+     that goes against the score order names the override (for example "Recommended backup, slot rule: a higher scorer covers Ghana north",
      "Recommended, rescoping override: conditional on one site within budget"). It
      rewrites the `outcome` claim of every response whose outcome changes.
    - **(e) Writes `calibration.md`**: the distributions (before and after), every change
@@ -614,7 +618,7 @@ ACE's copy, which the checkers read). The API stores and takes the **keys**; peo
 | Key | Label | Meaning |
 |---|---|---|
 | `pick` | Recommended | Proposed for one of the round's places now. |
-| `backup` | Recommended backup | Ready to step in for a named place if a recommended applicant falls through. |
+| `backup` | Recommended backup | Meets every condition for Recommended, but ranks behind the recommended applicant(s) for a named place; ready to step in if one falls through. |
 | `waitlist` | Waitlist | Credible, but not needed for this round's places; worth asking again in a later round. |
 | `pass` | Not recommended | Not a fit for this round, for the reasons the review gives. |
 | (none) | No recommendation yet | Nobody has reviewed it, or the review set no outcome. |
@@ -718,6 +722,7 @@ platform is "Connect".
 
 | Date | Change | Author |
 |------|--------|--------|
+| 2026-10-18 | A Recommended backup must clear the Recommended bar and is only behind the recommended applicant(s) for its slot; an applicant next in score order that fails it goes to Waitlist or Not recommended | ACE team |
 | 2026-10-18 | Outcome labels renamed in labs (`vocabulary.py`): `backup` is Recommended backup (was Backup), `waitlist` is Waitlist (was Keep in view); keys unchanged | ACE team |
 | 2026-10-18 | `rubric_health.py` reports each criterion's correlation with answer length (from the responses in `round.json`) and notes r ≥ 0.5 in its recommendation: method criteria were rewarding longer answers | ACE team |
 | 2026-10-18 | Labs' defined vocabulary: flags are a fixed list of ten keys (labs refuses any other; `check_claims.py` refuses it first, and requires a `flag` claim naming each flag); outcomes keep their keys but are shown as Recommended / Backup / Keep in view / Not recommended in reports, claims and `rubric_health.py`; new § Outcomes and flags; step 13 links the internal report on the round with `marketplace_round_summary_set` | ACE team |
