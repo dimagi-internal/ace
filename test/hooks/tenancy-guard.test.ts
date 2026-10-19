@@ -16,7 +16,9 @@
  * dir, the way test/hooks/gating-guard.test.ts spawns canopy's gating hook.
  */
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
+import * as http from 'node:http';
+import type { AddressInfo } from 'node:net';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
@@ -371,21 +373,43 @@ describe('optional labs track writes (spec 2026-10-18 § I)', () => {
     expect(ruleFor(UPSERT)).toBe('labs-supply-chain-org-upsert');
   });
 
-  it('the program_id rule is INERT while the tenancy record has no connect_program_ids key', () => {
+  it('checks program_id against the opp tenancy connect_program_ids (ace-web#914)', () => {
+    bind({ ...SPARK, connect_program_ids: [308, 355] });
+    expect(guard(TENDER, { program_id: 308, data: {} }).code).toBe(0);
+    // labs takes program_id as a string or an int; both name the same program.
+    expect(guard(TENDER, { program_id: '355', data: {} }).code).toBe(0);
+    const r = guard(TENDER, { program_id: 999, data: {} });
+    expect(r.code).toBe(2);
+    expect(r.stderr).toContain('999');
+    expect(guard(SOLICIT, { title: 't', description: 'd', solicitation_type: 'eoi', org_slug: 'spark-pm', program_id: '999' }).code).toBe(2);
+    expect(guard('mcp__connect_labs__create_response', { solicitation_id: 1, program_id: 999 }).code).toBe(2);
+  });
+
+  it('a call with no program_id is not program-checked', () => {
+    bind(SPARK);
+    expect(guard(TENDER, { data: {} }).code).toBe(0);
+  });
+
+  it('an opp whose tenancy LACKS connect_program_ids refuses as not set up, like any missing field', () => {
+    bind(SPARK); // what ace-web serves for an opp that is not backfilled yet
+    const r = guard(TENDER, { program_id: 308, data: {} });
+    expect(r.code).toBe(2);
+    expect(r.stderr).toMatch(/connect_program_ids.*not set/);
+  });
+
+  it('...and in warn mode (the /ace:run rollout) that only logs', () => {
     spawnSync(BIND, ['spark/spark-facilitator', '--warn', '--tenancy-json', JSON.stringify(SPARK)], {
       env: env({ CLAUDE_CODE_SESSION_ID: SESSION }),
       encoding: 'utf8',
     });
-    expect(guard(TENDER, { program_id: 999, data: {} }).code).toBe(0);
-    expect(fs.existsSync(path.join(bindDir, 'bound-violations.log'))).toBe(false);
+    expect(guard(TENDER, { program_id: 308, data: {} }).code).toBe(0);
+    const log = fs.readFileSync(path.join(bindDir, 'bound-violations.log'), 'utf8');
+    expect(log).toMatch(/connect_program_ids.*not set/);
   });
 
-  it('applies the moment ace-web ships connect_program_ids', () => {
-    bind({ ...SPARK, connect_program_ids: [308] });
+  it('an unbound session is allowed and logged', () => {
     expect(guard(TENDER, { program_id: 308, data: {} }).code).toBe(0);
-    const r = guard(TENDER, { program_id: 999, data: {} });
-    expect(r.code).toBe(2);
-    expect(r.stderr).toContain('999');
+    expect(fs.existsSync(path.join(bindDir, 'unbound-writes.log'))).toBe(true);
   });
 
   it('a connect_program_ids key that is present but empty refuses, rather than guessing', () => {
@@ -393,6 +417,36 @@ describe('optional labs track writes (spec 2026-10-18 § I)', () => {
     const r = guard(TENDER, { program_id: 308, data: {} });
     expect(r.code).toBe(2);
     expect(r.stderr).toMatch(/connect_program_ids.*not set/);
+  });
+
+  it('no shipped rule still treats connect_program_ids as pending', () => {
+    const raw = JSON.parse(fs.readFileSync(path.join(REPO_ROOT, 'config', 'tenancy-targets.json'), 'utf8'));
+    for (const rule of raw.rules) {
+      expect(rule.pending_fields ?? [], rule.name).not.toContain('connect_program_ids');
+    }
+  });
+
+  it('the generic pending_fields mechanism stays: inert while the key is absent, live once present', () => {
+    // Kept for the next field ace-web has not shipped yet; exercised directly
+    // because no shipped rule uses it today.
+    const py = `
+import json, sys
+sys.path.insert(0, ${JSON.stringify(path.join(REPO_ROOT, 'hooks'))})
+import tenancy_guard as tg
+rule = {"args": {"x": ["future_field"]}, "pending_fields": ["future_field"]}
+print(json.dumps([
+  tg.violations(rule, {"x": 1}, {}),
+  tg.violations(rule, {"x": 1}, {"future_field": [1]}),
+  tg.violations(rule, {"x": 2}, {"future_field": [1]}),
+  tg.violations(rule, {"x": 1}, {"future_field": []}),
+]))`;
+    const r = spawnSync('python3', ['-c', py], { env: env(), encoding: 'utf8' });
+    expect(r.status, r.stderr).toBe(0);
+    const [absent, ok, wrong, empty] = JSON.parse(r.stdout);
+    expect(absent).toEqual([]);
+    expect(ok).toEqual([]);
+    expect(wrong.length).toBe(1);
+    expect(empty[0]).toMatch(/not set/);
   });
 
   it('a labs org row binds only to the opp orgs, or to ACE-owned winner org from the installed .env', () => {
@@ -417,5 +471,125 @@ describe('optional labs track writes (spec 2026-10-18 § I)', () => {
     const r = guard(CREATE_ORG, { name: 'ACE Test LLO (Synthetic)' });
     expect(r.code).toBe(2);
     expect(r.stderr).toContain('NEW Connect org');
+  });
+});
+
+describe('bin/ace-bind --add-program (ace-web#914)', () => {
+  // A fake ace-web tenancy endpoint. ace-bind is spawned ASYNC so this
+  // in-process server can answer it.
+  type Call = { method: string; url: string; body: unknown; auth: string | undefined };
+  let server: http.Server;
+  let base: string;
+  let calls: Call[];
+  let tenancy: Record<string, unknown>;
+  let patchStatus: number;
+
+  beforeEach(async () => {
+    calls = [];
+    tenancy = { ...SPARK };
+    patchStatus = 200;
+    server = http.createServer((req, res) => {
+      let raw = '';
+      req.on('data', (c) => (raw += c));
+      req.on('end', () => {
+        const body = raw ? JSON.parse(raw) : undefined;
+        calls.push({ method: req.method ?? '', url: req.url ?? '', body, auth: req.headers.authorization });
+        if (req.method === 'PATCH') {
+          if (patchStatus !== 200) {
+            res.writeHead(patchStatus, { 'Content-Type': 'application/problem+json' });
+            res.end('{}');
+            return;
+          }
+          tenancy = { ...tenancy, ...(body as object) };
+        }
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ slug: 'spark-facilitator', tenancy, drive_root_folder_id: 'r', source: 'opp' }));
+      });
+    });
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+    base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+  });
+  afterEach(async () => {
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  });
+
+  function addProgram(args: string[], session: string | null = SESSION) {
+    const extra: Record<string, string> = { ACE_WEB_BASE_URL: base, ACE_WEB_PAT_TOKEN: 'pat-test' };
+    if (session) extra.CLAUDE_CODE_SESSION_ID = session;
+    return new Promise<{ code: number | null; stdout: string; stderr: string }>((resolve) => {
+      const child = spawn(BIND, ['--add-program', ...args], { env: env(extra) });
+      let stdout = '';
+      let stderr = '';
+      child.stdout.on('data', (c) => (stdout += c));
+      child.stderr.on('data', (c) => (stderr += c));
+      child.on('close', (code) => resolve({ code, stdout, stderr }));
+    });
+  }
+
+  it('PATCHes the union into the bound opp tenancy and refreshes the binding, keeping its mode', async () => {
+    spawnSync(BIND, ['spark/spark-facilitator', '--warn', '--tenancy-json', JSON.stringify({ ...SPARK, connect_program_ids: [100] })], {
+      env: env({ CLAUDE_CODE_SESSION_ID: SESSION }),
+      encoding: 'utf8',
+    });
+    tenancy = { ...SPARK, connect_program_ids: [100] };
+    const r = await addProgram(['308']);
+    expect(r.code, r.stderr).toBe(0);
+    const patch = calls.find((c) => c.method === 'PATCH');
+    expect(patch?.url).toBe('/api/w/spark/opps/spark-facilitator/tenancy');
+    expect(patch?.body).toEqual({ connect_program_ids: [100, 308] });
+    expect(patch?.auth).toBe('Bearer pat-test');
+    const bound = JSON.parse(fs.readFileSync(path.join(bindDir, `${SESSION}.json`), 'utf8'));
+    expect(bound.tenancy.connect_program_ids).toEqual([100, 308]);
+    expect(bound.mode).toBe('warn');
+    // ...and the guard now admits the new program.
+    expect(guard('mcp__connect_labs__supply_chain_tender_create', { program_id: 308, data: {} }).code).toBe(0);
+  });
+
+  it('is a no-op PATCH-wise when the program is already there', async () => {
+    tenancy = { ...SPARK, connect_program_ids: [308] };
+    const r = await addProgram(['308', 'spark/spark-facilitator'], null);
+    expect(r.code, r.stderr).toBe(0);
+    expect(calls.some((c) => c.method === 'PATCH')).toBe(false);
+  });
+
+  it('takes an explicit target and leaves a binding to a DIFFERENT opp alone', async () => {
+    bind(SPARK, 'spark/other-opp');
+    const r = await addProgram(['308', 'spark/spark-facilitator']);
+    expect(r.code, r.stderr).toBe(0);
+    const bound = JSON.parse(fs.readFileSync(path.join(bindDir, `${SESSION}.json`), 'utf8'));
+    expect(bound.opp).toBe('other-opp');
+    expect(bound.tenancy.connect_program_ids).toBeUndefined();
+  });
+
+  it('says plainly when ace-web does not carry the field yet (pre-deploy 400)', async () => {
+    patchStatus = 400;
+    const r = await addProgram(['308', 'spark/spark-facilitator'], null);
+    expect(r.code).not.toBe(0);
+    expect(r.stderr).toContain('ace-web#914');
+  });
+
+  it('names the owner requirement on a 403', async () => {
+    patchStatus = 403;
+    const r = await addProgram(['308', 'spark/spark-facilitator'], null);
+    expect(r.code).not.toBe(0);
+    expect(r.stderr).toMatch(/owner/);
+  });
+
+  it.each(['0', '-3', 'abc', 'uuid-7c1e'])('refuses a non-integer program id %s without calling ace-web', async (bad) => {
+    const r = await addProgram([bad, 'spark/spark-facilitator'], null);
+    expect(r.code).not.toBe(0);
+    expect(calls).toEqual([]);
+  });
+
+  it('needs a target when the session is unbound', async () => {
+    const r = await addProgram(['308']);
+    expect(r.code).not.toBe(0);
+    expect(r.stderr).toContain('not bound');
+  });
+
+  it('binding an opp with no programs prints how to add one', () => {
+    const r = bind(SPARK);
+    expect(r.stdout).toContain('--add-program');
+    expect(bind({ ...SPARK, connect_program_ids: [308] }).stdout).not.toContain('--add-program');
   });
 });

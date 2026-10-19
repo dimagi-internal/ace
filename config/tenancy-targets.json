@@ -54,15 +54,13 @@
         "org_slug": ["connect_pm_org"],
         "program_id": ["connect_program_ids"]
       },
-      "pending_fields": ["connect_program_ids"],
-      "_args_doc": "A call is owned by the opp's PM org (ace-web tenancy connect_pm_org). program_id is mapped to connect_program_ids, a tenancy field ace-web does not carry yet: the check is INERT until the tenancy record has that key (pending_fields), then it applies. award_response / update_solicitation / create_response name the winner by its Connect org INTEGER id (connect-labs #2605), which no tenancy field holds, so they are not slug-checked here; the call itself is owned by the PM org that created_solicitation was checked against."
+      "_args_doc": "A call is owned by the opp's PM org (ace-web tenancy connect_pm_org). program_id must be one of the opp's Connect programs (tenancy connect_program_ids, ace-web#914); an opp whose tenancy has no programs refuses as not set up (logged only in warn mode) — bin/ace-bind --add-program fills it when ACE creates the program. award_response / update_solicitation / create_response name the winner by its Connect org INTEGER id (connect-labs #2605), which no tenancy field holds, so they are not slug-checked here; the call itself is owned by the PM org that created_solicitation was checked against."
     },
     {
       "name": "labs-create-response",
       "tool_pattern": "(?:^|__)create_response$",
       "args": {"program_id": ["connect_program_ids"]},
-      "pending_fields": ["connect_program_ids"],
-      "_args_doc": "create_response's program_id is 'accepted for compatibility; not needed' upstream, so it is usually absent (absent = unchecked). When given, it must be one of the opp's programs once ace-web ships connect_program_ids; inert until then."
+      "_args_doc": "create_response's program_id is 'accepted for compatibility; not needed' upstream, so it is usually absent (absent = unchecked). When given, it must be one of the opp's programs (tenancy connect_program_ids)."
     },
     {
       "name": "labs-supply-chain-org-upsert",
@@ -72,15 +70,13 @@
         "program_id": ["connect_program_ids"]
       },
       "operator_values": {"data.connect_organization_slug": ["{plugin_env:ACE_CONNECT_LLO_ORG}"]},
-      "pending_fields": ["connect_program_ids"],
       "_args_doc": "A labs org row bound to a Connect org must bind to one of the opp's orgs, or to ACE's own synthetic winner org (ACE_CONNECT_LLO_ORG from the installed .env — an ACE-owned org, never a partner's, so admitting it widens no partner's view; unset admits nothing). Listed BEFORE labs-supply-chain-writes so this rule, not the generic one, matches."
     },
     {
       "name": "labs-supply-chain-writes",
       "tool_pattern": "(?:^|__)supply_chain_\\w*?_(?:upsert|create|record|update|delete|merge|dispatch|receive|confirm|dispute|correct|void|close|open|invite_org|uninvite_org|set_duty_terms|set_import_estimates|decide|request|resolve|reply_sent|issue|revoke|pin|unpin|add|remove|attach|set|log|market_invite|mark_reviewed)$",
       "args": {"program_id": ["connect_program_ids"]},
-      "pending_fields": ["connect_program_ids"],
-      "_args_doc": "Every supply-chain write is scoped by program_id, and labs keeps no delete for tenders, quotes, awards, contracts, shipments, receipts, invoices or payments (spec 2026-10-18 § F6), so a write into the wrong program cannot be cleaned up — this is the rule that should eventually guard it. ace-web's tenancy has no program field yet; connect_program_ids is PENDING (dimagi-internal/ace-web#914), so the rule is inert until ace-web ships it, then applies. The write/read split is pinned against the full live tool list in test/hooks/tenancy-guard.test.ts. programme_runner_set's org_id is a labs org pk, which no tenancy field holds; only its program_id is checked."
+      "_args_doc": "Every supply-chain write is scoped by program_id, and labs keeps no delete for tenders, quotes, awards, contracts, shipments, receipts, invoices or payments (spec 2026-10-18 § F6), so a write into the wrong program cannot be cleaned up — this is the rule that guards it, against tenancy connect_program_ids (dimagi-internal/ace-web#914). Absent or empty refuses as not set up, like any other tenancy field (warn mode only logs); connect-program-setup adds the opp's program with bin/ace-bind --add-program, and ace-web's backfill_connect_program_ids fills existing opps from opp.yaml. The write/read split is pinned against the full live tool list in test/hooks/tenancy-guard.test.ts. programme_runner_set's org_id is a labs org pk, which no tenancy field holds; only its program_id is checked."
     },
     {
       "name": "ocs-team-writes",
