@@ -262,6 +262,11 @@ export function checkRegistryAuthoring(reg: RegistryDocs, opts: AuthoringOptions
       if (meta.unit === '%' && bands.every((b) => isNum(b) && b > 0 && b <= 1)) {
         add('bands', 'bands written as fractions for a % indicator — every cell grades green (labs "Everything green" symptom); write 80, not 0.8', id);
       }
+      if ((meta.direction === 'higher' || meta.direction === 'lower') && bands.filter(isNum).length < 2) {
+        // ace#3244: labs grades `x >= bands[0] else x >= bands[1]` (connect_labs/semantic/snapshot.py),
+        // so a one-element list validates and then raises IndexError for the whole report.
+        add('bands', '`bands` needs two numbers — labs grades `x >= bands[0] else x >= bands[1]`, so a one-element list raises IndexError in the snapshot builder (connect_labs/semantic/snapshot.py) and kills every saved run; when the PDD states one number write `[target, target]` (no yellow band), never invent a second threshold', id);
+      }
       if (!isNum(meta.target) && (meta.direction === 'higher' || meta.direction === 'lower')) {
         // Labs defaults the target to bands[0], which prints a goal the PDD never set.
         add('target', 'bands without a declared `target` — labs prints bands[0] as the target; either cite the PDD target or drop the bands', id, 'warn');

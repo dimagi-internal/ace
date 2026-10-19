@@ -139,7 +139,7 @@ Per indicator `meta`:
 | `plain` | ONE sentence a funder reads in a tooltip |
 | `category` | from the PDD's own grouping (Delivery / Progression / Participation / Data quality…); every category listed in `display.categories` |
 | `direction` | `higher` / `lower` / `none` as the PDD implies |
-| `bands` + `target` | **only when the PDD states a target**, in the bands' units (`80`, not `0.8`), `target` = the PDD number, `bands[0]` = the target. No target in the PDD → no bands, no target (labs would print `bands[0]` as a goal nobody set) and say so in `display.targets_note` |
+| `bands` + `target` | **only when the PDD states a target**, in the bands' units (`80`, not `0.8`), `target` = the PDD number, `bands[0]` = the target. `bands` needs two numbers (labs reads `bands[1]` for any value below the target, so a one-element list crashes every snapshot — ace#3244); a single PDD target is written `[target, target]`. No target in the PDD → no bands, no target (labs would print `bands[0]` as a goal nobody set) and say so in `display.targets_note` |
 | `scope_note` | `PDD §<section> <metric id> — <the target quote, if any>` — the citation QA resolves against the PDD's headings |
 | `headline` | positions 1..5 for the PDD's primary metrics first, then the review signal the story turns on |
 | `flw_applicable`, `benchmarkable` | true for rates that mean something per worker / across partners |
