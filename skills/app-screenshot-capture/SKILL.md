@@ -1693,6 +1693,33 @@ videos:
 
 Omit the block entirely when no videos were captured.
 
+**And a `drive_folders:` block naming the folders this skill writes into
+(ace#3238).** The illustrated training guides pass these ids straight to
+`scripts/embed-doc-screenshots.ts --screenshots`; without them every author has
+to find the folders by hand (connect-fi/20261018-1440 Phase 6). Since output
+previews contract v1 there is no single "screenshots folder" — passing frames
+are split per app, forensics sit elsewhere — so the block names each one:
+
+```yaml
+drive_folders:
+  previews_learn: <folderId of 3-commcare/previews/apps-learn/>      # § Step 4.9
+  previews_deliver: <folderId of 3-commcare/previews/apps-deliver/>  # § Step 4.9
+  forensics: <folderId of 6-qa-and-training/screenshots/>            # ui-dumps, *-FAILURE.*
+```
+
+Take each id from the `drive_create_folder` (find-or-create) call that
+resolved it — never a path you typed. Record BOTH previews folders even on a
+one-leg re-run: find-or-create the other leg's folder (do NOT clear it — the
+§ Step 4.9 clear rule is per leg and still holds) so a Deliver-only re-run
+still hands the guides the Learn frames it kept. The slug follows the run's
+output key (`previewsFolderPath`), so a drifted key (`apps-learn-app`) is still
+recorded under `previews_learn` / `previews_deliver` — the key names the app,
+the id names the folder. The cross-opp Connect pool
+(`ACE/_common/connect-screenshots/<v>/`) is NOT this skill's output and is not
+recorded here; the guides resolve it themselves. *Enforced:*
+`test/skills/capture-manifest-drive-folders.test.ts` — every
+`drive_folders.<key>` a consumer names must be a key this block declares.
+
 ### Step 6.2: Write each app's `_previews.yaml` — the index ace-web reads
 
 After the manifest is written and read back, write ONE index per app into the
