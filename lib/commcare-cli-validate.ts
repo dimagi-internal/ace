@@ -2133,6 +2133,21 @@ export function findUnreachableCaseLists(suiteXml: string): UnreachableCaseList[
     for (const ref of entry.matchAll(/\b(?:detail-select|detail-confirm)\s*=\s*"([^"]+)"/g)) {
       detailIds.add(ref[1]);
     }
+    const explicitDetailRef = detailIds.size > 0;
+    const caseType = deriveEntryCaseType(entry);
+
+    // A CASELESS survey entry (every ACE Learn app) is not a finding
+    // (dimagi-internal/ace#3167). HQ's suite generator emits a default
+    // `mN_case_short` detail (one `case_name` column) for EVERY module, survey
+    // modules with no case type included, so the mN_case_* convention below
+    // would otherwise name it. With no case type, no case datum and no
+    // explicit detail reference, there is no case list to be unreachable.
+    // Observed: bednet-check-2-visit/20261018-0554 Learn build dd88423c and
+    // connect-fi/20261018-1440 Learn build 185da9fc, both `caseTypes: []`.
+    const hasCaseDatum = [...entry.matchAll(/<datum\b[^>]*\bid="([^"]+)"/g)].some((d) =>
+      /^case_id/.test(d[1]),
+    );
+    if (!caseType && !hasCaseDatum && !explicitDetailRef) continue;
     // A module's details are also discoverable by the mN_case_* convention when
     // the entry references them only indirectly.
     const moduleIdx = commandId.match(/^m(\d+)/)?.[1];
@@ -2146,7 +2161,6 @@ export function findUnreachableCaseLists(suiteXml: string): UnreachableCaseList[
 
     if (detailIds.size === 0) continue;
 
-    const caseType = deriveEntryCaseType(entry);
     const reachableVia = caseType ? reachable.get(caseType) : undefined;
     out.push({
       commandId,

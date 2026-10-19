@@ -203,6 +203,73 @@ describe('findUnreachableCaseLists — app-wide severity (ace#1281)', () => {
   });
 });
 
+// ---------------------------------------------------------------------------
+// dimagi-internal/ace#3167 — a CASELESS survey app (every ACE Learn app) was
+// graded as case-list-unreachable BLOCKERs. HQ's suite generator emits a
+// default mN_case_short detail (one case_name column, cchq.case title) for
+// every module, survey modules with no case type included. Observed on
+// bednet-check-2-visit/20261018-0554 Learn build dd88423c (v6) and
+// connect-fi/20261018-1440 Learn build 185da9fc (v7): Nova caseTypes: [],
+// zero case_type/casedb in suite.xml, no <datum> on any entry.
+// ---------------------------------------------------------------------------
+
+/** Shape of the caseless Learn suite.xml: HQ default details, datum-free entries. */
+const CASELESS_LEARN_SUITE = `
+<suite>
+  <detail id="m0_case_short">
+    <title><text><locale id="cchq.case"/></text></title>
+    <field><header><text><locale id="m0.case_short.case_name_1.header"/></text></header>
+      <template><text><xpath function="case_name"/></text></template></field>
+  </detail>
+  <detail id="m1_case_short">
+    <title><text><locale id="cchq.case"/></text></title>
+    <field><header><text><locale id="m1.case_short.case_name_1.header"/></text></header>
+      <template><text><xpath function="case_name"/></text></template></field>
+  </detail>
+  <entry>
+    <form>http://openrosa.org/formdesigner/learn0</form>
+    <command id="m0-f0"><text><locale id="forms.m0f0"/></text></command>
+  </entry>
+  <entry>
+    <form>http://openrosa.org/formdesigner/learn1</form>
+    <command id="m1-f0"><text><locale id="forms.m1f0"/></text></command>
+  </entry>
+  <entry>
+    <form>http://openrosa.org/formdesigner/learn2</form>
+    <command id="m1-f1"><text><locale id="forms.m1f1"/></text></command>
+  </entry>
+</suite>`;
+
+describe('findUnreachableCaseLists — caseless survey modules (ace#3167)', () => {
+  it('a caseless Learn app with HQ default details yields NO finding', () => {
+    expect(findUnreachableCaseLists(CASELESS_LEARN_SUITE)).toEqual([]);
+  });
+
+  it('POSITIVE CONTROL: a dead registration list beside caseless modules still BLOCKS', () => {
+    const mixed =
+      CASELESS_LEARN_SUITE.replace('</suite>', '') +
+      REGISTRATION_ONLY_SUITE.replace('<suite>', '').replace(/m0/g, 'm2');
+    const out = findUnreachableCaseLists(mixed);
+    expect(out.map((o) => o.commandId)).toEqual(['m2-f0']);
+    expect(out[0].severity).toBe('blocker');
+    expect(out[0].caseType).toBe('household');
+  });
+
+  it('POSITIVE CONTROL: an explicit detail reference on a datum-free entry is still a finding', () => {
+    // No case type resolvable, but the entry itself names a case-list detail,
+    // so it is configured list, not an HQ default.
+    const suite = `
+      <suite>
+        <detail id="m0_case_short"/>
+        <entry>
+          <command id="m0-f0"/>
+          <instance id="x" detail-select="m0_case_short"/>
+        </entry>
+      </suite>`;
+    expect(findUnreachableCaseLists(suite)).toHaveLength(1);
+  });
+});
+
 describe('findReachableCaseTypes', () => {
   it('maps each selectable case type to the command that puts it on screen', () => {
     const map = findReachableCaseTypes(SPARK_FACILITATOR_SUITE);
