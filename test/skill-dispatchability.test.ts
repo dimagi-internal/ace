@@ -111,56 +111,133 @@ describe('skill dispatchability', () => {
   });
 
   /**
-   * The budget half.
+   * The budget half — two classes, two rules.
    *
-   * Unflagging a skill puts its `description:` into the routing index of every
-   * session in every repo with ACE installed. The 2026-05-06 audit drove the
-   * budget to ~zero by flagging all 54 skills; making the pipeline dispatchable
-   * necessarily spends some of that back, so the remaining lever is description
-   * length. The audit's own discipline was ≤140 chars.
+   * Every dispatchable skill's `description:` sits in the skill listing of every
+   * session in every repo with ACE installed. Claude Code caps that listing itself:
+   * 1% of the model's context window, shared by ALL installed plugins; on overflow
+   * it keeps every skill NAME and drops descriptions starting with the least-invoked
+   * skills (https://code.claude.com/docs/en/skills § "Skill descriptions are cut
+   * short", checked 2026-10-18). So a description is worth its chars only when the
+   * skill must be FOUND from what a person asks for.
    *
-   * This is a ratchet, not a style rule: it fails when the CATALOG TOTAL regresses,
-   * so unflagging more skills forces a compensating trim rather than silently
-   * doubling every session's context. Raise CATALOG_BUDGET_CHARS only with a
-   * measured reason — and say what you measured.
+   * - **Internal steps** (description starts with `Internal`) are dispatched by exact
+   *   name from an agent doc, command or turn; a description buys them nothing. Each
+   *   is held to a one-line per-entry cap and none count against the shared budget.
+   * - **Discoverable skills** (everything else dispatchable) must be routed to by
+   *   intent ("change the live app", "extend the solicitation"). They share
+   *   DISCOVERABLE_BUDGET_CHARS, which protects ACE's share of the harness listing
+   *   for exactly the skills that need it.
+   *
+   * Hiding a skill with `disable-model-invocation: true` is NOT a third option for
+   * anything ACE dispatches — it blocks Skill() by name (ace#1203, test above).
+   *
+   * Chars are measured on the whitespace-normalized description (what the listing
+   * shows) plus the skill name.
    */
-  // 27,000 → 20,000 (canopy#851, 2026-10-09): internal steps got user-invocable: false
-  // and one-line `Internal … step —` descriptions; measured catalog 26,429 → 19,371.
-  // 20,000 → 21,650 (2026-10-09, same day): standalone-capable skills un-hidden and
-  // re-described as standalone capabilities (skills used outside /ace:run); measured
-  // 19,603 (main at the time) → 20,610, limit = measured + ~5% headroom.
-  const CATALOG_BUDGET_CHARS = 21_650;
+  // Measured 2026-10-18 (this PR): before the split one 21,650 budget covered both
+  // classes (main measured 21,358 across 165 skills: 15 internal = 1,873, 150 other =
+  // 19,485). After converting 50 `Pipeline-only:` skills to internal lines and
+  // restoring the discoverable descriptions trimmed to fit: 65 internal = 6,265
+  // (longest 135, synthetic-walkthrough-spec), 100 discoverable = 15,944.
+  // Cap = longest + headroom; budget = measured + ~10%. Raise either only with a
+  // measured reason, and say what you measured.
+  const INTERNAL_ENTRY_CAP_CHARS = 140;
+  const DISCOVERABLE_BUDGET_CHARS = 17_550;
 
-  it('the dispatchable catalog stays inside its char budget', () => {
-    const entries: { skill: string; chars: number }[] = [];
+  /**
+   * `Pipeline-only:` skills (skills/README.md § Mechanics vs pipeline) that keep a
+   * discoverable description anyway, each with the reason. Keep this list small.
+   */
+  const PIPELINE_ONLY_DISCOVERABLE: Record<string, string> = {
+    'fork-run':
+      'operator tool: skills/common-screenshot-capture tells a person to run /ace:fork-run, and people ask to fork a run',
+    'share-run-access':
+      'backs the human /ace:share-run-access command; reached from "let the thread review this run" requests',
+  };
+
+  type Entry = { skill: string; chars: number; internal: boolean; pipelineOnly: boolean };
+
+  function catalog(): Entry[] {
+    const entries: Entry[] = [];
     for (const skill of listSkills()) {
       if (isFlagged(skill)) continue; // flagged skills cost nothing — not in the index
       const src = fs.readFileSync(path.join(REPO_ROOT, 'skills', skill, 'SKILL.md'), 'utf-8');
       const fm = /^---\r?\n([\s\S]*?)\r?\n---/.exec(src);
       if (!fm) continue;
       const d = /^description:\s*(?:>[-]?\s*\r?\n((?:[ \t]+.*\r?\n?)+)|(.*))/m.exec(fm[1]);
-      const desc = ((d?.[1] ?? d?.[2] ?? '') as string).trim();
-      entries.push({ skill, chars: desc.length + skill.length });
+      const desc = ((d?.[1] ?? d?.[2] ?? '') as string).replace(/\s+/g, ' ').trim();
+      entries.push({
+        skill,
+        chars: desc.length + skill.length,
+        internal: desc.startsWith('Internal'),
+        pipelineOnly: src.includes('Pipeline-only:'),
+      });
     }
-    const total = entries.reduce((a, e) => a + e.chars, 0);
-    const worst = [...entries].sort((a, b) => b.chars - a.chars).slice(0, 8);
+    return entries;
+  }
 
+  it('each internal-step entry stays a one-liner', () => {
+    const over = catalog().filter((e) => e.internal && e.chars > INTERNAL_ENTRY_CAP_CHARS);
+    expect(
+      over.map((e) => `  ${e.chars.toString().padStart(4)}  ${e.skill}`),
+      [
+        '',
+        `These internal-step entries (name + description) exceed ${INTERNAL_ENTRY_CAP_CHARS} chars.`,
+        'An internal step is dispatched by exact name, so its description only has to say what',
+        'it does in one short clause: `Internal /ace:run step — <what it does>`.',
+        '',
+      ].join('\n'),
+    ).toEqual([]);
+  });
+
+  it('the discoverable catalog stays inside its char budget', () => {
+    const disc = catalog().filter((e) => !e.internal);
+    const total = disc.reduce((a, e) => a + e.chars, 0);
+    const worst = [...disc].sort((a, b) => b.chars - a.chars).slice(0, 8);
     expect(
       total,
       [
         '',
-        `Dispatchable skill catalog is ${total.toLocaleString()} chars across ${entries.length} skills`,
-        `(~${Math.round(total / 4).toLocaleString()} tokens added to EVERY session, in every repo`,
-        `with ACE installed) — over the ${CATALOG_BUDGET_CHARS.toLocaleString()}-char budget.`,
+        `Discoverable skill catalog is ${total.toLocaleString()} chars across ${disc.length} skills,`,
+        `over the ${DISCOVERABLE_BUDGET_CHARS.toLocaleString()}-char budget.`,
         '',
-        'Trim the longest descriptions (the index holds `description:`, so that field IS',
-        'the budget), or re-flag skills no agent doc actually dispatches. Longest now:',
+        'FIRST: is any of these a pipeline step only ever reached by name from an agent doc,',
+        'command or turn? Convert it to an internal line (`Internal /ace:run step — …`,',
+        '`user-invocable: false`) — that frees its whole description. Only then trim a',
+        'discoverable description, and keep the words a person would actually use. Longest now:',
         ...worst.map((w) => `  ${w.chars.toString().padStart(4)}  ${w.skill}`),
         '',
-        'See skills/README.md § disable-model-invocation → The cost, stated honestly.',
+        'See skills/README.md § description.',
         '',
       ].join('\n'),
-    ).toBeLessThanOrEqual(CATALOG_BUDGET_CHARS);
+    ).toBeLessThanOrEqual(DISCOVERABLE_BUDGET_CHARS);
+  });
+
+  it('a Pipeline-only skill uses the internal-step description form', () => {
+    const offenders = catalog().filter(
+      (e) => e.pipelineOnly && !e.internal && !(e.skill in PIPELINE_ONLY_DISCOVERABLE),
+    );
+    expect(
+      offenders.map((e) => `  ${e.skill}`),
+      [
+        '',
+        'These skills declare `Pipeline-only:` in `## Inputs` but spend discoverable budget on a',
+        'full description. A pipeline-only skill is reached by name, so give it',
+        '`description: Internal /ace:run step — <what it does>` and `user-invocable: false`.',
+        'If it genuinely must be found by intent, add it to PIPELINE_ONLY_DISCOVERABLE with the reason.',
+        '',
+      ].join('\n'),
+    ).toEqual([]);
+  });
+
+  it('the Pipeline-only allowlist names only real, still-discoverable Pipeline-only skills', () => {
+    const byName = new Map(catalog().map((e) => [e.skill, e]));
+    const stale = Object.keys(PIPELINE_ONLY_DISCOVERABLE).filter((s) => {
+      const e = byName.get(s);
+      return !e || !e.pipelineOnly || e.internal;
+    });
+    expect(stale, 'Remove these from PIPELINE_ONLY_DISCOVERABLE — the exemption no longer applies.').toEqual([]);
   });
 
   it('README documents the flag as undispatchable, not catalog-only', () => {

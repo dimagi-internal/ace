@@ -1,8 +1,9 @@
 ---
 name: turn
 description: >
-  ACE's turn-of-work entry point. Use when a human says "do a turn" or "check your inbox" —
-  process what's come in, for runs and program projects alike.
+  ACE's turn-of-work entry point. Use when a human says "do a turn" or "check your inbox": process
+  what has come in, for runs and program projects alike. Wraps /ace:run pipeline runs; does not
+  replace them.
 ---
 
 # Turn — ACE (stub over the fleet-canonical core)

@@ -1,7 +1,9 @@
 ---
 name: feedback-ledger
 description: >
-  Record an expert's feedback verbatim and show where each comment went. Use when ACE will act on a review.
+  Capture a reviewer's feedback verbatim, stamp each change made in response, and render "where did
+  my comment go?". Use when an expert reviews an ACE artifact (gdoc comments, an email, a meeting)
+  and ACE will act on it.
 ---
 
 # Feedback ledger

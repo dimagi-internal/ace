@@ -1,7 +1,7 @@
 ---
 name: simulated-execution
 description: >
-  Run N backdated program weeks with no real LLO: synthetic visits, stock, reviews.
+  Run N backdated weeks of a program with no real LLO: synthetic visits, weekly stock and reviews.
 ---
 
 # Simulated execution

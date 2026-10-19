@@ -1,7 +1,8 @@
 ---
 name: gdoc-email-drafts
 description: >
-  Put draft emails in a Google Doc as email blocks that open as filled-in Gmail drafts. For any Doc of emails a person will send.
+  Put draft emails in a Google Doc as email blocks. A person clicks a block's Gmail icon to open it
+  as a filled-in Gmail draft. Use for any Doc of emails a human will send.
 disable-model-invocation: false
 ---
 

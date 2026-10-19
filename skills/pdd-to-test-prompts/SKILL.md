@@ -1,8 +1,8 @@
 ---
 name: pdd-to-test-prompts
 description: >
-  Write a Q&A test-prompt suite, including adversarial and escalation prompts, for a program's
-  support chatbot. Needs an approved PDD.
+  Internal /ace:run step — Write the chatbot test-prompt suite from the PDD.
+user-invocable: false
 disable-model-invocation: false
 ---
 

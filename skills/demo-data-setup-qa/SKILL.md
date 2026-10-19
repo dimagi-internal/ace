@@ -1,8 +1,8 @@
 ---
 name: demo-data-setup-qa
 description: >
-  Pass/fail check that a demo dataset and dashboard handoff is live and non-blank before a
-  narrative is written over it. Static, no LLM.
+  Internal /ace:run step — Pass/fail check that a demo dataset handoff is live.
+user-invocable: false
 disable-model-invocation: false
 ---
 

@@ -1,8 +1,8 @@
 ---
 name: pdd-to-work-order-eval
 description: >
-  Grade a Work Order for contractual clarity, PDD alignment, and verification and commercial
-  realism.
+  Internal /ace:run step — Grade the Work Order against its PDD.
+user-invocable: false
 disable-model-invocation: false
 ---
 

@@ -1,7 +1,9 @@
 ---
 name: connect-partner-opp-create
 description: >
-  Give a partner org its own opportunity on an existing program. Needs the program and org.
+  Give a partner org (an awarded LLO, or any org joining a live program) its own Connect opportunity
+  on an existing program: invite, accept, fresh app copies, payment units. Needs the program and
+  org.
 ---
 
 # Create a partner opportunity on an existing program

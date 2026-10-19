@@ -1,7 +1,8 @@
 ---
 name: simulated-execution-qa
 description: >
-  Pass/fail check of a simulated N-week run: calendar, weekly runs, no LLO contact.
+  Pass/fail check of a simulated N-week execution: calendar, weekly runs, isolation, no LLO contact.
+  Static.
 disable-model-invocation: false
 ---
 

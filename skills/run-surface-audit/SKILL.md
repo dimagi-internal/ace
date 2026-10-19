@@ -1,8 +1,8 @@
 ---
 name: run-surface-audit
 description: >
-  Audit a run's public run-summary page anonymously (broken, misleading,
-  improvement). Use before handing anyone a run-summary URL.
+  Internal /ace:run step — Audit a run's public summary page before it is shared.
+user-invocable: false
 ---
 
 # Run-surface audit — what an outsider actually gets

@@ -1,7 +1,8 @@
 ---
 name: training-llo-guide-eval
 description: >
-  Grade an LLO guide for operational completeness, action orientation, and screenshot grounding.
+  Internal /ace:run step — Grade the LLO guide.
+user-invocable: false
 disable-model-invocation: false
 ---
 

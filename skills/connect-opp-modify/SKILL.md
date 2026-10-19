@@ -1,7 +1,9 @@
 ---
 name: connect-opp-modify
 description: >
-  Change a live opportunity's flags, payment units, dates, budget or pass mark, with read-back. Needs the opp id.
+  Change a live Connect opportunity: verification flags, payment units, dates, budget, visit caps or
+  the Learn pass mark, with a before-read and read-back. Use when asked to extend or reconfigure a
+  live opp. Needs the opp id.
 ---
 
 # Modify a live Connect opportunity

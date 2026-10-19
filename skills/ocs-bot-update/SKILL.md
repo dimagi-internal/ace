@@ -1,7 +1,8 @@
 ---
 name: ocs-bot-update
 description: >
-  Change a live OCS bot's prompt, tools or pipeline, then republish and smoke-test. Needs the bot id.
+  Change a live OCS chatbot's system prompt, tools or pipeline, then republish and smoke-test it.
+  Use when someone asks to fix what a live bot says or how it behaves. Needs the bot id.
 ---
 
 # Update an OCS chatbot

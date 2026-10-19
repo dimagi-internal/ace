@@ -1,8 +1,8 @@
 ---
 name: connect-opp-setup-eval
 description: >
-  Grade a Connect opportunity's configuration against its PDD: verification flags, payment units,
-  deliver-unit wiring, active window.
+  Internal /ace:run step — Grade the run's Connect opportunity setup against its PDD.
+user-invocable: false
 disable-model-invocation: false
 ---
 

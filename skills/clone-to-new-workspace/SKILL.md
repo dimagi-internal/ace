@@ -1,7 +1,9 @@
 ---
 name: clone-to-new-workspace
 description: >
-  Copy a completed run into another ace-web workspace, rebuilding its assets there, for review without exposing other runs. No invites.
+  Copy a completed ACE run into another ace-web workspace and rebuild its assets in that workspace's
+  own HQ space and Connect orgs, so outside reviewers see it without other runs. No invites (that is
+  release). Use before an external review.
 disable-model-invocation: false
 ---
 

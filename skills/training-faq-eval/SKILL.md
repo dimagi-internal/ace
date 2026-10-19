@@ -1,7 +1,8 @@
 ---
 name: training-faq-eval
 description: >
-  Grade a training FAQ for coverage, accuracy against the PDD and apps, and scannability.
+  Internal /ace:run step — Grade the training FAQ.
+user-invocable: false
 disable-model-invocation: false
 ---
 

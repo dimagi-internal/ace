@@ -1,8 +1,7 @@
 ---
 name: eval-calibration
 description: >
-  Internal /ace:run step — Methodology reference for calibrating per-skill -eval rubrics: ground-
-  truth catalogues, variance, detection rate.
+  Internal /ace:run step — Method reference for calibrating -eval rubrics against ground truth.
 user-invocable: false
 disable-model-invocation: false
 ---

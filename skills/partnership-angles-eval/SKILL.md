@@ -1,7 +1,8 @@
 ---
 name: partnership-angles-eval
 description: >
-  Grade partnership pitch angles for grounding, distinctness, capability fit, and persuasiveness.
+  Internal /ace:partnership-video step — Grade the pitch angles.
+user-invocable: false
 disable-model-invocation: false
 ---
 

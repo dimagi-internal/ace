@@ -1,8 +1,8 @@
 ---
 name: partnership-microdemo
 description: >
-  Source a short proof clip for a partnership angle: reuse existing Connect media or build a light
-  tailored mock, with provenance.
+  Internal /ace:partnership-video step — Source a short proof clip for the angle.
+user-invocable: false
 disable-model-invocation: false
 ---
 

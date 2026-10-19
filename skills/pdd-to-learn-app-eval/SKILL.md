@@ -1,8 +1,8 @@
 ---
 name: pdd-to-learn-app-eval
 description: >
-  Grade a Nova-built Learn app against its PDD: modules, order, assessment-score wiring, content
-  coverage.
+  Internal /ace:run step — Grade the Nova-built Learn app against its PDD.
+user-invocable: false
 disable-model-invocation: false
 ---
 

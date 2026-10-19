@@ -1,8 +1,8 @@
 ---
 name: partnership-video-build
 description: >
-  Render a partnership pitch video from the ace-web template, given prospect research and a chosen
-  angle; polls until the render finishes.
+  Internal /ace:partnership-video step — Render the pitch video.
+user-invocable: false
 disable-model-invocation: false
 ---
 

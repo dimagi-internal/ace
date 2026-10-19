@@ -1,7 +1,7 @@
 ---
 name: simulated-weekly-review
 description: >
-  Write one simulated week's program review from labs' saved run and stock.
+  Write one week's program review from labs' saved run and stock reads: progress, supply, actions.
 ---
 
 # Simulated weekly review

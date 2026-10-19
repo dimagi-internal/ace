@@ -1,7 +1,8 @@
 ---
 name: flw-data-review
 description: >
-  Analyze frontline-worker submissions on a live opportunity for quality issues, trends and fixes.
+  Analyze frontline-worker submissions on a live opportunity for quality issues, trends, and
+  improvement opportunities. Needs a Connect opportunity with visits.
 disable-model-invocation: false
 ---
 

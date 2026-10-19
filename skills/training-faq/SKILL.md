@@ -1,8 +1,8 @@
 ---
 name: training-faq
 description: >
-  Write a FAQ of the questions LLOs and frontline workers will ask, with answers grounded in the
-  PDD and apps. Needs an approved PDD.
+  Internal /ace:run step — Write the LLO/FLW training FAQ from the PDD and apps.
+user-invocable: false
 disable-model-invocation: false
 ---
 

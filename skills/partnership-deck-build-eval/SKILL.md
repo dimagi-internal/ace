@@ -1,7 +1,8 @@
 ---
 name: partnership-deck-build-eval
 description: >
-  Grade a partnership pitch deck for arc, grounding, completeness, and visual polish.
+  Internal /ace:partnership-video step — Grade the pitch deck.
+user-invocable: false
 disable-model-invocation: false
 ---
 

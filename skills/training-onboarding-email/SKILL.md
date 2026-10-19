@@ -1,8 +1,8 @@
 ---
 name: training-onboarding-email
 description: >
-  Draft the LLO onboarding email body for a program, ready to personalize per LLO. Needs the PDD
-  and training materials.
+  Internal /ace:run step — Draft the LLO onboarding email body.
+user-invocable: false
 disable-model-invocation: false
 ---
 

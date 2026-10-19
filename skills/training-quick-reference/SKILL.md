@@ -1,8 +1,8 @@
 ---
 name: training-quick-reference
 description: >
-  Write a one-page printable pocket card for frontline workers: key steps, daily caps, pay per
-  visit, support contact. Needs the PDD.
+  Internal /ace:run step — Write the one-page FLW pocket card.
+user-invocable: false
 disable-model-invocation: false
 ---
 

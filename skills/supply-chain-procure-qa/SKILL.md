@@ -1,7 +1,8 @@
 ---
 name: supply-chain-procure-qa
 description: >
-  Pass/fail labs read-back of a tender: one award and a matching contract per line. Static.
+  Pass/fail check, from a fresh labs read, that a tender ended in one award and one matching
+  contract per line.
 disable-model-invocation: false
 ---
 

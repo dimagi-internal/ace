@@ -1,7 +1,8 @@
 ---
 name: partnership-microdemo-eval
 description: >
-  Grade partnership micro-demo clips for fidelity, angle relevance, and honest provenance.
+  Internal /ace:partnership-video step — Grade the micro-demo clips.
+user-invocable: false
 disable-model-invocation: false
 ---
 

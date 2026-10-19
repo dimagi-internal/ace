@@ -1,7 +1,9 @@
 ---
 name: app-case-sharing
 description: >
-  Build location-based case sharing into an app (a supervisor sees their team's cases, other areas none). Nova + HQ setup.
+  Design and build location-based case sharing into an app, so a supervisor sees their team's cases
+  and other areas see none. Use when a request mentions case sharing or a supervisor seeing their
+  team. Covers Nova authoring, its proof, and HQ setup.
 disable-model-invocation: false
 ---
 

@@ -1,8 +1,8 @@
 ---
 name: training-flw-guide
 description: >
-  Write a step-by-step frontline-worker guide to a program's Learn and Deliver apps. Needs the PDD
-  and built apps; screenshots help.
+  Internal /ace:run step — Write the step-by-step FLW guide to the apps.
+user-invocable: false
 disable-model-invocation: false
 ---
 

@@ -1,7 +1,8 @@
 ---
 name: semantic-registry-author
 description: >
-  Author a labs semantic registry (entity, indicators, nouns) from a PDD or indicator spec.
+  Author a labs semantic registry from a PDD: the entity, one indicator per PDD metric, and the
+  program's nouns. Needs a PDD or indicator spec.
 disable-model-invocation: false
 ---
 

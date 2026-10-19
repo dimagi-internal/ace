@@ -1,8 +1,8 @@
 ---
 name: pdd-to-work-order-qa
 description: >
-  Pass/fail structural check of a Work Order: sections, decision rows, payment schedule, leftover
-  scaffolding.
+  Internal /ace:run step — Structural check of the Work Order.
+user-invocable: false
 disable-model-invocation: false
 ---
 

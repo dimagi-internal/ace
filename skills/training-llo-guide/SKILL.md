@@ -1,8 +1,8 @@
 ---
 name: training-llo-guide
 description: >
-  Write the LLO operations guide for overseeing frontline-worker deployment: check-ins, daily
-  caps, escalation. Needs the PDD and built apps.
+  Internal /ace:run step — Write the LLO operations guide.
+user-invocable: false
 disable-model-invocation: false
 ---
 

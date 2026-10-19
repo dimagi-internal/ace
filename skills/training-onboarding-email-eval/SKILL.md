@@ -1,7 +1,8 @@
 ---
 name: training-onboarding-email-eval
 description: >
-  Grade an LLO onboarding email draft for warmth, clarity, and call to action.
+  Internal /ace:run step — Grade the LLO onboarding email draft.
+user-invocable: false
 disable-model-invocation: false
 ---
 

@@ -84,7 +84,7 @@ const BASELINE: Record<string, number> = {
   'skills/connect-opp-setup/SKILL.md': 4,
   'skills/app-hq-settings/SKILL.md': 3,
   'skills/pdd-to-learn-app/SKILL.md': 3,
-  'skills/README.md': 3,
+  'skills/README.md': 2,
   'skills/pdd-to-deliver-app/SKILL.md': 2,
   // skills/_app-component-library.md 1 -> 0 on 2026-09-28: the ace#1119 bare-id
   // claim now cites its live observation (voidcraft-labs/commcare-nova#693).

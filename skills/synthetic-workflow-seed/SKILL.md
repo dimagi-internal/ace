@@ -1,7 +1,8 @@
 ---
 name: synthetic-workflow-seed
 description: >
-  Set up labs LLO weekly-review and program-admin audit workflows from the best-fit template, wired to a dataset's KPIs.
+  Set up labs LLO weekly-review and program-admin audit workflows from the best-fit template, wired
+  to a dataset's KPIs. Needs a synthetic manifest.
 disable-model-invocation: false
 ---
 

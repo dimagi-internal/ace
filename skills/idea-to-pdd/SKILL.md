@@ -1,7 +1,8 @@
 ---
 name: idea-to-pdd
 description: >
-  Develop a Connect program design doc (PDD) from source material, stress-tested until approved.
+  Internal /ace:run step — Develop and stress-test the run's PDD from source material.
+user-invocable: false
 disable-model-invocation: false
 ---
 

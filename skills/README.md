@@ -37,11 +37,28 @@ Must match the directory name exactly.
 
 ### `description` (required, ≤250 chars, target ~150)
 
-The description appears in the harness skill catalog at session start —
-ACE plus other plugins competes for an aggregate budget around 8K-16K
-chars across all installed plugins, and Claude Code silently drops
-overflow. Keep descriptions tight. Two clauses: `<verb> <object>. Use
-when <distinguishing condition>.` Don't lead with the skill name.
+The description appears in the harness skill listing at session start.
+That listing is capped at 1% of the model's context window, shared by every
+installed plugin; on overflow Claude Code keeps every skill name and drops
+descriptions, starting with the skills invoked least
+(<https://code.claude.com/docs/en/skills>, § "Skill descriptions are cut
+short", checked 2026-10-18). So a description earns its chars only when the
+skill has to be found from what a person asks for. Two classes:
+
+- **Discoverable** — reached by intent ("change the live app", "extend the
+  solicitation"). Two clauses: `<verb> <object>. Use when <distinguishing
+  condition>.`, with the words a person would actually use. Don't lead with the
+  skill name.
+- **Internal step** — reached only by exact name from an agent doc, command or
+  turn (every skill with a `Pipeline-only:` line, plus turn machinery). One
+  short clause: `Internal /ace:run step — <what it does>` (or `Internal ACE turn
+  step —`), with `user-invocable: false`.
+
+*Enforced:* `test/skill-dispatchability.test.ts` — internal entries have a
+per-entry cap, discoverable skills share a total budget, and a `Pipeline-only:`
+skill must use the internal form unless it is allowlisted with a reason. Over
+budget? Convert a pipeline step to an internal line before trimming a
+discoverable description.
 
 **Banned patterns in `description:`**
 
@@ -154,9 +171,13 @@ commit already planned but never landed:
 2. **Everything else → keep `true`.** Human-invoked `/ace:<name>` entry points,
    and anything whose description is generic enough to hijack routing on a casual
    sentence.
-3. **Keep descriptions tight regardless.** The index holds `description:`, so that
-   field IS the budget. The audit's discipline was ≤140 chars; drift since has
-   pushed the average well past it.
+3. **Spend description chars only where they route.** The listing holds
+   `description:`, so that field IS the cost. Since 2026-10-18 the budget is split
+   (§ description): pipeline steps reached by name get one-line `Internal …`
+   entries under a per-entry cap, and the shared budget is kept for skills a person
+   has to find by intent. Before that, one total budget covered both, and nearly
+   every new skill paid for itself by trimming the descriptions of the live-program
+   skills that most need them.
 
 **What inline replication actually costs — it is NOT loss of eval independence.**
 `Skill()` injects the skill body into the *calling* context; it does not spawn a
@@ -172,16 +193,22 @@ justify this flag policy with an eval-independence argument — it is not one.
 Caught on `hh-poverty-targeting/20260812-1613` Phase 2 (dimagi-internal/ace#1203).
 
 *Enforced:* `test/skill-dispatchability.test.ts` — fails if any skill referenced in
-`agents/*.md` carries the flag, and fails if descriptions blow the catalog budget.
+`agents/*.md` carries the flag, and fails if internal entries or the discoverable
+catalog blow their budgets.
 
-### Public by default; `user-invocable: false` only for machinery
+### Public by default; `user-invocable: false` for machinery and pipeline-only steps
 
-**Rule:** every skill is public (the default — in the `/` menu and in the model's
-listing) and is described as a **standalone capability**: what it does on its own,
-when to reach for it, and its key inputs ("Needs an approved PDD."). People run ACE's
-skills outside the `/ace:run` cascade — a PDD grader, a FAQ writer, a sweep, a
-partnership step — and that is the point (Jonathan, 2026-10-09). `-qa` structural
-checks and `-eval` graders are public too: "grade this PDD" is a real request.
+**Rule:** a skill that can act on an object it is handed is public (the default — in
+the `/` menu and in the model's listing) and is described as a **standalone
+capability**: what it does on its own, when to reach for it, and its key inputs
+("Needs an approved PDD."). That is the discoverable class (§ description), and it is
+most of what ACE does on live programs (Jonathan, 2026-10-09).
+
+A skill whose `## Inputs` declares `Pipeline-only:` exists only inside a run (it grades
+or derives that run's artifacts), so nobody can hand it an object outside one. Since
+2026-10-18 it takes the internal-step form instead: `Internal /ace:run step — …` and
+`user-invocable: false`. It is still dispatchable by name, and `/ace:step` and
+`/ace:eval` still reach it.
 
 Write the description for someone who has never heard of the cascade:
 
@@ -189,10 +216,9 @@ Write the description for someone who has never heard of the cascade:
   framing, no phase numbers up front.
 - Name the key inputs it needs, so a person (or the model) knows whether it can run.
 - Mention the orchestrator at most as a trailing clause ("Also run by /ace:demo.").
-- Aim ≤ 250 chars; the catalog budget below still applies.
+- Aim ≤ 250 chars; the discoverable budget (§ description) still applies.
 
-**Hide (`user-invocable: false`) only pure machinery** with no standalone value to a
-person: turn sub-steps and turn utilities (`agent-turn-review`, `inbox-triage`,
+**Also hide pure machinery** with no standalone value to a person: turn sub-steps and turn utilities (`agent-turn-review`, `inbox-triage`,
 `task-tracker`, `shipping`, `email-communicator`), per-phase bookkeeping
 (`decisions-render`, `output-preview-capture`), failure-triggered repair
 (`selector-map-heal`), methodology references (`eval-calibration`), aggregators that
@@ -203,7 +229,8 @@ Verified 2026-10-09 (Claude Code 2.1.295, docs + live probe):
 
 - `user-invocable: false` only hides the skill from the `/` menu. Its description
   **stays** in the model's listing and `Skill(<name>)` still works, so dispatch is
-  unaffected. It does **not** save catalog budget — only description length does.
+  unaffected. It does **not** save catalog budget by itself — only description length
+  does, which is why the internal-step form pairs it with a one-line description.
 - Only `disable-model-invocation: true` removes a description from the model listing,
   and that blocks dispatch (above). It stays reserved for skills nothing dispatches
   (e.g. the superseded `self-review` stub) and human-only `/ace:` entries.
@@ -1113,7 +1140,7 @@ Before committing a new SKILL.md, verify:
 
 - [ ] Directory name matches frontmatter `name`
 - [ ] Frontmatter has `name:`, `description:`, `disable-model-invocation: true` (omit only with explicit justification)
-- [ ] Description ≤250 chars (target ~150), describes the skill as a standalone capability (what it produces, when to use it, key inputs) — no `Internal … step` framing
+- [ ] Description ≤250 chars (target ~150), describes the skill as a standalone capability (what it produces, when to use it, key inputs) — or, for a `Pipeline-only:` skill, one `Internal /ace:run step — …` clause plus `user-invocable: false`
 - [ ] Description does NOT contain banned patterns (phase labels, file paths, sibling/successor refs, `TEMPORARY`/`Provisional`, trigger-phrase enumeration)
 - [ ] All seven required sections present in order: `# <Display Name>` → `## Inputs` → `## Products` → `## Process` → `## MCP Tools Used` → `## Mode Behavior` → `## Change Log`
 - [ ] Process steps are numbered sequentially (`grep -nE '^[0-9]+\.' SKILL.md`)

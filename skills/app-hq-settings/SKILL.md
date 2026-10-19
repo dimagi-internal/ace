@@ -1,7 +1,8 @@
 ---
 name: app-hq-settings
 description: >
-  Apply the HQ settings Nova can't set at build (camera-only photos, grid menus) to deployed Learn and Deliver apps.
+  Apply the HQ settings Nova can't set at build time (camera-only photo capture, grid menu display)
+  to deployed Learn and Deliver apps. Needs the HQ app ids.
 disable-model-invocation: false
 ---
 
