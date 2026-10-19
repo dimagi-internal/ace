@@ -422,6 +422,30 @@ describe('shows addenda close the no-shows loop (ace#2902)', () => {
     expect(r.addendum_unmatched).toEqual([{ step: undefined, file_id: Z }]);
   });
 
+  // ace#3240: the two deck skills disagreed on where a below-the-title crop
+  // (training-deck-generate step 9b, ace#2660) is recorded. A crop is a NEW
+  // Drive file, so it is an id the producer's manifest has never seen — and an
+  // addendum cannot introduce one. Its manifest row is the only channel the
+  // gate reads; the shows addendum stays for frames the manifest already has.
+  it('a crop is backed only by its own manifest row, never by an addendum line (ace#3240)', () => {
+    const C = '1CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC';
+    const published = link(C);
+    const viaAddendum = classifyCaptionBacking({
+      published,
+      manifest,
+      showsAddenda: [{ shows: [{ step: 'claim-opp-detail--below-title', file_id: C, shows: 'opp detail, below the title' }] }],
+    });
+    expect(viaAddendum.findings).toEqual([{ file_id: C, reason: 'unknown-id' }]);
+
+    const withRow = {
+      captures: [
+        ...manifest.captures,
+        { step: 'claim-opp-detail--below-title', file_id: C, cropped_from: 'claim-opp-detail', crop_top_px: 412, shows: 'opp detail, below the title' },
+      ],
+    };
+    expect(classifyCaptionBacking({ published, manifest: withRow }).ok).toBe(true);
+  });
+
   it('an entry naming no manifest frame is reported, not silently dropped (unknown-id entry)', () => {
     const r = classifyCaptionBacking({
       published: guide,

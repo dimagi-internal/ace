@@ -475,6 +475,13 @@ screenshot-blocked run cannot lose it.
     `crop_top_px: <top>`) whose `shows:` you write after opening the crop — the
     alias is already in `needs_shows`. Until it is uploaded the alias resolves
     nowhere, and the renderer halts on it rather than shipping the raw frame.
+    This row is the ONE manifest write a consumer makes, and it is not the
+    `needs_shows` rule above bent: a crop is a new Drive file the producer
+    never saw, and `verify_caption_backing` reads the shows addendum only
+    against frames the manifest already has, so a crop recorded only in the
+    addendum comes back `unknown-id` (ace#3240; *enforced:*
+    `test/lib/caption-backing.test.ts`). `skills/_training-template.md` states
+    the same carve-out.
     *Enforced:* `test/lib/opp-title-frames.test.ts` (sibling preferred, crop
     otherwise, lists never cropped, crop is byte-identical below the cut, on
     the committed real frame).

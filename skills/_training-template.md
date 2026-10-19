@@ -234,7 +234,12 @@ capture producer may describe only a subset of its frames, so an
 `illustrated: true` producer that cites more than that subset must open each
 `no-shows` frame, write what it actually shows into the run's shows addendum
 (`shows: [{step, file_id, shows}]`), and re-run with `showsAddendumFileIds`.
-It never writes into the capture manifest, which is the producer's artifact.
+It never writes a `shows:` into the capture manifest, which is the producer's artifact.
+The one manifest write a consumer makes is a NEW frame it created itself — the
+below-the-title crop of `training-deck-generate` step 9b (ace#2660) — because a
+crop is a new Drive file, and the gate reads an addendum only against frames the
+manifest already has: a crop recorded only in the addendum stays `unknown-id`
+(`classifyCaptionBacking`; ace#3240).
 An addendum line fills only a MISSING `shows:`: it cannot make an alias
 distinct or an unknown id known, and an entry matching no frame comes back in
 `addendum_unmatched`.

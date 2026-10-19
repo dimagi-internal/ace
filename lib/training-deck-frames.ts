@@ -322,13 +322,18 @@ export function learnModuleLabels(pool: readonly PoolFrame[], explicit?: readonl
 }
 
 /**
- * Module number of a `journey-learn-m<N>-*` step, or null. Recipes name these
- * two ways (ace#3001): spark-facilitator/20260925-1536 wrote 0-based unpadded
- * `m0`..`m7`; the journey-learn recipe on smallholder-seasonal/20261015-1402
- * wrote 1-based zero-padded `m01`..`m12`. `parseInt` absorbs the padding.
+ * Module number of a `journey-learn-<m|l><N>-*` step, or null. Recipes name
+ * these several ways (ace#3001, ace#3240): spark-facilitator/20260925-1536
+ * wrote 0-based unpadded `m0`..`m7`; the journey-learn recipe on
+ * smallholder-seasonal/20261015-1402 wrote 1-based zero-padded `m01`..`m12`;
+ * connect-fi/20261018-1440 wrote `l<N>` (lesson). `parseInt` absorbs the
+ * padding. `app-test-cases` names `m<N>` as the convention; `l<N>` and the
+ * spelled-out `module<N>` / `lesson<N>` are accepted so a recipe that drifts
+ * from it still binds its lesson frames instead of merging every lesson away.
  */
-const learnModuleNumber = (step: string): number | null => {
-  const m = /^journey-learn-m(\d+)-/.exec(step);
+export const LEARN_MODULE_STEP = /^journey-learn-(?:m|l|module|lesson)-?(\d+)-/;
+export const learnModuleNumber = (step: string): number | null => {
+  const m = LEARN_MODULE_STEP.exec(step);
   return m ? parseInt(m[1], 10) : null;
 };
 
@@ -580,7 +585,10 @@ export function bindDeckFrames(input: TrainingDeckSpec, opts: BindOptions): { sp
           title,
           image: st.image,
           body: st.caption,
-          ...(i === 0 && slide.notes ? { notes: slide.notes } : {}),
+          // Every expanded slide keeps the source slide's notes (ace#3240):
+          // `training-deck-generate` requires notes on every slide, and the
+          // trainer presenting phone 2 of 3 needs the same script as phone 1.
+          ...(slide.notes ? { notes: slide.notes } : {}),
         });
       });
       actions.push({ kind: 'expanded-mobile-flow', slide: slide.id, into: ids });
