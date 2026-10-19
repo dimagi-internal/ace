@@ -53,7 +53,7 @@ alone makes the artifact land outside `4-connect` and fail
 ## Products
 
 - `4-connect/connect-program-setup.md` (written with `parentFolderId = phaseFolderId`) — program-id, decision rationale (reuse / create), admin program URL
-- `opp.yaml.connect.program.{id, url, connect_int_id}` — written on first create (and refreshed on reuse with verified live values). `connect_int_id` is ConnectProd's integer program id (from the create response's `int_id`), used by Phase 8 solicitation surfaces. This is the single durable cross-run reference for the Connect program; every subsequent run of this opp reads it to skip program-create.
+- `opp.yaml.connect.program.{id, url, connect_int_id}` — written on first create (and refreshed on reuse with verified live values). `connect_int_id` is ConnectProd's integer program id, resolved through `labs_context` (Step 6a; no Connect create or read surface returns it, ace#3213), used by Step 7's tenancy registration and the Phase 8 solicitation surfaces. This is the single durable cross-run reference for the Connect program; every subsequent run of this opp reads it to skip program-create.
 
 ## Process
 
@@ -525,13 +525,59 @@ alone makes the artifact land outside `4-connect` and fail
      program:
        id: <UUID from step 3 reuse or step 4 create>
        url: <CONNECT_BASE_URL>/a/<org>/program/<uuid>/
-       connect_int_id: <integer | omit>   # ConnectProd integer program id, from the create response's `int_id` when present. NOT a labs-minted id. Lets solicitation-create skip a Labs round-trip. Omit if the create response didn't carry it (older Connect builds) — solicitation-create resolves it as a fallback.
+       connect_int_id: <integer | omit>   # ConnectProd integer program id, resolved in Step 6a. NOT a labs-minted id. Lets solicitation-create skip a Labs round-trip. Omit while Step 6a has not resolved it — solicitation-create Step 5 resolves it as a fallback.
    ```
 
-   Capture `connect_int_id` from the `connect_create_program` response
-   (`int_id`) on the create path. On the reuse path, leave any existing
-   `connect_int_id` in `opp.yaml` as-is (don't clear it); if it's absent
-   and `connect_get_program` returns an `int_id`, write it.
+   Write `connect_int_id` only once Step 6a has resolved it. On the reuse
+   path, leave any existing `connect_int_id` in `opp.yaml` as-is (don't
+   clear it). An `int_id` on a `connect_create_program` /
+   `connect_get_program` result is used if present, but expect none (6a).
+
+6a. **Resolve `connect_int_id` through labs — Connect will not hand it to
+   ACE (ace#3213).** No Connect surface ACE can reach returns the program's
+   integer id, so do not wait for one on the create response:
+
+   - The REST create answers with `ProgramResponseSerializer`, whose
+     `fields` are `program_id, name, slug, description, organization,
+     delivery_type, budget, currency, country, start_date, end_date` — no
+     `id` (`dimagi/commcare-connect`
+     `commcare_connect/program/api/serializers.py`). The int-`delivery_type`
+     path goes to the HTML form, whose response is a re-rendered fragment.
+   - Every web program route (`init/`, `<pk>/edit`, `<pk>/view`,
+     `<pk>/invite`, `<pk>/opportunity-init`) is keyed and rendered by the
+     UUID (`program/urls.py`, `templates/program/pm_home.html`).
+   - The only surface that emits the integer is the data export
+     (`/export/opp_org_program_list/`, `ProgramDataExportSerializer`
+     `fields = ["id", "name", ...]` — and no UUID), behind
+     `TokenHasScope` `export`: an OAuth token, so ACE's session cookie gets
+     403. Labs holds that token, which is why `labs_context` is the path.
+
+   Call `mcp__connect-labs__labs_context({search: <exact program name>})`,
+   take the organization whose `slug` is this program's org, and within it
+   the program whose `name` equals the Connect program name exactly. One
+   match → that `id` is `connect_int_id`: write it to
+   `opp.yaml.connect.program.connect_int_id` with `update_yaml_file`
+   `merge: 'deep'` (a partial patch of `connect.program`), then run Step 7.
+   Zero or several → unresolved; never pick by "newest id" or a partial
+   name.
+
+   **A fresh program is invisible to labs for up to an hour.** Labs caches
+   the whole org tree per user for `_ORG_DATA_CACHE_TTL = 3600` seconds
+   and the `labs_context` tool has no refresh argument
+   (`dimagi-internal/connect-labs`
+   `connect_labs/labs/integrations/connect/oauth.py`,
+   `connect_labs/mcp/tools/labs_context.py`). Observed on
+   connect-fi/20261018-1440: four lookups over the 20 minutes after the
+   create returned `organizations: []`. So a miss right after create is
+   expected, not a sign the program is missing. Re-run the lookup at the
+   END of Phase 4 (after `connect-opp-setup`), and once more ~60 minutes
+   after the create if the phase is still going. Still unresolved: leave
+   `connect_int_id` unset, and record a residual naming the program name,
+   the UUID, and the two commands that finish the job —
+   the `labs_context` lookup and
+   `bin/ace-bind --add-program <connect_int_id> <workspace>/<opp>`.
+   `solicitation-create` Step 5 retries the lookup and runs the bind
+   (Phase 8 starts well past the cache window).
 
    `opp.yaml` is the **only** cross-run identity surface for the
    Connect program — every subsequent run of this opp reads this
@@ -562,7 +608,9 @@ alone makes the artifact land outside `4-connect` and fail
    bound opp; pass `<workspace>/<opp>` when the session is unbound. It is
    safe because the program was just created in — or verified against —
    the opp's own PM org, which the guard checked. Without `connect_int_id`
-   there is nothing to register: say so in the step's summary. A failure
+   (Step 6a still unresolved) there is nothing to register yet: say so in
+   the step's summary with the 6a residual — `solicitation-create` Step 5
+   registers it once it resolves the id. A failure
    (not an owner, ace-web not yet carrying the field) does **not** fail
    this step — record it as a residual naming the command to re-run; until
    then program-scoped labs writes are refused as not set up (warn mode
@@ -573,10 +621,11 @@ alone makes the artifact land outside `4-connect` and fail
 - Connect (`ace-connect` MCP, 0.10.47+):
   - `connect_list_programs` — discovery (`name` = case-insensitive substring; filtered rows hydrated with FULL descriptions). Unfiltered rows carry capped descriptions flagged `description_truncated` (ace#1799); `full_descriptions: true` or `write_to_path` opt out
   - `connect_list_delivery_types` — resolve the PDD's `connect_delivery_type` against the live `{id, name}` rows; pass the **int `id`** to create. Returns no `slug` on purpose (ace#2865)
-  - `connect_create_program` — create (REST `POST /api/programs/`)
+  - `connect_create_program` — create (int `delivery_type` → the HTML form; a slug → REST `POST /api/programs/`). Returns the UUID only — no integer id on either path (Step 6a)
   - `connect_get_program` — verify after create; read live fields for reconcile (Step 3a) and `budget` for the headroom check (Step 4a)
   - `connect_list_opportunities` — prefer `summarize_by_program`, which implies hydrate and returns the Σ classification instead of the rows (ace#1799); `write_to_path` writes the rows to disk. With `hydrate: true`, the ONLY source of the headroom Σ's two inputs (`total_budget`, `program_name` — both dashboard-read per row, ace#1550); the unhydrated list page carries neither (Step 4a). Returns a `listing` completeness block; `listing.complete !== true` makes Σ UNKNOWN (ace#1590)
   - `connect_update_program` — refresh stale description/dates on reuse (Step 3a); raise the program budget ceiling, idempotently when Σ is known and on the conservative assumption when it is not (Step 4a). Send the refreshed description as `description_path` (an absolute local path the server reads off disk), never inline (ace#2291)
+- Connect Labs (`connect-labs` MCP): `labs_context` — the only reachable source of the program's integer id (`connect_int_id`, Step 6a; cached up to an hour after create, ace#3213)
 
 ## Mode Behavior
 - **Auto:** Create program (or reuse), proceed

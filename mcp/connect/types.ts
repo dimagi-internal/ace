@@ -7,10 +7,13 @@ import type { DashboardReadStatus } from './backends/html-scrape.js';
 
 export interface Program {
   id: string;                          // UUID (Connect's `program_id`)
-  int_id?: number;                     // ConnectProd legacy integer id (`id` in the API response), when
-                                       // the response carries it. Same Program row as the UUID — NOT a
-                                       // labs-minted id. Recorded as `connect_int_id`; the labs/solicitation
-                                       // surfaces key off this integer.
+  int_id?: number;                     // ConnectProd legacy integer id, IF a response ever carries `id`.
+                                       // In practice it is always absent (ace#3213): Connect's
+                                       // ProgramResponseSerializer emits no `id`, the HTML form and every
+                                       // program page key on the UUID, and only the OAuth `export` API
+                                       // (labs' token, not ACE's session) emits the integer. Resolve it via
+                                       // labs `labs_context` (connect-program-setup Step 6a). Same Program
+                                       // row as the UUID — NOT a labs-minted id. Recorded as `connect_int_id`.
   name: string;
   slug?: string;
   description: string;

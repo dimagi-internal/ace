@@ -755,10 +755,29 @@ Default sources inside a run, in detail:
       `phases.solicitation-management.products.solicitation.labs_program_id`
       via Step 9's consolidated write so the run state is
       self-contained.
-   4. **Halt** with a `[BLOCKER]` if no name match — likely the Connect
-      program exists but was never mirrored to labs (labs creates
-      shadow programs on first opportunity sync). Surface the Connect
-      program name and the list of labs programs the caller can see.
+   4. **Register it in the opp's tenancy** whenever this step resolved
+      the id by lookup (sub-step 2) — `connect-program-setup` Step 7 could
+      not, because Connect never returns the integer to ACE and labs hides
+      a fresh program for up to an hour (ace#3213). Run it BEFORE any
+      program-scoped labs write (Step 5a onward), or the tenancy guard
+      treats those writes as outside the opp:
+
+      ```bash
+      "$CLAUDE_PLUGIN_ROOT/bin/ace-bind" --add-program <connect_int_id> [<workspace>/<opp>]
+      ```
+
+      Idempotent, so run it on the fast path too when you cannot see that
+      Phase 4 registered it. A failure does not halt this step: record a
+      residual naming the command.
+   5. **Halt** with a `[BLOCKER]` if no name match — but first rule out
+      the cache: labs caches the org tree per user for an hour
+      (`_ORG_DATA_CACHE_TTL = 3600`, `dimagi-internal/connect-labs`
+      `connect_labs/labs/integrations/connect/oauth.py`), so a program
+      created under an hour ago can be missing. If the Connect program
+      is that young, wait out the remainder and look up once more. Past
+      that, the program likely exists but was never mirrored to labs.
+      Surface the Connect program name and the list of labs programs the
+      caller can see.
 
 5a. **Make the PM org the call's owner — register it as a labs organisation
    first (ace#3049).** Since connect-labs#2567 (merged 2026-10-16) a
