@@ -458,7 +458,7 @@ def report(h, criteria):
     out.append("### What the slate turned on besides the score")
     out.append("")
     t = h["top_by_score_vs_selected"]
-    out.append(f"Of the top {t['n']} by weighted score, {t['overlap']} are on the shortlist (recommended or backup). "
+    out.append(f"Of the top {t['n']} by weighted score, {t['overlap']} are on the shortlist (recommended or recommended backup). "
                f"{len(h['overrides'])} response(s) got a better outcome than a higher scorer, passing over "
                f"{h['passed_over']} response(s). What the passed-over responses' outcome claims say: "
                + (", ".join(f"{k} {v}" for k, v in h["override_reasons"].items()) or "none") + ".")

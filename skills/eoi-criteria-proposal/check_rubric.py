@@ -27,9 +27,10 @@ The rubric lives only in fields labs already stores:
       Measures: <what the criterion measures>
       Separates: <why it separates THIS pool, with counts>
 - `basis` (labs: `criteria_basis`) holds the outcome rules after a line
-  "Outcome rules:", with one line each for Score, Slots, Recommended, Backup,
-  Keep in view, Not recommended and Overrides (the outcome labels people read;
-  the stored keys Pick, Waitlist and Pass are accepted for the same lines).
+  "Outcome rules:", with one line each for Score, Slots, Recommended,
+  Recommended backup, Waitlist, Not recommended and Overrides (the outcome
+  labels people read; the earlier labels Backup and Keep in view, and the
+  stored keys Pick, Backup, Waitlist and Pass, are accepted for the same lines).
   The Not recommended (pass) line is required like the others: a rubric that
   says when to recommend but not when to turn an applicant down leaves the
   bottom of the pool to each reviewer.
@@ -50,8 +51,12 @@ import sys
 ANCHORS = (1, 3, 5, 7, 10)
 RATIONALE_LABELS = ("measures", "separates")
 # (line label people read, the outcome key labs stores, or None when it is not an outcome).
-OUTCOME_LINES = (("Score", None), ("Slots", None), ("Recommended", "pick"), ("Backup", "backup"),
-                 ("Keep in view", "waitlist"), ("Not recommended", "pass"), ("Overrides", None))
+# Earlier labels (and the keys) are accepted for the same lines, so a rubric
+# saved before the labels changed still checks.
+OUTCOME_LINES = (("Score", None, ()), ("Slots", None, ()), ("Recommended", "pick", ()),
+                 ("Recommended backup", "backup", ("Backup",)),
+                 ("Waitlist", "waitlist", ("Keep in view",)),
+                 ("Not recommended", "pass", ()), ("Overrides", None, ()))
 MIN_ANCHOR_WORDS = 5
 MIN_PASS_RULE_WORDS = 4
 MIN_CRITERIA, MAX_CRITERIA = 5, 8
@@ -207,8 +212,9 @@ def check(criteria, basis):
     if rules is None:
         problems.append("basis has no 'Outcome rules:' section")
     else:
-        for label, key in OUTCOME_LINES:
-            rule = rules.get(label.lower()) or (key and rules.get(key))
+        for label, key, earlier in OUTCOME_LINES:
+            names = [label, *earlier] + ([key] if key else [])
+            rule = next((rules[n.lower()] for n in names if rules.get(n.lower())), None)
             if not rule:
                 problems.append(f"outcome rules have no '{label}:' line"
                                 + (f" (key {key}): say who is not recommended, e.g. 'otherwise, or when "

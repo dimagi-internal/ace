@@ -129,13 +129,13 @@ describe('eoi-round-review rubric_health.py', () => {
     expect(h.human[0]).toMatchObject({ stance: 'disagrees', outcome_before: 'backup', outcome_after: 'waitlist' });
     expect(h.human[0].deltas).toEqual({ prices: -3 });
     // People read the outcome labels; the JSON keeps labs' keys.
-    expect(r.stdout).toMatch(/3: disagrees, outcome Backup -> Keep in view; prices -3/);
+    expect(r.stdout).toMatch(/3: disagrees, outcome Recommended backup -> Waitlist; prices -3/);
   });
 
   it('prints outcome labels, not the stored keys', () => {
     const { r, h } = run(reviews);
     expect(Object.keys(h.outcomes).sort()).toEqual(expect.arrayContaining(['pick', 'backup', 'waitlist', 'pass']));
-    expect(r.stdout).toMatch(/Outcomes: Recommended \d+, Backup \d+, Keep in view \d+, Not recommended \d+\./);
+    expect(r.stdout).toMatch(/Outcomes: Recommended \d+, Recommended backup \d+, Waitlist \d+, Not recommended \d+\./);
     expect(r.stdout).toMatch(/are on the shortlist \(recommended or backup\)/);
     expect(r.stdout).not.toMatch(/\b(pick|waitlist)\b/);
   });

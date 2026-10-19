@@ -258,8 +258,8 @@ Outcome rules:
 Score: weighted score = sum(weight x criterion score) / 10, from 10 to 100; labs computes it.
 Slots: <each role or site and how many partners it takes, e.g. "4: Kano, a second Nigeria site, Ghana south, Ghana north, one partner each">
 Recommended: <e.g. the highest-scoring credible applicant for each slot, at most one per slot>
-Backup: <e.g. the next two per slot, in score order, each ready to step in for a named place>
-Keep in view: <e.g. credible (no criterion at 1-2 that the call needs) but not needed for this round's places>
+Recommended backup: <e.g. the next two per slot, in score order, each ready to step in for a named place>
+Waitlist: <e.g. credible (no criterion at 1-2 that the call needs) but not needed for this round's places>
 Not recommended: <e.g. otherwise: outside every slot, or 1-2 on a criterion the call cannot do without>
 Overrides: <when the score order gives way, and to what: slot or geography coverage, a conditional recommendation that must be rescoped (and the condition), a safety or scope problem, a duplicate>
 ```
@@ -268,10 +268,11 @@ An override is legitimate, but it must be written here before scoring, so a
 recommendation that outranks a higher score points at a rule rather than at a judgement
 made on the day. Each outcome claim in a review names the rule it applied.
 
-The outcome lines use the words people read in labs (Recommended, Backup, Keep in view,
+The outcome lines use the words people read in labs (Recommended, Recommended backup, Waitlist,
 Not recommended); the review API stores them as the keys `pick`, `backup`, `waitlist` and
-`pass`. `check_rubric.py` also accepts the keys as line labels (`Pick:`, `Waitlist:`,
-`Pass:`) so a rubric saved before the labels still checks, but write the labels.
+`pass`. `check_rubric.py` also accepts the keys as line labels (`Pick:`, `Backup:`,
+`Pass:`) and the earlier labels (`Backup:`, `Keep in view:`) so a rubric saved before the
+labels changed still checks, but write the current labels.
 
 ## Pool profile shape
 
@@ -356,6 +357,7 @@ The proposal is prose a person reads. Follow `skills/_terminology.md`: the platf
 
 | Date | Change | Author |
 |------|--------|--------|
+| 2026-10-18 | Outcome labels renamed in labs: `backup` is shown as Recommended backup (was Backup), `waitlist` as Waitlist (was Keep in view); keys unchanged, and `check_rubric.py` still accepts the earlier labels and the keys | ACE team |
 | 2026-10-18 | Three rule gaps from a round's review: the `Not recommended:` rule must say when it applies (`check_rubric.py` refuses a missing or empty one, key `pass`); a plan's timing before award costs no points, the `early-start` flag shows it (`check_rubric.py` warns); anchors name the checkable elements that earn points, never length or detail (method criteria had rewarded longer answers) | ACE team |
 | 2026-10-18 | Labs' defined vocabulary: the outcome rules are written as Recommended / Backup / Keep in view / Not recommended (`check_rubric.py` requires those lines and still accepts the older Pick / Waitlist / Pass); answer quality points at the defined flags (`padded`, `templated`, `unsupported`), never "AI-drafted" | ACE team |
 | 2026-10-18 | The rubric is explicit (§ The rubric shape): anchors at 1/3/5/7/10 written as observable evidence and a Silent rule in each `scoring_guide`, `Measures:`/`Separates:` in each `rationale`, and outcome rules (score formula, slots, pick/backup/waitlist/pass, overrides) in `basis`; `check_rubric.py` checks the shape before approval and after saving. The ULAB v1 guides had four 1-3/4-6/7-8/9-10 bands, no silent rule and no outcome rules | ACE team |
