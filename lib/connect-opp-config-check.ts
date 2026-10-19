@@ -28,6 +28,7 @@ import type { AutoSurfaced, CheckRecord, Verdict } from './verdict-schema.js';
 import { checkOppPostcondition } from './connect-opp-postcondition.js';
 import { readProgramParameter } from './payment-grain.js';
 import { opportunityWindow } from './opportunity-window.js';
+import { parseDeliverUnitMap } from './platform-constraints.js';
 import { composeVerdict, incompleteVerdict, parseResidue, type ScoredDimension } from './deterministic-verdict.js';
 
 export const OPP_DETERMINISTIC_WEIGHTS = {
@@ -119,8 +120,66 @@ function param(pdd: string | null | undefined, key: string): string | null {
   return pdd ? readProgramParameter(pdd, key) : null;
 }
 
-/** The archetype's payment-unit shape (connect-opp-setup-eval § payment_unit_fit). */
-export function expectedPaymentUnitCount(archetype: string | undefined, payableSlugs: string[] | undefined): number {
+/** Lowercase snake form for matching PU names / DU slugs / PDD unit keys. */
+function norm(v: unknown): string {
+  return String(v ?? '').toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+}
+
+/**
+ * A per-unit PDD value — `150 adult_enrolled; 70 id_obtained; 100 completed`, or
+ * `adult_enrolled: 150; ...` — as unit-key → number. Null when no part carries a
+ * unit key (or only one does): the value is then ONE scalar for every payment unit (ace#3214 — reading
+ * the per-unit form as a scalar compared every PU against the first unit's number).
+ */
+export function parsePerUnitValues(raw: string | null | undefined): Map<string, number> | null {
+  if (!raw) return null;
+  const out = new Map<string, number>();
+  for (const part of stripAnnotation(raw).split(';')) {
+    const p = part.trim().replace(/(\d),(?=\d{3}\b)/g, '$1');
+    if (!p) continue;
+    const a = p.match(/^(-?\d+(?:\.\d+)?)\s*(?:[A-Za-z]{3}\s+)?(?:per\s+|for\s+|x\s+)?([A-Za-z][\w-]*(?:\s+[A-Za-z][\w-]*)*)$/);
+    const b = p.match(/^([A-Za-z][\w-]*(?:\s+[A-Za-z][\w-]*)*)\s*[:=]?\s*(-?\d+(?:\.\d+)?)$/);
+    if (a) out.set(norm(a[2]), Number(a[1]));
+    else if (b) out.set(norm(b[1]), Number(b[2]));
+  }
+  // One keyed part (`60 visits`, `4 per day`) is a scalar with a unit word, not a per-unit table.
+  return out.size >= 2 ? out : null;
+}
+
+/** Does unit key `key` name `candidate` — exact, or as a whole `_`-token run inside it? */
+function keyFits(key: string, candidate: string): boolean {
+  if (!key || !candidate) return false;
+  return key === candidate || `_${candidate}_`.includes(`_${key}_`);
+}
+
+/**
+ * Resolve a created payment unit to its PDD per-unit key: through its required
+ * deliver units' slugs/names, the PDD `deliver_unit_map` (unit → forms), and its own
+ * name. Exact matches win, then the longest token match; a tie resolves to null
+ * (unverified, never a guessed WARN).
+ */
+function unitKeyFor(row: Record<string, unknown>, keys: string[], deliverUnits: Array<Record<string, unknown>> | null, duMap: Map<string, Array<{ form: string }>>): string | null {
+  const req = new Set((Array.isArray(row.required_deliver_units) ? row.required_deliver_units : []).map(String));
+  const dus = (deliverUnits ?? []).filter((d) => req.has(String(d.server_id ?? '')) || (d.server_id === undefined && req.has(String(d.id ?? ''))));
+  const duNames = dus.flatMap((d) => [norm(d.slug), norm(d.name)]).filter(Boolean);
+  const candidates = new Set<string>([norm(row.name), ...duNames].filter(Boolean));
+  for (const [unit, forms] of duMap) {
+    const u = norm(unit);
+    if (keyFits(u, norm(row.name)) || forms.some((f) => duNames.includes(norm(f.form)))) candidates.add(u);
+  }
+  const exact = keys.filter((k) => candidates.has(k));
+  if (exact.length === 1) return exact[0];
+  if (exact.length > 1) return null;
+  const fits = keys.filter((k) => [...candidates].some((c) => keyFits(k, c)));
+  if (!fits.length) return null;
+  const longest = Math.max(...fits.map((k) => k.length));
+  const best = fits.filter((k) => k.length === longest);
+  return best.length === 1 ? best[0] : null;
+}
+
+/** The archetype's payment-unit shape (connect-opp-setup-eval § payment_unit_fit); a PDD `payment_unit_count` wins (ace#3214). */
+export function expectedPaymentUnitCount(archetype: string | undefined, payableSlugs: string[] | undefined, pddCount?: number | null): number {
+  if (pddCount !== undefined && pddCount !== null && Number.isInteger(pddCount) && pddCount > 0) return pddCount;
   if (archetype === 'multi-stage') return Math.max(1, payableSlugs?.length ?? 1);
   return 1; // atomic-visit / focus-group: one per delivery/session; longitudinal: ONE for the whole arc (ace#2294)
 }
@@ -199,7 +258,7 @@ export function checkOppConfigFacts(input: OppConfigInput): OppFactsResult {
   // ── payment_unit_fit ──────────────────────────────────────────────────
   let pu = 10;
   const puNotes: string[] = [];
-  const expectedCount = input.expectedPaymentUnitCount ?? expectedPaymentUnitCount(input.archetype, input.payableDeliverSlugs);
+  const expectedCount = input.expectedPaymentUnitCount ?? expectedPaymentUnitCount(input.archetype, input.payableDeliverSlugs, num(param(input.pddText, 'payment_unit_count')));
   if (input.paymentUnits) {
     if (input.paymentUnits.length !== expectedCount) {
       pu -= 3;
@@ -210,8 +269,27 @@ export function checkOppConfigFacts(input: OppConfigInput): OppFactsResult {
   const created = input.createdPaymentUnits ?? null;
   const rateMin = num(param(input.pddText, 'payment_rate_min'));
   const rateMax = num(param(input.pddText, 'payment_rate_max'));
-  const dailyCap = num(param(input.pddText, 'daily_cap_per_flw'));
-  const totalCap = num(param(input.pddText, 'total_cap_per_flw'));
+  // Caps (and the per-milestone amount) may be declared PER UNIT (`150 adult_enrolled; 70 id_obtained`);
+  // each PU is then compared with its own unit's value, never the first number (ace#3214).
+  const dailyRaw = param(input.pddText, 'daily_cap_per_flw');
+  const totalRaw = param(input.pddText, 'total_cap_per_flw');
+  const dailyPer = parsePerUnitValues(dailyRaw);
+  const totalPer = parsePerUnitValues(totalRaw);
+  const amountPer = parsePerUnitValues(param(input.pddText, 'flw_payment_per_milestone'));
+  const dailyCap = dailyPer ? null : num(dailyRaw);
+  const totalCap = totalPer ? null : num(totalRaw);
+  const duMap = parseDeliverUnitMap(param(input.pddText, 'deliver_unit_map') ?? undefined);
+  const unresolved = new Set<string>();
+  const perUnit = (per: Map<string, number> | null, field: string, row: Record<string, unknown>, name: string): number | null => {
+    if (!per) return null;
+    const key = unitKeyFor(row, [...per.keys()], input.deliverUnits, duMap);
+    if (key === null) {
+      if (!unresolved.has(`${name}|${field}`)) auto.push({ severity: 'INFO-SKIPPED', message: `PU "${name}": no PDD ${field} unit key (${[...per.keys()].join(', ')}) resolved to it — that value is unverified` });
+      unresolved.add(`${name}|${field}`);
+      return null;
+    }
+    return per.get(key) ?? null;
+  };
   if (!created || !created.length) {
     checks.push({ name: 'payment-unit-create-response', status: 'unable', reason: 'no connect_create_payment_units response supplied — amounts, caps and DU wiring cannot be read back from the list atom (ace#1026)' });
     auto.push({ severity: 'INFO-SKIPPED', message: 'payment-unit amount/cap/DU checks skipped: no create response supplied (the list read cannot see those fields)' });
@@ -224,13 +302,20 @@ export function checkOppConfigFacts(input: OppConfigInput): OppFactsResult {
         pu -= 3;
         auto.push({ severity: 'WARN', message: `PU "${name}" amount ${amount} is outside the PDD band ${rateMin}–${rateMax}` });
       }
-      if (dailyCap !== null && num(row.max_daily) !== null && num(row.max_daily) !== dailyCap) {
+      const wantDaily = dailyCap ?? perUnit(dailyPer, 'daily_cap_per_flw', row, name);
+      const wantTotal = totalCap ?? perUnit(totalPer, 'total_cap_per_flw', row, name);
+      const wantAmount = perUnit(amountPer, 'flw_payment_per_milestone', row, name);
+      if (wantDaily !== null && num(row.max_daily) !== null && num(row.max_daily) !== wantDaily) {
         pu -= 2;
-        auto.push({ severity: 'WARN', message: `PU "${name}" max_daily ${String(row.max_daily)} ≠ PDD daily_cap_per_flw ${dailyCap}` });
+        auto.push({ severity: 'WARN', message: `PU "${name}" max_daily ${String(row.max_daily)} ≠ PDD daily_cap_per_flw ${wantDaily}` });
       }
-      if (totalCap !== null && num(row.max_total) !== null && num(row.max_total) !== totalCap) {
+      if (wantTotal !== null && num(row.max_total) !== null && num(row.max_total) !== wantTotal) {
         pu -= 2;
-        auto.push({ severity: 'WARN', message: `PU "${name}" max_total ${String(row.max_total)} ≠ PDD total_cap_per_flw ${totalCap}` });
+        auto.push({ severity: 'WARN', message: `PU "${name}" max_total ${String(row.max_total)} ≠ PDD total_cap_per_flw ${wantTotal}` });
+      }
+      if (wantAmount !== null && amount !== null && amount !== wantAmount) {
+        pu -= 2;
+        auto.push({ severity: 'WARN', message: `PU "${name}" amount ${amount} ≠ PDD flw_payment_per_milestone ${wantAmount}` });
       }
       const req = Array.isArray(row.required_deliver_units) ? row.required_deliver_units : [];
       if (!req.length) {

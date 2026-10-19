@@ -18,7 +18,7 @@ import { parse as parseYaml } from 'yaml';
 import { validateVerdict } from '../../lib/verdict-schema';
 import { composeVerdict, parseResidue } from '../../lib/deterministic-verdict';
 import { checkAppRelease } from '../../lib/app-release-check';
-import { checkConnectOppSetup, checkOppConfigFacts, expectedPaymentUnitCount } from '../../lib/connect-opp-config-check';
+import { checkConnectOppSetup, checkOppConfigFacts, expectedPaymentUnitCount, parsePerUnitValues } from '../../lib/connect-opp-config-check';
 import { checkWidgetHandoff, findCredentialLeaks } from '../../lib/ocs-widget-handoff-check';
 
 const SUMMARY = `---
@@ -341,4 +341,96 @@ describe('scripts/fact-check-eval.ts', () => {
     expect(v.verdict).toBe('pass');
     expect(validateVerdict(v).ok).toBe(true);
   }, 30000);
+});
+
+// ── ace#3214: per-unit caps on a multi-milestone PDD ─────────────────────
+// Verbatim Program Parameters lines from connect-fi/20261018-1440 (Phase 4).
+const MULTI_PDD = `# PDD
+## Program Parameters
+| Key | Value | Source |
+|---|---|---|
+| payment_rate_min | 8000 | read |
+| payment_rate_max | 16000 | read |
+| total_cap_per_flw | 150 adult_enrolled; 70 id_obtained; 100 completed [PROPOSED] | derived: total-cap-per-flw |
+| flw_payment_per_milestone | adult_enrolled 8000; id_obtained 8000; completed 16000 | read |
+| payment_unit_count | 3 | derived |
+| opportunity_currency | NGN | read |
+| opportunity_start_date | 2026-11-02 | read |
+| opportunity_end_date | 2027-02-26 | read |
+`;
+const multiBase = {
+  ...liveBase,
+  target: 'connect-fi/20261018-1440',
+  pddText: MULTI_PDD,
+  products: { opportunity: { id: OPP_ID } },
+  paymentUnits: [
+    { id: 1, name: 'Adult enrolled', payment_unit_uuid: 'a1' },
+    { id: 2, name: 'ID obtained', payment_unit_uuid: 'a2' },
+    { id: 3, name: 'Adult completed', payment_unit_uuid: 'a3' },
+  ],
+  createdPaymentUnits: [
+    { id: 11, name: 'Adult enrolled', amount: 8000, max_total: 150, required_deliver_units: [9001] },
+    { id: 12, name: 'ID obtained', amount: 8000, max_total: 70, required_deliver_units: [9002] },
+    { id: 13, name: 'Adult completed', amount: 16000, max_total: 100, required_deliver_units: [9003] },
+  ],
+  deliverUnits: [
+    { id: 1, server_id: 9001, name: 'Enrol adult', slug: 'enrol_adult' },
+    { id: 2, server_id: 9002, name: 'ID obtained', slug: 'id_obtained' },
+    { id: 3, server_id: 9003, name: 'Programme completed', slug: 'programme_completed' },
+  ],
+  payableDeliverSlugs: ['enrol_adult', 'id_obtained', 'programme_completed'],
+};
+
+describe('connect-opp-setup-eval per-unit caps (ace#3214)', () => {
+  it('parses `<n> <slug>` and `<slug> <n>` per-unit forms; a lone `60 visits` stays a scalar', () => {
+    expect(Object.fromEntries(parsePerUnitValues('150 adult_enrolled; 70 id_obtained; 100 completed [PROPOSED]')!)).toEqual({ adult_enrolled: 150, id_obtained: 70, completed: 100 });
+    expect(Object.fromEntries(parsePerUnitValues('adult_enrolled 8000; id_obtained 8000; completed 16000')!)).toEqual({ adult_enrolled: 8000, id_obtained: 8000, completed: 16000 });
+    expect(parsePerUnitValues('60 visits')).toBeNull();
+    expect(parsePerUnitValues('60')).toBeNull();
+  });
+
+  it('positive control: each PU is compared with its OWN unit cap — no false WARN, full payment_unit_fit', () => {
+    const f = checkOppConfigFacts(multiBase);
+    const warns = f.autoSurfaced.filter((a) => a.severity === 'WARN');
+    expect(warns).toEqual([]);
+    expect(f.dimensions.payment_unit_fit.score).toBe(10);
+  });
+
+  it('negative control: a PU whose live cap genuinely differs from its unit still WARNs', () => {
+    const created = multiBase.createdPaymentUnits.map((r) => (r.name === 'ID obtained' ? { ...r, max_total: 150 } : r));
+    const f = checkOppConfigFacts({ ...multiBase, createdPaymentUnits: created });
+    const warns = f.autoSurfaced.filter((a) => a.severity === 'WARN').map((a) => a.message);
+    expect(warns).toEqual(['PU "ID obtained" max_total 150 ≠ PDD total_cap_per_flw 70']);
+    expect(f.dimensions.payment_unit_fit.score).toBe(8);
+  });
+
+  it('negative control: a per-milestone amount mismatch WARNs against that unit', () => {
+    const created = multiBase.createdPaymentUnits.map((r) => (r.name === 'Adult completed' ? { ...r, amount: 8000 } : r));
+    const warns = checkOppConfigFacts({ ...multiBase, createdPaymentUnits: created }).autoSurfaced.filter((a) => a.severity === 'WARN').map((a) => a.message);
+    expect(warns).toEqual(['PU "Adult completed" amount 8000 ≠ PDD flw_payment_per_milestone 16000']);
+  });
+
+  it('resolves a unit through deliver_unit_map when neither the PU name nor the DU slug names it', () => {
+    const pdd = MULTI_PDD.replace('| payment_unit_count |', '| deliver_unit_map | adult_enrolled: enrol_adult; id_obtained: id_obtained; completed: final_visit | read |\n| payment_unit_count |');
+    const created = multiBase.createdPaymentUnits.map((r) => (r.id === 13 ? { ...r, name: 'Graduation', required_deliver_units: [9004] } : r));
+    const dus = [...multiBase.deliverUnits, { id: 4, server_id: 9004, name: 'Final visit', slug: 'final_visit' }];
+    const f = checkOppConfigFacts({ ...multiBase, pddText: pdd, createdPaymentUnits: created, deliverUnits: dus });
+    expect(f.autoSurfaced.filter((a) => a.severity === 'WARN' || a.severity === 'INFO-SKIPPED')).toEqual([]);
+    const bad = created.map((r) => (r.id === 13 ? { ...r, max_total: 150 } : r));
+    expect(checkOppConfigFacts({ ...multiBase, pddText: pdd, createdPaymentUnits: bad, deliverUnits: dus }).autoSurfaced.some((a) => a.message === 'PU "Graduation" max_total 150 ≠ PDD total_cap_per_flw 100')).toBe(true);
+  });
+
+  it('an unresolvable PU is reported unverified, never a guessed WARN', () => {
+    const created = multiBase.createdPaymentUnits.map((r) => (r.id === 13 ? { ...r, name: 'Graduation', required_deliver_units: [9999] } : r));
+    const f = checkOppConfigFacts({ ...multiBase, createdPaymentUnits: created });
+    expect(f.autoSurfaced.filter((a) => a.severity === 'WARN' && /≠ PDD/.test(a.message))).toEqual([]);
+    expect(f.autoSurfaced.some((a) => a.severity === 'INFO-SKIPPED' && /Graduation/.test(a.message))).toBe(true);
+  });
+
+  it('the expected PU count comes from the PDD payment_unit_count before the archetype default', () => {
+    expect(expectedPaymentUnitCount('longitudinal-visits', undefined, 3)).toBe(3);
+    expect(expectedPaymentUnitCount('longitudinal-visits', undefined, null)).toBe(1);
+    const f = checkOppConfigFacts(multiBase); // archetype longitudinal-visits, no override
+    expect(f.autoSurfaced.some((a) => /payment-unit count/.test(a.message))).toBe(false);
+  });
 });
