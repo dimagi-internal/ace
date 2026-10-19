@@ -19,6 +19,7 @@
  */
 import type { QACheck, QACheckResult } from '../../lib/qa-types';
 import { decimalCompare, decimalEq, decimalSum, fromScaled, toScaled } from '../../lib/decimal-string';
+import type { IssueEventSource } from '../../lib/supply-chain-issue-events';
 
 export interface OperatePlan {
   program_id: number;
@@ -27,6 +28,14 @@ export interface OperatePlan {
   consignments: Array<{ key: string; from_supply_point_id: number; to_supply_point_id: number; quantity: string; quantity_received: string }>;
   distributions: Array<{ connect_username: string; quantity: string }>;
   counts: Array<{ supply_point_id: number; quantity: string }>;
+  /**
+   * Per worker, the week's issue events for this item and the quantity they put on the
+   * distribution line (`lib/supply-chain-issue-events.ts`). What drives distribution;
+   * enrolments are not a proxy for it (ace#3216).
+   */
+  issue_events?: Array<{ connect_username: string; issue_events: number; quantity: string }>;
+  /** How the issue events were obtained: read from the issue form, generated from the PDD's eligibility share, or one per enrolment. */
+  issue_events_source?: IssueEventSource;
   /** True in the week the plan records a zero count (a stockout). */
   stockout_week: boolean;
 }
@@ -200,6 +209,46 @@ export function checkDistributionsReadBack(artifact: string): QACheckResult {
   });
 }
 
+const ISSUE_SOURCES: readonly string[] = ['form_answer_visits', 'simulated_from_eligibility', 'per_enrolment'];
+
+export function checkDistributionsReconcileToIssueEvents(artifact: string): QACheckResult {
+  return withDoc(artifact, ({ plan, readback }) => {
+    if (!Array.isArray(plan.issue_events) || !plan.issue_events_source || !ISSUE_SOURCES.includes(plan.issue_events_source)) {
+      return {
+        pass: false,
+        detail: 'the plan carries no issue events (or no issue_events_source), so its distributions follow nothing that can be checked',
+        auto_fix_hint:
+          "Derive the week's issue events per worker from the commodity's setup-plan issue_event (deriveIssueEvents, lib/supply-chain-issue-events.ts) and put them in the plan with their source. Never distribute by enrolments unless the issue_event is per_enrolment.",
+      };
+    }
+    const bad: string[] = [];
+    const issued = new Map(plan.issue_events.map((e) => [e.connect_username, e]));
+    for (const d of plan.distributions) {
+      const e = issued.get(d.connect_username);
+      if (!e || e.issue_events <= 0) bad.push(`${d.connect_username}: distributed ${d.quantity} with no issue events this week`);
+      else if (!decimalEq(d.quantity, e.quantity)) bad.push(`${d.connect_username}: distributed ${d.quantity}, issue events give ${e.quantity}`);
+    }
+    for (const e of plan.issue_events) {
+      if (e.issue_events <= 0) continue;
+      if (!plan.distributions.some((d) => d.connect_username === e.connect_username)) {
+        bad.push(`${e.connect_username}: ${e.issue_events} issue events (${e.quantity}) but no distribution planned`);
+      }
+      const got = readback.distribution_lines.filter((l) => l.connect_username === e.connect_username).map((l) => l.quantity);
+      if (got.length && !decimalEq(decimalSum(got), e.quantity)) {
+        bad.push(`${e.connect_username}: labs holds ${decimalSum(got)} distributed, issue events give ${e.quantity}`);
+      }
+    }
+    return bad.length === 0
+      ? { pass: true, detail: `issue events ${plan.issue_events_source}` }
+      : {
+          pass: false,
+          detail: bad.join('; '),
+          auto_fix_hint:
+            "Each worker's distribution is that worker's issue events times the quantity one issue hands over. Re-plan the week from the issue events; correct a distribution already in labs with a stock_count override and a reason, never a reversing movement.",
+        };
+  });
+}
+
 export function checkCountsReadBack(artifact: string): QACheckResult {
   return withDoc(artifact, ({ plan, readback }) => {
     const bad = plan.counts
@@ -267,6 +316,7 @@ export const CHECKS: QACheck[] = [
   { id: 'flows_balance', type: 'static', description: "Each store's flow in minus out equals its on-hand (unit-converted)", run: checkFlowsBalance },
   { id: 'consignments_received', type: 'static', description: 'Every planned consignment is received with the planned quantity', run: checkConsignmentsReceived },
   { id: 'distributions_read_back', type: 'static', description: 'Every planned per-worker distribution reads back', run: checkDistributionsReadBack },
+  { id: 'distributions_reconcile_to_issue_events', type: 'static', description: "Each worker's distribution equals that worker's issue events times the quantity per issue", run: checkDistributionsReconcileToIssueEvents },
   { id: 'counts_read_back', type: 'static', description: 'Every planned stock count reads back', run: checkCountsReadBack },
   { id: 'stockout_recorded', type: 'static', description: 'In the stockout week, the zero count reads back', run: checkStockoutRecorded },
   { id: 'findings_listed_by_audience', type: 'static', description: "The week's review lists every open finding by audience", run: checkFindingsListedByAudience },

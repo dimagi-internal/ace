@@ -39,6 +39,10 @@ Outside a run, pass every parameter; nothing reads or writes `run_state.yaml`.
 - `9-execution-manager/simulated-execution_plan.yaml`: the window, the synthetic-data manifest
   (whose persona ids are the setup plan's FLW usernames, so distributions map to workers 1:1), and
   the per-week enrolment the PDD implies. Written **before any write**.
+- `9-execution-manager/simulated-execution_issue-events.yaml` (with `supply_chain`): per commodity,
+  its `issue_event`, its `issue_events_source` and the note `deriveIssueEvents` returned, and per
+  delivery week and worker the issue events and the quantity they give. What each week's
+  `week_activity` is.
 - `9-execution-manager/simulated-week-<w>_review.md`: one per delivery week, by
   `simulated-weekly-review`.
 - `9-execution-manager/simulated-execution_summary.md`: links every weekly review, the labs report
@@ -61,6 +65,19 @@ Outside a run, pass every parameter; nothing reads or writes `run_state.yaml`.
    Then `synthetic_clone_to_labs_only({source_opportunity_id: <its labs_opp_id>, org_name:
    <winner_org_name>, label: "<opp> simulated delivery (ACE)"})` and write
    `products.simulation.synthetic_opportunity_id` at once.
+3a. **Issue events** (with `supply_chain`; ace#3216). Read the generated `user_visits.json` from
+   the fixture folder `synthetic-data-generate` returned (`drive_read_file`), and for each
+   commodity in the setup plan call `deriveIssueEvents({commodity, issue_event, visits, calendar,
+   seed: <manifest random_seed>})` (`lib/supply-chain-issue-events.ts`). Write the second Products
+   file. **The synthetic stream has no Follow-up Contact visits to read:** labs' de-novo generator
+   merges every Deliver form's questions into one schema, stamps every visit with the
+   opportunity's first deliver unit, and carries form identity only on mirror clones (connect-labs
+   `synthetic/generator/fixtures/{schema_loader,engine,fields}.py`). So for a `form_answer` issue
+   event the helper GENERATES the handovers from the PDD's `eligible_share`, once per beneficiary
+   on their later visit, and returns `source: simulated_from_eligibility`; the summary and every
+   weekly review say the handovers were simulated from the eligibility rule. With no
+   `eligible_share` it throws, and the step halts with `[BLOCKER]` quoting it: never distribute by
+   enrolments in its place.
 4. **The weekly report.** `workflow_clone({source_workflow_id, source_program_id, target_opportunity_id:
    <synthetic opp>, linked: true, new_name: "<opp> simulated weekly review"})`: a linked twin keeps
    the registry binding and pipelines. Then `workflow_history_eligibility` must say eligible; if not,
@@ -74,7 +91,8 @@ Outside a run, pass every parameter; nothing reads or writes `run_state.yaml`.
    same `end`; follow a `job_id` with `job_status`.
 6. **Each delivery week w = 1..N**, in order:
    1. With `supply_chain`: `supply-chain-operate` with `{program_id, week: w, week_start, week_end,
-      opportunity_id: <synthetic opp>}`, then its QA. A failed week halts the loop.
+      opportunity_id: <synthetic opp>, week_activity: <week w of the issue-events file>}`, then
+      its QA. A failed week halts the loop.
    2. `simulated-weekly-review` for week w, then `simulated-weekly-review-eval` unless `--no-evals`.
 7. **Summary** (last Products file), then `products.simulation.weekly_reviews`, then dispatch
    `simulated-execution-qa`.
@@ -84,7 +102,7 @@ Outside a run, pass every parameter; nothing reads or writes `run_state.yaml`.
 - connect-labs: `synthetic_clone_to_labs_only`, `workflow_clone`, `workflow_history_eligibility`,
   `workflow_preview_as_of`, `workflow_ensure_visit_cache`, `workflow_rebuild_history`,
   `job_status`, `workflow_history_runs`
-- ace-gdrive: `drive_create_file`, `update_yaml_file` (`merge: deep`)
+- ace-gdrive: `drive_create_file`, `drive_read_file` (the fixture `user_visits.json`), `update_yaml_file` (`merge: deep`)
 - Skills: `synthetic-data-generate`, `supply-chain-operate`, `simulated-weekly-review`
 
 ## Existing objects
@@ -102,10 +120,11 @@ Outside a run, pass every parameter; nothing reads or writes `run_state.yaml`.
 
 ## Dry-Run Behavior
 
-Steps 1-2 and Step 4's eligibility read only. Write the plan; create nothing in labs.
+Steps 1-2 and Step 4's eligibility read only. Write the plan; create nothing in labs. (Step 3a needs the generated visits, so a dry run writes no issue-events file.)
 
 ## Change Log
 
 | Date | Change | Author |
 |------|--------|--------|
+| 2026-10-19 | Step 3a: per-worker, per-week issue events from each commodity's declared `issue_event` drive the week's distribution (`week_activity`), generated from the PDD's eligibility share because the synthetic stream carries no per-form visits (ace#3216) | ACE |
 | 2026-10-18 | Initial version (optional-track PR10): backdated N-week simulation on a labs-only copy under the ACE winner, weekly stock and saved report runs, one review per week | ACE |
