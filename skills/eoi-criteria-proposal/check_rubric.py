@@ -27,12 +27,21 @@ The rubric lives only in fields labs already stores:
       Measures: <what the criterion measures>
       Separates: <why it separates THIS pool, with counts>
 - `basis` (labs: `criteria_basis`) holds the outcome rules after a line
-  "Outcome rules:", with one line each for Score, Slots, Recommended, Backup,
-  Keep in view, Not recommended and Overrides (the outcome labels people read;
-  the stored keys Pick, Waitlist and Pass are accepted for the same lines).
+  "Outcome rules:", with one line each for Score, Slots, Recommended,
+  Recommended backup, Waitlist, Not recommended and Overrides (the outcome
+  labels people read; the earlier labels Backup and Keep in view, and the
+  stored keys Pick, Backup, Waitlist and Pass, are accepted for the same lines).
+  The Not recommended (pass) line is required like the others: a rubric that
+  says when to recommend but not when to turn an applicant down leaves the
+  bottom of the pool to each reviewer.
 
-Prints every problem, or "OK: rubric is explicit". Exits 1 on problems, 2 when
-the file cannot be read. Standard library only.
+Also warns (without failing) when a scoring guide docks points for planning
+to start before a contract or award: that is the review's `early-start` flag,
+and scoring it as well counts it twice.
+
+Prints every problem and warning, then "OK: rubric is explicit" when there
+are no problems. Exits 1 on problems, 2 when the file cannot be read.
+Standard library only.
 """
 
 import json
@@ -42,9 +51,14 @@ import sys
 ANCHORS = (1, 3, 5, 7, 10)
 RATIONALE_LABELS = ("measures", "separates")
 # (line label people read, the outcome key labs stores, or None when it is not an outcome).
-OUTCOME_LINES = (("Score", None), ("Slots", None), ("Recommended", "pick"), ("Backup", "backup"),
-                 ("Keep in view", "waitlist"), ("Not recommended", "pass"), ("Overrides", None))
+# Earlier labels (and the keys) are accepted for the same lines, so a rubric
+# saved before the labels changed still checks.
+OUTCOME_LINES = (("Score", None, ()), ("Slots", None, ()), ("Recommended", "pick", ()),
+                 ("Recommended backup", "backup", ("Backup",)),
+                 ("Waitlist", "waitlist", ("Keep in view",)),
+                 ("Not recommended", "pass", ()), ("Overrides", None, ()))
 MIN_ANCHOR_WORDS = 5
+MIN_PASS_RULE_WORDS = 4
 MIN_CRITERIA, MAX_CRITERIA = 5, 8
 _ID = re.compile(r"^[a-z][a-z0-9_]*$")
 _LINE = re.compile(r"^\s*(?:[-*]\s*)?([A-Za-z]+(?: [A-Za-z]+){0,2}|\d{1,2})\s*[:=.)-]\s*(.*\S)?\s*$")
@@ -54,6 +68,14 @@ _VERDICT_ONLY = {"excellent", "good", "great", "strong", "weak", "poor", "adequa
                  "fair", "average", "ok", "okay", "acceptable", "satisfactory",
                  "very", "somewhat", "quite", "some", "answer", "response", "the", "a",
                  "an", "is", "and", "or", "with", "of"}
+# A scoring guide that mentions starting before a contract or award. Timing
+# before award is the review's `early-start` flag, never a criterion's points.
+_EARLY_START = re.compile(
+    r"\b(start|starts|starting|started|begin|begins|beginning|commenc\w*|mobili[sz]\w*|work\w*)\b"
+    r"[^.\n]{0,40}?\b(before|ahead of|prior to|without|in advance of)\b[^.\n]{0,20}?"
+    r"\b(contract\w*|award\w*|signing|signature|agreement)\b"
+    r"|\bpre-?(contract|award)\b",
+    re.IGNORECASE)
 
 
 def parse_labelled(text):
@@ -156,6 +178,19 @@ def check_criterion(c, n):
     return problems
 
 
+def warnings_for(criteria):
+    """Things worth fixing that do not make the rubric implicit."""
+    out = []
+    for n, c in enumerate(criteria if isinstance(criteria, list) else []):
+        if not isinstance(c, dict):
+            continue
+        if _EARLY_START.search(str(c.get("scoring_guide") or "")):
+            out.append(f"warning: {c.get('id') or f'criterion #{n + 1}'}: scoring_guide mentions starting before "
+                       "a contract or award; timing before award costs no points, the review's early-start "
+                       "flag shows it")
+    return out
+
+
 def check(criteria, basis):
     problems = []
     if not isinstance(criteria, list) or not criteria:
@@ -177,9 +212,16 @@ def check(criteria, basis):
     if rules is None:
         problems.append("basis has no 'Outcome rules:' section")
     else:
-        for label, key in OUTCOME_LINES:
-            if not (rules.get(label.lower()) or (key and rules.get(key))):
-                problems.append(f"outcome rules have no '{label}:' line")
+        for label, key, earlier in OUTCOME_LINES:
+            names = [label, *earlier] + ([key] if key else [])
+            rule = next((rules[n.lower()] for n in names if rules.get(n.lower())), None)
+            if not rule:
+                problems.append(f"outcome rules have no '{label}:' line"
+                                + (f" (key {key}): say who is not recommended, e.g. 'otherwise, or when "
+                                   "<disqualifier>'" if key == "pass" else ""))
+            elif key == "pass" and len(rule.split()) < MIN_PASS_RULE_WORDS:
+                problems.append("the 'Not recommended:' rule must say when it applies, e.g. 'otherwise, "
+                                "or when <disqualifier>'")
     return problems
 
 
@@ -195,6 +237,8 @@ def main(argv):
         return 2
     criteria, basis = load_rubric(raw)
     problems = check(criteria, basis)
+    for w in warnings_for(criteria):
+        print(w)
     if problems:
         for p in problems:
             print(p)

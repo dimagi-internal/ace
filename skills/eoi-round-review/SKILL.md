@@ -63,8 +63,8 @@ record others will read: cite the organisation's answers, never a person.
 - **One AI review per response in labs**, written with `create_review(kind="ai", …)`:
   1–10 per criterion, `claims` (each criterion's reason, the strengths, the concerns, each
   with the passages it rests on), questions to ask, flags from the defined list, an
-  outcome (key `pick` / `backup` / `waitlist` / `pass`, shown as Recommended / Backup /
-  Keep in view / Not recommended; § Outcomes and flags) and provenance. Labs fills the per-criterion notes, strengths and
+  outcome (key `pick` / `backup` / `waitlist` / `pass`, shown as Recommended / Recommended backup /
+  Waitlist / Not recommended; § Outcomes and flags) and provenance. Labs fills the per-criterion notes, strengths and
   concerns from the claims, and computes the overall score from the criteria scores and
   the round's weights. Re-running replaces ACE's earlier AI review of that response.
 - `calibration.md`, written by the calibrating agent (step 8): the score distributions,
@@ -79,7 +79,7 @@ record others will read: cite the organisation's answers, never a person.
   `Projects/<project>/` (the project is the round's programme or the requester's project
   name), sharing off. Dimagi only. It has two tabs:
   1. **Recommendation**, under ~2 pages: bottom line, the Recommended table, a note on
-     each recommended applicant, Backup and Keep in view, Not recommended,
+     each recommended applicant, Recommended backup and Waitlist, Not recommended,
      before-launch conditions, and how it was scored.
   2. **The pool and the review**: what the pool told us about the work, pool coverage and
      quality, how it was reviewed, the comparison with the team, next-form advice, the
@@ -244,7 +244,7 @@ record others will read: cite the organisation's answers, never a person.
      themselves. A statement confirmed by labs history or by a source counts as evidence,
      and the claim cites that source as well as the answer.
    - Do not reward a confident statement that has no evidence behind it.
-   - Web-check only the candidates heading for the shortlist (Recommended or Backup): registration, age,
+   - Web-check only the candidates heading for the shortlist (Recommended or Recommended backup): registration, age,
      visible track record, and named partners. Cite every source as a `web` cite with its
      url.
    - When the batches come back, run `check_claims.py` on every batch yourself; do not
@@ -287,12 +287,12 @@ record others will read: cite the organisation's answers, never a person.
      quote exists. A claim that says more than its passage does is rewritten to what the
      passage shows, re-cited, or marked `synthesized` honestly.
    - **(d) Settles outcomes across the pool by the rubric's outcome rules** in
-     `criteria_basis` (Slots, Recommended, Backup, Keep in view, Not recommended,
+     `criteria_basis` (Slots, Recommended, Recommended backup, Waitlist, Not recommended,
      Overrides); when the round has none, about one Recommended (`pick`) per slot and two
-     Backups (`backup`) per slot, then Keep in view (`waitlist`) for the credible rest and
+     Recommended backups (`backup`) per slot, then Waitlist (`waitlist`) for the credible rest and
      Not recommended (`pass`). Every outcome claim names the outcome in the words people
      read and the rule it applied, and an outcome that goes against the score order names
-     the override (for example "Backup, slot rule: a higher scorer covers Ghana north",
+     the override (for example "Recommended backup, slot rule: a higher scorer covers Ghana north",
      "Recommended, rescoping override: conditional on one site within budget"). It
      rewrites the `outcome` claim of every response whose outcome changes.
    - **(e) Writes `calibration.md`**: the distributions (before and after), every change
@@ -327,11 +327,13 @@ record others will read: cite the organisation's answers, never a person.
 
    - It reports, per criterion: the score distribution (mean, SD, histogram, the share on
      three adjacent values: does it spread or bunch?); whether it separates the shortlist
-     (Recommended and Backup) from Not recommended (means, and the AUC: the chance a
+     (Recommended and Recommended backup) from Not recommended (means, and the AUC: the chance a
      random shortlisted response out-scores a random not-recommended one); its effective weight (how much of the weighted score's
      spread it actually produces) against its nominal weight; the share of its scores with
      no exact passage behind them, and the share that are a low score for a missing answer
-     (hard to judge from the form). Across criteria: the correlation matrix (|r| ≥ 0.7 is a
+     (hard to judge from the form); and its correlation with answer length (the words in the
+     response, from the responses `round.json` carries: r ≥ 0.5 means the anchors reward
+     length rather than what the answer names, which `eoi-criteria-proposal` forbids). Across criteria: the correlation matrix (|r| ≥ 0.7 is a
      redundant pair). For the slate: which responses got a better outcome than a higher
      scorer and what the outcome claims say it turned on (slot or geography, rescoping,
      safety or scope). And where calibration and people changed scores or outcomes, by
@@ -349,7 +351,7 @@ record others will read: cite the organisation's answers, never a person.
 
 10. **Write the two reports.** Both draw on the calibrated reviews and `calibration.md`.
    Plain language. No scores in the bottom line. Numbers only where they decide something
-   (a price, a count, a budget). Recommended, Backup, Keep in view and Not recommended are
+   (a price, a count, a budget). Recommended, Recommended backup, Waitlist and Not recommended are
    exactly the calibrated outcomes, so labs and the internal report agree. Reports use
    these words, never the keys (`pick`, `waitlist`, `pass`); an applicant with no outcome
    is "No recommendation yet".
@@ -362,7 +364,7 @@ record others will read: cite the organisation's answers, never a person.
        with evidence), and approximate budget.
      - **One note per recommended applicant**: why them; gaps; "ask them" (2–3
        questions); the role.
-     - **Backup and Keep in view**: the Backup named for each place, and the credible
+     - **Recommended backup and Waitlist**: the Recommended backup named for each place, and the credible
        applicants to keep in view for a later round, each with one reason.
      - **Not recommended**: the notable ones, each with one line of reason. Give a strong
        applicant that doesn't fit this budget or scope its own line (usually Keep in
@@ -449,7 +451,7 @@ record others will read: cite the organisation's answers, never a person.
         claims=[{id, about, text, basis, cites}, ...],   # § Claims and evidence
         ask_next="<2-3 questions>",
         flags=[...],                                      # defined keys only; labs refuses others
-        outcome="pick" | "backup" | "waitlist" | "pass",  # Recommended / Backup / Keep in view / Not recommended
+        outcome="pick" | "backup" | "waitlist" | "pass",  # Recommended / Recommended backup / Waitlist / Not recommended
         provenance={
           model: "<the model running this skill>",
           skill: "eoi-round-review",
@@ -540,7 +542,7 @@ its cites are exact.
   the review: its text starts with that flag's label or key (`Claims to check: ` or
   `unsupported: `), and every flag on the review has one (`check_claims.py` enforces
   both). An `outcome` claim says the outcome in the words people read (Recommended,
-  Backup, Keep in view, Not recommended), not the key.
+  Recommended backup, Waitlist, Not recommended), not the key.
 - `text`: one sentence in plain language. No names, emails or phone numbers. A
   `criterion:<id>` claim on an anchored rubric starts by naming the anchor its score was
   read against: `Anchor 7: names one priority LGA, but not its urban/rural mix.` The anchor
@@ -594,7 +596,7 @@ Example, for an invented applicant (criterion ids are whatever the round saved):
    "text": "Long but thin: both answers restate the question and name no site, buyer or past job.",
    "cites": [{"question": "q2", "whole": true}, {"question": "q3", "whole": true}]},
   {"id": "c6", "about": "outcome", "basis": "synthesized",
-   "text": "Backup, slot rule: strong sites and price, but a higher scorer holds the survey slot and it names no buyer for the value-chain role."}
+   "text": "Recommended backup, slot rule: strong sites and price, but a higher scorer holds the survey slot and it names no buyer for the value-chain role."}
 ]
 ```
 
@@ -612,12 +614,12 @@ ACE's copy, which the checkers read). The API stores and takes the **keys**; peo
 | Key | Label | Meaning |
 |---|---|---|
 | `pick` | Recommended | Proposed for one of the round's places now. |
-| `backup` | Backup | Ready to step in for a named place if a recommended applicant falls through. |
-| `waitlist` | Keep in view | Credible, but not needed for this round's places; worth asking again in a later round. |
+| `backup` | Recommended backup | Ready to step in for a named place if a recommended applicant falls through. |
+| `waitlist` | Waitlist | Credible, but not needed for this round's places; worth asking again in a later round. |
 | `pass` | Not recommended | Not a fit for this round, for the reasons the review gives. |
 | (none) | No recommendation yet | Nobody has reviewed it, or the review set no outcome. |
 
-The **shortlist** is Recommended plus Backup.
+The **shortlist** is Recommended plus Recommended backup.
 
 **Flags** are things for a reviewer to check before relying on a response, never
 penalties: the criterion scores carry the judgement. Use only these keys; **labs refuses
@@ -716,6 +718,8 @@ platform is "Connect".
 
 | Date | Change | Author |
 |------|--------|--------|
+| 2026-10-18 | Outcome labels renamed in labs (`vocabulary.py`): `backup` is Recommended backup (was Backup), `waitlist` is Waitlist (was Keep in view); keys unchanged | ACE team |
+| 2026-10-18 | `rubric_health.py` reports each criterion's correlation with answer length (from the responses in `round.json`) and notes r ≥ 0.5 in its recommendation: method criteria were rewarding longer answers | ACE team |
 | 2026-10-18 | Labs' defined vocabulary: flags are a fixed list of ten keys (labs refuses any other; `check_claims.py` refuses it first, and requires a `flag` claim naming each flag); outcomes keep their keys but are shown as Recommended / Backup / Keep in view / Not recommended in reports, claims and `rubric_health.py`; new § Outcomes and flags; step 13 links the internal report on the round with `marketplace_round_summary_set` | ACE team |
 | 2026-10-18 | Explicit rubric and rubric health: step 3 checks the round's rubric with `check_rubric.py`; criterion claims name the anchor they were read against (`Anchor <n>: ` / `Silent: `, enforced by `check_claims.py`); calibration settles outcomes by the outcome rules in `criteria_basis` and writes `calibration.json`; new step 9 runs `rubric_health.py` (distribution, separation, effective weight, evidence, correlation, slate overrides, calibration and human changes) and writes keep/reweight/split/drop/add with numbers; the internal report gains Rubric health and "Program design: what this pool tells us" | ACE team |
 | 2026-10-18 | Learnings from a 44-response dry run: shipped `check_claims.py` (labs' quote matching plus structure checks) that every batch runs until OK; batch in/out shapes (`cost_per_site_usd`, `cost_note`, `one_line`); a separate calibration agent before any labs write (distributions, blind spot-check of 6, claim support, outcomes settled per slot, `calibration.md`); labs writes paced ≥2.5 s and retried after 60 s on the 30/m limit; internal and de-identified external reports, both published with sharing off after a de-identification scan; the three human review modes and the round page's Start reviewing walk | ACE team |
