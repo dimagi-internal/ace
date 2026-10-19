@@ -136,7 +136,7 @@ describe('eoi-round-review rubric_health.py', () => {
     const { r, h } = run(reviews);
     expect(Object.keys(h.outcomes).sort()).toEqual(expect.arrayContaining(['pick', 'backup', 'waitlist', 'pass']));
     expect(r.stdout).toMatch(/Outcomes: Recommended \d+, Recommended backup \d+, Waitlist \d+, Not recommended \d+\./);
-    expect(r.stdout).toMatch(/are on the shortlist \(recommended or backup\)/);
+    expect(r.stdout).toMatch(/are on the shortlist \(recommended or recommended backup\)/);
     expect(r.stdout).not.toMatch(/\b(pick|waitlist)\b/);
   });
 
