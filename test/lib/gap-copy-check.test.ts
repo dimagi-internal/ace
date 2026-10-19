@@ -85,6 +85,62 @@ describe('extractProseLines', () => {
   });
 });
 
+describe('extractProseLines skips JavaScript comments (ace#3247)', () => {
+  /** The CAPABILITY gap that fired on connect-fi/20261018-1440 Phase 7. */
+  const LABELS_GAP: GapLike = {
+    id: 'gap-channel-labels',
+    type: 'CAPABILITY',
+    detail: 'The visit list prints channel codes as stored rather than plain labels.',
+  };
+
+  // The two comment blocks quoted verbatim in the issue (once as `//` lines, once
+  // as a `/* */` block), a trailing `//` on a code line, and one JSX text node a
+  // viewer does read, naming the same term.
+  const RENDER = [
+    'function render(props) {',
+    '  // every WORD the reader sees about the programme -- which indicators are the',
+    "  // headline, their targets and labels, the scorecard's columns and category",
+    '  const x = 1;',
+    '  /* Scale ticks under the expanded bars: 0 / half / full for a percentage',
+    "   * axis, 0 / max otherwise. Labels reuse the indicator's own formatter.",
+    '   */',
+    '  const y = 2; // the plain labels are shown in this list',
+    '  return (',
+    '    <div>',
+    '      Each visit shows its plain labels in words for the reader.',
+    '    </div>',
+    '  );',
+    '}',
+  ].join('\n');
+
+  it('reports only the JSX text node, never a comment', () => {
+    const r = checkGapCopy([LABELS_GAP], [{ name: 'render:programme_report', code: RENDER }]);
+    expect(r.findings).toHaveLength(1);
+    expect(r.findings[0].line).toBe(11);
+    expect(r.findings[0].term).toBe('labels');
+  });
+
+  it('keeps line numbers aligned with the source', () => {
+    expect(extractProseLines(RENDER)).toEqual([
+      { line: 11, text: 'Each visit shows its plain labels in words for the reader.' },
+    ]);
+  });
+
+  it('does not mangle a URL in a string literal or in JSX text', () => {
+    const src = [
+      '  const link = "see the full channel labels at https://labs.example.org/docs";',
+      '  <p>',
+      '      Read the channel labels guide at https://labs.example.org/guide today.',
+      '  </p>',
+      '  const cdn = "//cdn.example.org/a/b"; // trailing comment',
+    ].join('\n');
+    const texts = extractProseLines(src).map((p) => p.text);
+    expect(texts).toContain('see the full channel labels at https://labs.example.org/docs');
+    expect(texts).toContain('Read the channel labels guide at https://labs.example.org/guide today.');
+    expect(texts.some((t) => /trailing comment/.test(t))).toBe(false);
+  });
+});
+
 describe('checkGapCopy', () => {
   it('flags dashboard copy that asserts what a CAPABILITY gap forbids', () => {
     const code = [

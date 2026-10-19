@@ -132,7 +132,7 @@ export function deriveGapTerms(gap: GapLike): string[] {
  */
 export function extractProseLines(source: string): { line: number; text: string }[] {
   const out: { line: number; text: string }[] = [];
-  const lines = source.split('\n');
+  const lines = stripJsComments(source.split('\n'));
 
   /**
    * Is this line a JSX TEXT line — prose a viewer reads, not code?
@@ -183,6 +183,54 @@ export function extractProseLines(source: string): { line: number; text: string 
   });
 
   return out;
+}
+
+/**
+ * Blank out JavaScript comments, line for line, so no viewer-invisible text
+ * reaches the prose heuristic or the string-literal pass (ace#3247: the indicator
+ * report templates' explanatory `//` blocks produced 12 false findings on
+ * connect-fi/20261018-1440). Line count is preserved so findings keep their line.
+ *
+ * `//` and `/*` count as comment openers only outside a quoted string on that
+ * line and only when not preceded by `:` — so `"https://..."`, `"//cdn..."` and a
+ * bare URL in JSX text are left intact. The quote tracking is per line and
+ * deliberately conservative: an apostrophe in JSX text can make a real trailing
+ * comment look quoted, which leaves it in (the old behaviour) rather than cutting
+ * real copy.
+ */
+function stripJsComments(lines: string[]): string[] {
+  let inBlock = false;
+  return lines.map((raw) => {
+    let out = '';
+    let quote: string | null = null;
+    let i = 0;
+    while (i < raw.length) {
+      const c = raw[i];
+      const next = raw[i + 1];
+      if (inBlock) {
+        if (c === '*' && next === '/') { inBlock = false; i += 2; out += ' '; continue; }
+        i++;
+        continue;
+      }
+      if (quote) {
+        out += c;
+        if (c === '\\') { out += next ?? ''; i += 2; continue; }
+        if (c === quote) quote = null;
+        i++;
+        continue;
+      }
+      if (c === '"' || c === "'" || c === '`') { quote = c; out += c; i++; continue; }
+      if (c === '/' && (next === '/' || next === '*') && raw[i - 1] !== ':') {
+        if (next === '/') break; // rest of the line is a comment
+        inBlock = true;
+        i += 2;
+        continue;
+      }
+      out += c;
+      i++;
+    }
+    return out;
+  });
 }
 
 /**
