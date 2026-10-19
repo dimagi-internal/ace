@@ -15,6 +15,8 @@
  * Pure: no I/O.
  */
 
+import { lintDisplayText } from './registry-display-text.js';
+
 export interface RegistryMeasure {
   name: string;
   type?: string;
@@ -72,11 +74,23 @@ function stripPddRefs(text: string): string {
   // Scope notes cite the design doc ("PDD §8.1 P1 — target ...", "The PDD sets
   // no target."). A worker never sees the PDD and the card states targets
   // itself, so keep only the sentences that say how the figure is counted.
+  //
+  // `scope_note` is AUTHOR-facing (semantic-registry-author § 3), so it also
+  // carries build bookkeeping — "(Phase 3 residual)", "[PROPOSED]" — and raw
+  // formulas over form fields ("deposit_received = yes"). Neither belongs in a
+  // coach card a worker's conversation is built from (ace#3246, connect-fi): a
+  // sentence the reader-facing lint flags (a field name, an indicator code, a
+  // section number, a comparison symbol) is dropped whole, the same rule the
+  // registry's own rendered text is held to (lib/registry-display-text.ts).
   return text
     .replace(/\([^)]*§[^)]*\)/g, '')
+    .replace(/\(\s*Phase\s*\d+[^)]*\)/gi, '')
+    .replace(/\[[A-Z][A-Z _-]*\]/g, '')
     .split(/(?<=\.)\s+/)
     .map((s) => s.replace(/^PDD\s*§[\d.]+\s*[A-Z]?-?\d*[^—]*—\s*/, ''))
+    .map((s) => s.replace(/\s+([.,;:])/g, '$1').trim())
     .filter((s) => s && !/PDD|§|^S-\d|stratum/.test(s) && !/^target\b/i.test(s))
+    .filter((s) => /[A-Za-z]/.test(s) && lintDisplayText(s).length === 0)
     .join(' ')
     .trim();
 }
@@ -108,23 +122,33 @@ export function renderIndicatorCards(cards: IndicatorCard[]): string {
         const u = (n: number) => withUnit(n, c.unit);
         const target = c.target !== undefined ? `Target ${u(c.target)}. ` : '';
         const [ok, worse] = c.direction === 'higher' ? ['at or above', 'below'] : ['at or below', 'above'];
+        // Equal bands are a single target with no watch zone: labs grades no worker
+        // amber, so an amber sentence ("between 55% and 55%") describes a band that
+        // cannot occur (ace#3246, connect-fi registry 11336 FI_READY [55,55]).
+        const noAmber = green === amber;
         // Amber range low-to-high in both directions ("between 25% and 10%" read backwards).
         const [lo, hi] = green <= amber ? [green, amber] : [amber, green];
         lines.push(
-          `- ${target}Green ${ok} ${u(green)}; amber between ${u(lo)} and ${u(hi)}; ` +
-            `red ${worse} ${u(amber)}.`,
+          noAmber
+            ? `- ${target}Green ${ok} ${u(green)}; red ${worse} ${u(amber)}.`
+            : `- ${target}Green ${ok} ${u(green)}; amber between ${u(lo)} and ${u(hi)}; ` +
+                `red ${worse} ${u(amber)}.`,
         );
         // The words to use, so a red figure is never softened to "a bit under" (the
-        // live Spark Coach did exactly that twice on 2026-10-06).
+        // live Spark Coach did exactly that twice on 2026-10-06). With no amber band a
+        // red figure may be one point off the line, so "well below" would overstate it.
         const goal = c.target ?? green;
         const side = c.direction === 'higher' ? 'below' : 'above';
+        const well = noAmber ? '' : 'well ';
         const [redWords, amberWords] = reviewLevel
-          ? [`well ${side} the review level (${u(green)})`, `a little ${side} the review level`]
+          ? [`${well}${side} the review level (${u(green)})`, `a little ${side} the review level`]
           : c.direction === 'higher'
-            ? [`well below the goal of ${u(goal)}`, `a little below the goal of ${u(goal)}`]
-            : [`well above the level the programme aims for (${u(goal)})`, `a little above the level the programme aims for`];
+            ? [`${well}below the goal of ${u(goal)}`, `a little below the goal of ${u(goal)}`]
+            : [`${well}above the level the programme aims for (${u(goal)})`, `a little above the level the programme aims for`];
         lines.push(
-          `- Say a red figure as "${redWords}"; an amber one as "${amberWords}".` +
+          (noAmber
+            ? `- Say a red figure as "${redWords}".`
+            : `- Say a red figure as "${redWords}"; an amber one as "${amberWords}".`) +
             (reviewLevel ? ' Never call the review level a goal or a target.' : ''),
         );
       } else if (!c.reviewFlag) {
