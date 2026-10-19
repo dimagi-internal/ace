@@ -65,6 +65,8 @@ import {
   enumerateCalculateLiterals,
   checkCczCaseListEnumFidelity,
   describeCczEnumFidelity,
+  describeExternallyWritten,
+  parseExternalCaseValueWriters,
 } from '../../lib/ccz-enum-fidelity.js';
 
 const FIXTURES = path.join(
@@ -1102,5 +1104,175 @@ describe('carry-forward calculate: if(answer, answer, own case value) (ace#3208)
         selectRefs: new Set(),
       }),
     ).toEqual({ values: ['a'], carriesOwnValue: true });
+  });
+});
+
+/**
+ * ace#3220 — a case-list value set OUTSIDE the forms, by a declared writer.
+ *
+ * connect-fi's Deliver app (HQ app `82068840dba64be2b70eab9f58b39d39`) labels
+ * `stage = handed_over` "Handed over at close-out". No form writes it — by
+ * design: the PDD's build residual reads "No form sets stage Handed over at
+ * close-out; every adult still in progress on 28 Feb 2027 needs a bulk case
+ * update". The operator kept the label (2026-10-19), so the gate must accept a
+ * DECLARED out-of-form writer without loosening for anything undeclared.
+ *
+ * The hhstate fixtures stand in for the shape: the Follow-Up form is mutated to
+ * stop writing `checked`, which makes `checked` exactly as unwritable as
+ * `handed_over` is on connect-fi.
+ */
+describe('declared out-of-form writers (ace#3220)', () => {
+  const suiteXml = read('hhstate-suite.xml');
+  const appStrings = read('hhstate-app_strings.txt');
+  const REGISTER = 'modules-0/forms-0.xml';
+  const FOLLOWUP = 'modules-1/forms-0.xml';
+  const followupXml = read('hhstate-followup-form.xml');
+  const mutated = followupXml.replace(`calculate="'checked'"`, `calculate="'visited'"`);
+  const forms = [
+    { path: REGISTER, xml: read('hhstate-register-form.xml') },
+    { path: FOLLOWUP, xml: mutated },
+  ];
+  const closeout = {
+    property: 'household_state',
+    values: ['checked'],
+    writer: 'Phase 10 close-out bulk case update on HQ',
+    source:
+      'PDD build residual: "No form sets this state; every case still open at close-out needs a bulk case update"',
+  };
+
+  it('the fixture really leaves `checked` unwritten by any form', () => {
+    expect(mutated).not.toBe(followupXml);
+    const res = checkCczCaseListEnumFidelity({ suiteXml, appStrings, forms });
+    assertChecked(res);
+    expect(res.findings.map((f: CczEnumFidelityFinding) => [f.value, f.kind])).toEqual([
+      ['checked', 'missing-from-form'],
+    ]);
+  });
+
+  it('(a) a DECLARED external value passes, reported as INFO with writer and source', () => {
+    const res = checkCczCaseListEnumFidelity({
+      suiteXml,
+      appStrings,
+      forms,
+      externallyWritten: [closeout],
+    });
+    assertChecked(res);
+    expect(res.ok).toBe(true);
+    expect(res.findings).toEqual([]);
+    expect(res.externallyWritten).toEqual([
+      {
+        property: 'household_state',
+        value: 'checked',
+        caseListLabel: expect.any(String),
+        writer: closeout.writer,
+        source: closeout.source,
+        detailIds: ['m0_case_short', 'm0_case_long'],
+      },
+    ]);
+    expect(res.unusedExternalDeclarations).toEqual([]);
+    const [line] = describeExternallyWritten(res.externallyWritten);
+    expect(line).toMatch(/^\[INFO\] household_state="checked"/);
+    expect(line).toContain('externally written (declared)');
+    expect(line).toContain(closeout.writer);
+  });
+
+  it('(b) the same value UNDECLARED still fails as missing-from-form', () => {
+    const res = checkCczCaseListEnumFidelity({ suiteXml, appStrings, forms, externallyWritten: [] });
+    assertChecked(res);
+    expect(res.ok).toBe(false);
+    expect(res.findings.map((f: CczEnumFidelityFinding) => f.kind)).toEqual(['missing-from-form']);
+    expect(res.externallyWritten).toEqual([]);
+  });
+
+  it('(c) a declaration for a DIFFERENT property does not leak', () => {
+    const res = checkCczCaseListEnumFidelity({
+      suiteXml,
+      appStrings,
+      forms,
+      externallyWritten: [{ ...closeout, property: 'stage' }],
+    });
+    assertChecked(res);
+    expect(res.ok).toBe(false);
+    expect(res.findings.map((f: CczEnumFidelityFinding) => [f.property, f.value])).toEqual([
+      ['household_state', 'checked'],
+    ]);
+    expect(res.externallyWritten).toEqual([]);
+    expect(res.unusedExternalDeclarations).toEqual(['stage=checked']);
+  });
+
+  it('declares only the values it names — a second unwritten value still fails', () => {
+    // Stop Register writing `declined` too: only `checked` is declared.
+    const registerXml = read('hhstate-register-form.xml').replace(`'declined'`, `'refused'`);
+    const res = checkCczCaseListEnumFidelity({
+      suiteXml,
+      appStrings,
+      forms: [
+        { path: REGISTER, xml: registerXml },
+        { path: FOLLOWUP, xml: mutated },
+      ],
+      externallyWritten: [closeout],
+    });
+    assertChecked(res);
+    expect(res.ok).toBe(false);
+    expect(res.findings.map((f: CczEnumFidelityFinding) => f.value)).toEqual(['declined']);
+    expect(res.externallyWritten.map((e) => e.value)).toEqual(['checked']);
+  });
+
+  it('an UNATTRIBUTED declaration is refused and excuses nothing', () => {
+    const res = checkCczCaseListEnumFidelity({
+      suiteXml,
+      appStrings,
+      forms,
+      externallyWritten: [{ property: 'household_state', values: ['checked'], writer: '', source: '' }],
+    });
+    assertChecked(res);
+    expect(res.ok).toBe(false);
+    expect(res.externalDeclarationProblems).toEqual([
+      'declaration #1 (household_state) refused: missing writer, source',
+    ]);
+    expect(parseExternalCaseValueWriters('stage=handed_over').problems).toEqual([
+      'externally-written declarations must be a list',
+    ]);
+  });
+
+  it('works on the SELECT path too: a select writer plus a declared value', () => {
+    // Bednet: the select offers yes/no. Stop the form offering `no`, so the
+    // tile's `no` is unwritten on the select branch — then declare it.
+    const form = read('bednet-form.xml').replace('<value>no</value>', '<value>maybe</value>');
+    const base = {
+      suiteXml: read('bednet-suite.xml'),
+      appStrings: read('bednet-app_strings.txt'),
+      forms: [{ path: BEDNET_FORM, xml: form }],
+    };
+    const undeclared = checkCczCaseListEnumFidelity(base);
+    assertChecked(undeclared);
+    expect(undeclared.findings.map((f: CczEnumFidelityFinding) => [f.value, f.kind])).toEqual([
+      ['no', 'missing-from-form'],
+    ]);
+    const declared = checkCczCaseListEnumFidelity({
+      ...base,
+      externallyWritten: [{ ...closeout, property: 'slept_under_bednet', values: ['no'] }],
+    });
+    assertChecked(declared);
+    expect(declared.ok).toBe(true);
+    expect(declared.externallyWritten.map((e) => [e.property, e.value])).toEqual([
+      ['slept_under_bednet', 'no'],
+    ]);
+  });
+
+  it('a declared value a form ALSO writes is not an exemption — it is reported unused', () => {
+    const res = checkCczCaseListEnumFidelity({
+      suiteXml,
+      appStrings,
+      forms: [
+        { path: REGISTER, xml: read('hhstate-register-form.xml') },
+        { path: FOLLOWUP, xml: followupXml },
+      ],
+      externallyWritten: [closeout],
+    });
+    assertChecked(res);
+    expect(res.ok).toBe(true);
+    expect(res.externallyWritten).toEqual([]);
+    expect(res.unusedExternalDeclarations).toEqual(['household_state=checked']);
   });
 });

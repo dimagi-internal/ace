@@ -39,6 +39,7 @@ argument first; inside `/ace:run` it defaults to the run's artifacts.
 | `[FIXED]` instruments (optional) | Step 4.8 question-text + option-set diff (ace#2366) | default: the markdown the PDD cites in Phase 1 `inputs/` (via `inputs-manifest.yaml`); skipped with `not-applicable` when there is none |
 | `opportunity_id` + `organization_slug` | Step 4.7 re-release invariants against an EXISTING opportunity | explicit `--opportunity-id` / `--org`; default: run_state `phases.connect-setup.products.connect.opportunity.id` |
 | `form_field_rules` | Step 4.7a rule-path check | explicit `--form-field-rules=<json>` (an override); default: read live with `connect_get_verification_flags({organization_slug: <program org>, opportunity_id})` (read-only, ace#3161); else run_state `phases.connect-setup.products.connect.opportunity.verification.form_field_rules`. Only when none of the three resolves is the rule-path check UNEVALUATED, never a pass |
+| `externally_written_case_values` (optional) | Step 4 check 3: case-list enum values a DECLARED out-of-form writer sets (e.g. a Phase 10 close-out bulk case update), which pass as `[INFO]` instead of `case-list-enum-drift` (ace#3220) | explicit `--externally-written=<json>` (outside a run: from the program context doc, quoting the PDD); default: the `externally_written_case_values` frontmatter of Phase 3 `3-commcare/pdd-to-deliver-app_summary.md` (written by its Step 4l sub-step 8). Absent ⇒ `[]`: nothing is excused. Never derived here from residual prose |
 | `output_folder` | where the result YAML goes | default: the run's `3-commcare/`; outside a run, the program project's Drive folder |
 
 ## Existing objects
@@ -413,7 +414,13 @@ device, no Connect.
      checkCczCaseListEnumFidelity,
      describeCczEnumFidelity,
    } from '../../lib/ccz-enum-fidelity';
-   const res = checkCczCaseListEnumFidelity({ suiteXml, appStrings, forms });
+   const res = checkCczCaseListEnumFidelity({
+     suiteXml,
+     appStrings,
+     forms,
+     // ace#3220 — see "Values set outside the forms" below. [] when undeclared.
+     externallyWritten: externally_written_case_values ?? [],
+   });
    ```
 
    Branch on `res.status` — `unable` is **not** a pass (`lib/check-outcome.ts`).
@@ -462,6 +469,27 @@ device, no Connect.
    `unable` with a reason naming the expression — record it and treat the
    column as UNEVALUATED. `res.calculateWritten` reports the value set that was
    compared, per property, so the memo can show it.
+
+   **Values set outside the forms are accepted only when DECLARED** (ace#3220).
+   Some tile values are written by no form on purpose — connect-fi's Deliver
+   app labels `stage = handed_over` "Handed over at close-out", and its PDD's
+   build residual reads *"No form sets stage Handed over at close-out; every
+   adult still in progress on 28 Feb 2027 needs a bulk case update"* (Phase 10
+   closeout, bulk case update on HQ). The CCZ cannot tell that apart from a
+   stale enum, so the declaration comes from outside it: the
+   `externally_written_case_values` input (§ Inputs), each entry
+   `{property, values, writer, source}`. A declared value passes and is listed
+   in `res.externallyWritten` — record each as `[INFO]` with
+   `describeExternallyWritten(res.externallyWritten)` (it names the writer and
+   source), never as a pass-by-silence. Scope is exact: only the named values,
+   only on the named property. An undeclared value no form writes still fails
+   as `missing-from-form`; an entry missing its `writer` or `source` is refused
+   (`res.externalDeclarationProblems`) and excuses nothing; a declared value a
+   form also writes, or no tile renders, comes back in
+   `res.unusedExternalDeclarations` — report it as a stale declaration. Do not
+   add a declaration here to clear a BLOCKER: it is a build record, written at
+   `pdd-to-deliver-app § Step 4l` sub-step 8 from a PDD statement, and a value
+   with no such statement is the ace#1688 defect this gate exists for.
 
    **Every writer, or none** (ace#2940). Case writes are read in both shapes —
    bare `/data/case/(create|update)/<prop>` and Nova's
