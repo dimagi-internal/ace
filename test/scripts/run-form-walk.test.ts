@@ -26,7 +26,57 @@ import {
   parseDraftAppFormUids,
   parseDraftAppModuleUids,
   mergeDraftFormUids,
+  findStaleDraftModules,
 } from '../../scripts/run-form-walk.js';
+
+describe('findStaleDraftModules — stale draft-API read after an upload (ace#3221)', () => {
+  // Shape observed live on connect-fi/20261018-1440, HQ app
+  // 82068840dba64be2b70eab9f58b39d39, seconds after a Nova re-upload that
+  // appended a 6th module: the API answered `version 16` with the new module
+  // as an id-less, name-less, form-less row.
+  const staleRead = {
+    version: 16,
+    modules: [
+      { unique_id: 'd66c3ddd722a4603a2f4e0f3e92085ed', name: { en: 'Households' },
+        forms: [{ unique_id: 'b795f9192a0041d99a11c4cc3544f0d0' }, { unique_id: '308eb8fe6fb34cfe9d444e7fb90e7730' }] },
+      { unique_id: '1d76b9c5d4f246df8650ed4000dd5fc4', name: { en: 'Completion' },
+        forms: [{ unique_id: 'f7f642c283c048f99f6768ec83a4c423' }] },
+      { unique_id: null, name: null, forms: [] },
+    ],
+  };
+  // The same call ~15 min later: version 29, the module and its form present.
+  const caughtUp = {
+    version: 29,
+    modules: [
+      ...staleRead.modules.slice(0, 2),
+      { unique_id: '2d4b1390748d4bd2a8f061564ba69ee1', name: { en: 'Phone stock' },
+        forms: [{ unique_id: '4669ea9484fc41e098f53ef4bc351fe1' }] },
+    ],
+  };
+
+  it('flags the id-less module row the parsers skip silently (negative control)', () => {
+    expect(findStaleDraftModules(staleRead)).toEqual([2]);
+    // ...and shows why it is needed: the uid parsers drop the row without a word.
+    expect(parseDraftAppFormUids(staleRead).size).toBe(3);
+  });
+
+  it('passes the caught-up read (positive control)', () => {
+    expect(findStaleDraftModules(caughtUp)).toEqual([]);
+    expect(parseDraftAppFormUids(caughtUp).size).toBe(4);
+  });
+
+  it('does not flag a case-list-only module (valid id, zero forms)', () => {
+    const caseListOnly = {
+      modules: [{ unique_id: '2d4b1390748d4bd2a8f061564ba69ee1', name: { en: 'Children' }, forms: [] }],
+    };
+    expect(findStaleDraftModules(caseListOnly)).toEqual([]);
+  });
+
+  it('returns [] for a response with no modules array', () => {
+    expect(findStaleDraftModules(null)).toEqual([]);
+    expect(findStaleDraftModules({})).toEqual([]);
+  });
+});
 
 const FIXTURE_DIR = path.join(__dirname, '..', 'fixtures', 'cchq');
 

@@ -570,6 +570,36 @@ export function parseDraftAppModuleUids(draftJson: unknown): DraftModuleUidMap {
 }
 
 /**
+ * Indices of draft-API module rows that carry no usable `unique_id` — the
+ * signature of a STALE or partly written draft read (dimagi-internal/ace#3221).
+ *
+ * Observed on connect-fi/20261018-1440: read seconds after a Nova
+ * `upload_app_to_hq` that appended a sixth module, the API answered
+ * `version 16` with the new module as `{unique_id: null, name: null,
+ * forms: []}`, while `/apps/source/` already showed it. ~15 min later the same
+ * call answered `version 29` with the module and its form. The parsers above
+ * skip such a row silently, so the walk reported one form fewer and no warning —
+ * and `app-hq-settings` would have left the new module list-style and its photo
+ * gallery-enabled.
+ *
+ * Keyed on the missing id ONLY. A module with a valid id and zero forms is a
+ * legitimate case-list-only module and is NOT stale.
+ *
+ * Exported for unit tests.
+ */
+export function findStaleDraftModules(draftJson: unknown): number[] {
+  const modules = (draftJson as { modules?: unknown[] } | null)?.modules;
+  if (!Array.isArray(modules)) return [];
+  const stale: number[] = [];
+  for (let mi = 0; mi < modules.length; mi++) {
+    const mod = modules[mi] as { unique_id?: unknown } | null;
+    const uid = typeof mod?.unique_id === 'string' ? mod.unique_id : null;
+    if (!uid || !HQ_UNIQUE_ID_RE.test(uid)) stale.push(mi);
+  }
+  return stale;
+}
+
+/**
  * Overlay draft-API form_unique_ids onto a `walkCcz` output, replacing
  * each form's `form_unique_id` with the draft variant when present.
  * Forms whose path isn't in the draft map keep their suite.xml value
@@ -633,8 +663,12 @@ async function fetchDraftUidsViaApiKey(args: {
   domain: string;
   app_id: string;
   baseUrl: string;
-}): Promise<{ formMap: DraftFormUidMap; moduleMap: DraftModuleUidMap }> {
-  const empty = { formMap: new Map<string, string>(), moduleMap: new Map<string, string>() };
+}): Promise<{ formMap: DraftFormUidMap; moduleMap: DraftModuleUidMap; staleModules: number[] }> {
+  const empty = {
+    formMap: new Map<string, string>(),
+    moduleMap: new Map<string, string>(),
+    staleModules: [] as number[],
+  };
   const user = process.env.ACE_HQ_USERNAME;
   const key = process.env.ACE_HQ_API_KEY;
   if (!user || !key) {
@@ -667,6 +701,7 @@ async function fetchDraftUidsViaApiKey(args: {
   return {
     formMap: parseDraftAppFormUids(body),
     moduleMap: parseDraftAppModuleUids(body),
+    staleModules: findStaleDraftModules(body),
   };
 }
 
@@ -785,11 +820,40 @@ async function main(): Promise<number> {
   // stops pretending a build has to exist first.
   if (args.draft_only) {
     const cchqBaseUrl = process.env.ACE_HQ_BASE_URL ?? 'https://www.commcarehq.org';
-    const { formMap, moduleMap } = await fetchDraftUidsViaApiKey({
+    let { formMap, moduleMap, staleModules } = await fetchDraftUidsViaApiKey({
       domain: args.domain,
       app_id: args.app_id,
       baseUrl: cchqBaseUrl,
     });
+    // A module row with no unique_id is a stale/partial read of a draft that
+    // was just written (ace#3221) — the API lags an upload. Retry with
+    // backoff, then fail loud: emitting the shorter inventory would let
+    // app-hq-settings skip the new module's grid and its forms' camera-only.
+    const staleRetries = Number(process.env.ACE_FORM_WALK_STALE_RETRIES ?? '4');
+    const staleBaseMs = Number(process.env.ACE_FORM_WALK_STALE_BASE_MS ?? '15000');
+    for (let attempt = 0; staleModules.length > 0 && attempt < staleRetries; attempt++) {
+      const waitMs = staleBaseMs * 2 ** attempt;
+      console.error(
+        `[run-form-walk] draft-app API returned module row(s) ${staleModules.join(', ')} with no ` +
+          `unique_id (stale read after an upload?); retrying in ${waitMs / 1000}s ` +
+          `(${attempt + 1}/${staleRetries})`,
+      );
+      await new Promise((r) => setTimeout(r, waitMs));
+      ({ formMap, moduleMap, staleModules } = await fetchDraftUidsViaApiKey({
+        domain: args.domain,
+        app_id: args.app_id,
+        baseUrl: cchqBaseUrl,
+      }));
+    }
+    if (staleModules.length > 0) {
+      console.error(
+        `[run-form-walk] STALE_DRAFT_API: module row(s) ${staleModules.join(', ')} still carry no ` +
+          'unique_id after retries. The draft-app API has not caught up with the latest write, so ' +
+          'its module/form inventory is incomplete. Do NOT pass this walk to a write-side atom; ' +
+          're-run later (ace#3221).',
+      );
+      return 3;
+    }
     // No suite.xml fallback here by design: in draft-only mode the API IS
     // the source, so an empty map is a hard failure, not a soft degrade.
     // Silently emitting zero forms is exactly the failure #971 is about.
