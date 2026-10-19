@@ -115,6 +115,15 @@ is login-only. See CLAUDE.md § Phases on why "public" is a misnomer.
 | `marketplace_rounds_list` / `marketplace_round_responses` / `marketplace_orgs_get` | `eoi-criteria-proposal`, `eoi-round-review`, `marketplace-outreach-doc`, `llo-directory-add` |
 | `marketplace_round_criteria_set` | `eoi-criteria-proposal` |
 | `marketplace_round_summary_set` | `eoi-round-review` (links the internal report on the round) |
+| `marketplace_round_scores` | read-only: every applicant × criterion plus per-criterion mean / median / spread / shortlist gap, the same figures as the round's Scores page. `version` reads an earlier criteria version; `compare_with` adds whose recommendation moved and how each criterion's weight, mean and shortlist gap changed between two versions. Use it to report a re-score, never a hand-built diff |
+| `marketplace_round_versions` | read-only: every criteria version of a round, oldest first, with its basis, author, whether it is current, and how many AI and people's reviews were scored on it |
+| `marketplace_round_version_archive` / `marketplace_round_version_delete` | operator tasks, approval-gated. Archive puts a version kept outside labs (and its AI reviews) back into the round's history; delete removes an earlier version and EVERY review on it, people's included, and cannot be undone. Neither touches the current version |
+
+A round keeps every criteria version. `marketplace_round_criteria_set` with new criteria
+adds a version (it becomes current), and an AI re-score on it supersedes the earlier AI
+review rather than overwriting it, so v1 → v2 → v3 stay comparable on the Scores page and
+through `marketplace_round_scores(compare_with=…)`. Each AI review carries the
+`rubric_version` it was scored on (`eoi-round-review` § Write to labs).
 
 ### Funds
 
