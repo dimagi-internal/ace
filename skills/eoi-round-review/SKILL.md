@@ -496,7 +496,18 @@ record others will read: cite the organisation's answers, never a person.
          complete.
     - Contact details never go in any field, claim or quote. Name the organisation, never
       a person.
-    - Re-running replaces ACE's AI review of that response; it never adds a second one.
+    - Re-running on the same criteria version replaces ACE's AI review of that response; it
+      never adds a second one. Re-running after the criteria were replaced writes the review
+      on the new version, and labs keeps the earlier AI review as superseded history on the
+      old version (`marketplace_round_versions` counts both).
+    - **When an earlier version exists, report what the re-score changed from labs' own
+      figures**: `marketplace_round_scores(slug, compare_with=<previous version>)` returns
+      whose recommendation moved, the mean score shift, and each criterion's weight, mean
+      and shortlist gap in both versions. Put those moves in the reply and the internal
+      report, and link the round's Scores page
+      (`https://labs.connect.dimagi.com/labs/marketplace/rounds/<slug>/scores/`), which shows
+      the same comparison. Do not hand-build the diff from local batch files: the comparison
+      people open in labs is the one to quote.
     - Read back with `list_reviews` for a sample of responses (and every Recommended one)
       and check the scores, the claims (with their cites), the outcome and `rubric_version` landed,
       and that labs filled the strengths, concerns and criteria notes from them. If any
@@ -673,7 +684,9 @@ response; every review is scored on the same criteria and `rubric_version`, so t
 be compared side by side. Re-running this skill replaces only ACE's AI review; human
 reviews stay. If the criteria are replaced, every review on the old version (AI and human)
 was scored against criteria that no longer apply, which is why `eoi-criteria-proposal`
-asks before replacing them.
+asks before replacing them. Labs keeps each version and the reviews on it, and the round's
+**Scores** page (`/labs/marketplace/rounds/<slug>/scores/`) has a version picker and a
+"what changed" comparison between versions.
 
 When telling the requester what happens next, name the three ways and the Start reviewing
 button in one or two lines; the reviewers are the audience.
@@ -685,7 +698,8 @@ button in one or two lines; the reviewers are the audience.
   `marketplace_orgs_get`, `list_reviews`, `create_review` (`kind="ai"`, with `claims`;
   `BAD_REQUEST` on a quote it cannot find or a flag not on the defined list; 30 writes per
   minute per user), `marketplace_round_summary_set` (links the internal report on the
-  round; owner-org members only)
+  round; owner-org members only), `marketplace_round_scores` (`compare_with` for the
+  version-to-version moves) and `marketplace_round_versions` (read-only, owner only)
 - canopy-web: `current_page` (when started from the marketplace panel)
 - Google Drive: `drive_read_file`, `read_personal_drive_doc` (the announcement);
   publishing goes through `gdoc-writer`
@@ -722,6 +736,7 @@ platform is "Connect".
 
 | Date | Change | Author |
 |------|--------|--------|
+| 2026-10-19 | Versions: a re-score on replaced criteria supersedes the earlier AI review (kept as history on the old version); when an earlier version exists, the reply and internal report quote labs' own comparison (`marketplace_round_scores(compare_with=…)`) and link the Scores page, never a hand-built diff | ACE team |
 | 2026-10-18 | A Recommended backup must clear the Recommended bar and is only behind the recommended applicant(s) for its slot; an applicant next in score order that fails it goes to Waitlist or Not recommended | ACE team |
 | 2026-10-18 | Outcome labels renamed in labs (`vocabulary.py`): `backup` is Recommended backup (was Backup), `waitlist` is Waitlist (was Keep in view); keys unchanged | ACE team |
 | 2026-10-18 | `rubric_health.py` reports each criterion's correlation with answer length (from the responses in `round.json`) and notes r ≥ 0.5 in its recommendation: method criteria were rewarding longer answers | ACE team |

@@ -171,10 +171,13 @@ which labs returns as `criteria_basis`). § The rubric shape says what goes in e
 7. **Compare with criteria already on the round.** If `round.evaluation_criteria` is not
    empty:
    - Show the diff by criterion `id`: added, removed, reworded, reweighted (old → new).
-   - Say plainly: **replacing the criteria bumps `rubric_version`, and every review scored
-     on the old version (AI and human) was scored against criteria that no longer apply**;
-     the AI reviews need re-running with `eoi-round-review`, and human reviewers should be
-     told.
+   - Say plainly: **replacing the criteria adds a new version (`rubric_version` bumps), and
+     every review scored on the old version (AI and human) was scored against criteria that
+     no longer apply**; the AI reviews need re-running with `eoi-round-review`, and human
+     reviewers should be told. Nothing is lost: labs keeps every version with the reviews
+     scored on it (`marketplace_round_versions` lists them), and the round's Scores page
+     compares any two. Deleting an old version is a separate, irreversible operator call
+     (`marketplace_round_version_delete`), never part of this skill.
    - Ask whether to replace them. Without a clear yes, leave them as they are. If they
      look fine, say so and write nothing.
 
@@ -212,7 +215,10 @@ which labs returns as `criteria_basis`). § The rubric shape says what goes in e
       saved rubric must still print `OK: rubric is explicit`. Only then report it saved.
     - Reply with the version, the criteria in one line each, and the next step: run
       `eoi-round-review` for the AI first pass; reviewers then score in labs at
-      https://labs.connect.dimagi.com/labs/marketplace/rounds/<slug>/.
+      https://labs.connect.dimagi.com/labs/marketplace/rounds/<slug>/. When this replaced
+      earlier criteria, also link the Scores page
+      (https://labs.connect.dimagi.com/labs/marketplace/rounds/<slug>/scores/), where the
+      re-scored version can be compared with the previous one once `eoi-round-review` has run.
     - Run `agent-turn-review` before replying.
 
 ## The rubric shape
@@ -366,6 +372,7 @@ The proposal is prose a person reads. Follow `skills/_terminology.md`: the platf
 
 | Date | Change | Author |
 |------|--------|--------|
+| 2026-10-19 | Criteria versions: replacing the criteria adds a version and labs keeps every earlier one with its reviews (`marketplace_round_versions`); the save reply links the round's Scores page for the version comparison; deleting a version is an operator call, never this skill | ACE team |
 | 2026-10-18 | A Recommended backup meets the Recommended bar (every condition the Recommended line sets) and differs only in rank or slot; `check_rubric.py` refuses a `Recommended backup:` line that does not say so. A round's backup rule had used a looser threshold, so an applicant with a criterion at 1 became a backup | ACE team |
 | 2026-10-18 | Outcome labels renamed in labs: `backup` is shown as Recommended backup (was Backup), `waitlist` as Waitlist (was Keep in view); keys unchanged, and `check_rubric.py` still accepts the earlier labels and the keys | ACE team |
 | 2026-10-18 | Three rule gaps from a round's review: the `Not recommended:` rule must say when it applies (`check_rubric.py` refuses a missing or empty one, key `pass`); a plan's timing before award costs no points, the `early-start` flag shows it (`check_rubric.py` warns); anchors name the checkable elements that earn points, never length or detail (method criteria had rewarded longer answers) | ACE team |
