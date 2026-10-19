@@ -1030,7 +1030,7 @@ export const ATTRIBUTION_CLAUSES: readonly SafeguardingClause[] = [
   {
     id: 'credit-partner-only-with-own',
     label: "Credit the partner only with what the knowledge base says is the partner's own",
-    pattern: /\bcredit\b[^.]{0,60}\bonly\b[^.]{0,80}\bknowledge base\b[^.]{0,40}\bown\b/,
+    pattern: /\bcredit\b[^.]{0,60}\bonly\b[^.]{0,80}\bknowledge base\b[^.]{0,100}\bown\b/,
   },
   {
     id: 'name-pilot-design',
@@ -1040,7 +1040,7 @@ export const ATTRIBUTION_CLAUSES: readonly SafeguardingClause[] = [
   {
     id: 'not-partner-practice',
     label: "The pilot's design is not the partner's existing practice",
-    pattern: /\bnot\b[^.]{0,40}\bexisting practice\b/,
+    pattern: /\bnot\b[^.]{0,80}\bexisting practice\b/,
   },
   {
     id: 'enforced-by-connect-config',

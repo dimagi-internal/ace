@@ -1269,6 +1269,19 @@ describe("auditAttribution — never credit the partner with the pilot's design 
       .join('Spark');
     expect(auditAttribution(wrap(mandated)).missing.map((c) => c.id)).toEqual([]);
   });
+
+  it('the mandated text passes for a LONG partner name too — the clause must not depend on name length', () => {
+    // bednet-check-2-visit/20261018-0554 (chatbot 14324): with no partner selected the
+    // partner is "the implementing organisation"; the verbatim mandated sentence then
+    // put 41 chars between "knowledge base" and "own" and failed a {0,40} window.
+    const start = agentSetup.indexOf('The composed prompt MUST say, under that heading:\n     *"Credit <PARTNER>');
+    const mandated = agentSetup
+      .slice(start, agentSetup.indexOf('**Why.** On `spark-facilitator/20261004-1706` (chatbot 13923), two', start));
+    for (const partner of ['the implementing organisation', 'Kangaroo Mother Care Foundation of Malawi']) {
+      const filled = mandated.split('<PARTNER>').join(partner);
+      expect(auditAttribution(wrap(filled)).missing.map((c) => c.id), partner).toEqual([]);
+    }
+  });
 });
 
 /**
