@@ -449,6 +449,14 @@ Until someone observes this on a real opportunity:
 
 Record what you observe here.
 
+- **Observed, content-only case** (connect-fi/20261018-1440, 2026-10-19, `app-modify`):
+  - A new unpaid survey module was appended to the live Deliver app. The re-upload updated HQ app `82068840…` in place, from v14 `36e6e2a9…` to v29 `58e74316…`.
+  - The existing form XMLs stayed byte-identical and the `<deliver id>`s were unchanged.
+  - After the release, `connect_list_deliver_units` and `connect_list_payment_units` at the program org read back exactly as before: 3 units with the same slugs, payment-unit uuids and amounts.
+  - The opportunity's app wiring still named the same HQ app id, and the 7 `form_field_rules` (read with `connect_get_verification_flags`) still pointed at the same deliver-unit ids.
+  - No `Sync Deliver Units` was needed or clicked.
+  - This does NOT settle the marker-change case or device update timing. Both remain unobserved.
+
 ## Operator runbook
 
 ### Required env vars (all 1Password-backed in `.env.tpl`)
