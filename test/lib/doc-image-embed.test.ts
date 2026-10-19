@@ -12,11 +12,14 @@
 import { describe, it, expect } from 'vitest';
 import {
   buildEmbedRequests,
+  classifyFrameSharing,
   collectImageAnchors,
   countInlineImages,
   driveFileIdFromUrl,
   driveImageUri,
+  explainEmbedFailure,
   filenameCandidates,
+  unsharedFramesMessage,
   type DocLike,
 } from '../../lib/doc-image-embed.js';
 
@@ -279,5 +282,42 @@ describe('idempotency', () => {
     };
     const { anchors } = collectImageAnchors(doc, () => null);
     expect(anchors[0].alreadyIllustrated).toBe(false);
+  });
+});
+
+describe('frame sharing pre-flight (ace#3234)', () => {
+  it('only a type:anyone grant makes a frame fetchable by Docs', () => {
+    expect(
+      classifyFrameSharing([{ type: 'user', role: 'organizer' }, { type: 'anyone', role: 'reader' }]),
+    ).toBe('link-readable');
+    // SA-only, as the connect-fi/20261018-1440 Phase 4 frames were.
+    expect(classifyFrameSharing([{ type: 'user', role: 'organizer' }])).toBe('not-shared');
+    // A domain grant does not reach the anonymous fetcher.
+    expect(classifyFrameSharing([{ type: 'domain', role: 'reader' }])).toBe('not-shared');
+    expect(classifyFrameSharing([])).toBe('not-shared');
+  });
+
+  it('an unreadable permission list is unknown, never not-shared', () => {
+    expect(classifyFrameSharing(null)).toBe('unknown');
+    expect(classifyFrameSharing(undefined)).toBe('unknown');
+  });
+
+  it('the refusal names every frame, sharing as the cause, and the fix', () => {
+    const msg = unsharedFramesMessage([
+      { id: 'A1', name: '01-overview.png' },
+      { id: 'B2', name: '02-verification.png' },
+    ]);
+    expect(msg).toMatch(/2 frame\(s\) are not shared anyone-with-link/);
+    expect(msg).toContain('01-overview.png (A1)');
+    expect(msg).toContain('02-verification.png (B2)');
+    expect(msg).toContain('drive_set_anyone_with_link');
+    expect(msg).toContain('Nothing was written');
+  });
+
+  it("re-words Docs' generic image-fetch error to name sharing, and leaves others alone", () => {
+    const docsErr = 'Invalid requests[3].insertInlineImage: There was a problem retrieving the image.';
+    expect(explainEmbedFailure(docsErr)).toContain(docsErr);
+    expect(explainEmbedFailure(docsErr)).toMatch(/not shared anyone-with-link/);
+    expect(explainEmbedFailure('quota exceeded')).toBe('quota exceeded');
   });
 });

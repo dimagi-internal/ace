@@ -333,3 +333,60 @@ export function countInlineImages(doc: DocLike): number {
   }
   return n;
 }
+
+// ── Can Docs fetch each frame? (ace#3234) ─────────────────────────────────
+//
+// `insertInlineImage` makes Google fetch `driveImageUri(id)` WITHOUT the
+// service account's credentials. A frame only the SA can read fails the whole
+// atomic batchUpdate with Docs' generic "There was a problem retrieving the
+// image", which names neither the frame nor sharing. Seen on
+// connect-fi/20261018-1440: the two Phase 4 `connect-opportunity` frames were
+// SA-only, and setting them anyone-with-link made the re-run succeed.
+//
+// So the embed reads each frame's permissions through the SA's Drive API (the
+// authoritative answer) BEFORE writing, and refuses with the frame names and
+// the fix. It never shares a frame itself: which outputs are link-shared is
+// decided by the skill that uploads them, not by the embed.
+
+/** A Drive permission, structurally typed to the field read here. */
+export interface DrivePermissionLike {
+  type?: string | null;
+  role?: string | null;
+}
+
+export type FrameSharing = 'link-readable' | 'not-shared' | 'unknown';
+
+/**
+ * Judge one frame from its Drive permission list. `null` means the list could
+ * not be read, which is `unknown`, never `not-shared`: an unread list is no
+ * evidence that the frame is private, and refusing on it would block a good
+ * embed. The post-write verify still runs either way.
+ *
+ * Only `type: anyone` counts. A `domain`, `user` or `group` grant does not
+ * reach the anonymous fetcher, however broad.
+ */
+export function classifyFrameSharing(perms: DrivePermissionLike[] | null | undefined): FrameSharing {
+  if (!perms) return 'unknown';
+  return perms.some((p) => p.type === 'anyone') ? 'link-readable' : 'not-shared';
+}
+
+/** The refusal printed when frames the document needs are not link-shared. */
+export function unsharedFramesMessage(frames: Array<{ id: string; name: string }>): string {
+  return [
+    `FAIL ${frames.length} frame(s) are not shared anyone-with-link, so Google Docs cannot ` +
+      'fetch them ("There was a problem retrieving the image"). Nothing was written.',
+    ...frames.map((f) => `  - ${f.name} (${f.id})`),
+    'Fix: grant reader to anyone on each id (`drive_set_anyone_with_link`), or re-upload it with ' +
+      '`drive_upload_binary` `shareAnyoneWithLink: true` as its capture skill says, then re-run.',
+  ].join('\n');
+}
+
+/** Re-word Docs' generic image-fetch failure so it names the likely cause. */
+export function explainEmbedFailure(message: string): string {
+  if (!/problem retrieving the image/i.test(message)) return message;
+  return (
+    `${message}\nA frame in the batch is probably not shared anyone-with-link: Docs fetches each ` +
+    "image without the service account's credentials (ace#3234). Fix the frame's sharing and " +
+    're-run; the batch is atomic, so nothing was written.'
+  );
+}

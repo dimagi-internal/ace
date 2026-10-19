@@ -31,7 +31,7 @@ Pipeline-only: derives the guide from a run's PDD and app summaries. For a live 
 | Phase 3 | `ACE/<opp>/runs/<run-id>/3-commcare/app-deploy_summary.md` | HQ domain quoted in the "where the data lives" section |
 | Phase 4 (`run_state.yaml`) | `connect.opportunity` + `connect.payment_units` + `connect.verification_flags` | payment per visit, max-per-day, verification rules |
 | Connect (live) | `connect_get_opportunity(holding_org_slug, opportunity.id)` → `start_date`, `end_date` | **the delivery window**. This is the authoritative source; `run_state.yaml` does not carry the window under `products.connect`. Fallback: PDD `program_parameters.opportunity_{start,end}_date` |
-| Phase 4 | `ACE/<opp>/runs/<run-id>/4-connect/previews/connect-opportunity/_previews.yaml` (+ its PNGs) | **the LLO's own Connect screens**, captured as the holding (Network Manager) org: `01-overview` (dates, budget, Workers / Services Delivered / Worker Payments) and `02-verification` (Approved/Rejected, Earned/Paid). Required for screenshot grounding of every LLO-side action |
+| Phase 4 | `ACE/<opp>/runs/<run-id>/4-connect/previews/connect-opportunity/_previews.yaml` (+ its PNGs) | **the opportunity page the LLO will work in, shown on ACE's own test opportunity**: `01-overview` (dates, budget, Workers / Services Delivered / Worker Payments) and `02-verification` (Approved/Rejected, Earned/Paid). These are NOT the LLO's own screens. On a `pm-nm` run `output-preview-capture` opens the opportunity at the **PM org's** url (ace#2893), so the header names the PM org (`connect_orgs.pm_org`) and its "Program Manager" role. On a self-managed run it is ACE's single org. The partner's own opportunity is a separate one, created in Phase 9, and its header, org name and figures will differ. Caption each frame as an example of that page (§ Format rules). Required for screenshot grounding of every LLO-side action |
 | Phase 5 | `ACE/<opp>/runs/<run-id>/5-ocs/ocs-setup_widget-handoff.md` (`widget_url`) | "where to ask questions" link |
 | Phase 1 | `ACE/<opp>/runs/<run-id>/2-scenarios/pdd-to-app-journeys.md` | seed the "Pre-deployment UAT" section from per-journey pass criteria |
 | Phase 6 Step 1 (`app-screenshot-capture`) | `ACE/<opp>/runs/<run-id>/6-qa-and-training/app-screenshot-capture_manifest.yaml` | optional — embed key screenshots in the "what FLWs see" section |
@@ -78,8 +78,9 @@ For LLO operators overseeing FLW deployment of this opportunity.
   detection window, etc.>
 - Window: <start_date> to <end_date> (<N> days). Read the dates with
   `connect_get_opportunity` and compute N with `opportunityWindow()`.
-- <the LLO's Connect opportunity overview, cited by its Drive link from
-  `4-connect/previews/connect-opportunity/` so step 7b embeds it>
+- <an example of the Connect opportunity overview, cited by its Drive link
+  from `4-connect/previews/connect-opportunity/` so step 7b embeds it, and
+  captioned as ACE's test opportunity, not the LLO's own>
 
 ## When a paid record turns out to be false
 <REQUIRED. What to do when review shows a record was fabricated AFTER
@@ -137,6 +138,12 @@ consequence for the worker. Cite the verification-panel frame from
   Phone frames from `app-screenshot-capture` show what the worker sees. A
   guide grounded only on those never shows the reader their own job; the
   spark guide scored 5.0 on screenshot grounding for exactly this (ace#2610).
+- **Caption those frames as what they are: an example, not the LLO's own
+  screen.** They show ACE's test opportunity, opened as ACE's PM org on a
+  `pm-nm` run (ace#2893), so the header names that org. Say so in the
+  caption, e.g. "Example: the opportunity overview (ACE's test opportunity;
+  your organisation's name and figures will appear here)". Never write "your
+  screen" or name the org in the frame's header as the reader's (ace#3234).
 - **Derive the Pre-deployment UAT checklist from per-journey
   `pass_criteria` in `pdd-to-app-journeys.md`.** Every journey's
   pass-criterion line becomes a tickable item. Don't paraphrase —
@@ -486,6 +493,7 @@ The self-eval criterion must assert duplicate handling explicitly.
 ## Change Log
 
 - v1 (0.10.84): Initial skill. Owns `training-llo-guide.md` only.
+- 2026-10-19: **The Phase 4 frames are an example captured by ACE's PM org, not the LLO's own screens (ace#3234).** The Inputs row said they were "captured as the holding (Network Manager) org", but `output-preview-capture` opens the opportunity at the PM org's url on a `pm-nm` run (ace#2893), and on connect-fi/20261018-1440 the frames' header named the PM org as "Program Manager". The guide now captions them as an example of the page. The same run's frames were SA-only and failed step 7b with Docs' generic "problem retrieving the image". `scripts/embed-doc-screenshots.ts` now reads each frame's sharing before writing and names any unshared frame, and `output-preview-capture`'s `index` refuses a frame whose upload did not come back `anyone-with-link`. *Enforced:* `test/lib/doc-image-embed.test.ts`, `test/lib/preview-capture.test.ts`, `test/skills/llo-guide-phase4-frames-honest.test.ts`.
 - 2026-10-16: **The word band excludes the verbatim UAT checklist, and the eval is authoritative (ace#2311).** The band was 500-1200 words for the whole guide, but the mandated verbatim checklist alone was 583 words on a 7-journey PDD, and the eval hard-gates troubleshooting depth the remaining budget could not fund. *Enforced:* `test/skills/llo-guide-word-band.test.ts`.
 - 2026-10-15: **"Where the data lives" no longer links the Phase 4 opportunity (ace#3000).** That opportunity is ACE's build/QA vehicle, held by ACE's own NM org since ace#2419, and the partner cannot open it. The line now carries `selected_llo.opportunity_url` (Phase 9) or a verbatim labelled placeholder. *Enforced:* `test/skills/partner-artifacts-no-phase4-opp-url.test.ts`.
 - 2026-08-14: Added Step 7b — embed the screenshots into the rendered doc via `scripts/embed-doc-screenshots.ts` (Docs API `insertInlineImage`), plus a format rule making filename citations first-class and a `screenshot grounding` self-eval criterion keyed to the PUBLISHED image count. The guide cited nine frames in prose and rendered none. Artifact flagged `illustrated: true`; enforced by `test/lib/illustrated-artifacts.test.ts` (ace#1418).

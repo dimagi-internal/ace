@@ -261,6 +261,7 @@ export const RAILS: Readonly<Record<string, RailProvenance>> = {
   'test/skills/idea-to-pdd-qa/platform-constraints.test.ts': { issues: ['ace#3036'], observed: 'kaduna-graduation/20261015-1411' },
   'test/skills/learn-suite-reentry-guarded.test.ts': { issues: ['ace#1633', 'ace#1071', 'ace#897'], observed: 'bednet-check-2-visit/20260825-1310' },
   'test/skills/llo-directory-add-live-layout.test.ts': { issues: ['ace#2920'] },
+  'test/skills/llo-guide-phase4-frames-honest.test.ts': { issues: ['ace#3234', 'ace#2893'], observed: 'connect-fi/20261018-1440' },
   'test/skills/llo-guide-word-band.test.ts': { issues: ['ace#2311'], observed: 'bednet-check-2-visit/20260908-1544' },
   'test/skills/negative-control-ratchet.test.ts': { issues: ['ace#1693', 'ace#1695', 'ace#1701', 'ace#1679', 'ace#1026', 'ace#1688', 'ace#1689', 'ace#2422', 'ace#2396', 'ace#2398', 'ace#1946', 'ace#2429', 'ace#2426'], observed: 'spark-facilitator/20260820-0817' },
   'test/skills/no-hardcoded-connect-org.test.ts': { issues: [], observed: 'spark-facilitator/20260925-1536' },

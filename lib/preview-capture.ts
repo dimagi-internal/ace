@@ -726,6 +726,28 @@ export function buildCaptureIndex(
   });
 }
 
+/**
+ * Uploaded frames that did NOT come back anyone-with-link (ace#3234).
+ *
+ * Every accepted frame is uploaded with `shareAnyoneWithLink: true` (the
+ * Products section), and `drive_upload_binary` answers with
+ * `sharing: 'anyone-with-link' | 'sa-only'`. The `index` step refuses to write
+ * an index over a frame whose recorded `sharing` is anything else, missing
+ * included, because a reader that is not the service account cannot open it:
+ * on connect-fi/20261018-1440 the two SA-only Phase 4 `connect-opportunity`
+ * frames made `scripts/embed-doc-screenshots.ts` fail in the LLO guide with
+ * Docs' generic "problem retrieving the image". The remedy is
+ * `drive_set_anyone_with_link` on that id, which scopes the grant to exactly the
+ * frames this skill already shares, and nothing else.
+ */
+export function unsharedUploads(
+  uploaded: ReadonlyArray<{ name: string; file_id: string; sharing?: unknown }>,
+): Array<{ name: string; file_id: string; sharing: string }> {
+  return uploaded
+    .filter((u) => u.sharing !== 'anyone-with-link')
+    .map((u) => ({ name: u.name, file_id: u.file_id, sharing: u.sharing == null ? 'not recorded' : String(u.sharing) }));
+}
+
 // ---------------------------------------------------------------------------
 // Clearing a previews folder before a re-capture (ace#3044)
 // ---------------------------------------------------------------------------
