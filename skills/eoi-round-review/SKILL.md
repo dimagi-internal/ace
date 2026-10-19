@@ -668,10 +668,12 @@ words instead of taking it on trust.
 
 Once reviews exist, the round page lists the recommended first, and its **Start reviewing** button
 (**Next to check** once started) walks the reviewer through the applicants no person has
-checked yet. On a response page a reviewer works in one of three ways:
+checked yet. On a response page a reviewer works in one of four ways:
 
 - **I agree**: one save creates their own review, linked to the AI one, with stance
   "agrees".
+- **Add to it**: keeps the AI's review as it is and adds their own reasons, passages and
+  questions, marked as theirs (stance "adds").
 - **Copy and edit as mine**: starts their own review from the AI's. They edit the scores,
   the reason under each score, and the strengths and concerns; drop a cited passage with
   ×, or select text in an answer and use **Attach selected text** to cite it.
@@ -679,7 +681,7 @@ checked yet. On a response page a reviewer works in one of three ways:
   scores.
 
 Each way leaves the reviewer's own review beside the AI's. **The AI review never changes**
-when a person agrees, copies or disagrees with it. Several people may review the same
+when a person agrees, adds to, copies or disagrees with it. Several people may review the same
 response; every review is scored on the same criteria and `rubric_version`, so they can
 be compared side by side. Re-running this skill replaces only ACE's AI review; human
 reviews stay. If the criteria are replaced, every review on the old version (AI and human)
@@ -688,7 +690,7 @@ asks before replacing them. Labs keeps each version and the reviews on it, and t
 **Scores** page (`/labs/marketplace/rounds/<slug>/scores/`) has a version picker and a
 "what changed" comparison between versions.
 
-When telling the requester what happens next, name the three ways and the Start reviewing
+When telling the requester what happens next, name the four ways and the Start reviewing
 button in one or two lines; the reviewers are the audience.
 
 ## MCP Tools Used
@@ -736,6 +738,7 @@ platform is "Connect".
 
 | Date | Change | Author |
 |------|--------|--------|
+| 2026-10-19 | Human review: four ways, not three — labs' response page also offers **Add to it** (stance `adds`), verified against `templates/solicitations/round_response.html` (connect-labs `docs/marketplace-round-review.md`, #2615) | ACE team |
 | 2026-10-19 | Versions: a re-score on replaced criteria supersedes the earlier AI review (kept as history on the old version); when an earlier version exists, the reply and internal report quote labs' own comparison (`marketplace_round_scores(compare_with=…)`) and link the Scores page, never a hand-built diff | ACE team |
 | 2026-10-18 | A Recommended backup must clear the Recommended bar and is only behind the recommended applicant(s) for its slot; an applicant next in score order that fails it goes to Waitlist or Not recommended | ACE team |
 | 2026-10-18 | Outcome labels renamed in labs (`vocabulary.py`): `backup` is Recommended backup (was Backup), `waitlist` is Waitlist (was Keep in view); keys unchanged | ACE team |
