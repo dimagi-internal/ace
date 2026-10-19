@@ -1,7 +1,8 @@
 ---
 name: idea-to-pdd-eval
 description: >
-  Grade a PDD against its source material: re-run the stress test and check reviewer comments were honoured.
+  Internal /ace:run step — Grade the run's PDD against its source material.
+user-invocable: false
 disable-model-invocation: false
 ---
 

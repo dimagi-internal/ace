@@ -1,8 +1,8 @@
 ---
 name: pdd-to-test-prompts-eval
 description: >
-  Grade a chatbot test-prompt suite for answer specificity, adversarial quality, coverage, and
-  realism.
+  Internal /ace:run step — Grade the chatbot test-prompt suite.
+user-invocable: false
 disable-model-invocation: false
 ---
 

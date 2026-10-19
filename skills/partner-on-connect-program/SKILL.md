@@ -1,6 +1,9 @@
 ---
 name: partner-on-connect-program
-description: Work with a program team on a live Connect program, including changes to what is live. Use for program help outside /ace:run.
+description: >
+  Work with a program team on a live Connect program as a standing project: answer questions, keep
+  its decisions, and change what is live (apps, opportunities, bots, solicitations, dashboards). Use
+  for program help outside /ace:run.
 ---
 
 # Partner on a Connect program

@@ -1,7 +1,8 @@
 ---
 name: partnership-research-eval
 description: >
-  Grade partnership research for grounding, relevance, capability fit, and factual safety.
+  Internal /ace:partnership-video step — Grade the prospect research.
+user-invocable: false
 disable-model-invocation: false
 ---
 

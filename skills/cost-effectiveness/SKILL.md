@@ -1,7 +1,9 @@
 ---
 name: cost-effectiveness
 description: >
-  Estimate and defend what a round of ORS/zinc or malaria PMC spend buys in a place: deaths averted, cost per death, GiveWell multiple.
+  Say and defend what a round of spend buys in a place (deaths averted, cost per death, multiple of
+  GiveWell's bar) for ORS/zinc or malaria PMC. Use when a funder asks the expected return, or before
+  a BOTEC goes into a pitch.
 disable-model-invocation: false
 ---
 

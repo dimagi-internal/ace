@@ -1,7 +1,8 @@
 ---
 name: solicitation-review-eval
 description: >
-  Compare ACE's top-ranked solicitation pick against the human's actual award.
+  Internal /ace:run step — Compare ACE's top solicitation pick with the award.
+user-invocable: false
 disable-model-invocation: false
 ---
 

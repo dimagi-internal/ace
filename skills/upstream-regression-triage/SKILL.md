@@ -1,8 +1,8 @@
 ---
 name: upstream-regression-triage
 description: >
-  Find which upstream change broke a working integration, when a call that worked
-  now fails and ACE's code on that path is unchanged.
+  Find which upstream change broke a working integration. Use when a call that worked before now
+  fails, and ACE's own code on that path is unchanged.
 disable-model-invocation: false
 ---
 

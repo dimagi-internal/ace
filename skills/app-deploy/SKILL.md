@@ -1,7 +1,8 @@
 ---
 name: app-deploy
 description: >
-  Upload Nova-built Learn and Deliver apps to CommCare HQ as drafts, or re-upload an edit onto the existing HQ app.
+  Upload Nova-built Learn and Deliver apps to CommCare HQ as drafts, or re-upload an edit onto the
+  existing HQ app. Needs the Nova app ids and a project space.
 disable-model-invocation: false
 ---
 

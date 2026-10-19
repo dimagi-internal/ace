@@ -1,8 +1,8 @@
 ---
 name: pdd-to-app-journeys-eval
 description: >
-  Grade PDD-derived app journeys for persona specificity, coverage, measurable pass criteria, and
-  deployability.
+  Internal /ace:run step — Grade the PDD-derived app journeys.
+user-invocable: false
 disable-model-invocation: false
 ---
 

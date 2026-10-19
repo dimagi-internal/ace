@@ -1,7 +1,8 @@
 ---
 name: partnership-video-build-eval
 description: >
-  Grade a partnership video build for spec validity, grounding, render success, and brand safety.
+  Internal /ace:partnership-video step — Grade the video build.
+user-invocable: false
 disable-model-invocation: false
 ---
 

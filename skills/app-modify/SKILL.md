@@ -1,7 +1,9 @@
 ---
 name: app-modify
 description: >
-  Edit a deployed app and ship it to its live opportunity, verifying Connect picked it up. Needs Nova, HQ and opp ids.
+  Edit a deployed, live CommCare app (fix a form, add or change a question) and ship it to its live
+  opportunity, verifying Connect picked it up. Use when someone asks to change a live app. Needs
+  Nova, HQ and opp ids.
 ---
 
 # Modify a deployed app

@@ -1,7 +1,9 @@
 ---
 name: video-render-local
 description: >
-  Render an ace-web connect-videos program or DDD walkthrough to MP4 locally on a Mac, faster than ace-web's server re-render.
+  Render an ace-web connect-videos program or a DDD connect-ddd-walkthrough to MP4 locally on a Mac,
+  much faster than ace-web's server-side Re-render; works from a local spec and master clip with no
+  Drive.
 ---
 
 # Video Render — Local (Mac-metal)

@@ -1,7 +1,8 @@
 ---
 name: ocs-agent-setup
 description: >
-  Create or re-prompt an OCS chatbot from the ACE template with a RAG collection; returns embed credentials.
+  Create a program's OCS support chatbot from the ACE template with a RAG collection built from the
+  PDD and app docs, or re-prompt an existing bot; publishes and returns embed credentials.
 disable-model-invocation: false
 ---
 

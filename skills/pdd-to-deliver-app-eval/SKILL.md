@@ -1,8 +1,8 @@
 ---
 name: pdd-to-deliver-app-eval
 description: >
-  Grade a Nova-built Deliver app against its PDD: fields, ordering, conditional logic, Connect
-  wiring.
+  Internal /ace:run step — Grade the Nova-built Deliver app against its PDD.
+user-invocable: false
 disable-model-invocation: false
 ---
 

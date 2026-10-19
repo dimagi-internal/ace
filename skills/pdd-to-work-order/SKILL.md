@@ -1,7 +1,8 @@
 ---
 name: pdd-to-work-order
 description: >
-  Draft a contractual Work Order Google Doc from an approved PDD.
+  Draft a contractual Work Order as a Google Doc from an approved PDD; partner details stay
+  placeholders unless an LLO is given. Needs an approved PDD.
 disable-model-invocation: false
 ---
 

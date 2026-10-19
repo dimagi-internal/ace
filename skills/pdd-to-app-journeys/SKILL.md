@@ -1,8 +1,8 @@
 ---
 name: pdd-to-app-journeys
 description: >
-  Derive the expected frontline-worker user journeys from an approved PDD, the UX ground truth for
-  app testing. Needs an approved PDD.
+  Internal /ace:run step — Derive expected FLW app journeys from the PDD.
+user-invocable: false
 disable-model-invocation: false
 ---
 

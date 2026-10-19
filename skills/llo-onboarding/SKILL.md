@@ -1,7 +1,8 @@
 ---
 name: llo-onboarding
 description: >
-  Onboard an awarded LLO: Connect program invite plus onboarding email. Needs a recorded award.
+  Onboard an awarded LLO: issue the Connect program invite and send the onboarding email with
+  training materials and chatbot link. Needs a recorded award.
 disable-model-invocation: false
 ---
 

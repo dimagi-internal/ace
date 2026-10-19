@@ -1,7 +1,8 @@
 ---
 name: ocs-chatbot-qa
 description: >
-  Chat with an OCS bot through its public widget and capture a transcript with structural checks (--quick / --deep / --monitor).
+  Chat with an OCS chatbot through its public widget and capture a transcript with structural checks
+  (--quick / --deep / --monitor). Needs the bot and a test-prompt suite.
 disable-model-invocation: false
 ---
 

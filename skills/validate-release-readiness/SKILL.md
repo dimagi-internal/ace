@@ -1,7 +1,8 @@
 ---
 name: validate-release-readiness
 description: >
-  Do every release step except sharing, decide READY or NOT READY, and write the release plan. Use before /ace:release.
+  Do all the work a release could need except sharing, then decide READY or NOT READY and, on READY,
+  write the exact release plan. Use before /ace:release.
 disable-model-invocation: false
 ---
 

@@ -1,7 +1,8 @@
 ---
 name: llo-directory-add
 description: >
-  Add an org, contact and join date to the Connect LLO Directory from a lead or EOI reply.
+  Add an org, its contact and join date to the Connect LLO Directory from a lead or EOI reply. Use
+  when a member asks ACE to add an org to the directory.
 disable-model-invocation: false
 ---
 

@@ -1,8 +1,8 @@
 ---
 name: pdd-to-test-prompts-qa
 description: >
-  Pass/fail structural check of a chatbot test-prompt suite: counts, required fields, adversarial
-  coverage.
+  Internal /ace:run step — Structural check of the test-prompt suite.
+user-invocable: false
 disable-model-invocation: false
 ---
 

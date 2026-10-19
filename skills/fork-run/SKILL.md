@@ -1,7 +1,8 @@
 ---
 name: fork-run
 description: >
-  Fork an ACE run at a phase or skill boundary via ace-web, copying upstream artifacts into a new run (A/B a skill, or re-run a phase tail).
+  Fork an existing ACE run at a phase or skill boundary via ace-web, copying upstream artifacts into
+  a new run. Use to A/B test a skill change or re-run a phase tail without overwriting a run.
 disable-model-invocation: false
 ---
 

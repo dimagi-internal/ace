@@ -1,8 +1,8 @@
 ---
 name: partnership-angles
 description: >
-  Turn prospect research into three distinct, capability-tied narrative angles for a partnership
-  pitch. Needs partnership-research output.
+  Internal /ace:partnership-video step — Propose three pitch angles from research.
+user-invocable: false
 disable-model-invocation: false
 ---
 

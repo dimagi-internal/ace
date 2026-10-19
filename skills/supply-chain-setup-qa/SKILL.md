@@ -1,7 +1,8 @@
 ---
 name: supply-chain-setup-qa
 description: >
-  Pass/fail labs read-back of a programme's supply-chain setup. Static.
+  Pass/fail check, against a fresh labs read, that a programme's supply-chain setup landed. Static,
+  no LLM.
 disable-model-invocation: false
 ---
 

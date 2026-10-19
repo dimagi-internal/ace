@@ -1,8 +1,7 @@
 ---
 name: inbox-triage
 description: >
-  Internal ACE turn step — The email half of an ACE turn: triage ace@ unread mail one thread at a
-  time. Run via the turn, not alone.
+  Internal ACE turn step — The email half of a turn: triage ace@ unread mail one thread at a time.
 user-invocable: false
 ---
 

@@ -1,8 +1,8 @@
 ---
 name: ocs-widget-handoff-eval
 description: >
-  Grade an OCS widget handoff (widget URL, embed key, opportunity-binding instructions) before it
-  is pasted into Connect.
+  Internal /ace:run step — Grade the run's OCS widget handoff before Connect.
+user-invocable: false
 disable-model-invocation: false
 ---
 

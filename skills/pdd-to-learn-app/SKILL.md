@@ -1,7 +1,8 @@
 ---
 name: pdd-to-learn-app
 description: >
-  Build the CommCare Learn (training) app from an approved PDD via Nova. Needs an approved PDD.
+  Internal /ace:run step — Build the Learn (training) app from the PDD via Nova.
+user-invocable: false
 disable-model-invocation: false
 ---
 

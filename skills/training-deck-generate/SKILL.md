@@ -1,8 +1,8 @@
 ---
 name: training-deck-generate
 description: >
-  Write a training deck spec from a PDD, app summaries and screenshots, for training-deck-render.
-  Needs an approved PDD and built apps.
+  Internal /ace:run step — Write the training deck spec from PDD, apps, screenshots.
+user-invocable: false
 disable-model-invocation: false
 ---
 

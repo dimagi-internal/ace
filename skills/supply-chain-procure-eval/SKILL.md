@@ -1,7 +1,8 @@
 ---
 name: supply-chain-procure-eval
 description: >
-  Grade a labs procurement against labs' frozen comparison and the PDD (LLM judge).
+  Grade a labs procurement (LLM judge): awards against labs' frozen comparison, PDD quantities,
+  quote realism.
 disable-model-invocation: false
 ---
 

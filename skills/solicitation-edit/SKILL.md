@@ -1,7 +1,9 @@
 ---
 name: solicitation-edit
 description: >
-  Edit an existing labs solicitation's deadline, text, criteria, visibility or status. Needs its id.
+  Edit an existing labs solicitation: extend its deadline, rewrite its text or criteria, change its
+  visibility, or close or reopen it. Use when asked to change a published solicitation. Needs its
+  id.
 ---
 
 # Edit a solicitation

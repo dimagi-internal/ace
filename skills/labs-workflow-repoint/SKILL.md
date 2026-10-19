@@ -1,7 +1,8 @@
 ---
 name: labs-workflow-repoint
 description: >
-  Repoint a labs workflow at other opportunities or freeze/refollow its template, then rebuild history. Needs its id.
+  Repoint a labs workflow or dashboard at other opportunities, or freeze or refollow its template,
+  then rebuild its history. Use when a workflow should show a different or new opp. Needs its id.
 ---
 
 # Repoint a labs workflow

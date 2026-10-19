@@ -1,8 +1,7 @@
 ---
 name: selector-map-heal
 description: >
-  Internal /ace:run step — Repair the mobile selector map from a live failure dump when a device
-  walk hits an unmapped surface.
+  Internal /ace:run step — Repair the mobile selector map from a live failure dump.
 user-invocable: false
 ---
 

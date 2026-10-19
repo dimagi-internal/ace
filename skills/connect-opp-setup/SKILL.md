@@ -1,7 +1,8 @@
 ---
 name: connect-opp-setup
 description: >
-  Create and configure a Connect opportunity from a PDD: shell, verification flags, payment units, test-user invite.
+  Create and configure a Connect opportunity from a PDD: shell, verification flags, payment units,
+  test-user invite. Needs an approved PDD, a program, and released apps.
 disable-model-invocation: false
 ---
 
