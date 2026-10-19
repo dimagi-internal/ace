@@ -222,7 +222,19 @@ call — run the strip pass over that directory:
 ACE_ROOT="${CLAUDE_PLUGIN_ROOT:-$(python3 -c "import json,os; d=json.load(open(os.path.expanduser('~/.claude/plugins/installed_plugins.json'))); print(d['plugins']['ace@ace'][0]['installPath'])")}"
 node "$ACE_ROOT/node_modules/tsx/dist/cli.mjs" "$ACE_ROOT/scripts/strip-inline-data-uris.ts" <download-dir>
 node "$ACE_ROOT/node_modules/tsx/dist/cli.mjs" "$ACE_ROOT/scripts/redact-kb-answer-keys.ts" <download-dir>
+node "$ACE_ROOT/node_modules/tsx/dist/cli.mjs" "$ACE_ROOT/scripts/screen-kb-deny-list.ts" <confidentiality.yaml|none> <download-dir>
 ```
+
+The third screens every file against the opp's `inputs/confidentiality.yaml`
+(`llo_facing_deny_list`) — this collection is LLO- and FLW-facing, so a
+deny-listed party (a confidential funder) must not reach it
+(dimagi-internal/ace#3223; repro `connect-fi/20261018-1440`, chatbot 14329).
+Download the yaml OUTSIDE the download dir, or pass `none` when the opp has
+none. **Exit 1 means a file names a deny-listed party, or is not text and
+cannot be screened — do NOT upload;** stderr names the file and term. Rewrite
+or drop that document and re-run; never edit the deny list to pass. Exit 2 is
+a harness error (missing or malformed input) — fix it, do not skip the screen.
+Full rule: `ocs-agent-setup § Step 5`.
 
 The first rewrites in place and prints one JSON line of per-file
 `{bytes_before, bytes_after, payloads_stripped}`. **Record those numbers in the
@@ -385,4 +397,5 @@ the missing filenames; zero uploaded when Phase 6 produced documents is a
 
 | Date | Change | Author |
 |---|---|---|
+| 2026-10-19 | Step 1 runs `scripts/screen-kb-deny-list.ts` over the download dir before upload; exit 1 (a file names a party in `inputs/confidentiality.yaml`'s `llo_facing_deny_list`) blocks the upload. Repro `connect-fi/20261018-1440`, chatbot 14329. ace#3223. | ACE team |
 | 2026-10-18 | Inputs are parameters (`experiment_id`, `collection_id`, `files[]`) with the Phase 5/6 run paths as defaults; live-program mode (no run) for Step 0 and Step 4; `## Existing objects` (publish is live for every embedder, uploads append, shared collections). ace#3148. | ACE (build-vs-maintain audit) |
