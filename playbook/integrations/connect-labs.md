@@ -105,8 +105,9 @@ connect-labs#2567, labs authorizes solicitation reads and writes by owning-org
 membership, and the live schema marks `program_id` "Accepted for compatibility; not
 needed" on `get_solicitation`, `list_responses`, `get_response`,
 `update_solicitation` and `award_response` (2026-10-18). A private call that reads as
-"not found" is an ownership problem, not a missing `program_id`. Even `is_public: true`
-is login-only. See CLAUDE.md § Phases on why "public" is a misnomer.
+"not found" is an ownership problem, not a missing `program_id`. Anonymously, a listed
+call's `/solicitations/<id>/` answers 200 and an unlisted one 404, the same as a missing
+record (observed 2026-10-19, ace#3254; CLAUDE.md § Phases).
 
 ### Marketplace (EOI rounds)
 

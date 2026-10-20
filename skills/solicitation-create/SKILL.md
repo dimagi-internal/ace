@@ -280,7 +280,7 @@ Default sources inside a run, in detail:
    | `evaluation_criteria` | array of `{id, name, weight, description, scoring_guide, linked_questions}` | Composed locally — see Step 3. **NOT** `rubric`. **NOT** `[{dimension, criterion, weight}]`. The deployed schema requires `id`, `name`, `weight` (verified via live `tools/list`); the ACE convention adds `description`, `scoring_guide`, and `linked_questions` as content-quality requirements. `id` is kebab-case (e.g. `field-ops-realism`), unique within the rubric — derive `slugify(name)` if you're tempted to elide it; explicit ids are required because duplicate-named criteria would otherwise silently collide. Weights sum to 100 (integers). |
    | `questions` | array of `{id, text, type, framing, required, options}` | Composed locally — see Step 4. **NOT** `response_questions`. Field is `text`, not `question`. The deployed schema requires `id`, `text`, `type` (verified via live `tools/list`); `framing` is an optional structured key that ACE always populates because it's the rubric anchor `solicitation-review` consumes when scoring responses. `id` is kebab-case (e.g. `field-ops-realism`). `type` is one of `"textarea"` (default — use it for any prose answer), `"text"` (a single-line input; the right choice for a short factual answer like an org name, a headcount or a date), `"multiple_choice"`, or `"number"`. Verified against the live `tools/list` 2026-08-29: the enum is exactly `[multiple_choice, number, text, textarea]` (ace#1834 — `text` had been omitted here). Empty `framing` is a `[BLOCKER]` — the review path can't score responses against a missing anchor. |
    | `status` | string | `'active'` (publishes immediately; `'draft'` for dry-run mode). |
-   | `is_public` | bool | **`true` by default** — lists it on the labs marketplace **for logged-in labs users**. It is NOT anonymous readability: `/solicitations/<id>/` requires a labs login by design (see § Step 7a), so an org without a labs account cannot reach the listing at all; never describe the result as "public" to a candidate. **`false` when the run's `optional_steps.private_solicitation` is true** (`isOptionalStepEnabled(runState, 'private_solicitation')`, `lib/optional-steps.ts`): an unlisted call is readable only by the owning org's members and by anyone who responds. `seed_responses`, `ace_winner` and `supply_chain` force it on, so fabricated responses never sit on a listed call. See § Private (demonstration) solicitations below. |
+   | `is_public` | bool | **`true` by default** — lists it on the labs marketplace, and the detail page `/solicitations/<id>/` is anonymously readable (200, observed 2026-10-19 on 1000001, ace#3254). Responding was not observed without a labs account, so do not promise a candidate that they can apply without one. **`false` when the run's `optional_steps.private_solicitation` is true** (`isOptionalStepEnabled(runState, 'private_solicitation')`, `lib/optional-steps.ts`): an unlisted call is readable only by the owning org's members and by anyone who responds. `seed_responses`, `ace_winner` and `supply_chain` force it on, so fabricated responses never sit on a listed call. See § Private (demonstration) solicitations below. |
    | `connect_opportunity_id` | int | Phase 4 opp internal id (not the UUID). Stored on the record for downstream solicitation-review linkage. |
 
    **Why the Phase 4 opp dates are not the source of truth for these two
@@ -1025,23 +1025,29 @@ Default sources inside a run, in detail:
    `/solicitations/`, not `/labs/solicitations/`. The `/labs/` prefix is
    reserved for the authenticated Labs UI (overview, login, explorer).
 
-   **Check the route exists before recording the URL — expect a 302,
-   NOT a 200.** After publish, issue a HEAD against the constructed
-   public URL. The labs detail page requires a labs login by design
-   (§ Step 7a explains why `is_public` is not anonymous readability),
-   so a correctly-published solicitation answers **302 → `/labs/login/`**.
-   Measured on solicitation 14796 (`bednet-check-2-visit/20260817-1720`):
-   `/solicitations/14796/` → `302 → https://labs.connect.dimagi.com/labs/login/?next=/solicitations/14796/`.
+   **Check the route before recording the URL — for a listed call
+   only.** Labs answers an anonymous client differently by visibility
+   (observed 2026-10-19, ace#3254, after connect-labs#2567):
 
-   The signal here is **404, not non-200**. A 404 means the URL pattern
-   doesn't match the current labs URLconf (regression on labs side) —
-   surface that as a `[BLOCKER]` rather than writing a broken URL into
-   `run_state.yaml`. Any 2xx/3xx means the route resolves; do NOT
-   `[BLOCKER]` on the 302, which is the expected response for every
-   solicitation ACE publishes. Whether the record's `public` flag
-   actually flipped is settled by Step 7a's `get_solicitation`
-   round-trip, not by this probe — an anonymous HTTP client never gets
-   far enough to see it.
+   | Call | Anonymous `/solicitations/<id>/` | Observed on |
+   |---|---|---|
+   | listed (`is_public: true`), active | **200** | 1000001 |
+   | listed, closed | 302 → `/solicitations/past/<slug>/` | 1000002 |
+   | unlisted (`is_public: false`) | **404** — same as a missing record | 1000004 (round-trips via `get_solicitation`); 9999999 (no record) |
+
+   - **Listed call:** issue a HEAD against the constructed URL and
+     expect **200** (a 302 to `/solicitations/past/…` is fine too). A
+     **404** on a listed call means the route or the record is wrong —
+     surface it as a `[BLOCKER]` rather than writing a broken URL into
+     `run_state.yaml`.
+   - **Private (unlisted) call:** skip the anonymous probe. Labs hides an
+     unlisted record from anyone outside its owning org, so a 404 is
+     the correct answer and tells you nothing. Never `[BLOCKER]` on it.
+     Step 7a's `get_solicitation` round-trip is the check.
+
+   Either way, whether the record persisted with the visibility you
+   sent is settled by Step 7a's `get_solicitation` round-trip, not by
+   this probe.
 
 7a. **Verify the round-trip via `get_solicitation`.** Immediately after
    publish (whether via MCP atom or direct JSON-RPC fallback), call
@@ -1125,15 +1131,11 @@ Default sources inside a run, in detail:
    markdown string and not Python-list-coerced upstream"). Do NOT
    proceed to write `published.md` against a half-persisted solicitation.
 
-   **Why round-trip and not curl-the-public-URL.** The labs
-   `/solicitations/<id>/` detail page requires a labs login by design.
-   `is_public: true` controls marketplace listing visibility for
-   logged-in labs users; it does NOT mean "anonymously readable." A
-   vanilla curl gets the labs login page, not the solicitation. The
-   `get_solicitation` round-trip is the canonical structural check at
-   the persistence layer. (For visual confirmation of rendered HTML,
-   log into labs and hit `/solicitations/<id>/` in a browser; ACE
-   skills don't need to script that.)
+   **Why round-trip and not curl-the-public-URL.** An anonymous curl
+   sees only a listed call's rendered page. An unlisted call answers 404,
+   the same as a missing one (§ Step 6), and neither tells you whether
+   every field persisted as sent. The `get_solicitation` round-trip is
+   the canonical structural check at the persistence layer.
 
    This catches the class of bugs where the labs MCP accepts the
    create cleanly but persisted state diverges from sent payload.
