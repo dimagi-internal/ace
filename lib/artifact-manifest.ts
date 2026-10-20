@@ -412,6 +412,40 @@ export function phaseAgentName(key: Phase): string {
   return PHASE_BY_KEY[key].agentName;
 }
 
+/**
+ * The `run_state.yaml` `phases.*` block for a manifest phase key, whichever
+ * key-space it was written under.
+ *
+ * run_state does NOT key every phase block by its agent name: Phases 1/3/4/5
+ * are written as `idea-to-design` / `commcare-setup` / `connect-setup` /
+ * `ocs-setup` (agentName), but Phase 9 is written as `execution-management`
+ * (the manifest key) while its agentName is `execution-manager`. Indexing by
+ * `phaseAgentName(key)` alone therefore missed Phase 9's block entirely, and a
+ * simulated run's `mode: simulated` never relaxed the fence
+ * (dimagi-internal/ace#3267). Prefer the agentName spelling, fall back to the
+ * key. Never index `phases` by `phaseAgentName` directly — use this.
+ */
+export function runStatePhaseBlock(
+  runState: unknown,
+  key: Phase,
+): Record<string, unknown> | undefined {
+  const phases = (runState as any)?.phases;
+  if (!phases || typeof phases !== 'object' || Array.isArray(phases)) return undefined;
+  for (const name of [PHASE_BY_KEY[key].agentName, key]) {
+    const block = (phases as Record<string, unknown>)[name];
+    if (block && typeof block === 'object' && !Array.isArray(block)) {
+      return block as Record<string, unknown>;
+    }
+  }
+  return undefined;
+}
+
+/** `phases.<phase>.mode` from a parsed run_state, via `runStatePhaseBlock` (ace#3267). */
+export function phaseModeFromRunState(runState: unknown, key: Phase): string | undefined {
+  const mode = runStatePhaseBlock(runState, key)?.mode;
+  return typeof mode === 'string' ? mode : undefined;
+}
+
 // ── Manifest ───────────────────────────────────────────────────────
 
 export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [

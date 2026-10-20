@@ -57,7 +57,7 @@ import {
   phaseModeFromMerged,
   formatIncompleteTerminalWriteBack,
 } from '../lib/terminal-phase-writeback.js';
-import { PHASES, phaseAgentName, type Phase } from '../lib/artifact-manifest.js';
+import { PHASES, phaseModeFromRunState, type Phase } from '../lib/artifact-manifest.js';
 import {
   isTransientNetworkError as isTransientNetworkErrorLib,
   withTransientRetry as withTransientRetryLib,
@@ -2251,7 +2251,11 @@ async function assertTerminalPhaseArtifacts(
     let report;
     try {
       report = await verifyPhaseArtifacts(adapter, runFolderId, write.phaseKey, {
-        mode: phaseModeFromMerged(merged, write.phaseName),
+        // The block as written first; then either key-space spelling, so a
+        // `mode` recorded under the other spelling still counts (ace#3267).
+        mode:
+          phaseModeFromMerged(merged, write.phaseName) ??
+          phaseModeFromRunState(merged, write.phaseKey),
       });
     } catch {
       continue; // could not enumerate — see the "failure to OBSERVE" note above
@@ -4935,7 +4939,7 @@ server.tool(
 // plugin's actual skill set.
 
 /**
- * Best-effort read of `phases.<agentName>.mode` from a run folder's
+ * Best-effort read of a run folder's
  * run_state.yaml (ace#1069). Returns undefined on any failure — a missing or
  * unreadable run_state must never change the verdict of an artifact check, it
  * just means "no mode declared", which is the full-requirements default.
@@ -4958,11 +4962,6 @@ async function readRunStateFromRunFolder(runFolderId: string): Promise<any | und
   } catch {
     return undefined;
   }
-}
-
-function phaseModeFromRunState(parsed: any, phase: Phase): string | undefined {
-  const block = parsed?.phases?.[phaseAgentName(phase)];
-  return typeof block?.mode === 'string' ? block.mode : undefined;
 }
 
 /**
