@@ -19,6 +19,7 @@ import {
   scanSolicitationProse,
   formatJargonScan,
 } from '../../lib/applicant-facing-jargon.js';
+import { DEMONSTRATION_BANNER } from '../../lib/form-from-solicitation.js';
 
 // ── The defect this exists for, verbatim from the live record ───────────────
 const Q6_FRAMING =
@@ -201,6 +202,40 @@ describe('scanning a whole composed payload', () => {
     const result = scanSolicitationProse({ description: 'x' });
     expect(result.fieldsScanned).toEqual(['description']);
     expect(result.clean).toBe(true);
+  });
+});
+
+describe('the mandated demonstration banner on a private call (ace#3253)', () => {
+  // solicitation-create Step 6 requires a private call's description to start,
+  // verbatim, with this line — and the banner itself says "ACE", a
+  // CASE_SENSITIVE_TOKEN. Verbatim repro: connect-fi/20261018-1440 Phase 8.
+  const SKILL_BANNER = `> **${DEMONSTRATION_BANNER}**`;
+  const BODY = 'We are looking for a local implementing organisation.';
+
+  it('the skill-mandated banner alone does not block its own call', () => {
+    const result = scanSolicitationProse({ description: `${SKILL_BANNER}\n\n${BODY}` });
+    expect(result.clean).toBe(true);
+  });
+
+  it('the plain (form-mirror) banner form does not block either', () => {
+    expect(scanSolicitationProse({ description: `${DEMONSTRATION_BANNER}\n\n${BODY}` }).clean).toBe(true);
+  });
+
+  it('still flags ACE in the body below the banner', () => {
+    const result = scanSolicitationProse({
+      description: `${SKILL_BANNER}\n\nThis call was drafted by ACE from the design.`,
+    });
+    expect(result.clean).toBe(false);
+    expect(result.hits.map((h) => h.token)).toEqual(['ACE']);
+  });
+
+  it('only exempts a LEADING banner, not one buried in the body', () => {
+    const result = scanSolicitationProse({ description: `${BODY}\n\n${SKILL_BANNER}` });
+    expect(result.clean).toBe(false);
+  });
+
+  it('only exempts the description, not other fields', () => {
+    expect(scanSolicitationProse({ scope_of_work: SKILL_BANNER }).clean).toBe(false);
   });
 });
 

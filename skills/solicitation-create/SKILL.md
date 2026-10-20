@@ -385,6 +385,10 @@ Default sources inside a run, in detail:
    over the composed payload. On any hit, halt with the `[BLOCKER]`
    that `formatJargonScan` renders and rewrite the offending field in
    the reader's language. Do not suppress it and do not publish.
+   The scan exempts exactly one LEADING demonstration banner (the
+   Step 6 private-call line, which itself says "ACE") — so compose a
+   private call with the banner in place and scan the whole payload;
+   do not scan a banner-less copy (ace#3253).
 
    **Rate-scope scan — same breath, same gate.** Run `scanRateScope` from
    `lib/rate-scope-consistency.ts` over the composed payload (with

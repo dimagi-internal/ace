@@ -65,6 +65,8 @@
 // ace#2264.
 //
 
+import { DEMONSTRATION_BANNER } from './form-from-solicitation.js';
+
 /** One internal-vocabulary hit in a composed, applicant-facing string. */
 export interface JargonHit {
   /** Dotted path of the offending field, e.g. `questions[5].framing`. */
@@ -225,6 +227,22 @@ export interface SolicitationProse {
 }
 
 /**
+ * A private (demonstration) call's description MUST open with the banner
+ * `solicitation-create` § Step 6 mandates verbatim — and that banner says
+ * "ACE", a CASE_SENSITIVE_TOKEN, so scanning it made the skill block its own
+ * required text on every private call (ace#3253). Strip exactly one LEADING
+ * banner, in the skill's `> **…**` form or the form mirror's plain form; ACE
+ * anywhere else in the description still hits.
+ */
+export function stripDemonstrationBanner(text: string): string {
+  const lead = text.trimStart();
+  for (const form of [`> **${DEMONSTRATION_BANNER}**`, DEMONSTRATION_BANNER]) {
+    if (lead.startsWith(form)) return lead.slice(form.length);
+  }
+  return text;
+}
+
+/**
  * Scan a composed solicitation payload before `is_public: true`.
  *
  * Pure — takes the payload, returns the verdict. The caller decides whether a
@@ -240,7 +258,10 @@ export function scanSolicitationProse(payload: SolicitationProse): JargonScanRes
     hits.push(...scanText(field, text));
   };
 
-  scan('description', payload.description);
+  scan(
+    'description',
+    typeof payload.description === 'string' ? stripDemonstrationBanner(payload.description) : undefined,
+  );
   scan('scope_of_work', payload.scope_of_work);
 
   (payload.questions ?? []).forEach((q, i) => {
