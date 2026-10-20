@@ -13,7 +13,7 @@
 #      only when this run reads the vault: a missing SA key, or a .env to
 #      render. Otherwise a WARN, and setup carries on.)
 #   4. Fetch the Google service-account key from that vault if missing
-#   5. npm install (skip if node_modules + tsx present)
+#   5. bin/ace-install-deps (shared runtime-only store for an installed plugin)
 #   6. Fill .env via `canopy agent env --plugin ace` (binds the install to one
 #      instance; skip if .env covers all .env.tpl keys)
 #   7. Download commcare-cli.jar from dimagi/commcare-core's latest
@@ -654,13 +654,13 @@ fi
 
 # ---- npm install (only after pre-flight passed)
 cd "$ROOT" || { fail "cd $ROOT failed"; exit 1; }
-if [ "$FORCE_INSTALL" = "1" ] || [ ! -d node_modules ] || [ ! -x node_modules/.bin/tsx ]; then
-  echo "INFO running npm install (may take 30-60s)..."
-  npm install --silent 2>&1 | tail -10
-  if [ ! -x node_modules/.bin/tsx ]; then
-    fail "deps: npm install completed but tsx still missing" "investigate npm install output above"
-    mark_fail
-  fi
+# An installed plugin links a shared, runtime-only store; a dev checkout gets a plain
+# `npm install`. Cheap when nothing changed, so it always runs (bin/ace-install-deps).
+_deps_args=()
+[ "$FORCE_INSTALL" = "1" ] && _deps_args=(--force)
+if ! "$ROOT/bin/ace-install-deps" ${_deps_args[@]+"${_deps_args[@]}"} "$ROOT"; then
+  fail "deps: bin/ace-install-deps failed" "investigate its output above"
+  mark_fail
 fi
 if [ -x node_modules/.bin/tsx ]; then
   pass "deps: tsx=$(node_modules/.bin/tsx --version 2>&1 | head -1)"

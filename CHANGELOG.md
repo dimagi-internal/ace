@@ -5,6 +5,18 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.13.2137 — 2026-10-20
+
+**An installed ACE no longer costs ~180MB per version.** One machine held 93 cached versions, 16GB:
+every version got its own full `npm install` (dev deps too) and Claude Code's sweep of orphaned
+versions never ran. New `bin/ace-install-deps`, used by `/ace:setup` and `/ace:update` (and by
+canopy's fleet updater): an installed plugin gets runtime-only deps (`npm ci --omit=dev`, ~92MB),
+installed once per lockfile into the data dir and linked in as `node_modules`; versions orphaned
+more than 72h ago (`ACE_CACHE_KEEP_HOURS`) are deleted, with any dep store nothing links to. A dev
+checkout still gets a plain `npm install`; Windows installs in place. `typescript` moved to
+devDependencies (only tests and `scripts/dump-atom-schemas.ts` import it). `/ace:doctor` no longer
+expects dev deps in an installed plugin.
+
 ## 0.13.1655 — 2026-10-03
 
 **`release-check` is gone (owner instruction, 2026-10-03).** The deprecated `/ace:release-check` alias

@@ -1037,7 +1037,9 @@ if [ -d "$ROOT/node_modules" ] && [ -f "$ROOT/package.json" ]; then
     const path = require("path");
     const root = process.argv[1];
     const pkg = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8"));
-    const declared = Object.keys({ ...(pkg.dependencies || {}), ...(pkg.devDependencies || {}) });
+    // An installed plugin carries runtime deps only (bin/ace-install-deps); a dev checkout needs both.
+    const installed = /\/plugins\/cache\/[^/]+\/[^/]+\/[^/]+$/.test(root);
+    const declared = Object.keys({ ...(pkg.dependencies || {}), ...(installed ? {} : pkg.devDependencies || {}) });
     const missing = declared.filter((d) => !fs.existsSync(path.join(root, "node_modules", d)));
     process.stdout.write(missing.join(" "));
   ' "$ROOT" 2>/dev/null)"
@@ -1086,21 +1088,19 @@ if [ -d "$ROOT/node_modules/playwright" ]; then
 fi
 
 # --- Stale plugin cache dirs ---
-# /ace:update creates ~/.claude/plugins/cache/ace/ace/<version>/ on every
-# upgrade and does not purge old ones. Each cached version is ~150MB
-# (most of which is node_modules). Surface the cleanup so colleagues
-# don't accumulate gigabytes of stale cache silently.
+# Every upgrade creates ~/.claude/plugins/cache/ace/ace/<version>/.
+# bin/ace-install-deps prunes versions superseded more than 3 days ago, but
+# only when it runs; installs from before it each carry their own ~150MB
+# node_modules. Surface the cleanup so nobody accumulates gigabytes silently.
 # The cache parent of whichever marketplace ACE is installed under
 # (cache/ace/ace, cache/canopy-agents/ace, ...).
 CACHE_PARENT="$HOME/.claude/plugins/cache/ace/ace"
 case "$ROOT" in */plugins/cache/*/*/*) CACHE_PARENT="$(dirname "$ROOT")" ;; esac
 if [ -d "$CACHE_PARENT" ]; then
   CACHE_COUNT="$(ls -1d "$CACHE_PARENT"/*/ 2>/dev/null | wc -l | tr -d '[:space:]')"
-  if [ "${CACHE_COUNT:-0}" -gt 3 ]; then
-    KEEP=2
-    DROP=$((CACHE_COUNT - KEEP))
-    APPROX_MB=$((CACHE_COUNT * 150))
-    warn "stale_cache: $CACHE_COUNT cached versions in $CACHE_PARENT (~${APPROX_MB}MB total at ~150MB each)" "ls -1d $CACHE_PARENT/*/ | sort -V | head -n $DROP | xargs rm -rf  # drops oldest $DROP, keeps newest $KEEP"
+  if [ "${CACHE_COUNT:-0}" -gt 10 ]; then
+    CACHE_MB="$(du -sm "$CACHE_PARENT" 2>/dev/null | cut -f1)"
+    warn "stale_cache: $CACHE_COUNT cached versions in $CACHE_PARENT (${CACHE_MB:-?}MB)" "\"$ROOT/bin/ace-install-deps\" \"$ROOT\"  # links shared deps and prunes versions superseded >72h ago (ACE_CACHE_KEEP_HOURS)"
   else
     pass "stale_cache: $CACHE_COUNT cached version(s) in $CACHE_PARENT"
   fi
