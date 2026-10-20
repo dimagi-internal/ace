@@ -75,6 +75,38 @@ describe('normalizeReadback on the live capture', () => {
   });
 });
 
+describe('normalizeReadback on the live programme_team_list shape (programme 361, ace#3261)', () => {
+  // Verbatim from the issue: supply_chain_programme_team_list({program_id: 361}).
+  const TEAM_361 = {
+    org_id: 356,
+    org_name: 'ACE Test LLO (Synthetic)',
+    members: [{ user_id: 49, email: 'ace@dimagi-ai.com', role: 'admin' }],
+  };
+
+  function withTeam(team: RawReadback['programme_team_list']): SetupReadback {
+    const raw = JSON.parse(LIVE) as RawReadback;
+    raw.programme_team_list = team;
+    return normalizeReadback(raw);
+  }
+
+  it('reads members from the live {org_id, org_name, members} reply', () => {
+    const rb = withTeam(TEAM_361);
+    expect(rb.team).toEqual([{ email: 'ace@dimagi-ai.com', role: 'admin' }]);
+    expect(rb.team_by_domain).toBeUndefined();
+  });
+
+  it('team_has_ace_admin passes on that reply passed as labs returned it', () => {
+    const readback = withTeam(TEAM_361);
+    const plan = planMatching(readback);
+    expect(checkTeamHasAceAdmin(JSON.stringify({ plan, readback })).pass).toBe(true);
+  });
+
+  it('still accepts {value: [...]} and a bare array', () => {
+    expect(withTeam({ value: TEAM_361.members }).team).toHaveLength(1);
+    expect(withTeam(TEAM_361.members).team).toHaveLength(1);
+  });
+});
+
 describe('supply-chain-setup-qa checks, grounded on program 10602', () => {
   it('checkRunnerStanding: programme passes; partner (program 353, same day) fails', () => {
     expect(checkRunnerStanding(doc(LIVE)).pass).toBe(true);

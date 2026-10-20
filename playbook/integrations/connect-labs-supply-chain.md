@@ -140,6 +140,15 @@ returns `{org_id, org_name, your_standing}`, and `org_id: null` means nobody has
      quote; the original stays readable.
    - **`supply_chain_quote_void`** removes a duplicate or mis-entry from comparisons (it stays
      readable).
+   - **A quote not in USD needs `fx_rate_to_usd`**, an internal fact recorded on the quote (ACE
+     takes it from the PDD budget rate). Without it the compare cannot price the quote: every
+     column `rankable: false`, `priced_count: 0`, each row blocked with "Quote is in UGX and no
+     exchange rate was recorded ... The supplier is not asked" (programme 361 tender 363,
+     2026-10-20, ace#3262).
+   - **`incoterm: DAP` with `freight_basis: excluded` is refused as unrankable**: "its Incoterm
+     DAP means freight included; adding it would charge for it twice". A supplier's "price plus
+     freight" is entered as one delivered price (DAP, freight included), or as a non-delivered
+     incoterm plus a tender freight estimate (`supply_chain_tender_set_import_estimates`).
 5. **`supply_chain_tender_compare`** works per commodity. It reports `rankable: false` with
    `blocked_by` naming the suppliers whose quotes are unconfirmed: "the honest answer to 'who is
    cheapest' is often 'not yet, ask these questions'". Resolve it with a `quote_correct` that
@@ -171,8 +180,8 @@ that decides is often not the one that buys".
   with no exemption document comes back unconfirmed, not zero; `compare_buyers` costs it under
   all three.
 - **`supply_chain_contract_match`** is the three-way match: ordered, received and invoiced, and
-  `payable_now`, which is the value of what actually **arrived**. It is computed and never
-  stored.
+  `payable_now`, which is what is still safe to pay: the value of what arrived **net of payments
+  already recorded** (see § Finance). It is computed and never stored.
 - **`supply_chain_contract_holds`** lists what the order is waiting on us for.
 - Reads: `supply_chain_contract_get` / `_list`.
 
@@ -203,6 +212,18 @@ that decides is often not the one that buys".
   is never asserted.
 - **`supply_chain_payment_confirm`** records that the payee confirmed receipt. Until then, a
   payment older than a fortnight shows in `checks_list` as `payment_unconfirmed`.
+- **`contract_match.payable_now` is net of payments already recorded**, the advance included.
+  Pay it as returned; never subtract the advance again. The value that arrived is `received` ×
+  the contract's `unit_price` (`supply_chain_contract_get`). Live, programme 361 contract 323:
+  820 ordered at UGX 41,500, 814 received, an advance of 10,000,000 → `payable_now` 23,781,000
+  (= 814 × 41,500 − 10,000,000); after paying it, `paid_amount` 33,781,000 and `payable_now` 0
+  (ace#3260).
+- **On advance terms, an invoice billing more than arrived was not flagged.** The same contract
+  invoiced 820 against 814 received: `over_invoiced` stayed null and `checks_list` carried no
+  `invoice_over_billed`; labs reported `recoverable: 249000` (6 × 41,500) instead, and kept
+  reporting it after the invoice was corrected to 814 and paid exactly (ace#3260). So on an
+  advance contract, a clean `over_invoiced` does not prove the bill matched what arrived: compare
+  `quantity_billed` with `received` yourself.
 - Reads: `supply_chain_invoice_list`, `supply_chain_payment_list`.
 
 ## Stock and distribution
@@ -276,4 +297,5 @@ label every invented name and excerpt "simulated" (`syntheticName`, `buildSource
 | Date | Change |
 |---|---|
 | 2026-10-18 | Initial reference, from the live schemas (optional-track PR6) |
+| 2026-10-20 | Sourcing: `fx_rate_to_usd` on non-USD quotes and the DAP + freight-excluded refusal (ace#3262). Finance: `payable_now` is net of payments recorded; on advance terms over-billing shows as `recoverable`, not `over_invoiced` (ace#3260) |
 | 2026-10-18 | Runner declaration is self-serve per connect-labs #2605 (who may declare, LabsOrg frozen once it runs, members hold the programme); a live award to a non-cheapest quote with a stated reason (program 10605 award 95) is the procure control (optional-track PR7) |

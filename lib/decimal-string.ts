@@ -52,3 +52,12 @@ export function decimalEq(a: string, b: string): boolean {
 export function decimalSum(values: readonly string[]): string {
   return fromScaled(values.reduce((t, v) => t + toScaled(v), 0n));
 }
+
+/**
+ * Exact product, truncated toward zero at the fixed precision. Used for
+ * value = quantity × unit price (e.g. 814 × 41500 = 33781000).
+ */
+export function decimalMul(a: string, b: string): string {
+  const unit = 10n ** BigInt(SCALE);
+  return fromScaled((toScaled(a) * toScaled(b)) / unit);
+}

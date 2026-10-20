@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { DecimalStringError, decimalCompare, decimalEq, decimalSum, fromScaled, toScaled } from '../../lib/decimal-string';
+import { DecimalStringError, decimalCompare, decimalEq, decimalMul, decimalSum, fromScaled, toScaled } from '../../lib/decimal-string';
 
 describe('decimal strings as labs writes them', () => {
   it('"38" and "38.00" are one value; 29.5 vs 29.50 too', () => {
@@ -25,5 +25,12 @@ describe('decimal strings as labs writes them', () => {
     expect(() => toScaled('12,50')).toThrow(DecimalStringError);
     expect(() => toScaled('1e3')).toThrow(DecimalStringError);
     expect(() => toScaled('0.1234567')).toThrow(DecimalStringError);
+  });
+
+  it('multiplies exactly (value arrived = received x unit price, labs contract 323)', () => {
+    expect(decimalMul('814', '41500')).toBe('33781000');
+    expect(decimalMul('20', '38.00')).toBe('760');
+    expect(decimalMul('2.5', '0.1')).toBe('0.25');
+    expect(decimalMul('-3', '1.5')).toBe('-4.5');
   });
 });

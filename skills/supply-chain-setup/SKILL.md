@@ -107,13 +107,24 @@ only when a run is bound.
 3. **Write the plan** (Products, first file). Every later step writes what the plan says, and the
    QA reads the plan back against labs.
 4. **Register the orgs.** `labs_context()` gives each Connect org's integer id; never guess it
-   from a slug. For `pm_org`, and for `llo_org` on the winner path:
-   `supply_chain_org_upsert({data: {slug, name, connect_organization_id, connect_organization_slug}, source})`.
+   from a slug. For `pm_org`, and for `llo_org` on the winner path, **read
+   `supply_chain_org_list({program_id})` first** and find the row by slug:
+   - **Row present and right** (its `name`, `connect_organization_id` and
+     `connect_organization_slug` all equal what you would send): skip the upsert and record its
+     labs org id. Do not re-send it. An org that already runs a programme refuses even an
+     identical upsert: "<pm org> runs a program on labs, so only platform support changes or
+     merges its record: who it is decides who acts as that program" (live, programme 361,
+     2026-10-20, ace#3261; the PM org of any ACE instance that ran a supply chain before).
+   - **Row absent, or present and different:**
+     `supply_chain_org_upsert({program_id, data: {slug, name, connect_organization_id, connect_organization_slug}, source})`
+     and record the returned labs org id. If labs refuses it because the org runs a programme,
+     the row is wrong and frozen: halt with a `[BLOCKER]` naming the slug, the field that
+     differs and the refusal verbatim. Only platform support can edit or merge that record;
+     never register a second slug to get round it.
    Binding by `connect_organization_id` is what makes ace@'s Connect membership count as
-   membership of the labs org. Record each returned labs org id. The upsert is keyed by slug, so a
-   re-run is a no-op (same call `solicitation-create` Step 5a makes). **Get the row right before
-   Step 1 declares it:** once an org runs a programme its LabsOrg row is support-edit-only
-   (connect-labs #2605), so a wrong name or Connect binding cannot be corrected afterwards.
+   membership of the labs org. **Get the row right before Step 1 declares it:** once an org runs a
+   programme its LabsOrg row is support-edit-only (connect-labs #2605), so a wrong name or Connect
+   binding cannot be corrected afterwards.
 5. **Team.** Skip this step when the runner is Dimagi (labs org slug `dimagi`): Dimagi's members
    are everyone with a Dimagi address, so ace@ is already one, and `programme_team_list` refuses
    with "Dimagi's team is everyone with a Dimagi address; it is not kept as a list" (live, program
@@ -184,5 +195,6 @@ When `--dry-run` is active, run Step 1's read (not the setter), Steps 2-3, and t
 
 | Date | Change | Author |
 |------|--------|--------|
+| 2026-10-20 | Step 4 reads `supply_chain_org_list` first and skips the upsert when the row already matches: labs refuses even an identical upsert of an org that runs a programme, and a mismatched running org is a halt (ace#3261) | ACE |
 | 2026-10-19 | Step 2 declares each commodity's `issue_event` (form + field + issue answers + eligibility share, or `per_enrolment` when the PDD says so) and optional `count_form` (ace#3216) | ACE |
 | 2026-10-18 | Initial version (optional-track PR6): runner gate with self-serve declaration and winner-runs-procurement, registry build, deterministic source refs | ACE |

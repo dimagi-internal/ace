@@ -60,8 +60,14 @@ export interface RawReadback {
   item_list: { value: Array<Record<string, unknown>> };
   supply_point_list: { value: Array<Record<string, unknown>> };
   supplier_list: { value: Array<Record<string, unknown>> };
-  /** The reply, or `{error}` with the text of a refused call. */
-  programme_team_list: { value?: Array<Record<string, unknown>>; error?: string } | Array<Record<string, unknown>>;
+  /**
+   * The reply, or `{error}` with the text of a refused call. Live labs answers
+   * `{org_id, org_name, members: [...]}` (programme 361, 2026-10-20, ace#3261);
+   * `{value: [...]}` and a bare array are still accepted.
+   */
+  programme_team_list:
+    | { members?: Array<Record<string, unknown>>; value?: Array<Record<string, unknown>>; error?: string; org_id?: number | null; org_name?: string | null }
+    | Array<Record<string, unknown>>;
   checks_list: { checks?: Array<Record<string, unknown>> };
 }
 
@@ -73,7 +79,7 @@ const str = (v: unknown): string => (typeof v === 'string' ? v : '');
  */
 export function normalizeReadback(raw: RawReadback): SetupReadback {
   const team = raw.programme_team_list;
-  const teamRows = Array.isArray(team) ? team : (team.value ?? []);
+  const teamRows = Array.isArray(team) ? team : (team.members ?? team.value ?? []);
   const teamError = Array.isArray(team) ? '' : (team.error ?? '');
   return {
     runner: { org_id: raw.programme_runner_get.org_id, your_standing: raw.programme_runner_get.your_standing },
