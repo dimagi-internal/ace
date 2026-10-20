@@ -74,15 +74,34 @@ Default resolution inside a run — read from the current run's `run_state.yaml.
 
    ```
    mcp__connect-labs__create_review(
+     public_record_acknowledged: true,
      response_id: <id>,
-     scores: { <criterion_id>: <score>, ... },
-     notes: "<reasoning>"
+     llo_entity_id: <the response's llo_entity_id, or "individual">,
+     criteria_scores: { <criterion_id>: <score>, ... },
+     notes: "<reasoning>",
+     demonstration: true   # ONLY for the ACE winner on an ace_winner run -- see below
    )
    ```
 
    This puts ACE's scores in the labs audit trail. Idempotent — call
    `list_reviews` first and skip if a review by `ace@dimagi-ai.com`
    already exists for this response.
+
+   **`demonstration: true` — the ACE winner only.** Labs refuses a review or
+   award of a response from the caller's own side, and the rule keys on the
+   USER: ace@ belongs to the winner org (`connect_orgs.llo_org`), so every
+   plain call on the ACE winner's response is refused (ace#3257). Labs'
+   one exception is a demonstration: honoured only when the response was
+   created `synthetic` (by `solicitation-seed-responses`), the call is
+   unlisted, and the caller manages the call. Pass it **only when BOTH** hold:
+   `optional_steps.ace_winner` is on (`isOptionalStepEnabled(runState,
+   'ace_winner')`), **and** this response is the seeded ACE winner (the
+   roster's winner row: `llo_entity_id` = `llo_org`, `synthetic: true` on
+   `get_response`). Never on any other response, never on a real call, never
+   outside an `ace_winner` run. If the winner's `get_response` reads
+   `synthetic: false` it was filed before labs had the marker and can never be
+   demonstration-awarded: re-run `solicitation-seed-responses` (it files a
+   fresh, marked winner) before reviewing it.
 
 4. **Write `scoring-rubric.md`.** Save the per-response, per-criterion
    scores to:
@@ -165,9 +184,19 @@ Default resolution inside a run — read from the current run's `run_state.yaml.
      response_id: <chosen>,
      reward_budget: <approved amount, integer, in the call's currency>,
      org_id: <confirmed Connect organisation id>,
-     fund_id: <labs fund id>   # optional: only when the award should append a fund allocation
+     fund_id: <labs fund id>,   # optional: only when the award should append a fund allocation
+     demonstration: true        # ONLY when optional_steps.ace_winner AND <chosen> is the seeded ACE winner
    )
    ```
+
+   **`demonstration: true`** follows exactly Step 3's rule: only on an
+   `ace_winner` run, only for the seeded ACE winner's `synthetic` response,
+   never for a real award. Labs then records `demonstration_award: true`,
+   emails nobody and allocates no fund (so leave `fund_id` out — labs
+   refuses it). Labs refuses `demonstration: true` on any response that is not
+   synthetic, on a listed call, or to a caller who cannot manage the call, and
+   refuses a plain award of a synthetic response — neither ever falls back to
+   the other. Say "demonstration award" in the Step 6 prompt on such a run.
 
    The call marks the response `awarded`, and moves an `active` or `closed`
    solicitation to `awarded` itself. It emails the awardee only when labs
@@ -187,8 +216,8 @@ Default resolution inside a run — read from the current run's `run_state.yaml.
    Body: `response_id`, `awarded_at`, `awarded_org_slug`,
    `awarded_org_name`, `awarded_contact_email`, `award_amount` (the
    `reward_budget` sent), `org_id`, `awardee_notified` (from the result, so a
-   reader knows whether labs emailed the awardee), and `allocation_error`
-   when present. On labs-side error: `status: failed` + the error envelope.
+   reader knows whether labs emailed the awardee), `demonstration_award`
+   (from the result), and `allocation_error` when present. On labs-side error: `status: failed` + the error envelope.
 
 9. **Confirm the labs-side status is `awarded`.** `award_response` already
    flips an `active`/`closed` solicitation to `awarded`. Read it back with

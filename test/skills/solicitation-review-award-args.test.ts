@@ -36,7 +36,7 @@ describe('solicitation-review award_response call matches the live labs schema (
   });
 
   it('passes no argument the schema does not define', () => {
-    const allowed = new Set([...REQUIRED, 'fund_id']);
+    const allowed = new Set([...REQUIRED, 'fund_id', 'demonstration']); // demonstration: ace#3257
     for (const n of argNames(awardCall())) expect(allowed.has(n), `unexpected award_response arg: ${n}`).toBe(true);
   });
 

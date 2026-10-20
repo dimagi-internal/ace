@@ -95,9 +95,21 @@ program, opportunity, solicitation or workflow id it is given.
 | `create_solicitation` | `solicitation-create` (pass `org_slug`; since connect-labs#2567 the call must be owned by a registered labs org the caller belongs to, ace#3049) |
 | `get_solicitation` / `list_solicitations` / `update_solicitation` / `delete_solicitation` | `solicitation-create`, `solicitation-monitor`, `solicitation-review`, `sweep-labs` |
 | `list_responses` / `get_response` | `solicitation-monitor`, `solicitation-review` |
-| `create_response` | (no skill yet) seeds a response on a firm's behalf when the caller owns the call; built for demo/synthetic responses |
+| `create_response` | `solicitation-seed-responses`: seeds a response on a firm's behalf when the caller owns the call. `synthetic: true` marks it invented (unlisted calls only, creation only; connect-labs#2626) |
 | `create_review` / `update_review` / `list_reviews` / `get_review` | `solicitation-review`, `eoi-round-review` |
 | `award_response` | `solicitation-review` (HITL-gated). Requires `response_id`, `reward_budget`, `org_id`; **emails the awardee when labs email is on**; refuses a second award (ace#3146) |
+
+**Own side is decided by the USER, and the ACE winner is a demonstration (ace#3257).**
+Labs refuses `create_review` / `award_response` on a response from the caller's own side,
+and "own side" means the caller is a member of the responding org (or an owning-org member
+reviewing a colleague's submission) — connect-labs `solicitations/access.py` `_is_own_side`.
+ace@ belongs to `llo_org`, so the seeded ACE winner is always ace@'s own side. The exception
+(connect-labs#2626, `access.can_demonstrate`) is `demonstration: true` on `create_review` /
+`award_response`, honoured only for a response created `synthetic: true` on an unlisted
+call, by a caller who manages it. The award reads back `demonstration_award: true`, emails
+nobody and allocates no fund (a `fund_id` is refused); a synthetic response can be awarded no
+other way, and a real one never this way. A response filed before the marker existed reads
+`synthetic: false` and can never qualify: file a fresh one.
 
 `is_public: false` hides a call from the logged-in listing. Its owning org's members
 (and anyone who responded) still read it by `solicitation_id` alone. Since
