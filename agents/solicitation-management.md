@@ -113,11 +113,13 @@ Invoke the `llo-invite` skill.
   from the current run's `run_state.yaml`
 - Output: `solicitation/invitations.md` (per-recipient send log)
 - No-op when the PDD has no `Preferred LLOs`. **Be honest about what
-  that means:** the solicitation is listed at `public_url`, but that URL
-  requires a labs login by design, so an org that has never heard of us
-  cannot find or read it. With no PDD-named candidates AND no invite,
-  a run reaches its deadline with zero possible responses. Say so in the
-  phase summary rather than reporting "published publicly".
+  that means:** a listed call is anonymously readable at `public_url`
+  and on the `/solicitations/` index (observed 2026-10-19, ace#3254),
+  but nothing tells an org that has never heard of us to look, and
+  responding without a labs account was not observed. A private call is
+  invisible to everyone outside the owning org. With no PDD-named
+  candidates AND no invite, expect zero responses. Say so in the phase
+  summary rather than reporting "published publicly".
 - Sends emails via `email-communicator`. No Connect API calls — those
   happen only for the awardee inside `llo-onboarding` (Phase 9).
 
