@@ -15,6 +15,7 @@
  * and `scripts/check-published-doc-render.ts` is the binary pre-eval gate every
  * eval of a published Doc runs (ratchet: `test/skills/eval-checks-published-render.test.ts`).
  */
+import { isConfidentialOpp } from './opp-confidentiality';
 
 /**
  * Markers that a Google Doc is showing the reader raw markdown rather than
@@ -229,4 +230,30 @@ export function judgePublishedRender(
     else if (exp.images === 0) failures.push('the published document renders ZERO images');
   }
   return { ok: failures.length === 0, literalMarkdownHits: hits, renderedImageCount: exp.images, failures };
+}
+
+/**
+ * The export to judge for a design document on a CONFIDENTIAL opp (ace#3191).
+ *
+ * On such an opp `idea-to-pdd` / `pdd-to-work-order` deliberately do not share
+ * the doc by link (`lib/opp-confidentiality.ts`), so the anonymous read above
+ * fails by design. The render half of the gate still applies: the eval reads
+ * the doc's text export with ACE's own credentials (`drive_read_file`,
+ * default `text/plain`) and hands it here. `html` is null, so the code-span
+ * excuse (ace#2499) is unavailable and images are unknown — acceptable for the
+ * PDD and the Work Order, which are not `illustrated`.
+ *
+ * Throws when the opp is NOT confidential: on any other opp the anonymous read
+ * IS the check, and this path must not become a way around it.
+ */
+export function exportForConfidentialDoc(
+  confidentialityText: string | null | undefined,
+  authenticatedText: string,
+): PublishedDocExport {
+  if (!isConfidentialOpp(confidentialityText)) {
+    throw new Error(
+      'not a confidential opp (no inputs/confidentiality.yaml): the anonymous read is the check — drop --confidential',
+    );
+  }
+  return { text: authenticatedText, html: null, images: null, why: '' };
 }

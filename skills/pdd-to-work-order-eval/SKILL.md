@@ -94,6 +94,8 @@ Grading bands: 0 strikes = `pass`; 1–3 strikes = `partial`; 4+ strikes = `fail
 
 1b. **Run the published-render gate before grading anything:** `scripts/check-published-doc-render.ts <published Doc URL>` — see `skills/_eval-template.md § Published-render gate (stock)`. A non-zero exit (raw markdown on the page, or a doc an anonymous reader cannot open) makes this eval's verdict `fail`, whatever the prose would score (ace#2213). Write the Doc URL you checked to the verdict as top-level `published_url`, and the result as `published_render` — `capture_path` keeps naming the run-folder source, so the verdict records both what was composed and what a reader opened.
 
+   **On a confidential opp (ace#3191) the anonymous read fails by design** — the producer deliberately did not link-share the doc (`inputs/confidentiality.yaml` exists; `lib/opp-confidentiality.ts`). Do not fail the eval for that, and do not share the doc to make it pass. Read the doc with ACE's credentials (`drive_read_file`, default `text/plain`), save it and the opp's `confidentiality.yaml` locally, and run the gate in confidential mode: `scripts/check-published-doc-render.ts <Doc URL> --confidential <confidentiality.yaml> --text <export>`. It still fails on raw markdown, and refuses (exit 2) on an opp with no confidentiality file. Record `published_render.anonymous_access: not-applicable (confidential opp)`.
+
 2. **Read the artifacts.** Work order body, PDD body, decisions.yaml. Parallel `drive_read_file` block.
 
 3. **Grade each dimension.** For each of the seven dimensions:

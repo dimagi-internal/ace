@@ -310,12 +310,30 @@ Take the approved PDD and decisions.yaml and produce a contractual Work Order dr
      - `{{partner_signatory_name}}`, `{{partner_signatory_title}}`, `{{partner_address}}` (left cell — Subcontractor)
      - Dimagi cell is hardcoded in the template (Lucina Tse, COO, Cambridge MA address) — no tokens for the right cell.
 
-5b. **Share it anyone-with-link, `commenter`, at creation (ace#1843).** On the
-   `fileId` `docs_copy_template` returned, before step 6:
+5b. **Share it at creation (ace#1843) — anyone-with-link `commenter`, UNLESS
+   the opp is confidential (ace#3191).** On the `fileId` `docs_copy_template`
+   returned, before step 6, get the share plan exactly as `idea-to-pdd` step 6c
+   does. The one signal, defined in `lib/opp-confidentiality.ts`: **the opp is
+   confidential when `ACE/<opp>/inputs/confidentiality.yaml` exists** (the same
+   file `pdd-to-work-order-qa` step 3a reads for the deny list — read it with the
+   default `text/plain` export and save it locally):
 
+   ```bash
+   node "$ACE_ROOT/node_modules/tsx/dist/cli.mjs" "$ACE_ROOT/scripts/design-doc-share-plan.ts" <local confidentiality.yaml | none>
    ```
-   drive_set_anyone_with_link(fileId: <workOrderDocId>, role: 'commenter')
-   ```
+
+   - `anyone-with-link` (no confidentiality file):
+     ```
+     drive_set_anyone_with_link(fileId: <workOrderDocId>, role: 'commenter')
+     ```
+   - `named-reviewers`: `drive_share_with_person(fileId: <workOrderDocId>, email: <e>, role: 'commenter')`
+     for each listed reviewer; never anyone-with-link.
+   - `unshared`: do NOT share.
+
+   Record the `mode` as `products.work_order.share_mode` in step 6. On
+   connect-fi/20261018-1440 the operator brief said "nothing is public" and only a
+   careful agent's one-off decision kept this document private; the plan makes
+   that the skill's behaviour, not the agent's.
 
    **`commenter`, not `reader`** — this is a CONTRACTUAL draft, the document a
    counterpart is most likely to mark up, and a Drive reader physically cannot
@@ -351,6 +369,7 @@ Take the approved PDD and decisions.yaml and produce a contractual Work Order dr
          work_order:
            title: "Work Order — <opp-title>"
            file_id: <gdoc-id>
+           share_mode: anyone-with-link   # step 5b plan: anyone-with-link | named-reviewers | unshared (ace#3191)
    ```
 
 7. **Invoke `decisions-render`** so the human-readable `decisions.gdoc` refreshes with the new `wo-*` rows.
@@ -382,7 +401,7 @@ Take the approved PDD and decisions.yaml and produce a contractual Work Order dr
 - Roles: per-stage RACI.
 
 ## MCP Tools Used
-- Google Drive: `drive_read_file`, `update_yaml_file`, `drive_set_anyone_with_link` (`role: 'commenter'` — § Process step 5b; ace#1843)
+- Google Drive: `drive_read_file`, `update_yaml_file`, `drive_set_anyone_with_link` (`role: 'commenter'` — § Process step 5b; ace#1843; NOT on a confidential opp, ace#3191), `drive_share_with_person` (each `reviewers:` email on a confidential opp, `role: 'commenter'` — step 5b), `drive_list_folder` (find `inputs/confidentiality.yaml`)
 - Google Docs: `docs_copy_template`, `docs_finalize_bullets`, `docs_finalize_bold`
 
 ## Mode Behavior
