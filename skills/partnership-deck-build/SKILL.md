@@ -33,6 +33,14 @@ Pipeline-only: a step of a `/ace:partnership-video` run; it reads that run's res
 - Google Slides deck in the run's folder (in Drive)
 - `ACE/partnerships/<slug>/runs/<run-id>/run_state.yaml` — Phase Write-Back: `phases.deck-build.*`
 
+## Terminology
+
+Every string this skill puts in front of a reader follows
+[`skills/_terminology.md`](../_terminology.md): **`Connect`, never `CommCare Connect`**, and
+**US spelling, always** — program, enrollment, enroll, organization, behavior, center; never
+programme, enrolment, organisation (owner, 2026-10-20: *"everything should be US spelling"*,
+ace#3232). Identifiers (case properties, slugs, ids, config keys) keep their spelling.
+
 ## Process
 
 1. **Resolve inputs and check preconditions.**

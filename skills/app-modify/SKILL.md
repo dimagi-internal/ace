@@ -40,6 +40,14 @@ defaults apply and the result is written back to the run (step 10).
   - on a program project, a dated line in the context doc's Decisions plus the board task.
 - A new released HQ build on the same `hq_app_id`.
 
+## Terminology
+
+Every string this skill puts in front of a reader follows
+[`skills/_terminology.md`](../_terminology.md): **`Connect`, never `CommCare Connect`**, and
+**US spelling, always** — program, enrollment, enroll, organization, behavior, center; never
+programme, enrolment, organisation (owner, 2026-10-20: *"everything should be US spelling"*,
+ace#3232). Identifiers (case properties, slugs, ids, config keys) keep their spelling.
+
 ## Process
 
 1. **Confirm the approval.** This skill writes to a live partner object. The caller, at level 0,

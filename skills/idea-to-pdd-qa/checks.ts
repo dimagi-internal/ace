@@ -28,6 +28,7 @@ import {
   auditPddDescription,
   describePlainLanguageIssues,
 } from '../../lib/pdd-description-plain-language';
+import { findUkSpellings, describeUkSpellings } from '../../lib/us-spelling';
 
 export const REQUIRED_SECTIONS = [
   'Archetype',
@@ -1377,4 +1378,45 @@ export const CHECKS: QACheck[] = [
       'If reviewer comments are referenced (markers or section header), the disposition table is populated',
     run: checkReviewerCommentTableIfReferenced,
   },
+  {
+    id: 'us_spelling',
+    type: 'static',
+    description:
+      'PDD prose uses US spelling (program, enrollment, organization) — app labels and training quote it verbatim',
+    run: checkUsSpelling,
+  },
 ];
+
+/**
+ * `us_spelling` — the PDD is written in US English (`skills/_terminology.md`
+ * § US spelling, always; owner decision 2026-10-20, ace#3232). The PDD is
+ * upstream of every app label, lesson title and training artifact, and those
+ * quote it verbatim, so a UK spelling here ships to workers: connect-fi/
+ * 20261018-1440 carried `programme` x12 / `enrolment` x34 into "Enrol adults"
+ * and "Adult Enrolment" on-device. Identifiers (code spans, snake_case, slugs)
+ * are skipped — `lib/us-spelling.ts`. A lower-case UK spelling fails; a
+ * capitalized one may be an organization's registered name and is listed only.
+ */
+export function checkUsSpelling(raw: string): QACheckResult {
+  const findings = findUkSpellings(normalizeDriveExport(raw));
+  const hard = findings.filter((f) => !f.capitalized);
+  const soft = findings.filter((f) => f.capitalized);
+  const softNote =
+    soft.length > 0
+      ? ` Capitalized (rewrite unless a proper name, e.g. an organization's registered name): ${describeUkSpellings(soft)}.`
+      : '';
+  if (hard.length === 0) {
+    return {
+      pass: true,
+      detail: soft.length === 0 ? 'no UK spellings' : `no lower-case UK spellings.${softNote}`,
+    };
+  }
+  return {
+    pass: false,
+    detail: `UK spellings in PDD prose: ${describeUkSpellings(hard)}.${softNote}`,
+    auto_fix_hint:
+      'rewrite each to US spelling (program, enrollment, enroll, organization, behavior, center, …) per ' +
+      'skills/_terminology.md § US spelling, always — capitalized headings and labels too. ' +
+      "Do NOT touch identifiers (code spans, snake_case case properties, slugs) or an organization's registered name.",
+  };
+}

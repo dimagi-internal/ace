@@ -332,8 +332,8 @@ describe('checkReviewerCommentTableIfReferenced', () => {
 });
 
 describe('CHECKS array', () => {
-  test('exports fifteen checks in stable order', () => {
-    expect(CHECKS).toHaveLength(15);
+  test('exports sixteen checks in stable order', () => {
+    expect(CHECKS).toHaveLength(16);
     const ids = CHECKS.map((c) => c.id);
     expect(ids).toEqual([
       // First deliberately: a PDD missing its launch parameters cannot be
@@ -355,6 +355,7 @@ describe('CHECKS array', () => {
       'entity_state_taxonomy_declared_for_longitudinal',
       'followed_entity_case_type_declared',
       'reviewer_comment_table_if_referenced',
+      'us_spelling',
     ]);
   });
 });
@@ -685,6 +686,6 @@ describe('Drive markdown-export escaping (#1617)', () => {
         return `${c.id}=${r.pass}`;
       });
     expect(score(exported)).toEqual(score(numbered));
-    expect(score(exported).filter((s) => s.endsWith('=true'))).toHaveLength(12);
+    expect(score(exported).filter((s) => s.endsWith('=true'))).toHaveLength(13);
   });
 });

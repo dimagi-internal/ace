@@ -57,6 +57,14 @@ The result, returned to the caller and recorded where one is bound:
 | Move the opportunity to another org later | `target_organization_slug` is create-time only; `connect_update_opportunity` has no org field (ace#2919) | Get `partner_org_slug` right before Step 4 |
 | Start the opportunity before the program, or end it after | Connect refuses any opportunity outside its program's window | Halt and ask; never clamp a contractual date |
 
+## Terminology
+
+Every string this skill puts in front of a reader follows
+[`skills/_terminology.md`](../_terminology.md): **`Connect`, never `CommCare Connect`**, and
+**US spelling, always** — program, enrollment, enroll, organization, behavior, center; never
+programme, enrolment, organisation (owner, 2026-10-20: *"everything should be US spelling"*,
+ace#3232). Identifiers (case properties, slugs, ids, config keys) keep their spelling.
+
 ## Process
 
 1. **Confirm the approval.** This creates objects on a live program and, for a real partner,

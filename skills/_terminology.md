@@ -67,7 +67,11 @@ programme, enrolment, enrol, organisation. "Programme" is always an accident,
 including in a report or workflow NAME (Jon, 2026-10-05: *"programme is always
 an accident I let it through"*). This binds every reader-visible string ACE
 writes: emails, docs, decks, labs report text, workflow names and descriptions,
-and semantic-registry labels and descriptions.
+and semantic-registry labels and descriptions — and **the PDD and every app label a worker sees**
+(app, menu, form and lesson names, question and option labels). Owner, 2026-10-20: *"everything
+should be US spelling"* — there is no carve-out for worker-facing app labels, even on a program in
+a country that writes UK English (ace#3232). An organization's registered name is a name, not our
+prose, and keeps its own spelling.
 
 What it does NOT touch: code identifiers, config keys, and SQL/registry
 property names (e.g. `days_to_enrolment`, template key `kmc_programme_metrics`).
@@ -93,7 +97,10 @@ wins.
 ## Enforced by
 
 - `test/skills/connect-terminology.test.ts` — fails on `CommCare Connect`
-  anywhere under `templates/`.
+  anywhere under `templates/`, and requires every prose-producing / outbound skill
+  (including `idea-to-pdd` and both app builders) to link this file.
+- `idea-to-pdd-qa` check `us_spelling` (`lib/us-spelling.ts`) — fails a PDD carrying a
+  lower-case UK spelling; skips code spans, snake_case and slug identifiers.
 - `pdd-to-work-order-eval § Terminology` — grades work-order prose.
 
 ## Related

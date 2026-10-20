@@ -72,6 +72,14 @@ context doc's Decisions for a program project, or the run folder when one
 is bound. `comms-log/observations.md` and `auto_surfaced` mean the
 caller's record.
 
+## Terminology
+
+Every string this skill puts in front of a reader follows
+[`skills/_terminology.md`](../_terminology.md): **`Connect`, never `CommCare Connect`**, and
+**US spelling, always** — program, enrollment, enroll, organization, behavior, center; never
+programme, enrolment, organisation (owner, 2026-10-20: *"everything should be US spelling"*,
+ace#3232). Identifiers (case properties, slugs, ids, config keys) keep their spelling.
+
 ## Process
 
 1. **Read inputs from GDrive** (paths in `## Inputs` above).

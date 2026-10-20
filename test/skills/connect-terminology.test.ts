@@ -133,10 +133,39 @@ describe('Connect terminology in generated content', () => {
  * inheriting the rule.
  */
 const TERMINOLOGY_BOUND = [
-  // Shared contracts — these reach the six training skills + idea-to-pdd and
-  // solicitation-create transitively, which is why those are not listed here.
+  // Shared contracts — these reach the six training skills transitively, which
+  // is why those are not listed here.
   'skills/_training-template.md',
   'skills/_solicitation-template.md',
+  // The PDD writer and both app builders, linked DIRECTLY (ace#3232). A
+  // transitive reach through a template was not enough: idea-to-pdd mentions
+  // `_training-template.md` only for its Drive upload mechanics, so the writer
+  // never met the rule, and connect-fi/20261018-1440's PDD carried `programme`
+  // x12 / `enrolment` x34 into worker-visible app labels ("Enrol adults",
+  // "Adult Enrolment", "The programme and the four items"). Owner decision
+  // 2026-10-20: "everything should be US spelling" — no label carve-out.
+  'skills/idea-to-pdd/SKILL.md',
+  'skills/pdd-to-deliver-app/SKILL.md',
+  'skills/pdd-to-learn-app/SKILL.md',
+  'skills/app-modify/SKILL.md',
+  'skills/solicitation-create/SKILL.md',
+  'skills/solicitation-edit/SKILL.md',
+  'skills/training-deck-render/SKILL.md',
+  'skills/ocs-agent-setup/SKILL.md',
+  'skills/ocs-bot-update/SKILL.md',
+  'skills/connect-opp-setup/SKILL.md',
+  'skills/connect-program-setup/SKILL.md',
+  'skills/connect-partner-opp-create/SKILL.md',
+  'skills/marketplace-outreach-doc/SKILL.md',
+  'skills/gdoc-writer/SKILL.md',
+  'skills/simulated-weekly-review/SKILL.md',
+  'skills/synthetic-workflow-seed/SKILL.md',
+  'skills/timeline-monitor/SKILL.md',
+  'skills/decisions-render/SKILL.md',
+  'skills/build-targeting-model/SKILL.md',
+  'skills/partnership-deck-build/SKILL.md',
+  'skills/demo-narrative/SKILL.md',
+  'skills/semantic-registry-author/SKILL.md',
   // Producers and outbound surfaces no shared contract covers.
   'skills/pdd-to-work-order/SKILL.md',
   'skills/llo-onboarding/SKILL.md',
@@ -176,5 +205,9 @@ describe('Connect terminology reaches the writer', () => {
     // ...and still carves out CommCare-the-product, so the rule cannot be read
     // as a blanket scrub.
     expect(rule).toMatch(/CommCare HQ/);
+    // ...and still states the US-spelling rule the app builders are linked for
+    // (ace#3232), without a carve-out for worker-facing labels.
+    expect(rule).toMatch(/US spelling, always/);
+    expect(rule).toMatch(/no carve-out for worker-facing app labels/);
   });
 });

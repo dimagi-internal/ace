@@ -136,6 +136,26 @@ spark-facilitator the owner ruled on 2026-10-04 that devices are costed
 separately and asked about. *Enforced:* `test/lib/operator-rulings.test.ts`
 (fixture `test/fixtures/operator-rulings/spark-facilitator.yaml`).
 
+## Terminology — read before drafting any PDD prose
+
+The PDD is upstream of every app label, lesson title, training artifact and solicitation, and they
+quote it verbatim — so whatever spelling and naming it uses ships to workers. Write it to
+[`skills/_terminology.md`](../_terminology.md), which binds this skill's output:
+
+- **US spelling, always** (owner, 2026-10-20: *"everything should be US spelling"*, no carve-out for
+  worker-facing labels): **program, enrollment, enroll, organization, behavior, center** — never
+  programme, enrolment, enrol, organisation, behaviour, centre. This holds even when the source
+  material, the partner and the country write UK English: quote a source verbatim only inside a
+  quotation, and keep an organization's registered name as registered. connect-fi/20261018-1440's PDD
+  carried `programme` x12 and `enrolment` x34, and its apps shipped "Enrol adults" and "Adult
+  Enrolment" to workers (ace#3232).
+- **`Connect`, never `CommCare Connect`.**
+- **Identifiers are not prose** — a case property (`days_to_enrolment`), a decision id or a slug keeps
+  its spelling; renaming one is a code change.
+
+*Enforced:* `idea-to-pdd-qa` check `us_spelling` (`lib/us-spelling.ts`) fails a PDD with a lower-case
+UK spelling and lists capitalized ones; `test/skills/connect-terminology.test.ts` requires this link.
+
 ## Process
 
 0. **Classify the input set FIRST — synthesize or ingest?**
