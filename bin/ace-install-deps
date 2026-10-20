@@ -1,0 +1,137 @@
+#!/usr/bin/env bash
+# ace-install-deps — give an ACE root its node_modules without paying ~145MB per version.
+#
+#   bin/ace-install-deps [ROOT]          # ROOT defaults to this script's plugin root
+#   bin/ace-install-deps --force [ROOT]  # reinstall even if deps look present
+#
+# Called by /ace:setup and /ace:update. Two cases:
+#
+#   - ROOT is an INSTALLED plugin (…/plugins/cache/<mp>/ace/<version>): runtime deps only
+#     (`npm ci --omit=dev`), installed ONCE per lockfile into the plugin data dir and
+#     symlinked in as ROOT/node_modules. A new version whose package-lock.json did not
+#     change installs nothing. Then cached versions orphaned more than
+#     ACE_CACHE_KEEP_HOURS ago (default 72) are deleted, plus any dep store no remaining
+#     version links to.
+#   - ROOT is a dev checkout: plain `npm install` in place, dev deps included (the tests
+#     and `tsc` need them). Nothing is pruned.
+#   - On Windows (Git Bash / MSYS) symlinks are unreliable, so an installed plugin gets
+#     its runtime deps in place instead of a link; pruning still runs.
+#
+# Why: every version used to get its own full `npm install` (dev deps too), and Claude
+# Code's own sweep of orphaned versions did not run — one machine held 93 versions, 16GB,
+# on 2026-10-19. canopy's fleet session-start hook installs fleet plugins the same way;
+# keep the store layout (<data>/node-deps/<key>/node_modules) in step with it.
+#
+# Env: ACE_NPM (default npm), ACE_CACHE_KEEP_HOURS (default 72), ACE_PLUGIN_REGISTRY,
+#      ACE_DEPS_NO_LINK=1 (install in place, as on Windows).
+
+set -uo pipefail
+shopt -s nullglob
+
+FORCE=0
+if [ "${1:-}" = "--force" ]; then FORCE=1; shift; fi
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT="${1:-$(dirname "$SCRIPT_DIR")}"
+ROOT="$(cd "$ROOT" && pwd)" || { echo "FAIL ace-install-deps: no such root: ${1:-}" >&2; exit 1; }
+NPM="${ACE_NPM:-npm}"
+KEEP_HOURS="${ACE_CACHE_KEEP_HOURS:-72}"
+NO_LINK="${ACE_DEPS_NO_LINK:-0}"
+case "${OSTYPE:-}" in msys*|cygwin*|win32*) NO_LINK=1 ;; esac
+
+# shellcheck source=_ace-plugin-paths.sh
+. "$SCRIPT_DIR/_ace-plugin-paths.sh"
+
+case "$ROOT" in
+  */plugins/cache/*/*/*) ;;
+  *)
+    if [ "$FORCE" = "1" ] || [ ! -x "$ROOT/node_modules/.bin/tsx" ]; then
+      echo "INFO running npm install in $ROOT (dev checkout; may take 30-60s)..."
+      (cd "$ROOT" && "$NPM" install --silent 2>&1 | tail -10)
+    fi
+    [ -x "$ROOT/node_modules/.bin/tsx" ] || { echo "FAIL deps: npm install completed but tsx still missing" >&2; exit 1; }
+    exit 0
+    ;;
+esac
+
+[ -f "$ROOT/package-lock.json" ] || { echo "FAIL deps: $ROOT has no package-lock.json" >&2; exit 1; }
+
+# The store key: the lockfile, plus what makes an install machine-specific (esbuild and
+# friends ship per-platform binaries; native addons are built per Node ABI).
+LOCK_HASH="$(shasum -a 256 "$ROOT/package-lock.json" | cut -c1-16)"
+NODE_TAG="$(node -p 'process.platform+"-"+process.arch+"-abi"+process.versions.modules' 2>/dev/null || echo unknown)"
+STORE_PARENT="$(ace_data_dir_from_root "$ROOT")/node-deps"
+STORE="$STORE_PARENT/$LOCK_HASH-$NODE_TAG"
+
+if [ "$NO_LINK" = "1" ]; then
+  if [ "$FORCE" = "1" ] || [ -L "$ROOT/node_modules" ] || [ ! -x "$ROOT/node_modules/.bin/tsx" ]; then
+    rm -rf "$ROOT/node_modules"
+    echo "INFO installing runtime deps in place (may take 30-60s)..."
+    (cd "$ROOT" && "$NPM" ci --omit=dev --no-audit --no-fund --silent 2>&1 | tail -10)
+  fi
+  [ -x "$ROOT/node_modules/.bin/tsx" ] || { echo "FAIL deps: npm ci --omit=dev did not produce tsx" >&2; exit 1; }
+  echo "PASS deps: $ROOT/node_modules (in place)"
+elif [ "$FORCE" = "1" ] || [ ! -x "$STORE/node_modules/.bin/tsx" ]; then
+  mkdir -p "$STORE_PARENT"
+  TMP="$(mktemp -d "$STORE_PARENT/.install.XXXXXX")"
+  cp "$ROOT/package.json" "$ROOT/package-lock.json" "$TMP/"
+  echo "INFO installing runtime deps once for this lockfile (may take 30-60s)..."
+  if ! (cd "$TMP" && "$NPM" ci --omit=dev --no-audit --no-fund --silent 2>&1 | tail -10) \
+     || [ ! -x "$TMP/node_modules/.bin/tsx" ]; then
+    rm -rf "$TMP"
+    echo "FAIL deps: npm ci --omit=dev did not produce tsx" >&2
+    exit 1
+  fi
+  # Another session may have finished the same install first; either copy is complete.
+  rm -rf "$STORE.old"
+  [ -d "$STORE" ] && mv "$STORE" "$STORE.old"
+  mv "$TMP" "$STORE" && rm -rf "$STORE.old"
+fi
+
+if [ "$NO_LINK" != "1" ]; then
+  # A real node_modules dir here is a pre-store install; the link replaces it.
+  if [ ! -L "$ROOT/node_modules" ] && [ -d "$ROOT/node_modules" ]; then
+    rm -rf "$ROOT/node_modules"
+  fi
+  ln -sfn "$STORE/node_modules" "$ROOT/node_modules"
+  echo "PASS deps: $ROOT/node_modules -> $STORE/node_modules"
+fi
+
+# ---- prune ---------------------------------------------------------------------------
+# Claude Code marks a superseded version with .orphaned_at (ms since epoch) and is meant
+# to delete it 7 days later; /ace:update and canopy's updater switch versions without
+# marking. So: mark every version that is neither this root nor the registered one, and
+# delete those marked more than KEEP_HOURS ago — a live session may still be reading the
+# version it started on, which is why it is not deleted the moment it is superseded.
+CACHE_PARENT="$(dirname "$ROOT")"
+CURRENT="$(ace_registry_field installPath)"
+NOW_MS="$(($(date +%s) * 1000))"
+CUTOFF_MS=$((NOW_MS - KEEP_HOURS * 3600 * 1000))
+pruned=0
+for d in "$CACHE_PARENT"/*/; do
+  d="${d%/}"
+  [ "$d" = "$ROOT" ] && continue
+  [ -n "$CURRENT" ] && [ "$d" = "${CURRENT%/}" ] && continue
+  [ -f "$d/.claude-plugin/plugin.json" ] || continue
+  if [ ! -f "$d/.orphaned_at" ]; then
+    printf '%s' "$NOW_MS" > "$d/.orphaned_at"
+    continue
+  fi
+  marked="$(tr -cd '0-9' < "$d/.orphaned_at")"
+  if [ -n "$marked" ] && [ "$marked" -lt "$CUTOFF_MS" ]; then
+    rm -rf "$d" && pruned=$((pruned + 1))
+  fi
+done
+[ "$pruned" -gt 0 ] && echo "INFO pruned $pruned cached version(s) orphaned more than ${KEEP_HOURS}h ago"
+
+# Dep stores no remaining version links to.
+for s in "$STORE_PARENT"/*/; do
+  s="${s%/}"
+  [ "$s" = "$STORE" ] && continue
+  in_use=0
+  for link in "$CACHE_PARENT"/*/node_modules; do
+    [ -L "$link" ] && [ "$(readlink "$link")" = "$s/node_modules" ] && { in_use=1; break; }
+  done
+  [ "$in_use" = "0" ] && rm -rf "$s"
+done
+exit 0

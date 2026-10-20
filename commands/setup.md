@@ -10,7 +10,7 @@ One-shot installer for the ACE plugin. Order is "cheap pre-flight checks first, 
 
 1. Verify Node/npm, **resolve this install's ACE instance and its 1Password vault** (`canopy agent env --plugin ace --print`, canopy ≥ 0.2.681 — an install binds to ONE instance on canopy-web and the vault comes from that instance's record, never a hardcoded name), then **1Password CLI is installed + authenticated (FAST FAIL)**
 2. **Fetches the Google service-account key from that vault** (Document `ACE - Google Service Account`; overridable via `ACE_GWS_KEY_OP_DOC`) → `$CLAUDE_PLUGIN_DATA/gws-sa-key.json`
-3. `npm install` at the plugin root (skip if `node_modules` + `tsx` present)
+3. `bin/ace-install-deps`: an installed plugin gets runtime-only deps, installed once per lockfile into the data dir and linked in as `node_modules` (old cached versions are pruned); a dev checkout gets a plain `npm install`
 4. **Fills `.env` from 1Password** via `canopy agent env --plugin ace --template <plugin root>/.env.tpl --out $CLAUDE_PLUGIN_DATA/.env` (records the binding in `$CLAUDE_PLUGIN_DATA/canopy-instance.json`), skipping when the existing `.env` covers every key
 5. **Downloads `commcare-cli.jar` from `dimagi/commcare-core` releases** (latest tagged release, ~10MB, cached at `$CLAUDE_PLUGIN_DATA/commcare-cli.jar` + sidecar `.version` file). Gates Phase 3 `app-release-qa` Step 4.5 (runtime install validation). Skip with no jar already present — `--force-install` re-downloads. Requires `gh` CLI authenticated; falls back to a `WARN` if missing.
 6. Optionally registers a `SessionStart` hook that runs `bin/ace-update-check` so ACE auto-updates (`--auto-update`)
@@ -21,7 +21,7 @@ One-shot installer for the ACE plugin. Order is "cheap pre-flight checks first, 
 ## Arguments
 
 - `--auto-update` — register the `SessionStart` auto-update hook
-- `--force-install` — re-run `npm install` even if `node_modules` is present
+- `--force-install` — reinstall deps even if they are present
 - `--force-env` — re-fill `.env` even if it already has every `.env.tpl` key
 - `--agent <instance>` — the ACE instance (canopy-web agent slug) to bind to, when you can see several
 - `--rebind` — re-bind this install to a different instance than the one recorded (canopy's `--force`); only when the user means to switch

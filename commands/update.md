@@ -143,7 +143,9 @@ fi
 
 ## Step 2: Pull, install, and register (ONE command)
 
-This is the slow step (~30-60s, mostly npm install). Replace `NEW_VERSION`
+This is the slow step only when `package-lock.json` changed (~30-60s of `npm ci`;
+otherwise the shared deps are just linked in). `bin/ace-install-deps` also deletes
+cached versions superseded more than 3 days ago. Replace `NEW_VERSION`
 with the remote version from Step 1:
 
 ```bash
@@ -162,8 +164,8 @@ rsync -a --delete \
   "$MARKETPLACE"/ \
   ~/.claude/plugins/cache/ace/ace/$NEW_VERSION/ && \
 cd ~/.claude/plugins/cache/ace/ace/$NEW_VERSION && \
-echo "INSTALLING: npm install (may take 30-60s)" && \
-npm install --silent 2>&1 | tail -10 && \
+echo "INSTALLING: runtime deps (instant unless package-lock.json changed)" && \
+./bin/ace-install-deps "$PWD" && \
 cd "$MARKETPLACE" && MARKETPLACE="$MARKETPLACE" MCP_CHANGED="$MCP_CHANGED" python3 -c "
 import json, subprocess, os
 from datetime import datetime, timezone

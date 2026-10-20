@@ -1,6 +1,6 @@
 {
   "name": "ace",
-  "version": "0.13.2136",
+  "version": "0.13.2137",
   "engines": {
     "node": ">=22"
   },
@@ -38,7 +38,6 @@
     "js-yaml": "^4.3.0",
     "playwright": "^1.59.1",
     "tsx": "^4.21.0",
-    "typescript": "^6.0.2",
     "undici": "^8.9.0",
     "yaml": "^2.8.3",
     "zod": "^3.25.28"
@@ -46,6 +45,7 @@
   "devDependencies": {
     "@types/js-yaml": "^4.0.9",
     "@types/node": "^25.5.2",
+    "typescript": "^6.0.2",
     "vitest": "^4.1.3"
   }
 }
