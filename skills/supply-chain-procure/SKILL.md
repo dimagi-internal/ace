@@ -72,7 +72,18 @@ does not apply.
    - every term the supplier stated, and **nothing computed**: where an offer is silent on freight
      or duties, `freight_basis` / `duties_basis` stay `not_specified`; where the pack spec is not
      stated, `pack_spec_source: not_stated`;
-   - a quote naming a known trade item takes `item_id` with `pack_spec_source: trade_item_confirmed`.
+   - a quote naming a known trade item takes `item_id` with `pack_spec_source: trade_item_confirmed`;
+   - **every quote not in USD takes `fx_rate_to_usd`.** It is an internal fact, not the
+     supplier's: take it from the PDD budget's exchange rate and cite that in the `source`
+     excerpt. Without it `supply_chain_tender_compare` ranks nothing: every column is
+     `rankable: false`, `priced_count: 0`, each row blocked with "Quote is in UGX and no exchange
+     rate was recorded" (live, labs programme 361 tender 363, ace#3262). If the PDD states no rate,
+     halt and ask; never invent one;
+   - **a "price plus freight" offer is one of two shapes.** Either one delivered price (`incoterm:
+     DAP` with freight included in the unit price), or a non-delivered incoterm plus a tender
+     freight estimate (`supply_chain_tender_set_import_estimates`). `incoterm: DAP` with
+     `freight_basis: excluded` and a `freight_amount` is refused as unrankable: "its Incoterm DAP
+     means freight included; adding it would charge for it twice" (ace#3262).
    It is refused when that supplier already has a live quote for the product on this tender by the
    same delivery option. A real second offer names its sibling in `distinct_from_quote_ids`. A
    revision is `supply_chain_quote_correct` with a reason, never a second record.
@@ -153,4 +164,5 @@ When `--dry-run` is active, run Step 1's reads and Steps 2-3. Write the plan. Ma
 
 | Date | Change | Author |
 |------|--------|--------|
+| 2026-10-20 | Step 5 records `fx_rate_to_usd` (from the PDD budget rate) on every non-USD quote, without which `tender_compare` ranks nothing, and names the two shapes labs accepts for "price plus freight" (DAP + freight excluded is refused as double-charging) (ace#3262) | ACE |
 | 2026-10-18 | Initial version (optional-track PR7): tender → quotes as stated → compare → award with rationale → close → contract under the runner's buyer of record | ACE |

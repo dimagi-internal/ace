@@ -797,9 +797,12 @@ Default sources inside a run, in detail:
    - `organization_id: "397"` → `no organisation '397' in labs`
    - `program_id: "355"` only → `program 355 has no running organisation and no organisation labs knows, so it cannot own this call. Name the owning organisation with org_slug.`
 
-   What worked, and what this step does **unconditionally** (it is idempotent
-   — the upsert is keyed by slug and binds by Connect id, so re-running it on
-   an already-registered org is a no-op, not a duplicate):
+   What worked, and what this step does on every run. The upsert is keyed
+   by slug and binds by Connect id, but it is **not** a no-op on an org that
+   already runs a labs programme: labs refuses even an identical upsert of
+   one ("<org> runs a program on labs, so only platform support changes or
+   merges its record", live on this instance's PM org, programme 361, 2026-10-20,
+   ace#3261). So read first and skip a row that is already right:
 
    1. **The owner is the program's PM org** — the org Step 5 resolved the
       program under (the `/a/<org>/program/<id>/` segment of
@@ -809,7 +812,10 @@ Default sources inside a run, in detail:
       org's.
    2. **Read its Connect integer org id from the same `labs_context()` reply**
       Step 5 used (the organization entry's `id`). Do not guess it from a slug.
-   3. **Register it:**
+   3. **Read `supply_chain_org_list({program_id})`.** If the PM org's row is
+      there with the same `name`, `connect_organization_id` and
+      `connect_organization_slug` you would send, skip the upsert and go to
+      4. Otherwise register it:
 
       ```
       mcp__connect-labs__supply_chain_org_upsert({
@@ -1330,6 +1336,7 @@ Each row this skill writes uses `phase: 8-solicitation-management` and
 
 | Date | Change | Author |
 |------|--------|--------|
+| 2026-10-20 | Step 5a reads `supply_chain_org_list` before the PM-org upsert and skips it when the row already matches: labs refuses even an identical upsert of an org that runs a programme (dimagi-internal/ace#3261). | ACE team |
 | 2026-10-16 | **connect-labs#2567 contract: the call needs a registered owning org, and `estimated_scale` is capped at 200 chars (dimagi-internal/ace#3049).** connect-labs#2567 (merged 2026-10-16) moved solicitations into the labs DB and made every call owned by a labs organisation (`LabsOrg`) the caller belongs to. ACE's per-run Connect PM orgs are not LabsOrgs, so on `noora-health/noora-health/20261015-1129` all three forms were refused (`org_slug` → `no organisation 'noora-health-pm-test' in labs`; `organization_id: "397"` → `no organisation '397' in labs`; `program_id: "355"` alone → `... cannot own this call. Name the owning organisation with org_slug.`). New § Step 5a registers the PM org unconditionally with `supply_chain_org_upsert` (bound by `connect_organization_id`, so membership flows from Connect; labs org 349, `is_linked: true`), and Step 6 passes `org_slug` + `program_id` — which published labs solicitation **1000001**. `estimated_scale` is `CharField(max_length=200)` upstream with no schema `maxLength`, so a 234-char value surfaced as a raw Postgres `DataError`; the cap now lives in the § Step 2 field table, the pre-publish check and the Step 7a round-trip. `owner_org_slug` is recorded in the products block. The same upstream PR removed the ConnectProd `/export/labs_record/` forward, so the CloudFront ~8 KB body block of ace#2993 is gone (a 26,689-byte payload published unchanged); this skill never carried a shortened-payload fallback for it, so there was nothing to retire here. | ACE team |
 | 2026-09-08 | **§ Step 3 required every criterion to link a question but never required the linked criterion to be able to SCORE it, so a required question could contribute nothing (dimagi-internal/ace#2305).** The shape block asked for non-empty `linked_questions` and non-empty `scoring_guide` and stopped there — both are satisfied by a link that points at a criterion whose prose never mentions the question's subject. That failure is silent by construction: counts reconcile, every `linked_questions` entry resolves, weights sum to 100, and `solicitation-review` then scores responses against a `scoring_guide` with nothing in it about the thing that was asked. Measured on `spark-facilitator/20260908-2215` (labs solicitation **19363**): a required `language-capacity` question — Chichewa/Tumbuka fluency by role, plus native-speaker capacity to review app content the design itself records as machine-authored and unreviewed — was linked to `facilitation-track-record`, whose description and scoring_guide contained no occurrence of *language*, *fluency*, *translation*, *Chichewa* or *Tumbuka*; no criterion in the rubric mentioned language at all. 8 of 9 questions had a lexical anchor, that one had none. Caught by `solicitation-create-eval` *after* publication (verdict still `pass` at 9.16, but it drove the sole `criteria_alignment` deduction) and repaired in place with `update_solicitation` — safe because the record had zero responses. § Step 3 now requires a per-question scoreability walk before publishing, and names the two link failures to check: linked-to-nothing, and linked-to-a-criterion-that-never-mentions-the-subject. | ACE team |
 | 2026-09-08 | **§ Step 6 documented how to send the JSON-RPC request and stopped one unwrap into the REPLY, so the record could not be found on a publish that had already succeeded (dimagi-internal/ace#2302).** The route itself was added hours earlier (ace#2261) and its response guidance ended at "take the line beginning `data: ` and JSON-parse the remainder" — which yields `{content, isError, structuredContent}`, not the solicitation. The record is **four** levels down, and the middle two are unguessable: `result["content"][0]["text"]` is a JSON string that parses to *another* `[{type, text}]` list, whose `[0]["text"]` parses to the record. An agent following the doc literally calls `.keys()` or `["id"]` on the first parse and raises `AttributeError`/`KeyError` **after** the external write landed (HTTP 200, record created) — the worst moment to be unsure whether a call worked. There is a one-liner the doc never mentioned: `result.structuredContent` holds the decoded record directly, on both `create_solicitation` and `get_solicitation`. Measured on `spark-facilitator/20260908-2215` (labs solicitation **19363**, program 210): 3 calls burned on the unwrap depth during the Step 7a round-trip. Same class as the `Accept`-header/406 fix in the entry below — request shape fixed, response shape still under-documented — and it now bites every Phase 8 above ~20 KB, which this skill measures as the normal case (33–50 KB). Step 6 gains the envelope note; Step 7a points at it for the read-back. | ACE team |

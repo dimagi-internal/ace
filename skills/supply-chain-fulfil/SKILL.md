@@ -78,8 +78,12 @@ you.
    `supply_chain_invoice_update({invoice_id, data: {quantity_billed: <accepted>, amount, status: "approved"}, source})`,
    with `source.sender` the supplier and the excerpt quoting the (simulated) correction.
 7. **Pay what arrived.** For each invoice, `supply_chain_payment_record({program_id, data: {invoice_id, amount, currency, paid_on, method, source: "we_recorded"}, source})`.
-   `amount` = `contract_match.payable_now` minus any advance already paid, **never the billed
-   amount**. An invoice's status follows from what has been paid; never set it to `paid` by hand.
+   `amount` = `contract_match.payable_now` **as labs returns it**, never the billed amount, and
+   never minus the advance: `payable_now` is already net of every payment recorded, the advance
+   included. Live, labs programme 361 contract 323 (814 received at UGX 41,500, an advance of
+   10,000,000) read `payable_now` 23,781,000 = 33,781,000 − 10,000,000; subtracting the advance
+   again would have paid 13,781,000 (ace#3260). Once paid, `payable_now` reads 0. An invoice's
+   status follows from what has been paid; never set it to `paid` by hand.
 8. **Confirm.** `supply_chain_payment_confirm({payment_id, confirmed_on, source})` for every
    payment, `confirmed_on` inside week 0 and not before `paid_on`. A backdated payment is already
    more than a fortnight old in real time, so an unconfirmed one shows in `checks_list` as
@@ -131,4 +135,5 @@ When `--dry-run` is active, run Step 1's reads and Step 2. Write the plan. Make 
 
 | Date | Change | Author |
 |------|--------|--------|
+| 2026-10-20 | Step 7 pays `payable_now` as returned: it is already net of the advance and every payment recorded (ace#3260) | ACE |
 | 2026-10-18 | Initial version (optional-track PR8): advance, shipment, receipt (stock), invoice with dispute and correction, payment of what arrived, confirmation | ACE |

@@ -109,6 +109,14 @@ describe('supply-chain-fulfil-qa checks, grounded on program 10605 contract 187'
     expect(checkNotOverInvoiced(doc(LIVE, (_p, rb) => (rb.contracts[0].match.over_invoiced = '0'))).pass).toBe(true);
   });
 
+  it('normalizeContract reads the contract unit_price, and leaves it null when the caller passes no contract', () => {
+    expect(live(LIVE).contracts[0].unit_price).toBe('38');
+    const raw = JSON.parse(LIVE) as RawContractReadback;
+    delete raw.contract;
+    expect(normalizeContract(187, raw).unit_price).toBeNull();
+    expect(normalizeContract(187, { ...raw, contract: { value: { unit_price: '41500' } } }).unit_price).toBe('41500');
+  });
+
   it('checkPaidWithinArrived: 0 of 760 passes, exactly 760 passes, 800 fails', () => {
     expect(checkPaidWithinArrived(doc(LIVE)).pass).toBe(true);
     expect(checkPaidWithinArrived(doc(LIVE, (_p, rb) => (rb.contracts[0].match.paid_amount = '760.00'))).pass).toBe(true);
@@ -140,7 +148,7 @@ describe('supply-chain-fulfil-qa checks, grounded on program 10605 contract 187'
       const c = rb.contracts[0];
       c.match.received = '25';
       c.match.over_invoiced = '4';
-      c.match.paid_amount = '900';
+      c.match.paid_amount = '1000';
       c.shipments.push({ id: 5, status: 'in_transit' });
       c.invoices.push({ id: 7, status: 'queried' });
       rb.checks.push({ category: 'missing', kind: 'payment_unconfirmed' });
@@ -152,5 +160,65 @@ describe('supply-chain-fulfil-qa checks, grounded on program 10605 contract 187'
       expect((c.run('not json') as { pass: boolean }).pass, c.id).toBe(false);
       expect((c.run('{}') as { pass: boolean }).pass, c.id).toBe(false);
     }
+  });
+});
+
+/**
+ * ace#3260: labs programme 361 contract 323 (run connect-fi/20261018-1440).
+ * Ordered 820 handsets at UGX 41,500, received 814, refused 6, an advance of
+ * 10,000,000 (payment 171), then the balance 23,781,000 (payment 172). The
+ * contract_match numbers are quoted verbatim in the issue; payable_now is NET
+ * of payments recorded, so it read 23,781,000 after the advance and 0 once paid.
+ */
+describe('checkPaidWithinArrived on contract 323 (payable_now is net of payments, ace#3260)', () => {
+  const PROGRAMME = 361;
+  const CONTRACT = 323;
+
+  function c323(paid: string, payableNow: string, opts: { withContract?: boolean } = {}): string {
+    const raw: RawContractReadback = {
+      shipment_list: { value: [{ id: 1, status: 'delivered' }] },
+      receipt_list: {
+        value: [{ id: 2, shipment_id: 1, lines: [{ quantity_accepted: '814', quantity_rejected: '6', rejection_reason: 'damaged' }] }],
+      },
+      invoice_list: { value: [{ id: 3, status: 'approved' }] },
+      payment_list: { value: [{ id: 171, invoice_id: null, amount: '10000000' }] },
+      contract_match: {
+        status: 'fully_received',
+        payment_terms: 'advance',
+        advance_state: 'paid',
+        ordered: { amount: '820' },
+        received: { amount: '814' },
+        refused: { amount: '6' },
+        over_invoiced: null,
+        paid_amount: { amount: paid },
+        payable_now: { amount: payableNow },
+      },
+      ...(opts.withContract === false ? {} : { contract: { id: CONTRACT, quantity: '820', unit_price: '41500', payment_terms: 'advance' } }),
+    };
+    const p: FulfilPlan = { program_id: PROGRAMME, contracts: [{ contract_id: CONTRACT, planned_rejected: '6', advance: true }] };
+    return JSON.stringify({ plan: p, readback: { contracts: [normalizeContract(CONTRACT, raw)], checks: [] } });
+  }
+
+  it('after the advance only (paid 10,000,000, payable_now 23,781,000) passes', () => {
+    expect(checkPaidWithinArrived(c323('10000000', '23781000')).pass).toBe(true);
+  });
+
+  it('fully paid (paid 33,781,000 = 814 x 41,500, payable_now 0) passes — the case the old check failed', () => {
+    const r = checkPaidWithinArrived(c323('33781000', '0'));
+    expect(r.pass, r.detail).toBe(true);
+  });
+
+  it('paid above 814 x 41,500 fails, naming the value arrived', () => {
+    const r = checkPaidWithinArrived(c323('34030000', '0'));
+    expect(r.pass).toBe(false);
+    expect(r.detail).toContain('only 33781000 arrived');
+    expect(r.auto_fix_hint).toBeTruthy();
+  });
+
+  it('without the contract the value arrived is unavailable: the detail says so, and only payable_now >= 0 is judged', () => {
+    const r = checkPaidWithinArrived(c323('33781000', '0', { withContract: false }));
+    expect(r.pass).toBe(true);
+    expect(r.detail).toMatch(/value arrived unavailable for contract 323/);
+    expect(checkPaidWithinArrived(c323('33781000', '-249000', { withContract: false })).pass).toBe(false);
   });
 });
