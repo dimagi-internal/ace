@@ -195,6 +195,7 @@ export const RAILS: Readonly<Record<string, RailProvenance>> = {
   'test/skills/deliver-summary-nova-uuids.test.ts': { issues: ['ace#2144'], observed: 'spark-facilitator/20260906-2233' },
   'test/skills/demo-set-decisions.test.ts': { issues: ['dimagi-internal/canopy-web#1516'], note: 'PR, not a defect report: canopy-web accepts decisions[] rows and retired the brief lists; a publisher still sending them is refused (storyboard feedback rounds, Task 11).' },
   'test/skills/ace-web-attribution.test.ts': { issues: ['ace#2572'], observed: 'spark-facilitator/20261001-2208' },
+  'test/skills/ace-winner-demonstration-award.test.ts': { issues: ['ace#3257'], observed: 'connect-fi/20261018-1440' },
   'test/skills/ampersand-not-banned.test.ts': { issues: ['ace#2150'], observed: 'spark-facilitator/20260925-1536' },
   'test/skills/agent-turn-review-not-dispatched.test.ts': { issues: [], unknown: 'no issue, run id or reproducer anywhere in the file' },
   'test/skills/aging-parked-item-not-reflagged.test.ts': { issues: ['ace#818'], note: 'cited at the negative control, not in the file header' },

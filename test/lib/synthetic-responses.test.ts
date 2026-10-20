@@ -146,6 +146,29 @@ describe('buildCreateResponsePayloads', () => {
     expect(payloads[1]).toMatchObject({ llo_entity_id: 'ace-nm-org', org_id: '387', org_name: 'ace-nm-org' });
   });
 
+  it('marks every seeded response synthetic, the winner included (ace#3257)', () => {
+    // Labs gives an own-side response a demonstration award only when it was
+    // created synthetic; the marker cannot be added later.
+    const payloads = buildCreateResponsePayloads(plan([persona(), WINNER]));
+    expect(payloads.every((p) => p.synthetic === true)).toBe(true);
+  });
+
+  it('re-files a winner whose existing response predates the marker, never a fictional one', () => {
+    const payloads = buildCreateResponsePayloads(plan([persona(), WINNER]));
+    const existing = payloads.map((p, i) => ({
+      id: 100 + i,
+      org_name: p.org_name,
+      submitted_by_email: p.submitted_by_email,
+      synthetic: false,
+    }));
+    const { create, skip } = partitionAgainstExisting(payloads, existing);
+    expect(create.map((p) => p.llo_entity_id)).toEqual(['ace-nm-org']);
+    expect(skip.map((s) => s.response_id)).toEqual([100]);
+    // A marked winner is skipped as before.
+    const marked = existing.map((r) => ({ ...r, synthetic: true }));
+    expect(partitionAgainstExisting(payloads, marked).create).toHaveLength(0);
+  });
+
   it('throws a typed error on an invalid plan', () => {
     expect(() => buildCreateResponsePayloads(plan([persona()]))).toThrow(SeedPlanValidationError);
   });

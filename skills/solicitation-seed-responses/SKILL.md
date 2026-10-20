@@ -85,11 +85,19 @@ taken from a file. The skill runs with no `run_state.yaml` when the ids are pass
    Fix the personas and re-run; never write a partial plan. It also builds each
    `submitted_by_email` as `<mailbox>+synthetic-<n>`, and gives the winner `llo_entity_id` plus
    `org_id` = its Connect id as a string. That is the identifier `award_response.org_id` takes
-   (spec § K1, pinned live). A response created without it reads back `org_id: ""`.
+   (spec § K1, pinned live). A response created without it reads back `org_id: ""`. Every
+   payload, the winner's included, carries **`synthetic: true`**: labs' marker for an
+   owner-entered, invented response on an unlisted call. It can only be set here, at creation,
+   and it is what lets `solicitation-review` give the ACE winner a demonstration award even though
+   ace@ is on the winner's side (ace#3257; spec § C). Never drop it.
 7. **Skip what already exists.** Call `list_responses(solicitation_id)` and split the payloads
    with `partitionAgainstExisting`. Labs lets the call's owner file two responses for one org,
    so a re-run would duplicate without this check. It is a cost-skip: the `-qa` re-reads what
-   is on labs.
+   is on labs. Pass each existing response's `synthetic` as read back. The one exception the
+   helper makes: a winner response that reads `synthetic: false` (filed before labs had the
+   marker) can never be demonstration-awarded and the marker cannot be added later, so a fresh,
+   marked winner is filed and the roster records the NEW `response_id` as the winner (note the
+   superseded one beside it).
 8. **Write.** Call `create_response` once per remaining payload, exactly as built (always send
    `org_name`, or labs fills it from the submitter's name). Branch on each call's result; record
    every returned `id`.
@@ -135,4 +143,5 @@ Rule and carve-outs: [`skills/_terminology.md`](../_terminology.md). Shared Phas
 
 | Date | Change | Author |
 |------|--------|--------|
+| 2026-10-19 | Every payload carries labs' `synthetic: true` marker, and a pre-marker winner is re-filed (ace#3257): it is what makes the ACE winner awardable as a demonstration. | ACE team |
 | 2026-10-18 | Initial skill (optional labs E2E PR4). § K1 pinned live on throwaway private call 1000003: `award_response.org_id` is the winner's Connect integer id as a string, and `create_response` persists it when sent. | ACE team |

@@ -90,6 +90,13 @@ export interface CreateResponsePayload {
   submitted_by_email: string;
   submission_date: string;
   status: 'submitted';
+  /**
+   * Labs' synthetic marker (dimagi-internal/connect-labs, `create_response synthetic`):
+   * an owner-entered, invented response on an unlisted call. Set at creation only,
+   * never later. It is what lets the ACE winner be given a DEMONSTRATION award
+   * despite ace@ being on its side (ace#3257), and labs refuses any other award of it.
+   */
+  synthetic: true;
   llo_entity_id?: string;
   org_id?: string;
 }
@@ -298,6 +305,7 @@ export function buildCreateResponsePayloads(input: SeedPlanInput): CreateRespons
       submitted_by_email: syntheticEmail(input.mailbox, i + 1),
       submission_date: p.submission_date,
       status: 'submitted',
+      synthetic: true,
     };
     if (p.winner) {
       payload.llo_entity_id = p.winner.llo_entity_id;
@@ -312,6 +320,8 @@ export interface ExistingResponse {
   org_name?: string;
   llo_entity_id?: string;
   submitted_by_email?: string;
+  /** Labs' synthetic marker as read back; `false` on a response filed before labs had it. */
+  synthetic?: boolean;
 }
 
 /**
@@ -320,6 +330,12 @@ export interface ExistingResponse {
  * responses for one org (observed live, 2026-10-18), so a re-run must check
  * `list_responses` first. A payload matches an existing response on its
  * synthetic email tag or its folded org name.
+ *
+ * One exception: the WINNER payload is not satisfied by an existing response
+ * that reads back `synthetic: false`. That response was filed before labs had
+ * the marker, the marker cannot be added later, and without it labs refuses
+ * the winner's demonstration award (ace#3257) -- so a fresh, marked winner is
+ * filed instead. Fictional respondents are never re-filed.
  */
 export function partitionAgainstExisting(
   payloads: CreateResponsePayload[],
@@ -333,6 +349,10 @@ export function partitionAgainstExisting(
         (r.submitted_by_email && r.submitted_by_email.toLowerCase() === payload.submitted_by_email.toLowerCase()) ||
         (r.org_name && foldName(r.org_name) === foldName(payload.org_name)),
     );
+    if (match && payload.llo_entity_id && match.synthetic === false) {
+      create.push(payload);
+      continue;
+    }
     if (match) skip.push({ payload, response_id: match.id });
     else create.push(payload);
   }
