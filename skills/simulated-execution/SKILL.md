@@ -16,8 +16,8 @@ In `/ace:run` this is the optional `simulate_weeks` step, run by `agents/executi
 `docs/superpowers/specs/2026-10-18-optional-labs-e2e-steps.md` § G). It is OFF by default.
 
 **It never contacts anyone.** No email, no Connect invite, no `llo-onboarding`, no Connect
-opportunity mutation. The visits live on a labs-only copy filed under the ACE winner org, never on
-the run's real Phase 4 opportunity.
+opportunity mutation. The visits live on a labs-only opportunity filed under the ACE winner org,
+never on the run's real Phase 4 opportunity.
 
 ## Inputs
 
@@ -25,9 +25,10 @@ the run's real Phase 4 opportunity.
 |---|---|---|
 | `calendar` | week 0 + delivery weeks | explicit arg; default: run_state `phases.execution-management.products.simulation.calendar` (written by the agent's S0 from `scripts/sim-calendar.ts`) |
 | `weeks` | N | explicit arg; default: run_state `optional_steps.simulate_weeks` |
-| `source_opp_int_id` | the opportunity the synthetic data is shaped on | explicit arg; default: run_state `phases.connect-setup.products.connect.opportunity.connect_int_id` |
-| `winner_org_name` | the org the labs-only copy is filed under | explicit arg; default: the display name of `connect_orgs.llo_org` (`selected_llo.org_slug`) |
-| `template_workflow` | the semantic-snapshot report cloned for the weekly runs | explicit arg `{workflow_id, program_id}`; default: run_state `phases.synthetic-data-and-workflows.products.synthetic.cascade.worker_review` (else `.programme_report`) |
+| `winner_org_name` | the org the labs-only opportunity is filed under | explicit arg; default: the display name of `connect_orgs.llo_org` (`selected_llo.org_slug`) |
+| `program_name` | the labs-only opportunity's program name | explicit arg; default: the PDD's program title |
+| `template_workflow` | the semantic-snapshot report cloned for the weekly runs | explicit arg `{workflow_id, program_id}`; default: run_state `phases.synthetic-data-and-workflows.products.synthetic.cascade.programme_report`. Never `cascade.worker_review`: it is a drill-down template with no snapshot contract, and `workflow_history_eligibility` answers it `template_not_saved_runs` (ace#3263) |
+| `registry_eval_verdict` | the registry gate of `scripts/run-labs-synthetic-generate.ts` | explicit arg (a local file); default: a local copy of the run's `7-synthetic/semantic-registry-author-eval_verdict.yaml` |
 | `pdd_targets` | what each week is judged against (ID, SIM, phone, wallet funded) | explicit arg; default: the PDD's Performance Measures section (run_state `phases.idea-to-design.products.pdd`) |
 | `supply_chain` | whether each week also runs `supply-chain-operate` | explicit arg; default: run_state `optional_steps.supply_chain` |
 | `out_folder_id` | where the files go | explicit arg; default: the run's `9-execution-manager/` folder |
@@ -60,13 +61,29 @@ Outside a run, pass every parameter; nothing reads or writes `run_state.yaml`.
 2. **Plan** (first Products file). The manifest's `timeline` is `deliveryWindow(calendar)`, and
    visit cadence follows the PDD's enrolment target spread over N weeks. Plant one under-performing
    worker so the reviews have something to act on.
-3. **Generate the visits once**, for the whole window: `synthetic-data-generate --opp-int-id
-   <source_opp_int_id> --manifest <plan's manifest> --out-folder-id <out_folder_id> --no-pause`.
-   Then `synthetic_clone_to_labs_only({source_opportunity_id: <its labs_opp_id>, org_name:
-   <winner_org_name>, label: "<opp> simulated delivery (ACE)"})` and write
-   `products.simulation.synthetic_opportunity_id` at once.
+3. **Create the labs-only opportunity, then generate the visits into it once**, for the whole
+   window (the C1 pattern of `demo-data-setup`; ace#3263).
+   1. `synthetic_create_labs_only({label: "<opp> simulated delivery", gdrive_folder_id:
+      'pending-generate', org_name: <winner_org_name>, program_name, notes: "<sweep handle: opp/run
+      id>", allowed_domains: ['@dimagi.com', '@dimagi-associate.com', '@dimagi-ai.com']})`. Write
+      `products.simulation.synthetic_opportunity_id` the moment it returns (ace#2412). Without
+      ACE's own domain in `allowed_domains`, ACE cannot read what it just created.
+   2. Generate with the plugin's own script, which reads the manifest off disk, so the archived
+      manifest is the one labs received:
+
+      ```bash
+      ACE_ROOT="${CLAUDE_PLUGIN_ROOT:-$(python3 -c "import json,os; d=json.load(open(os.path.expanduser('~/.claude/plugins/installed_plugins.json'))); print(d['plugins']['ace@ace'][0]['installPath'])")}"
+      node "$ACE_ROOT/node_modules/tsx/dist/cli.mjs" "$ACE_ROOT/scripts/run-labs-synthetic-generate.ts" <plan's manifest> --opportunity-id <synthetic opp> --registry-eval-verdict <registry_eval_verdict>
+      ```
+   3. Record labs' returned `record_counts` verbatim in the plan, never the manifest's authored
+      totals: on connect-fi/20261018-1440 the generator kept 1,557 of 1,614 authored visits.
+
+   **Never generate against the run's real Phase 4 opportunity.** `synthetic_generate_from_manifest`
+   registers its target opportunity as synthetic, so generating there and copying to labs-only
+   afterwards puts synthetic visits on the real opportunity. `synthetic_clone_to_labs_only` is not
+   part of this step.
 3a. **Issue events** (with `supply_chain`; ace#3216). Read the generated `user_visits.json` from
-   the fixture folder `synthetic-data-generate` returned (`drive_read_file`), and for each
+   the fixture folder the generator returned (`drive_read_file`), and for each
    commodity in the setup plan call `deriveIssueEvents({commodity, issue_event, visits, calendar,
    seed: <manifest random_seed>})` (`lib/supply-chain-issue-events.ts`). Write the second Products
    file. **The synthetic stream has no Follow-up Contact visits to read:** labs' de-novo generator
@@ -79,10 +96,19 @@ Outside a run, pass every parameter; nothing reads or writes `run_state.yaml`.
    `eligible_share` it throws, and the step halts with `[BLOCKER]` quoting it: never distribute by
    enrolments in its place.
 4. **The weekly report.** `workflow_clone({source_workflow_id, source_program_id, target_opportunity_id:
-   <synthetic opp>, linked: true, new_name: "<opp> simulated weekly review"})`: a linked twin keeps
-   the registry binding and pipelines. Then `workflow_history_eligibility` must say eligible; if not,
-   halt with `[BLOCKER]` (a non-semantic-snapshot report would draw a flat line). Write
-   `products.simulation.workflow_id`.
+   <synthetic opp>, linked: true, new_name: "<opp> simulated weekly review"})`: a linked twin keeps the registry
+   binding and pipelines. Write `products.simulation.workflow_id` at once. A linked clone of a
+   programme report also keeps `multi_opp` and the SOURCE cascade's opportunity list, and the
+   description it inherited names that cascade. So repoint it:
+   `workflow_update_opportunity_ids({workflow_id, opportunity_id: <synthetic opp>, opportunity_ids:
+   [<synthetic opp>], expected_version})`, with `expected_version` from `workflow_get`. Then
+   replace the inherited description with one naming the simulated delivery
+   (`workflow_update_definition`, the next `expected_version`), so the page does not describe the
+   source cascade. Without the repoint,
+   `workflow_preview_as_of` caches and grades the source cascade's opportunities: on
+   connect-fi/20261018-1440 the preview cached opportunities 10163..10167 until it was done.
+   Then `workflow_history_eligibility` must say eligible; if not, halt with `[BLOCKER]` (a
+   non-semantic-snapshot report would draw a flat line).
 5. **Save one run per week.** `workflow_preview_as_of({definition_id, opportunity_id, as_of: week1.end})`
    first: if `cache.partial_cache` or every count is 0, call `workflow_ensure_visit_cache` and retry,
    never build history over a cold cache. Then
@@ -99,11 +125,13 @@ Outside a run, pass every parameter; nothing reads or writes `run_state.yaml`.
 
 ## MCP Tools Used
 
-- connect-labs: `synthetic_clone_to_labs_only`, `workflow_clone`, `workflow_history_eligibility`,
+- connect-labs: `synthetic_create_labs_only`, `workflow_clone`, `workflow_get`,
+  `workflow_update_opportunity_ids`, `workflow_update_definition`, `workflow_history_eligibility`,
   `workflow_preview_as_of`, `workflow_ensure_visit_cache`, `workflow_rebuild_history`,
   `job_status`, `workflow_history_runs`
 - ace-gdrive: `drive_create_file`, `drive_read_file` (the fixture `user_visits.json`), `update_yaml_file` (`merge: deep`)
-- Skills: `synthetic-data-generate`, `supply-chain-operate`, `simulated-weekly-review`
+- Scripts: `scripts/run-labs-synthetic-generate.ts` (calls `synthetic_generate_from_manifest`)
+- Skills: `supply-chain-operate`, `simulated-weekly-review`
 
 ## Existing objects
 
@@ -126,5 +154,6 @@ Steps 1-2 and Step 4's eligibility read only. Write the plan; create nothing in 
 
 | Date | Change | Author |
 |------|--------|--------|
+| 2026-10-19 | `template_workflow` defaults to `cascade.programme_report` (the worker review is never history-eligible); Step 3 creates the labs-only opportunity first and generates into it, never into the real Phase 4 opportunity; Step 4 repoints the linked clone at the synthetic opportunity (ace#3263) | ACE |
 | 2026-10-19 | Step 3a: per-worker, per-week issue events from each commodity's declared `issue_event` drive the week's distribution (`week_activity`), generated from the PDD's eligibility share because the synthetic stream carries no per-form visits (ace#3216) | ACE |
 | 2026-10-18 | Initial version (optional-track PR10): backdated N-week simulation on a labs-only copy under the ACE winner, weekly stock and saved report runs, one review per week | ACE |

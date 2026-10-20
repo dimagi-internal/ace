@@ -57,7 +57,7 @@ recurring_skills:
 
 The optional labs track (spec `docs/superpowers/specs/2026-10-18-optional-labs-e2e-steps.md`
 § F, § G). The winner is the ACE-owned org, every record is labelled simulated and backdated, and
-the visits live on a labs-only copy. **This block sends no email, makes no Connect program invite,
+the visits live on a labs-only opportunity. **This block sends no email, makes no Connect program invite,
 creates or mutates no Connect opportunity, and dispatches none of the three real-LLO skills that
 open this agent's `skills:` list.** If a step here seems to need one of those, halt and
 report it; never improvise around it.
