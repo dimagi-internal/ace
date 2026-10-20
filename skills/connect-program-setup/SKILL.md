@@ -55,6 +55,14 @@ alone makes the artifact land outside `4-connect` and fail
 - `4-connect/connect-program-setup.md` (written with `parentFolderId = phaseFolderId`) — program-id, decision rationale (reuse / create), admin program URL
 - `opp.yaml.connect.program.{id, url, connect_int_id}` — written on first create (and refreshed on reuse with verified live values). `connect_int_id` is ConnectProd's integer program id, resolved through `labs_context` (Step 6a; no Connect create or read surface returns it, ace#3213), used by Step 7's tenancy registration and the Phase 8 solicitation surfaces. This is the single durable cross-run reference for the Connect program; every subsequent run of this opp reads it to skip program-create.
 
+## Terminology
+
+Every string this skill puts in front of a reader follows
+[`skills/_terminology.md`](../_terminology.md): **`Connect`, never `CommCare Connect`**, and
+**US spelling, always** — program, enrollment, enroll, organization, behavior, center; never
+programme, enrolment, organisation (owner, 2026-10-20: *"everything should be US spelling"*,
+ace#3232). Identifiers (case properties, slugs, ids, config keys) keep their spelling.
+
 ## Process
 
 1. **Resolve the inputs.** Use each explicit parameter the caller passed; read the rest from the

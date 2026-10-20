@@ -30,6 +30,14 @@ given a saved run and stock reads, in which case there is no simulation note.
 
 - `9-execution-manager/simulated-week-<w>_review.md`.
 
+## Terminology
+
+Every string this skill puts in front of a reader follows
+[`skills/_terminology.md`](../_terminology.md): **`Connect`, never `CommCare Connect`**, and
+**US spelling, always** — program, enrollment, enroll, organization, behavior, center; never
+programme, enrolment, organisation (owner, 2026-10-20: *"everything should be US spelling"*,
+ace#3232). Identifiers (case properties, slugs, ids, config keys) keep their spelling.
+
 ## Process
 
 1. **Read the week, as labs graded it:** `workflow_run_indicators({run_id, opportunity_id, scope: "opportunity"})`

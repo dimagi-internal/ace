@@ -24,6 +24,19 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
 - `3-commcare/pdd-to-deliver-app_summary.md` — Deliver-app structure summary (forms, fields, `nova_app_id`), whose body ends with a `## Build notes` section for the build team's non-decision notes (Step 7)
 - decision rows in the run's `decisions.yaml` (`phase: 3-commcare`, `skill: pdd-to-deliver-app`), one per latitude taken and per ambiguity hit — the run's review artifact (Step 7, § Decisions Log)
 
+## Terminology — every string a worker sees
+
+App name, menu (module) names, form names, question labels, hints, option labels, validation
+messages and case-list column headers are reader-visible text, and
+[`skills/_terminology.md`](../_terminology.md) binds them. In particular **US spelling, always**
+(owner, 2026-10-20, no carve-out for worker-facing labels): "Enroll adults", "Adult Enrollment",
+"program", "organization" — never "Enrol", "Enrolment", "programme", "organisation", even when the
+PDD, the partner or the country uses UK English (connect-fi/20261018-1440 shipped "Enrol adults" /
+"Adult Enrolment" on-device — ace#3232). Translations are the target language's own; the rule binds
+the English source. **Never respell an identifier** — case types, case property names and question
+ids (`days_to_enrolment`) keep their spelling, and the Nova prompt cue "CommCare Connect markers" is a
+code-level phrase that stays as written.
+
 ## Process
 
 1. **Read the PDD** from `ACE/<opp-name>/runs/<run-id>/1-design/idea-to-pdd.md` via Google Drive MCP.

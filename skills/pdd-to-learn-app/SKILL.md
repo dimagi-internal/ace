@@ -25,6 +25,18 @@ Pipeline-only: builds a new Learn app from a run's approved PDD. To change a liv
 - `3-commcare/pdd-to-learn-app_summary.md` — Learn-app structure summary (modules, forms, fields, `nova_app_id`), ending with a `## Build notes` section (Step 7a: language layer, repairs applied, per-item assessment table, recorded check outcomes)
 - `decisions.yaml` rows (`phase: 3-commcare`, `skill: pdd-to-learn-app`) — one per `[ACE]` latitude taken, per `[FIXED]` ambiguity hit, and per framework gap (Learn PDD §6(5)), appended in Step 7a (§ Decisions Log). The decisions log is the run's review artifact; these rows are the ONLY place those calls are recorded. REQUIRED: the Phase 3 boundary fails this skill if it wrote its summary but zero rows under `skill: pdd-to-learn-app` (ace#2384)
 
+## Terminology — every string a worker sees
+
+App name, module and lesson titles, lesson text, quiz questions, option labels and feedback text are
+reader-visible, and [`skills/_terminology.md`](../_terminology.md) binds them. In particular **US
+spelling, always** (owner, 2026-10-20, no carve-out for worker-facing labels): "The program and the
+four items", "enrollment", "organization" — never "programme", "enrolment", "organisation", even when
+the PDD, the partner or the country uses UK English (connect-fi/20261018-1440 shipped the lesson "The
+programme and the four items" — ace#3232). Translations are the target language's own; the rule binds
+the English source. **Never respell an identifier** — question ids and case properties keep their
+spelling, and the Nova prompt cue "CommCare Connect markers" is a code-level phrase that stays as
+written.
+
 ## Process
 
 0. **Componentized programme? Plan the modules before briefing Nova.**

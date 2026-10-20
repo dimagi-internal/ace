@@ -32,6 +32,14 @@ is accepted for compatibility but is not needed (live schema, 2026-10-18).
   - inside a run, `8-solicitation-management/solicitation-edit_<YYYYMMDD-HHMM>.md`;
   - on a program project, a dated line in the context doc's Decisions.
 
+## Terminology
+
+Every string this skill puts in front of a reader follows
+[`skills/_terminology.md`](../_terminology.md): **`Connect`, never `CommCare Connect`**, and
+**US spelling, always** — program, enrollment, enroll, organization, behavior, center; never
+programme, enrolment, organisation (owner, 2026-10-20: *"everything should be US spelling"*,
+ace#3232). Identifiers (case properties, slugs, ids, config keys) keep their spelling.
+
 ## Process
 
 1. **Confirm the approval.** A published solicitation is visible to its audience, and candidates

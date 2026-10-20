@@ -137,6 +137,14 @@ Default sources inside a run, in detail:
 - `8-solicitation-management/solicitation-create_published.md` — solicitation_id, public_url, manage_url, deadline, criteria as published
 - `run_state.yaml.phases.solicitation-management.products.solicitation` block populated (id, public_url, deadline, status: open, labs_program_id, connect_program_id, connect_opportunity_id). Per-run only — each run of the opp publishes a fresh solicitation. Operator-cleaned-up when picking a release-candidate run.
 
+## Terminology
+
+Every string this skill puts in front of a reader follows
+[`skills/_terminology.md`](../_terminology.md): **`Connect`, never `CommCare Connect`**, and
+**US spelling, always** — program, enrollment, enroll, organization, behavior, center; never
+programme, enrolment, organisation (owner, 2026-10-20: *"everything should be US spelling"*,
+ace#3232). Identifiers (case properties, slugs, ids, config keys) keep their spelling.
+
 ## Process
 
 > **Design principle: ACE owns composition; labs validates the schema.**

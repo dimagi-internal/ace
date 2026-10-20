@@ -39,3 +39,11 @@ e.g. a demo's scripts doc that people edit together.
   share the doc with named people only after the operator approves the send. Confirm each
   person appears in the permission list before you hand over the link (`gog drive
   permissions <docId> -a ace@dimagi-ai.com --client "$(canopy email client --repo .)" -j`).
+
+## Terminology
+
+Every string this skill puts in front of a reader follows
+[`skills/_terminology.md`](../_terminology.md): **`Connect`, never `CommCare Connect`**, and
+**US spelling, always** — program, enrollment, enroll, organization, behavior, center; never
+programme, enrolment, organisation (owner, 2026-10-20: *"everything should be US spelling"*,
+ace#3232). Identifiers (case properties, slugs, ids, config keys) keep their spelling.
