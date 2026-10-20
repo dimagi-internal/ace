@@ -106,6 +106,42 @@ describe('the ace#1843 deliverables are covered', () => {
   });
 });
 
+describe('confidential opps are not link-shared (ace#3191)', () => {
+  // connect-fi/20261018-1440 has inputs/confidentiality.yaml and a PDD naming
+  // the funder its deny list protects; both producers shared anyone-with-link
+  // unconditionally, and only one careful agent's one-off decision stopped it.
+  const conditional = recipientFacing.filter((a) => a.shareUnless === 'confidential-opp');
+
+  it('the PDD and the Work Order carry the confidential-opp condition', () => {
+    expect(conditional.map((a) => a.path).sort()).toEqual([
+      '1-design/idea-to-pdd.md',
+      '1-design/pdd-to-work-order.gdoc',
+    ]);
+  });
+
+  it.each(conditional.map((a) => [a.path, a.producedBy] as const))(
+    '%s — producer %s consults the share plan and can share by name',
+    (artifactPath, producedBy) => {
+      const src = producerSource(producedBy)!;
+      expect(src, `${producedBy} must run scripts/design-doc-share-plan.ts before sharing ${artifactPath}`).toMatch(
+        /design-doc-share-plan\.ts/,
+      );
+      expect(src, `${producedBy} must name drive_share_with_person for named reviewers`).toMatch(
+        /drive_share_with_person\(fileId: <\w+>, email: <e>, role: 'commenter'\)/,
+      );
+      expect(src).toMatch(/inputs\/confidentiality\.yaml/);
+    },
+  );
+
+  it('output-preview PNGs stay anyone-with-link on every opp (owner, 2026-10-20)', () => {
+    // ace-web renders previews; the owner confirmed they must stay available
+    // there, so a confidential opp does not narrow them.
+    const previews = ARTIFACT_MANIFEST.filter((a) => a.producedBy === 'output-preview-capture');
+    expect(previews.length).toBeGreaterThan(0);
+    expect(previews.filter((a) => a.shareUnless)).toEqual([]);
+  });
+});
+
 describe('internal stays expressible — the negative control (ace#1026)', () => {
   it('the OCS widget handoff is NOT recipient-facing', () => {
     // It carries an `embed_key`. It is correctly private now that ace#1811

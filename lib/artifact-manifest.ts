@@ -232,6 +232,22 @@ export interface ArtifactEntry {
    */
   shareRole?: 'reader' | 'commenter';
   /**
+   * The condition under which a `recipientFacing` artifact is NOT shared
+   * anyone-with-link. `'confidential-opp'`: the opp has
+   * `inputs/confidentiality.yaml` (`lib/opp-confidentiality.ts`), so the
+   * producer shares with the file's named `reviewers:` via
+   * `drive_share_with_person`, or not at all — never by link (ace#3191).
+   *
+   * Set on the PDD and the Work Order: internal design documents that may name
+   * a party the opp's deny list protects, linked from ace-web's public
+   * run-summary page. Deliberately NOT set on output-preview PNGs, which stay
+   * anyone-with-link `reader` so ace-web can render them (owner, 2026-10-20).
+   *
+   * Enforced by `test/lib/recipient-facing-artifacts.test.ts` (the producer
+   * must name the share plan and the named-person share).
+   */
+  shareUnless?: 'confidential-opp';
+  /**
    * True when this artifact's producer must ALSO persist the markdown it
    * composed, as a sibling `<name>.source.md` (see `sourceMarkdownPathFor`).
    *
@@ -529,6 +545,9 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     // feedback → ledger loop starts with anchored comments on this document.
     recipientFacing: true,
     shareRole: 'commenter',
+    // ...except on a confidential opp: the PDD may name the party its deny
+    // list protects (connect-fi/20261018-1440 names its funder) — ace#3191.
+    shareUnless: 'confidential-opp',
     description: 'Program Design Document with archetype, Evidence Model, Solicitation block, and stress-test appendix (the canonical pdd.md, renamed to match its producer)',
   },
   {
@@ -566,6 +585,7 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     // counterpart is most likely to mark up.
     recipientFacing: true,
     shareRole: 'commenter',
+    shareUnless: 'confidential-opp', // ace#3191, same reason as the PDD
     description: 'Contractual Work Order draft derived from the PDD and decisions.yaml. Generic by default — Partner identity is a placeholder unless an LLO was supplied. Re-runs create pdd-to-work-order-2.gdoc, pdd-to-work-order-3.gdoc, etc.; products.work_order in run_state.yaml points at the latest. Parallel to Phase 8 solicitation, not a replacement. Spec: docs/superpowers/specs/2026-05-21-work-order-skill-design.md',
   },
   {

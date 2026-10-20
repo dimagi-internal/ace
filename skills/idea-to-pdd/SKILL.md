@@ -1098,12 +1098,38 @@ raise the conflict.
    `lib/artifact-manifest.ts`, enforced by
    `test/lib/source-persisted-artifacts.test.ts`.)
 
-6c. **Share the PDD anyone-with-link, `commenter`, at creation (ace#1843).**
-   Immediately after step 6b, on the `fileId` step 6 returned:
+6c. **Share the PDD at creation (ace#1843) — anyone-with-link `commenter`,
+   UNLESS the opp is confidential (ace#3191).** Immediately after step 6b, on
+   the `fileId` step 6 returned, first get the share plan. One signal decides
+   it, defined once in `lib/opp-confidentiality.ts`: **the opp is confidential
+   when `ACE/<opp>/inputs/confidentiality.yaml` exists.** Look for it in the
+   inputs folder (`resolve_opp_path` → `drive_list_folder(inputs_id)`); if it
+   is there, `drive_read_file` it with the default `text/plain` export (never
+   `text/markdown`, which escapes YAML) and save the text locally:
 
+   ```bash
+   node "$ACE_ROOT/node_modules/tsx/dist/cli.mjs" "$ACE_ROOT/scripts/design-doc-share-plan.ts" <local confidentiality.yaml | none>
    ```
-   drive_set_anyone_with_link(fileId: <pddDocId>, role: 'commenter')
-   ```
+
+   Act on the plan's `mode`, and nothing else:
+
+   - `anyone-with-link` (no confidentiality file — the normal case):
+     ```
+     drive_set_anyone_with_link(fileId: <pddDocId>, role: 'commenter')
+     ```
+   - `named-reviewers` (confidential; the file lists `reviewers:` emails): for
+     each email, `drive_share_with_person(fileId: <pddDocId>, email: <e>, role: 'commenter')`
+     — no Drive notification email (the atom's default); never anyone-with-link.
+   - `unshared` (confidential; no reviewers listed): do NOT share. The ACE
+     Shared Drive's members can still open it.
+
+   Record the plan's `mode` as `products.pdd.share_mode` in step 7.5, and on a
+   confidential opp a decision row (`id: design-document-sharing`, the plan's
+   `reason` as the rationale). **Why:** the PDD is internal and may name a party
+   the opp's deny list hides from LLOs — connect-fi/20261018-1440's names its
+   funder — and ace-web's public run-summary page links it, so a link share
+   hands that name to whoever the URL reaches. Pass `none` only when the file
+   is genuinely absent: guessing "not confidential" is the leak.
 
    **`commenter`, not `reader`.** A Drive reader physically CANNOT leave a
    comment, and the PDD is the one artifact in this pipeline whose purpose is
@@ -1273,6 +1299,7 @@ eval verdict (idea-to-pdd-eval) at the Phase 1→3 Pause Point. -->
            title: "Turmeric Market Survey"
            description: "FLWs visit markets to photograph turmeric vendors..."
            file_id: <fileId>
+           share_mode: anyone-with-link   # step 6c plan: anyone-with-link | named-reviewers | unshared (ace#3191)
            program_parameters:
              learn_passing_score: 100
              daily_cap: 5
@@ -2101,7 +2128,7 @@ The PDD has two or more sequenced stages with different archetypes. Treat the ba
 **Required for multi-stage PDDs:** an explicit **Stage Gate** subsection between every pair of stages, stating exactly what must be true at the end of stage N to proceed to stage N+1 (with go / no-go / iterate criteria).
 
 ## MCP Tools Used
-- Google Drive: `drive_read_file` (pass `exportAs: 'text/markdown'` when re-reading the PDD — it is a rendered gdoc, and the default plain-text export drops the `#` heading markers and flattens pipe tables to one cell per line), `drive_create_doc_from_markdown` (the PDD — human-facing prose; the retired open-questions ledger is never written — § Asks are decision rows), `drive_create_file` (machine-parsed YAML only), `drive_update_file`, `drive_download_binary` (binary/`.ccz`/`.xlsx` inputs), `drive_set_anyone_with_link` (the PDD, `role: 'commenter'` — § Process step 6c; ace#1843), `drive_list_comments` (the prior run's PDD AND every Google Doc / Sheet / Slides input, called on a shortcut's `resolved_target_id` — § Process step 1; ace#2372), `drive_reply_to_comment` (`action: 'resolve'` on ACE's own PDD only; on an input document, reply with no `action`), `drive_list_folder` (a shortcut entry whose manifest row lacks `resolved_target_id`)
+- Google Drive: `drive_read_file` (pass `exportAs: 'text/markdown'` when re-reading the PDD — it is a rendered gdoc, and the default plain-text export drops the `#` heading markers and flattens pipe tables to one cell per line), `drive_create_doc_from_markdown` (the PDD — human-facing prose; the retired open-questions ledger is never written — § Asks are decision rows), `drive_create_file` (machine-parsed YAML only), `drive_update_file`, `drive_download_binary` (binary/`.ccz`/`.xlsx` inputs), `drive_set_anyone_with_link` (the PDD, `role: 'commenter'` — § Process step 6c; ace#1843; NOT on a confidential opp, ace#3191), `drive_share_with_person` (the PDD to each `reviewers:` email on a confidential opp, `role: 'commenter'` — step 6c), `drive_list_comments` (the prior run's PDD AND every Google Doc / Sheet / Slides input, called on a shortcut's `resolved_target_id` — § Process step 1; ace#2372), `drive_reply_to_comment` (`action: 'resolve'` on ACE's own PDD only; on an input document, reply with no `action`), `drive_list_folder` (a shortcut entry whose manifest row lacks `resolved_target_id`)
 - Google Sheets: `sheets_list_tabs`, `sheets_batch_read` (Google-Sheet inputs)
 - Google Forms: `get_google_form_definition` (Google-Form inputs)
 
