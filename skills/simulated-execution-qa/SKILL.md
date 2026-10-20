@@ -23,7 +23,7 @@ See `skills/_qa-template.md` for the shared QA contract.
 | `definition_id`, `synthetic_opportunity_id` | the weekly report and its scope | explicit arg; default: run_state `products.simulation.{workflow_id, synthetic_opportunity_id}` |
 | `enabled` | `supply_chain`, `simulate_weeks` | explicit arg; default: run_state `optional_steps` |
 | `selected_llo` | the handover fields that must stay empty | explicit arg; default: run_state `phases.solicitation-management.products.selected_llo` |
-| `winner_org_name` | the org the copy must be filed under | explicit arg; default: `connect_orgs.llo_org`'s display name |
+| `winner_org_name` | the org the labs-only opportunity must be filed under | explicit arg; default: `connect_orgs.llo_org`'s display name |
 | `out_folder_id` | where the per-week QA results and reviews are | explicit arg; default: the run's `9-execution-manager/` |
 
 ## Products
@@ -42,7 +42,7 @@ The functions live in `skills/simulated-execution-qa/checks.ts`. Each takes one 
 | 2 | `week0_supply_chain` | static | procure and fulfil QA passed (supply_chain only) | finish week 0 first |
 | 3 | `every_week_operated` | static | every delivery week's `supply-chain-operate-qa` passed (supply_chain only) | re-run the week; it replays by `source.ref` |
 | 4 | `history_one_run_per_week` | static | exactly one completed saved run per delivery week, on its Monday-Sunday period | `workflow_rebuild_history` over the window |
-| 5 | `synthetic_opportunity_isolated` | static | visits on a labs-only copy (id ≥ 10000, a `labs-synthetic-` org) whose org name is the ACE winner's | clone to labs-only; repoint the report |
+| 5 | `synthetic_opportunity_isolated` | static | visits on a labs-only opportunity (id ≥ 10000, a `labs-synthetic-` org) whose org name is the ACE winner's | create a labs-only opportunity (`synthetic_create_labs_only`), generate into it, repoint the report |
 | 6 | `review_per_week` | static | a weekly review per delivery week | run `simulated-weekly-review` |
 | 7 | `no_real_llo_contact` | static | `synthetic_winner: true`, no real handover field set, no Phase 9 send | stop and report: a real step ran |
 | 8 | `summary_links_every_week` | static | the summary links every review | rewrite the summary |
@@ -68,4 +68,5 @@ The functions live in `skills/simulated-execution-qa/checks.ts`. Each takes one 
 
 | Date | Change | Author |
 |------|--------|--------|
+| 2026-10-19 | Check 5 wording: the labs-only opportunity is created by `synthetic_create_labs_only`, not cloned (ace#3263); observed live: org `labs-synthetic-ace-test-llo--synthetic`, "ACE Test LLO (Synthetic)", id 10168 | ACE |
 | 2026-10-18 | Initial version (optional-track PR10): 8 static checks; the weekly-history control is grounded on a live capture of labs workflow 7410's rebuilt history | ACE |

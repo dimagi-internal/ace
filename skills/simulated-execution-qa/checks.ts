@@ -60,7 +60,7 @@ export const REAL_HANDOVER_FIELDS = [
   'email_message_ids',
 ] as const;
 
-/** Labs files labs-only opportunities from this id range (synthetic_clone_to_labs_only). */
+/** Labs files labs-only opportunities from this id range (synthetic_create_labs_only; observed 10168 on connect-fi/20261018-1440). */
 export const LABS_ONLY_ID_FLOOR = 10_000;
 
 /**
@@ -173,7 +173,7 @@ export function checkSyntheticOpportunityIsolated(artifact: string): QACheckResu
           pass: false,
           detail: bad.join('; '),
           auto_fix_hint:
-            'synthetic_clone_to_labs_only({source_opportunity_id, org_name: <winner org name>}) and repoint the weekly workflow at the copy; never simulate on the real Phase 4 opportunity.',
+            'synthetic_create_labs_only({org_name: <winner org name>, ...}), generate into it with scripts/run-labs-synthetic-generate.ts, and repoint the weekly workflow at it (workflow_update_opportunity_ids); never simulate on the real Phase 4 opportunity.',
         };
   });
 }
@@ -230,7 +230,7 @@ export const CHECKS: QACheck[] = [
   { id: 'week0_supply_chain', type: 'static', description: "Week 0's procurement and fulfilment QA passed (supply_chain only)", run: checkWeek0SupplyChain },
   { id: 'every_week_operated', type: 'static', description: "Every delivery week's stock QA passed (supply_chain only)", run: checkEveryWeekOperated },
   { id: 'history_one_run_per_week', type: 'static', description: 'Labs holds exactly one completed saved run per delivery week, on its Monday-Sunday period', run: checkHistoryOneRunPerWeek },
-  { id: 'synthetic_opportunity_isolated', type: 'static', description: 'The visits live on a labs-only copy (id ≥ 10000, labs-synthetic- org) filed under the ACE winner, never the real opportunity', run: checkSyntheticOpportunityIsolated },
+  { id: 'synthetic_opportunity_isolated', type: 'static', description: 'The visits live on a labs-only opportunity (id ≥ 10000, labs-synthetic- org) filed under the ACE winner, never the real opportunity', run: checkSyntheticOpportunityIsolated },
   { id: 'review_per_week', type: 'static', description: 'Every delivery week has a weekly review', run: checkReviewPerWeek },
   { id: 'no_real_llo_contact', type: 'static', description: 'The winner is synthetic, no real handover field is set, and Phase 9 sent nothing', run: checkNoRealLloContact },
   { id: 'summary_links_every_week', type: 'static', description: "The summary links every week's review", run: checkSummaryLinksEveryWeek },
