@@ -45,7 +45,7 @@ front half (how the labs-only opp + its data come to exist) differs.
 
 ## Products
 
-- `<demo-run>/7-synthetic/demo-data-setup_manifest.yaml` — the per-opp generator manifest sent to labs
+- `<demo-run>/7-synthetic/demo-data-setup_manifest.yaml` — the per-opp generator manifest sent to labs; **ace-run cascade:** the index of the per-partner manifests archived under `7-synthetic/cascade-build/` (§ C7, `scripts/cascade-build-artifacts.ts`)
 - `<demo-run>/7-synthetic/realized.json` — **the handoff**: a **FLAT** `${var}` map (DDD substitutes `${var}` verbatim — keep it flat, no nesting). One `<key>_par_url` per dashboard the demo builds, plus `primary_par_url` (the dashboard the walkthrough opens on) and any `<name>_url` drills. E.g. `{ "primary_par_url": ..., "program_admin_par_url": ..., "child_recovery_par_url": ..., "audit_good_url": ... }`
 - `<demo-run>/7-synthetic/cascade-story.yaml` — **ace-run only**: the story plan (partners, weeks, roster, four authored signals) that § C3 gates and § C6 verifies against the saved runs (`lib/cascade-story.ts`)
 - `run_state.yaml…products.synthetic.cascade` — **ace-run only**: registry, program, partners, programme report, worker review, opp reports, cohort, history (§ C7)
@@ -1770,8 +1770,35 @@ Write `products.synthetic.cascade` (`registry`, `program_id`,
 `history`, `story_verified`) AND mirror the reports into `products.synthetic.workflows`
 (`{programme_report: {workflow_id, run_url}, <partner>_opp_report: {...}}`) — that
 map is what ace-web's run summary renders. `labs_opp_id` = the first partner's
-opportunity. `dashboard-terms.yaml` enumerates the registry's labels (every
-indicator label is a column header; the definitions popup is at point of use).
+opportunity.
+
+**Then write the two required build-half files** (ace#3251 — neither existed on
+the cascade path, so `connect-fi/20261018-1440` reached Phase 7 finalize with
+`verify_phase_artifacts` at 7/10 required and could not reach `status: done`):
+
+- `7-synthetic/demo-data-setup_manifest.yaml` — on the cascade this is an
+  INDEX, not a generator manifest: one entry per partner naming its
+  opportunity and where the bytes sent for it are archived,
+  `7-synthetic/cascade-build/manifest_<partner-slug>.yaml`
+  (`partnerManifestPath`; record a different archive path as
+  `cascade.partners[].manifest` and the index uses it). Archive each partner's
+  sent manifest there in § C3, per step 5b (the same bytes, round-trip parsed).
+- `7-synthetic/dashboard-terms.yaml` — step 3d from the registry: every
+  indicator label is a column header on each report, defined at point of use
+  (the definitions popup) only when the indicator carries a `meta.plain`
+  sentence; visit-flag labels likewise via their `description`.
+
+Generate both, never hand-write them:
+
+```bash
+node "$ACE_ROOT/node_modules/tsx/dist/cli.mjs" "$ACE_ROOT/scripts/cascade-build-artifacts.ts" \
+  --run-state <local run_state.yaml> --registry <local semantic-registry-author_registry.json> \
+  --out-dir <local dir>
+```
+
+and upload both into `7-synthetic/` (find-or-update). `demo-data-setup-qa`
+check 29 (`cascade_build_artifacts_written`) fails the build when either is
+absent or the index misses a partner, so the gap is caught here, not at finalize.
 
 **Then point every report at ACE's template workflows** (2026-10-16). The trio is
 created following the DEPLOYED labs code template, which only a connect-labs
@@ -2198,6 +2225,7 @@ nobody has enumerated yet. Run both — neither is a substitute for the other.
 | 2026-10-16 | **Step 3c no longer runs `checkGapCopy`; `demo-narrative` § 3d does (ace#2244).** The check needs the why-brief's `gaps[]`, which `demo-narrative` authors one step later, so at this position it could never run. 3c now records each dashboard's `workflow_id` + scope for 3d to read the uploaded render back, and keeps the authoring rules. | ACE team |
 | 2026-10-15 | **§ C3 names the labs request-size ceiling (ace#3007).** HTTP 413 at a 3.9 MB manifest (2.44 MB accepted) on `smallholder-seasonal/20261015-1402`; the mechanics now say how to slim a programme-length pool safely (dedupe only paths whose absence reads as their value; `_time_varying_paths` are not re-stamped), filter per-form values by form name, and send multi-MB manifests over direct JSON-RPC. | ACE team |
 | 2026-10-06 | **§ C3 `review_routing` names the write path (ace#2740).** Each flagged pool visit carries `review: {flagged: true, status, review_status, flag_reason}` (connect-labs #2264 — before it, a mirror pool had no way to file a record as sent to review; status/flagged were always drawn from the persona's `flag_rate`), and every persona sets `flag_rate: 0` so nothing un-flagged is sent to review. Found on `spark-facilitator/20261004-1706` Phase 7 attempt 3. | ACE team |
+| 2026-10-19 | **§ C7 writes `demo-data-setup_manifest.yaml` (an index of the per-partner manifests under `cascade-build/`) and `dashboard-terms.yaml` (from the registry's labels) on the cascade path (ace#3251).** Both are required by `lib/artifact-manifest.ts`; the cascade wrote neither, `demo-data-setup-qa` passed 10/10 on `connect-fi/20261018-1440`, and finalize then found 7/10 required artifacts after the DDD loop. New `lib/cascade-build-artifacts.ts` + `scripts/cascade-build-artifacts.ts`; `demo-data-setup-qa` check 29 fails a build missing either. | ACE team |
 | 2026-10-06 | **Build QA before the hand-off, so the demo judges stop finding build output (ace#2735).** Operator: *"is the demo catching bad output from the program build? ... how can we be better at the program build level in terms of QA or other so DDD isn't the one catching it?"* § C3 adds `review_routing` (what the PDD does with each flagged record — and the pool writes it), `checkPlannedWorkerRates` (a worker-level rate over ≤ 1 entity is binary) and `single_child_levels`; § C6 adds `cascadeBuildOutcomes` — review routing, binary worker rates, constant displayed columns, one-child drill levels — judged against the saved run and the visit rows. Each was a DDD finding on `spark-facilitator/20261004-1706`; each now fails there, in `test/lib/cascade-build-qa.test.ts`, on that run's real output. | ACE team |
 | 2026-10-06 | **Invented names a viewer can read, five partners, a headline that differs (ace#2727).** § C0: invented partners are realistic organisation names with a trailing `(example)` marker (`Tiyende Community Trust (example)`), not `Example partner A` — be59309d's honesty fix satisfied ACE's rail with a placeholder canopy's DDD judge scores at clarity 2, and `spark-facilitator/20261004-1706` stalled at 2.0 across 15 judged passes on it. The story plan now carries a display roster (`workers[{username, display_name, partner}]`, `entities[{id, name, worker}]`; no codes, no placeholders, no real person's name from the inputs), `headline_indicators` + `headline_spread` (a headline flat across all partners fails), and five partners by default and floor. § C3 carries a TODO where the labs half (snapshot display names, registry `display.entity.label_field`) will be wired; § C7 adds `*_worker_name`. *Enforced:* `checkCascadeStoryPlan` / `verifyCascadeStoryLanded`, `test/lib/cascade-story.test.ts`. | ACE team |
 | 2026-10-05 | **§ C5 plans the benchmark publishes with `planBenchmarkRepublish` (ace#2717).** Oldest first, refusing a missing week; the Benchmarks tab's as-of must equal the last period; the same re-publish is required after a registry edit + rebuild. A classifier refusal of `benchmarks_publish` is surfaced to the operator. | ACE team |

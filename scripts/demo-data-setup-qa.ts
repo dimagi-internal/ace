@@ -8,6 +8,7 @@
  *     [--visits <JSON: pipeline_preview response(s) of the cascade visits pipeline (home opp, sample_size 200; ace#2973)>] \
  *     [--real-people <text file: one real person's name per line, from the opp's inputs>] \
  *     [--registry <7-synthetic/semantic-registry-author_registry.json, or a semantic_registry_get response>] \
+ *     [--manifest-index <7-synthetic/demo-data-setup_manifest.yaml>] [--dashboard-terms <7-synthetic/dashboard-terms.yaml>] \
  *     [--outcomes <JSON: [{check, result:{pass,detail,auto_fix_hint}} | {check, not_judged}]>] \
  *     --target <opp>/<run> --out <local demo-data-setup-qa_result.yaml>
  *
@@ -50,6 +51,7 @@ import {
 } from '../skills/demo-data-setup-qa/checks.js';
 import type { CascadeStoryPlan } from '../lib/cascade-story.js';
 import { latestSnapshotFromHistoryRuns, visitSampleScope } from '../lib/cascade-build-qa.js';
+import { checkCascadeBuildArtifacts } from '../lib/cascade-build-artifacts.js';
 
 /** `--visits`: one pipeline_preview response, an array of them, or bare rows (ace#2735). */
 function visitRowsFrom(text: string | null): Array<Record<string, unknown>> {
@@ -112,6 +114,17 @@ if (provider === 'ace-run') {
   );
   if (realized) computed.set('worker_review_url_scoped', checkWorkerReviewUrlScope(realized));
   computed.set('cascade_handoff_complete', checkCascadeHandoff(synthetic));
+  // ace#3251: the manifest index + dashboard-terms the artifact manifest requires. A file not passed is a FAIL.
+  const indexText = readText(arg('manifest-index'));
+  const termsText = readText(arg('dashboard-terms'));
+  computed.set(
+    'cascade_build_artifacts_written',
+    checkCascadeBuildArtifacts({
+      manifestIndex: indexText ? parseYaml(indexText) : null,
+      dashboardTerms: termsText ? parseYaml(termsText) : null,
+      cascade: synthetic?.cascade,
+    }),
+  );
   // ace#2748: the registry text a report renders reads plainly. No --registry → the check FAILS as not evaluated.
   const registryText = readText(arg('registry'));
   if (registryText) computed.set('cascade_registry_text_is_plain', checkRegistryTextIsPlain(JSON.parse(registryText)));

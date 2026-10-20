@@ -1286,7 +1286,8 @@ export interface CascadeReportRef {
 export interface CascadeBlock {
   registry?: { registry_id?: number; indicators?: string[] };
   program_id?: number;
-  partners?: Array<{ label?: string; opportunity_id?: number }>;
+  /** `manifest`: where that partner's sent generator manifest is archived (ace#3251). */
+  partners?: Array<{ label?: string; opportunity_id?: number; manifest?: string }>;
   programme_report?: CascadeReportRef;
   worker_review?: CascadeReportRef;
   opp_reports?: CascadeReportRef[];
@@ -1470,6 +1471,8 @@ export const CHECKS_BY_PROVIDER: Record<'ace-run' | 'denovo' | 'clone', readonly
     'cascade_drill_levels_branch',
     // ace#2748 — reader-facing registry text, before the DDD judge reads it.
     'cascade_registry_text_is_plain',
+    // ace#3251 — the two required build-half artifacts, before finalize finds them missing.
+    'cascade_build_artifacts_written',
   ],
   denovo: [
     'realized_json_parses',
