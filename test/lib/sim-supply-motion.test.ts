@@ -8,31 +8,31 @@ const liveConnectFi = JSON.parse(
 ) as MotionInput;
 
 describe('planWorkerTopUps', () => {
-  it('issues an opening float in week 1 and tops back up to it', () => {
+  it('issues the float plus week 1 handovers, then replaces what was handed over', () => {
     const plan = planWorkerTopUps({ issues: { w01: { 1: 1, 2: 3, 3: 2, 4: 0 } }, weeks: 4 });
-    expect(plan.float.w01).toBe(6); // busiest week 3 x 2 weeks
-    expect(plan.issued.w01).toEqual({ 1: 6, 2: 1, 3: 3, 4: 2 });
-    expect(plan.on_hand_end.w01).toEqual({ 1: 5, 2: 3, 3: 4, 4: 6 });
+    expect(plan.float.w01).toBe(3); // average 1.5 a week x 2 weeks
+    expect(plan.issued.w01).toEqual({ 1: 4, 2: 3, 3: 2, 4: 0 });
+    expect(plan.on_hand_end.w01).toEqual({ 1: 3, 2: 3, 3: 3, 4: 3 });
   });
 
-  it('never plans a worker below zero, even in a week busier than the float', () => {
-    const plan = planWorkerTopUps({ issues: { w: { 1: 0, 2: 9 } }, weeks: 2, float_weeks: 0.5 });
-    expect(plan.float.w).toBe(5);
-    expect(Object.values(plan.on_hand_end.w).every((q) => q >= 0)).toBe(true);
-    expect(plan.issued.w[2]).toBe(4); // topped up to 9 for that week
+  it('a one-week spike is issued that week, not front-loaded, and leaves the worker holding the float', () => {
+    // connect-fi moroto_w04's handovers, read off its rebuilt visits: the card-collection round lands in week 4.
+    const plan = planWorkerTopUps({ issues: { w04: { 1: 0, 2: 1, 3: 0, 4: 9 } }, weeks: 4 });
+    expect(plan.float.w04).toBe(5);
+    expect(plan.issued.w04).toEqual({ 1: 5, 2: 1, 3: 0, 4: 9 });
+    expect(plan.on_hand_end.w04[4]).toBe(5);
+  });
+
+  it('no worker ever ends a week below the float (connect-fi left every worker at 0)', () => {
+    const issues = { a: { 1: 0, 2: 9 }, b: { 1: 4, 2: 0 }, c: {} };
+    const plan = planWorkerTopUps({ issues, weeks: 2, float_weeks: 0.5 });
+    for (const u of Object.keys(issues)) for (const w of [1, 2]) expect(plan.on_hand_end[u][w]).toBe(plan.float[u]);
   });
 
   it('a worker with no handovers still carries the minimum float', () => {
     const plan = planWorkerTopUps({ issues: { idle: {} }, weeks: 3 });
     expect(plan.issued.idle).toEqual({ 1: 1, 2: 0, 3: 0 });
     expect(plan.on_hand_end.idle[3]).toBe(1);
-  });
-
-  it('the withheld top-up is the planted stockout: that worker runs out', () => {
-    const plan = planWorkerTopUps({ issues: { w: { 1: 2, 2: 2, 3: 2 } }, weeks: 3, withhold: { username: 'w', week: 3 } });
-    expect(plan.issued.w[3]).toBe(0);
-    expect(plan.on_hand_end.w[3]).toBe(0);
-    expect(plan.on_hand_end.w[2]).toBeGreaterThan(0);
   });
 
   it('refuses a nonsense window', () => {

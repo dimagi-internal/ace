@@ -134,10 +134,14 @@ procurement and fulfilment.
    `user_visits.json` from the fixture folder the generator returned (`drive_read_file`), and for
    each commodity in the setup plan call `deriveIssueEvents({commodity, issue_event, visits,
    calendar, seed: <manifest random_seed>})` (`lib/supply-chain-issue-events.ts`). Then plan what
-   each worker is ISSUED with `planWorkerTopUps({issues, weeks: N, float_weeks, withhold:
-   <the planted stockout's worker and week>})` (`lib/sim-supply-motion.ts`): week 1 is an opening
-   float, and each later week tops the worker back up, so a worker holds stock between visits and
-   the planted stockout is the one week someone actually runs out. Write the second Products file
+   each worker is ISSUED with `planWorkerTopUps({issues, weeks: N, float_weeks})`
+   (`lib/sim-supply-motion.ts`): each week the LLO issues that week's handovers plus what brings
+   the worker back to their float (two weeks of their average handovers), so stock leaves the
+   store every week and every worker holds phones between visits. Never withhold a top-up to plant
+   a stockout: labs' dispensing rule takes every handover off the worker's stock from the visits,
+   so a withheld top-up drives the ledger negative. The planted stockout is a worker's
+   self-reported zero count (`supply-chain-operate` Step 5), which labs reads as variance against
+   the ledger. Write the second Products file
    with both: per week and worker the issue events, their quantity, and the planned `top_up`.
    - Mirror-mode visits carry form identity, so a `form_answer` issue event is read off the visits
      (`source: form_answer_visits`). Labs' de-novo stream merges every form into one schema and
