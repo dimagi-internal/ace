@@ -12,7 +12,7 @@ node_modules/
 node_modules
 .gws-sa-key.json
 
-# Environment secrets — only .env.tpl (1Password-injectable) is committed;
+# Environment secrets — ACE's live in its Canopy vault on canopy-web;
 # real .env files with actual team ids, tokens, and experiment ids must
 # never land in git.
 .env

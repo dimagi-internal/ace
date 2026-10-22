@@ -120,11 +120,11 @@ describe('infra/capabilities/test-worker/capability.yaml', () => {
   });
 
   it('pool credentials are canopy-web slot data, not env: no ACE_E2E_WORKERS / connect-test-workers anywhere', () => {
-    for (const f of ['.env.tpl', 'runtime.yaml', 'skills/test-worker-pool/SKILL.md', 'infra/capabilities/test-worker/capability.yaml']) {
+    for (const f of ['runtime.yaml', 'skills/test-worker-pool/SKILL.md', 'infra/capabilities/test-worker/capability.yaml']) {
       const text = readFileSync(join(ROOT, f), 'utf8');
       expect(text, f).not.toMatch(/ACE_E2E_WORKERS|connect-test-workers|pool-json/);
     }
     // The per-run flag stays off: the owner chose the pool (ace#2955).
-    expect(readFileSync(join(ROOT, '.env.tpl'), 'utf8')).not.toMatch(/^ACE_PER_RUN_TEST_USER=/m);
+    expect(readFileSync(join(ROOT, 'runtime.yaml'), 'utf8')).not.toMatch(/ACE_PER_RUN_TEST_USER/);
   });
 });

@@ -46,7 +46,7 @@ describe('pin-form classification (unit)', () => {
     // § Step 6.5` carried `--apk "${ACE_CONNECT_APK_VERSION:-2.63.2}"` through the
     // 2.64.0 bump untouched, because no form matched shell `:-` (ace#2078).
     ['env-fallback-shell', '  --apk "${ACE_CONNECT_APK_VERSION:-2.63.2}" \\', '2.63.2'],
-    ['env-tpl-pin', 'ACE_CONNECT_APK_VERSION=2.63.2', '2.63.2'],
+    ['env-line-pin', 'ACE_CONNECT_APK_VERSION=2.63.2', '2.63.2'],
     ['selector-map-self-declaration', 'apk_version: "2.63.2"', '2.63.2'],
     ['prose-default-apk', 'the `${SELECTOR:...}` map (default APK 2.63.2) plus lint', '2.63.2'],
     ['prose-default-paren', 'and `ACE_CONNECT_APK_VERSION` (default 2.63.2).', '2.63.2'],
@@ -96,7 +96,6 @@ describe('the live repo scan', () => {
       'mcp/mobile-server.ts',
       'mcp/mobile/recipe-resolver.ts',
       'scripts/probe-atlas-drift.ts',
-      '.env.tpl',
     ]) {
       expect(pinPaths, `expected a pin site in ${p}`).toContain(p);
     }

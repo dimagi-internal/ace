@@ -23,7 +23,7 @@ build-only — each acts on whatever `experiment_id` / `collection_id` it is giv
 npm run mcp:ocs
 ```
 
-Required environment: see `.env.tpl` (1Password-injectable; the canonical template for every ACE env var).
+Required environment: the `OCS_*` values stored in ACE's Canopy vault on canopy-web (Settings → Credentials), written into `.env` by `/ace:setup` (`canopy agent env --plugin ace`).
 
 ## Capability map
 

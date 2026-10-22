@@ -57,7 +57,7 @@ retiring a worker, including the one-time fresh-signup walk that calibrates
 npm run mcp:mobile
 ```
 
-Auto-registers via `.claude-plugin/plugin.json` `mcpServers` when the plugin is installed. Required environment: `.env.tpl` `ACE_E2E_*` variables (test phone, PIN, name), `ACE_AVD_NAME`, and `ACE_CONNECT_APK_VERSION` (default 2.64.0).
+Auto-registers via `.claude-plugin/plugin.json` `mcpServers` when the plugin is installed. Required environment (values in ACE's Canopy vault on canopy-web, written into `.env` by `/ace:setup`): `ACE_E2E_*` variables (test phone, PIN, name), `ACE_AVD_NAME`, and `ACE_CONNECT_APK_VERSION` (default 2.64.0).
 
 ## Capability map
 

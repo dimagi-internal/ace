@@ -23,7 +23,7 @@ as frozen footage (see the timing report below).
 ## Prerequisites
 - An **ace-web checkout** (default `~/emdash-projects/ace-web`; override `$ACE_WEB_ROOT`). It vendors the renderer at `video-production/connect-videos` and `scripts/render_locally.py`.
 - connect-videos deps installed once: `cd "$ACE_WEB/video-production/connect-videos" && npm ci` (~minutes). The script errors clearly if absent.
-- `ELEVENLABS_API_KEY` in the environment or the ace `.env` (1Password: `ACE - ElevenLabs API Key`). The renderer refuses to silently drop voice.
+- `ELEVENLABS_API_KEY` in the environment or the ace `.env` (a value in ACE's Canopy vault on canopy-web). The renderer refuses to silently drop voice.
 - `ffmpeg` on PATH.
 
 ## Resolve the checkout

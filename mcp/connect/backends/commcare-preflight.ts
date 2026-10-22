@@ -260,9 +260,8 @@ export async function preflightLearnAppUser(
         `CCHQ rejected ACE_HQ_API_KEY against domain "${args.hq_domain}" with HTTP ${listRes.status}. ` +
         'The same key fuels `connect_create_opportunity` and the Phase 6 `start_learn_app` POST — ' +
         'both will fail identically until rotated. Mint a new HQ API key at ' +
-        'https://www.commcarehq.org/account/api_keys/ as ace@dimagi-ai.com, update 1Password item ' +
-        '"ACE - CommCare HQ API Key (connect-ace-prod)" field `credential`, then ' +
-        '`op inject -i .env.tpl -o $CLAUDE_PLUGIN_DATA/.env --force` and /reload-plugins.',
+        'https://www.commcarehq.org/account/api_keys/ as ace@dimagi-ai.com, update ACE_HQ_API_KEY ' +
+        "in ACE's Canopy vault on canopy-web, then `/ace:setup --force-env` and restart Claude Code.",
       cchq: { status: listRes.status, body_excerpt: body.slice(0, 300), path: listPath },
     };
   }

@@ -41,7 +41,8 @@ access on every doc, and it leaves the index math to you.
 
 1. **Write the doc with an anchor wherever a block goes.** Build the markdown for
    `drive_create_doc_from_markdown` (on a Shared Drive: a run folder, or a find-or-create
-   folder under `ACE_DRIVE_ROOT_FOLDER_ID` from `.env.tpl` when there is no opportunity). Put
+   folder under `ACE_DRIVE_ROOT_FOLDER_ID` — a value in ACE's Canopy vault, in the installed
+   `.env` — when there is no opportunity). Put
    each email's heading and context first. Then, alone on its own line with a blank line
    either side, write the anchor `@@EMAIL_<key>@@`. The key may use letters, digits, `_` and
    `-`, and each key appears once. Do **not** write the email text in the markdown; the block

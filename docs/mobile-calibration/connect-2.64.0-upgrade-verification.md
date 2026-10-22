@@ -83,9 +83,8 @@ account. The map's `personalid-confirm-code-view` row is already flagged
 
 1. **`/ace:setup --force-env`** — rewrites the installed `.env` so
    `ACE_CONNECT_APK_VERSION=2.64.0`. `/ace:update` does NOT touch it, so the
-   machine stays on 2.63.2 until this runs. Never a raw `op inject` (it drops
-   local-only keys like `ACE_WEB_PAT_TOKEN`; a `config/gating.json` deny rail
-   blocks that form).
+   machine stays on 2.63.2 until this runs. The value it writes comes from
+   ACE's Canopy vault, so set it there first.
 2. **Then quit and reopen Claude Code — a full process restart.** Every MCP
    server calls `dotenvConfig()` at module top level and consumes the result at
    import, so a subprocess spawned before the `.env` write holds the old value

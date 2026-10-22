@@ -52,7 +52,7 @@ export const ACE_PER_RUN_TEST_USER_FLAG = 'ACE_PER_RUN_TEST_USER';
 /**
  * The EXACT precondition that must hold before {@link ACE_PER_RUN_TEST_USER_FLAG}
  * may be flipped on. Deliberately one greppable string, duplicated verbatim into
- * `.env.tpl` and the two guarded skills, and pinned by
+ * the two guarded skills and their agent doc, and pinned by
  * `test/skills/per-run-test-user-switch.test.ts` so it cannot drift.
  *
  * Why this gate exists: the static recipes are migrated off raw ids EXCEPT

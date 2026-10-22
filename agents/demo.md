@@ -146,8 +146,8 @@ All three converge on the realized `${var}` map (`par_url`); everything from
   Reads `ACE_HQ_USERNAME`/`ACE_HQ_PASSWORD` from the env. The wrapper
   `bin/ace-labs-walkthrough-login` does `set -euo pipefail; set -a; source
   <plugin-data>/.env`, so it needs every `.env` value SHELL-SAFE — a value with an
-  unquoted `!` exits 127 before login (the EU-cred class; fixed by quoting in
-  `.env.tpl` + `/ace:setup --force-env`). If the wrapper still fails on `.env`, run
+  unquoted `!` exits 127 before login (the EU-cred class; rewrite `.env` from
+  ACE's Canopy vault with `/ace:setup --force-env`). If the wrapper still fails on `.env`, run
   the `tsx` above with the two creds exported by SAFE parse
   (`sed -n 's/^ACE_HQ_USERNAME=//p' <plugin-data>/.env`), never `source`.
 - Canopy runtime resolvable for `uv run python -m scripts.ddd.validate` and

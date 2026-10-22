@@ -18,7 +18,7 @@ e.g. a demo's scripts doc that people edit together.
 
 - **Author:** `config/agent.json` (`ace@dimagi-ai.com`, client `canopy`); run from an ACE
   checkout or pass `--repo <ACE root>`.
-- **Root:** `$GDRIVE_ROOT_FOLDER`, from `.env.tpl` (the bound instance's vault), materialised into the
+- **Root:** `$GDRIVE_ROOT_FOLDER`, a value in ACE's Canopy vault on canopy-web, written into the
   installed plugin's `.env` by `/ace:setup --force-env`. It is NOT in the shell
   environment, so **source the `.env` in the same Bash call as the publish**, because shell
   state does not persist between calls:
@@ -33,8 +33,8 @@ e.g. a demo's scripts doc that people edit together.
   ```
 
 - **"no Drive root resolved"** means the installed `.env` predates this key. Run
-  `/ace:setup --force-env`, which keeps local-only secrets. Never use a raw `op inject` (a
-  deny rail blocks it), and never paste a folder id in to work around it.
+  `/ace:setup --force-env`, which keeps local-only secrets, and never paste a folder id in to
+  work around it.
 - **Sharing is an outbound act.** In a manual-mode turn, publish with `--share none`, then
   share the doc with named people only after the operator approves the send. Confirm each
   person appears in the permission list before you hand over the link (`gog drive

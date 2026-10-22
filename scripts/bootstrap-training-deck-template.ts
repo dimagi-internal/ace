@@ -48,9 +48,9 @@
  * Usage:
  *   npx tsx scripts/bootstrap-training-deck-template.ts
  *
- * Output: prints the new template's presentationId. Update 1Password
- * "ACE - Drive Templates" → training_deck_template_id and the local
- * .env via op inject.
+ * Output: prints the new template's presentationId. Set it as
+ * ACE_TRAINING_DECK_TEMPLATE_ID in ACE's Canopy vault, then
+ * /ace:setup --force-env.
  */
 
 import { google } from '../lib/google-shim.js';

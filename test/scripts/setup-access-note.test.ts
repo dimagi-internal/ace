@@ -1,11 +1,10 @@
 /**
- * A newcomer's first `/ace:setup` usually fails on 1Password. Owner decision
- * (2026-10-14): setup stays 1Password-backed, and access to the ACE instance's
- * vault IS how a person brings ACE's credentials. So every 1Password failure must
- * say, in two lines, what access is needed and who grants it. The vault is the
- * one canopy-web records for the instance (`canopy agent env --print`,
- * canopy#899) — the note names it when canopy resolved it, and says where to
- * look when it did not, never a hardcoded vault name.
+ * ACE's env now comes from its Canopy vault on canopy-web; 1Password holds only
+ * the Google service-account key, read when that key is missing. Every
+ * 1Password failure must still say, in two lines, what access is needed and who
+ * grants it. The vault is ACE_OP_VAULT / AGENT_VAULT, or the one a legacy
+ * canopy record names (`canopy agent env --print`) — the note names it when
+ * known, and says what to set when not, never a hardcoded vault name.
  *
  * CLASSIFICATION: unit-test truth. The CLI-missing case runs the real script on
  * a PATH with node + npm and no `op`; the other sites are pinned structurally.
@@ -67,13 +66,13 @@ describe('setup names the access a newcomer needs', () => {
     const { status, out } = runWithoutOp();
     expect(status).toBe(1);
     expect(out).toMatch(/FAIL op: 1Password CLI not installed/);
-    expect(out).toMatch(/ACCESS: .*your ACE instance's vault \(`canopy agent env --plugin ace --print` names it\)/);
+    expect(out).toMatch(/ACCESS: .*the 1Password vault holding "ACE - Google Service Account" \(set ACE_OP_VAULT to it\)/);
     expect(out).not.toMatch(/Agent-Ace/);
   });
 
   it('prints it at every 1Password failure site', () => {
     const setup = readFileSync(SETUP, 'utf8');
-    // CLI missing, not signed in, SA-key fetch failed, vault unreadable.
+    // CLI missing, not signed in, no vault named for the key, SA-key fetch failed.
     expect(setup.match(/^\s*access_note$/gm)).toHaveLength(4);
   });
 

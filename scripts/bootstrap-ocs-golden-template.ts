@@ -21,7 +21,7 @@
  *      so connect-labs can mount the widget.
  *   6. Print experiment_id, public_id, pipeline_id, embed_key for recording.
  *
- * Usage (values come from your local .env — see .env.tpl):
+ * Usage (values come from your local .env, filled from ACE's Canopy vault):
  *   OCS_BASE_URL=https://www.openchatstudio.com \
  *   OCS_TEAM_SLUG=<your team> \
  *   OCS_BOOTSTRAP_SOURCE_ID=<source chatbot id> \
@@ -326,10 +326,10 @@ async function archiveChatbot(
     console.log(`      public_id: ${embed.public_id}`);
     console.log(`      embed_key: ${embed.embed_key}`);
 
-    // Summary. The golden template id is source-of-truth in 1Password, NOT
-    // in the local .env — local .env is always regenerated via `op inject`,
-    // so any hand-edit there will silently revert on the next inject. Print
-    // the vault-edit + reinject commands instead of "paste into .env".
+    // Summary. The golden template id is source-of-truth in ACE's Canopy vault,
+    // NOT in the local .env — /ace:setup --force-env regenerates .env from the
+    // vault, so any hand-edit there will silently revert on the next fill.
+    // Print the vault-edit + re-fill steps instead of "paste into .env".
     // (See 2026-04-20 learning: "1Password vault values are hypotheses too".)
     console.log('\n' + '─'.repeat(50));
     console.log('Golden template bootstrapped successfully.');
@@ -339,17 +339,13 @@ async function archiveChatbot(
     console.log();
     console.log('To make this the ACE golden template for your environment:');
     console.log();
-    console.log('  1. Update 1Password (source of truth for all ACE env values):');
-    console.log(
-      `     op item edit "ACE - Open Chat Studio" \\\n       "Config.golden_template_id[text]=${cloned.experiment_id}" \\\n       --vault AI-Agents --account dimagi.1password.com`,
-    );
+    console.log("  1. Update ACE's Canopy vault (source of truth for all ACE env values):");
+    console.log(`     canopy-web → ACE → Settings → Credentials: OCS_GOLDEN_TEMPLATE_ID=${cloned.experiment_id}`);
     console.log();
     console.log('  2. Regenerate your local .env from the vault:');
-    console.log(
-      '     op inject -i .env.tpl -o ~/.claude/plugins/data/ace-ace/.env \\\n       --account dimagi.1password.com',
-    );
+    console.log('     /ace:setup --force-env');
     console.log();
-    console.log('  3. /reload-plugins (or restart Claude Code) so the MCP server picks up the new id.');
+    console.log('  3. Restart Claude Code so the MCP server picks up the new id.');
     if (sharedCollectionId) {
       console.log(`\n(OCS_SHARED_COLLECTION_ID=${sharedCollectionId} already set — no change needed.)`);
     }

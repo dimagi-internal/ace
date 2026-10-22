@@ -221,13 +221,4 @@ describe('bin/ace-setup source ordering is declared, not implied', () => {
     // a `D="$PWD"` walk whose loop body assigns ROOT.
     expect(src).not.toMatch(/D="\$PWD"[\s\S]{0,400}\bROOT="\$D"/);
   });
-
-  it('refuses to render .env from a root that is not the installed plugin', () => {
-    const src = execFileSync('cat', [SCRIPT], { encoding: 'utf8' });
-    expect(src).toContain('ENV_ROOT_REFUSED');
-    expect(src).toContain('ACE_SETUP_ALLOW_TEMPLATE_MISMATCH');
-    // The refusal must be a FAIL (exit non-zero via mark_fail), not a WARN:
-    // the failure it prevents is silent and machine-wide.
-    expect(src).toMatch(/fail "env: refusing to render \.env from a non-installed plugin root/);
-  });
 });

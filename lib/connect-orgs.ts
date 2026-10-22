@@ -34,10 +34,9 @@
  *                        would award the call to its own owner (labs refuses
  *                        "a response from their own side").
  *
- * None of the three keys is declared in `.env.tpl` (they are documented there COMMENTED),
- * so `bin/ace-setup --force-env` treats them as local-only keys and preserves
- * them across every re-inject — the per-instance value survives re-setup and
- * 1Password never overrides it. See `playbook/integrations/connect-api.md
+ * None of the three keys is in ACE's Canopy vault, so `bin/ace-setup --force-env`
+ * treats them as local-only keys and preserves them across every re-fill — the
+ * per-instance value survives re-setup and the vault never overrides it. See `playbook/integrations/connect-api.md
  * § Which Connect orgs ACE acts in`.
  *
  * A run that targets an ace-web WORKSPACE other than the instance default

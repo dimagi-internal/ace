@@ -57,7 +57,7 @@ collide. Pin both per user in each account's `.env`
 | `ACE_MOBILE_EMULATOR_PORT` | unset (5554) | `5580` | Wired through `mcp/mobile/backends/avd.ts` as `emulator -port <N>`. Serial becomes `emulator-<port>`. |
 
 `.env` is per-user on macOS (`${CLAUDE_PLUGIN_DATA}` resolves under
-`~/Library/...`), so each account's `op inject` lands in a separate file.
+`~/Library/...`), so each account's `/ace:setup` writes a separate file.
 Re-run `/ace:doctor` after editing — its `[Mobile]` block confirms adb +
 emulator wake on the pinned ports.
 
@@ -226,7 +226,7 @@ true one-shot debugging artifacts go to `./tmp/ace-debug/`.
      SSO/MFA:** `/ace:connect-login` (headed Playwright).
 
 7. **Verify all `ACE_E2E_*` env vars are populated.**
-   - Read each from `process.env`. Any missing → tell the user to update 1Password and re-run `/ace:setup --force-env` (preserves local-only secrets; not a raw `op inject`), then stop.
+   - Read each from `process.env`. Any missing → tell the user to set it in ACE's Canopy vault on canopy-web (Settings → Credentials), re-run `/ace:setup --force-env` (preserves local-only secrets), and restart Claude Code, then stop.
 
 8. **Verify `${ACE_E2E_PHONE}` is pre-invited to a Connect opportunity (CRITICAL).**
 

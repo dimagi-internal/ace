@@ -9,7 +9,7 @@ ACE is a Claude Code plugin with the same architecture as canopy: agents orchest
 1. Install canopy (the plugin and CLI, 0.2.681 or newer; `/canopy:setup` signs you in to canopy-web).
 2. `/plugin install ace@canopy-agents`
 3. `/ace:setup` — binds this install to ONE ACE instance on canopy-web and fills
-   `$CLAUDE_PLUGIN_DATA/.env` from that instance's 1Password vault
+   `$CLAUDE_PLUGIN_DATA/.env` from ACE's Canopy vault on canopy-web
    (`canopy agent env --plugin ace`), alongside the npm install, the
    service-account key, the commcare-cli jar and a closing `/ace:doctor`.
    Several instances visible → `/ace:setup --agent <instance>`.
@@ -23,7 +23,8 @@ Before `/ace:setup` will succeed, you need:
 - **Node.js v18+** with `npm` (https://nodejs.org). Apple Silicon: `brew install node`.
 - **1Password CLI** (`op`). Mac: `brew install 1password-cli`. Other platforms: https://developer.1password.com/docs/cli/get-started/.
   - On Mac, also enable 1Password.app → Settings → Developer → "Connect with 1Password CLI" for biometric unlock — that's the smoothest auth path. Alternative: `op signin --account dimagi.1password.com` interactively when `/ace:setup` prompts.
-- **1Password account** at `dimagi.1password.com`, with **read access to your ACE instance's vault** — the one canopy-web records for it (`canopy agent env --plugin ace --print` names it; today `Agent-Ace`, and the legacy `AI-Agents` vault is no longer read). Ask ACE's owner, Jonathan Jackson, to grant access — `/ace:setup` names the vault and who grants it when access is missing. The full set of items ACE reads from that vault: `ACE - Google Service Account` (Document), `ACE - Open Chat Studio`, `ACE - CommCareHQ`, `ACE - Connect Labs`, `Content Generator API`, `connect-test-user`, plus two UUID-referenced API-key items (linked from `.env.tpl`).
+- **1Password account** at `dimagi.1password.com`, with **read access to your ACE instance's 1Password vault** (`canopy agent env --plugin ace --print` names it; today `Agent-Ace`) — the only item ACE still reads from it is the `ACE - Google Service Account` Document, which `/ace:setup` fetches as `gws-sa-key.json`. Ask ACE's owner, Jonathan Jackson, to grant access — `/ace:setup` names the vault and who grants it when access is missing.
+- **Access to ACE's Canopy vault on canopy-web** (agent `ace`, Settings → Credentials). It is the one place ACE's env secrets are declared; `/ace:setup` writes `.env` straight from it, with shared fleet values (the gog OAuth clients) layered in from the `dimagi/Shared` workspace vault.
 - **GitHub access to `dimagi-internal/ace`** (currently public; no extra step needed). `gh auth login` is not required unless you plan to push.
 - **Network reachability** to `openchatstudio.com`, `connect.dimagi.com`, `commcarehq.org`, `labs.connect.dimagi.com`, `googleapis.com`. Corp VPNs and proxies sometimes block these — `/ace:doctor` reports an explicit status per host.
 - **Playwright Chromium** browser binary. Auto-installed on first use; if you hit "browser doesn't open" errors, run `npx playwright install chromium`.
@@ -98,12 +99,12 @@ named slug).
 
 > **Note for new colleagues:** `/ace:ocs-bootstrap-template` is a *one-time
 > per ACE environment* setup, not a per-colleague step. The shared OCS
-> golden template ID lives in 1Password (`OCS_GOLDEN_TEMPLATE_ID`) and
+> golden template ID lives in ACE's Canopy vault (`OCS_GOLDEN_TEMPLATE_ID`) and
 > resolves into your `.env` automatically. You only run it if you're
 > standing up ACE against a new OCS team or refreshing the template's
 > system prompt. If `/ace:doctor` says
-> `ocs_env: ... OCS_GOLDEN_TEMPLATE_ID ... missing`, fix the 1Password
-> reference first — don't run the bootstrap.
+> `ocs_env: ... OCS_GOLDEN_TEMPLATE_ID ... missing`, fix the vault
+> value (then `/ace:setup --force-env`) first — don't run the bootstrap.
 
 ## Setup
 

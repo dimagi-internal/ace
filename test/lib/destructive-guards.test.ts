@@ -36,7 +36,7 @@ describe('assertNotGoldenTemplateChatbot', () => {
 });
 
 describe('assertNotGoldenTemplateCollection', () => {
-  // The key that actually exists in .env.tpl. The original test injected
+  // The key that actually exists in ACE's vault. The original test injected
   // OCS_GOLDEN_TEMPLATE_COLLECTION_ID, which is declared nowhere — so it
   // passed while the guard could never fire in production (ace#1112).
   const env = { OCS_SHARED_COLLECTION_ID: '350' } as NodeJS.ProcessEnv;
@@ -74,14 +74,16 @@ describe('assertDimagiOwnerRecipient', () => {
 
 describe('every guard env key is really declared (ace#1112)', () => {
   // The preventer. assertNotGoldenTemplateCollection shipped reading
-  // OCS_GOLDEN_TEMPLATE_COLLECTION_ID, a variable declared in no .env.tpl and
-  // set in no installed .env. It compared against undefined on every call, its
-  // unit test injected the phantom key by hand, and the audit item read as
-  // closed while the shared collection stayed deletable.
-  const tpl = readFileSync(join(__dirname, '../../.env.tpl'), 'utf8');
+  // OCS_GOLDEN_TEMPLATE_COLLECTION_ID, a variable declared nowhere and set in
+  // no installed .env. It compared against undefined on every call, its unit
+  // test injected the phantom key by hand, and the audit item read as closed
+  // while the shared collection stayed deletable. ACE's env names live only in
+  // its Canopy vault, which CI cannot read — so the check is that /ace:doctor
+  // probes each key live, which is where an unset one surfaces.
+  const doctor = readFileSync(join(__dirname, '../../bin/ace-doctor'), 'utf8');
 
-  it.each([...GUARD_ENV_KEYS])('%s is declared in .env.tpl', (key) => {
-    expect(new RegExp(`^${key}=`, 'm').test(tpl)).toBe(true);
+  it.each([...GUARD_ENV_KEYS])('%s is probed by /ace:doctor', (key) => {
+    expect(new RegExp(`get_env ${key}\\b`).test(doctor)).toBe(true);
   });
 
   it('the guard source reads no env key outside GUARD_ENV_KEYS', () => {

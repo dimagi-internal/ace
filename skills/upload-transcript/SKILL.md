@@ -29,8 +29,8 @@ silently enrolled every operator until 2026-07-28. Enforced by
 - `ACE_WEB_PAT_TOKEN` — env var; ACE's own ace-web token by default
   (`/ace:setup`), or yours via `/ace:ace-web-pat-mint`. Lives as a local-only secret in
   `${CLAUDE_PLUGIN_DATA}/.env` (preserved by `/ace:setup --force-env`,
-  which snapshots the local-only marker block; a raw `op inject` would
-  drop it). The
+  which snapshots the local-only marker block — the vault does not hold
+  this key). The
   resulting Session is attributed to whichever human signed in to
   ace-web at mint time.
 

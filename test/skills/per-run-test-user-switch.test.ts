@@ -32,7 +32,6 @@ const read = (rel: string) => readFileSync(join(ROOT, rel), 'utf-8');
  * belongs in this list — that is the point of the list.
  */
 const GUARDED_SURFACES = [
-  '.env.tpl',
   'skills/connect-opp-setup/SKILL.md',
   'skills/app-screenshot-capture/SKILL.md',
   'agents/qa-and-training.md',
@@ -41,7 +40,7 @@ const GUARDED_SURFACES = [
 /**
  * Normalize away everything that is presentation rather than content: line
  * wrapping, Markdown backticks/emphasis, and the `#` that prefixes every
- * continuation line of a `.env.tpl` comment. What survives is letters, digits
+ * continuation line of a shell comment. What survives is letters, digits
  * and the dots in `2.63.2` — enough that a genuine paraphrase still fails while
  * a legitimately re-wrapped or re-formatted copy still passes.
  */
@@ -116,21 +115,8 @@ describe('every guarded surface names the switch (ace#1289)', () => {
 });
 
 describe('the switch is not accidentally enabled in the repo (ace#1289)', () => {
-  it('.env.tpl ships the flag COMMENTED OUT', () => {
-    const active = read('.env.tpl')
-      .split('\n')
-      .filter((l) => !l.trimStart().startsWith('#'))
-      .filter((l) => l.includes(ACE_PER_RUN_TEST_USER_FLAG));
-    expect(
-      active,
-      'ACE_PER_RUN_TEST_USER must remain commented out in .env.tpl until the flip ' +
-        'precondition holds — an active line here turns it on for every machine that ' +
-        'runs /ace:setup --force-env.',
-    ).toEqual([]);
-  });
-
   it('no shipped config or script sets the flag on', () => {
-    // Guards against the switch being enabled somewhere that is not .env.tpl —
+    // Guards against the switch being enabled in shipped config —
     // a hook, a command, a setup script.
     for (const rel of ['bin/ace-setup', 'config/gating.json']) {
       let text: string;

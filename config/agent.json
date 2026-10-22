@@ -29,7 +29,6 @@
       "note": "Phase 3 app build (/nova:autobuild); needs NOVA_API_KEY from .env"
     }
   ],
-  "provisioning": ".env.tpl + op inject (1Password AI-Agents; see /ace:setup) \u2014 no canopy provision manifest",
   "repo": "dimagi-internal/ace",
   "avatar": ""
 }

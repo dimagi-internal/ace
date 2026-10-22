@@ -27,11 +27,12 @@
  *   as a fenced command block, and both are how an operator or an agent
  *   actually gets there.
  * - **Reads a secret** — it reads a `process.env` variable that the
- *   plugin-data `.env` is the source of truth for. That set is DERIVED from
- *   `.env.tpl`, the declared contract for what lives in `.env`, plus a small
- *   documented set of vars real `.env` files carry that the template does not
- *   declare (`EXTRA_GUARDED_VARS`). Anchoring to `.env.tpl` means adding a key
- *   to the template automatically widens the ratchet.
+ *   plugin-data `.env` is the source of truth for. ACE's `.env` is written
+ *   from its Canopy vault on canopy-web, which CI cannot read, so the set is
+ *   the vault's name FAMILIES (`PLUGIN_ENV_NAME`) plus a small documented set
+ *   of vars real `.env` files carry outside those families
+ *   (`EXTRA_GUARDED_VARS`). A family match rather than a name list means a new
+ *   vault key in an existing family widens the ratchet with no repo edit.
  *
  * A script matching both must call `loadPluginEnv(import.meta.url)` BEFORE its
  * first guarded read. Position matters, not mere presence: ESM evaluates the
@@ -61,19 +62,26 @@ import * as path from 'node:path';
 import ts from 'typescript';
 
 /**
- * Variables a real `<plugin-data>/.env` supplies that `.env.tpl` does not
- * declare. Each needs a reason — this is the only hand-maintained input, and
+ * The name families ACE's Canopy vault writes into `.env` (canopy
+ * `agent-runtime.md` § One declaration — the vault is the only list of names).
+ * Over-matching is safe: it only asks a script to load `.env` before reading.
+ */
+export const PLUGIN_ENV_NAME =
+  /^(?:ACE_(?:HQ|E2E|WEB|DRIVE|TRAINING|PARTNERSHIP|AVD|CONNECT_APK)_|OCS_|CONTENT_GENERATOR_|ELEVENLABS_|WORK_ORDER_|CONNECT_BASE_URL$|LABS_MCP_TOKEN$|NOVA_API_KEY$|CANOPY_WEB_PAT$|GDRIVE_ROOT_FOLDER$)/;
+
+/**
+ * Variables a real `<plugin-data>/.env` supplies outside `PLUGIN_ENV_NAME`. Each needs a reason — this is the only hand-maintained input, and
  * it must stay small or it becomes the stale list this module exists to avoid.
  */
 export const EXTRA_GUARDED_VARS: Record<string, string> = {
   // Set in `.env` on a machine pointed at a non-production Nova; the ace#1957
   // regression test writes it into its throwaway `.env` for exactly this
-  // reason. Absent from `.env.tpl` because production is the default.
+  // reason. Not in the vault because production is the default.
   NOVA_MCP_URL: 'non-default Nova host, read from .env when present',
   // Same shape for connect-labs.
   LABS_BASE_URL: 'non-default connect-labs host, read from .env when present',
   // ace#1969 closed the `ACE_WEB_BASE` residual this list used to carry: every
-  // reader now uses the declared `ACE_WEB_BASE_URL`, which `.env.tpl` supplies,
+  // reader now uses the declared `ACE_WEB_BASE_URL`, which the vault supplies,
   // so it needs no entry here. `RETIRED_ENV_SPELLINGS` below keeps it retired.
   // The Google SA key path. ACE installs the key beside `.env` in plugin data,
   // and every Drive-touching script honours an override from the environment.
@@ -89,19 +97,9 @@ export const EXEMPT_SCRIPTS: Record<string, string> = {};
 /** The directories a script must be named in to count as Bash-reachable. */
 export const REFERENCE_ROOTS = ['skills', 'agents', 'commands'];
 
-/** Parse the `KEY=` names declared in `.env.tpl`. */
-export function parseEnvTemplateKeys(tplSource: string): string[] {
-  const keys = new Set<string>();
-  for (const line of tplSource.split('\n')) {
-    const m = /^([A-Z][A-Z0-9_]*)=/.exec(line);
-    if (m) keys.add(m[1]);
-  }
-  return [...keys].sort();
-}
-
-/** The full guarded set: `.env.tpl` keys plus the documented extras. */
-export function guardedVars(tplSource: string): Set<string> {
-  return new Set([...parseEnvTemplateKeys(tplSource), ...Object.keys(EXTRA_GUARDED_VARS)]);
+/** Whether `.env` is the source of truth for `name`: a vault family or a documented extra. */
+export function isGuardedVar(name: string): boolean {
+  return PLUGIN_ENV_NAME.test(name) || name in EXTRA_GUARDED_VARS;
 }
 
 export interface EnvRead {
@@ -222,8 +220,6 @@ function walk(dir: string, out: string[] = []): string[] {
  * ratchet's failures.
  */
 export function discoverBashReachableScripts(repoRoot: string): ScriptFinding[] {
-  const guarded = guardedVars(fs.readFileSync(path.join(repoRoot, '.env.tpl'), 'utf8'));
-
   const referenceFiles: Array<{ rel: string; text: string }> = [];
   for (const root of REFERENCE_ROOTS) {
     for (const f of walk(path.join(repoRoot, root))) {
@@ -247,7 +243,7 @@ export function discoverBashReachableScripts(repoRoot: string): ScriptFinding[] 
 
     const source = fs.readFileSync(path.join(scriptsDir, name), 'utf8');
     const analysis = analyzeScriptSource(rel, source);
-    const reads = analysis.envReads.filter((r) => guarded.has(r.variable));
+    const reads = analysis.envReads.filter((r) => isGuardedVar(r.variable));
     if (reads.length === 0) continue;
 
     findings.push({
@@ -269,7 +265,7 @@ export function discoverBashReachableScripts(repoRoot: string): ScriptFinding[] 
 // The ratchet above asks "does this script load `.env` at all?". It cannot ask
 // the next question, and that question is where the ace-web host actually
 // broke: a reader can load `.env` perfectly and still read a name `.env` never
-// sets. `.env.tpl` declared the host as `ACE_WEB_BASE_URL`; the script, two
+// sets. The env contract named the host `ACE_WEB_BASE_URL`; the script, two
 // commands and six skills read `ACE_WEB_BASE`; `skills/sweep-ace-web` read a
 // third name, `ACE_WEB_URL`. None of the three met, so every one of those paths
 // fell through to a hardcoded `https://labs.connect.dimagi.com/ace` no matter
@@ -278,19 +274,22 @@ export function discoverBashReachableScripts(repoRoot: string): ScriptFinding[] 
 // half follows while the script/skill half does not.
 //
 // The guard is therefore: every `ACE_WEB_*` name a runnable or instructing
-// surface uses must be DECLARED in `.env.tpl`. Anchoring to the template rather
-// than to a list means the fix cannot rot — a fourth spelling fails CI the day
-// it lands, and legitimising one is a one-line template edit that also makes it
-// visible to the ratchet above and to `/ace:setup`.
-//
-// `declaredEnvNames` deliberately accepts a COMMENTED `# KEY=` line, unlike
-// `parseEnvTemplateKeys` above. The two ask different questions: the ratchet
-// needs the keys `.env` will actually carry a value for, while this guard needs
-// the names the contract acknowledges. `ACE_WEB_PAT_TOKEN` ships commented
-// because it is minted per-machine, and it is no less declared for that.
+// surface uses must be one of `DECLARED_ENV_NAMES`. This is a SPELLING
+// contract, not a secrets list — the values live in ACE's Canopy vault (or, for
+// the per-machine ones, in `.env`'s local-only block). A fourth spelling fails
+// CI the day it lands; legitimising one is a one-line edit here.
+
+/** The `ACE_WEB_*` env names ACE reads — the vault's two plus three per-machine. */
+export const DECLARED_ENV_NAMES: ReadonlySet<string> = new Set([
+  'ACE_WEB_BASE_URL', // vault
+  'ACE_WEB_WORKSPACE', // vault
+  'ACE_WEB_PAT_TOKEN', // minted per machine by /ace:setup (local-only block)
+  'ACE_WEB_ROOT', // local ace-web checkout, optional
+  'ACE_WEB_UPLOAD_SESSIONS', // session-upload opt-in, optional
+]);
 
 /**
- * Names retired in favour of a spelling `.env.tpl` declares.
+ * Names retired in favour of a declared spelling.
  *
  * A retired name is not merely unused — it must not be silently IGNORED
  * either. `ACE_WEB_BASE=http://localhost:8000` was the documented way to aim
@@ -318,19 +317,6 @@ export const RETIRED_ENV_SPELLINGS: Record<
 export const SPELLING_SCAN_ROOTS = ['scripts', 'skills', 'commands', 'agents', 'bin', 'mcp', 'lib'];
 
 /**
- * Every `KEY=` name `.env.tpl` acknowledges, commented lines included.
- * See the note above on why this differs from `parseEnvTemplateKeys`.
- */
-export function declaredEnvNames(tplSource: string): Set<string> {
-  const names = new Set<string>();
-  for (const line of tplSource.split('\n')) {
-    const m = /^#?\s*([A-Z][A-Z0-9_]*)=/.exec(line);
-    if (m) names.add(m[1]);
-  }
-  return names;
-}
-
-/**
  * Env-var names a non-TypeScript source references: `$NAME`, `${NAME…}` (any
  * expansion form) and `NAME=` assignments, which is how a shell override is
  * both documented and used.
@@ -355,13 +341,13 @@ export interface SpellingUse {
 }
 
 /**
- * Scan `SPELLING_SCAN_ROOTS` for uses of `<prefix>*` env names that `.env.tpl`
- * does not declare. `.ts` files go through the TypeScript parser so a name that
+ * Scan `SPELLING_SCAN_ROOTS` for uses of `<prefix>*` env names that
+ * `DECLARED_ENV_NAMES` does not list. `.ts` files go through the TypeScript parser so a name that
  * merely appears in prose or a diagnostic string does not count as a read;
  * everything else is scanned as shell/markdown.
  */
 export function findUndeclaredEnvSpellings(repoRoot: string, prefix: string): SpellingUse[] {
-  const declared = declaredEnvNames(fs.readFileSync(path.join(repoRoot, '.env.tpl'), 'utf8'));
+  const declared = DECLARED_ENV_NAMES;
   const uses: SpellingUse[] = [];
 
   for (const root of SPELLING_SCAN_ROOTS) {

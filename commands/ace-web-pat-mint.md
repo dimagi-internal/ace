@@ -78,7 +78,7 @@ ACE_WEB_BASE_URL=http://localhost:8000 node "$ACE_ROOT/node_modules/tsx/dist/cli
 6. **Local listener** verifies the state nonce, extracts the token,
    writes it to `${CLAUDE_PLUGIN_DATA}/.env` inside the
    `# --- ACE local-only secrets ---` marker block (so future
-   `op inject` calls preserve it), responds with a "Token captured"
+   `/ace:setup --force-env` rewrites preserve it), responds with a "Token captured"
    page, and shuts down.
 
 ## Output
@@ -134,4 +134,4 @@ internet beyond the redirect to your own laptop:
 - `apps/auth/cli_authorize_views.py` — ace-web side (pull #250)
 - `bin/ace-doctor` — `[Auth liveness]` block verifies the token
 - `skills/upload-transcript/SKILL.md` — primary consumer
-- `.env.tpl` — declares `ACE_WEB_PAT_TOKEN` as a local-only secret
+- `bin/ace-setup` — preserves `ACE_WEB_PAT_TOKEN` (a key ACE's Canopy vault does not hold) as a local-only secret

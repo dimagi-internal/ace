@@ -6,7 +6,7 @@
  * ace-web PersonalToken bound to the human operator (the one signed
  * into ace-web in their normal browser), then writes the raw token to
  * `${CLAUDE_PLUGIN_DATA}/.env` as ACE_WEB_PAT_TOKEN inside the
- * "local-only secrets" marker block (so `op inject` preserves it).
+ * "local-only secrets" marker block (so `/ace:setup` preserves it).
  *
  * Replaces the deployment-wide ACE_E2E_AUTH_TOKEN shared secret. See
  * docs/superpowers/specs/2026-05-08-ace-web-per-user-pat-design.md for
@@ -57,14 +57,14 @@ import { loadPluginEnv } from '../lib/load-plugin-env.js';
 // already too late for a read at module level.
 loadPluginEnv(import.meta.url);
 
-// ace#1969 — read the name `.env.tpl` declares. This used to read
+// ace#1969 — read the declared name. This used to read
 // `ACE_WEB_BASE`, which nothing provisions, so a machine pointed at a
 // non-production ace-web still minted (and wrote) a PAT for production with no
 // error, the hardcoded default being a real reachable host.
 //
-// The default stays: it is the same value `.env.tpl` declares, so it cannot
-// contradict a provisioned machine, only cover an un-provisioned one.
-// `test/lib/bash-reachable-scripts.test.ts` pins the two together.
+// The default stays: it is the same value ACE's Canopy vault holds, so it
+// cannot contradict a provisioned machine, only cover an un-provisioned one.
+// `test/lib/bash-reachable-scripts.test.ts` pins every minter to one value.
 const ACE_WEB_BASE_URL = (
   process.env.ACE_WEB_BASE_URL || 'https://labs.connect.dimagi.com/ace'
 ).replace(/\/$/, '');
@@ -195,8 +195,8 @@ export async function writeTokenToEnv(envPath: string, key: string, value: strin
     const block =
       (content.length && !content.endsWith('\n') ? '\n' : '') +
       `\n${MARKER_HEADER}\n` +
-      `# Set by operator, NOT 1Password-backed. Keys here must NOT appear in .env.tpl;\n` +
-      `# bin/ace-setup auto-preserves them on re-inject. Edit values directly in this file.\n` +
+      `# Set by operator, NOT in ACE's Canopy vault. Keys here must NOT be vault keys;\n` +
+      `# bin/ace-setup auto-preserves them on re-fill. Edit values directly in this file.\n` +
       `${newLine}\n`;
     content = content + block;
   } else if (keyRe.test(content)) {
