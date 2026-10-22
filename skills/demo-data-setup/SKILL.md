@@ -1621,6 +1621,13 @@ shows it (`demo-narrative` step 3b's on-screen rule).
    patch: {description: '(synthetic, ace <opp>/<run-id>)'}})`) — § C7 "Sweep
    handles", ace#2733. Bind WITHOUT
    a home-scope key (see `semantic-registry-author` § 4 binding gotcha).
+   **Then bind the companion worker review too.** Labs creates it UNBOUND: `workflow_get` on
+   it reads `registry: {source: "disk", name: "kmc", note: "Unbound: computes from the on-disk
+   registry..."}`, so a worker's drill-down grades against kangaroo-care definitions on any
+   other programme (observed live on connect-fi/20261018-1440, worker review 11442, read
+   2026-10-21). `workflow_update_definition({workflow_id: <companion>, program_id, patch:
+   {registry_source: {registry_id, program_id}}, expected_version})`, then re-read with
+   `workflow_get` and require `registry.source: "record"` with your registry id.
 2. The template's `visits` pipeline carries only Connect's base columns. Replace
    its schema with the registry's Layer-1 fields (`pipeline_update_schema`,
    `terminal_stage: visit_level`, one `{name, path, aggregation: first,

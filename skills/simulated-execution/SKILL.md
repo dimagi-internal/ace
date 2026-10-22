@@ -153,7 +153,12 @@ procurement and fulfilment.
    - **partner** from `partner_template` (an `indicator_opp_report`: the LLO's own view with its
      workers' table);
    - **worker** from `worker_template` (`indicator_worker_review`: the drill-down a worker row
-     opens).
+     opens). A clone of it comes UNBOUND (`registry.source: "disk"`, labs' on-disk `kmc`
+     registry), so bind it with `workflow_update_definition({patch: {registry_source:
+     {registry_id, program_id}}})` and re-read. Then create its one run (`workflow_create_run`,
+     the window as its period) and point the programme and partner reports' `config.worker_review`
+     at `{workflow_id, run_id}` of the clone; a clone keeps the SOURCE's, so worker rows would
+     otherwise open Phase 7's workers (connect-fi rebuild, 2026-10-21).
    A linked clone keeps the registry binding and pipelines, and also the SOURCE cascade's
    opportunity list and description. So repoint each:
    `workflow_update_opportunity_ids({workflow_id, opportunity_id: <synthetic opp>, opportunity_ids:
@@ -169,8 +174,8 @@ procurement and fulfilment.
    `workflow_ensure_visit_cache` and retry, never build history over a cold cache. Then
    `workflow_rebuild_history({definition_id, opportunity_id, cadence: "weekly", start: week1.start,
    end: weekN.end, limit: N})`; while `done` is false call again with `start = next_start` and the
-   same `end`; follow a `job_id` with `job_status`. Save one current run of the worker review
-   (`workflow_create_run`) so its page opens on the last week.
+   same `end`; follow a `job_id` with `job_status`. (The worker review keeps no saved runs; its
+   one run was created in Step 5.)
 7. **The weeks.** With `supply_chain`, in two passes, because labs reads the visits into the
    ledger on an hourly beat and there is no on-demand trigger over MCP:
    1. **Write every week** (`supply-chain-operate` in `mode: write`, w = 1..N, in order):
