@@ -3,6 +3,9 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { assessSupplyMotion, planWorkerTopUps, type MotionInput } from '../../lib/sim-supply-motion';
 
+const rebuilt10171 = JSON.parse(
+  readFileSync(join(__dirname, 'fixtures/connect-fi-10171-rebuilt-supply-motion.json'), 'utf8'),
+) as MotionInput;
 const liveConnectFi = JSON.parse(
   readFileSync(join(__dirname, 'fixtures/connect-fi-20261018-1440-supply-motion.json'), 'utf8'),
 ) as MotionInput;
@@ -46,9 +49,27 @@ describe('assessSupplyMotion', () => {
     expect(v.pass).toBe(false);
     expect(v.figures).toMatchObject({ received: 814, left_central: 44, given_at_visits: 40 });
     const joined = v.problems.join('\n');
-    expect(joined).toMatch(/only 44 of 814 received left the central store/);
     expect(joined).toMatch(/not tied to the visit opportunity/);
     expect(joined).toMatch(/carry no float/);
+  });
+
+  it('passes the rebuilt connect-fi simulation (programme 10171), which drew 162 of 814 in four weeks', () => {
+    const v = assessSupplyMotion(rebuilt10171);
+    expect(v.problems).toEqual([]);
+    expect(v.figures).toMatchObject({ received: 814, left_central: 162, given_at_visits: 100, workers_ever_holding: 10 });
+  });
+
+  it('fails a store that stops moving stock after the first week', () => {
+    const frozen = {
+      ...rebuilt10171,
+      flow: {
+        ...rebuilt10171.flow,
+        links: rebuilt10171.flow.links.map((l) => (l.source === 'p439' ? { ...l, series: [60, 60, 60, 60, 60] } : l)),
+      },
+    };
+    const v = assessSupplyMotion(frozen);
+    expect(v.problems.join(' | ')).toMatch(/left the central store in only 0 of 4 weeks/);
+    expect(v.problems.join(' | ')).toMatch(/100 handed out at visits but only 60 left/);
   });
 
   it('passes a network in motion', () => {

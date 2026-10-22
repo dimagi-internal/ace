@@ -124,8 +124,12 @@ the "Workers" page then showed nothing given at visits.
 
 **Every write** carries `source = buildSource({scope, skill: "supply-chain-operate", step, key, sender, sentOn, simulated, today})`
 from `lib/supply-chain-ref.ts`, with `key` = `week-<w>:<natural key>` (`week-2:syn-flw-007`), so a
-re-run of a week replays instead of writing twice. Dates are `simulatedDate(week_start, n)`: transfer
-early in the week, distribution after it arrives, counts on the last working day.
+re-run of a week replays instead of writing twice. Dates are `simulatedDate(week_start, n)`: the
+week's transfer, receipt and top-up on its FIRST day (`week_start`), counts on its LAST day
+(`week_end`), after that day's visits. labs compares a count with the ledger at the end of the count
+day, so a count dated before the week's last visits reads as every worker under-reporting
+(connect-fi rebuild: Saturday counts against Sunday handovers put a -4 to -9 variance on all ten
+workers), and a top-up dated on the count day lands in the ledger the count is compared with.
 
 ## MCP Tools Used
 

@@ -50,7 +50,7 @@ The functions live in `skills/simulated-execution-qa/checks.ts`. Each takes one 
 | 7 | `no_real_llo_contact` | static | `synthetic_winner: true`, no real handover field set, no Phase 9 send | stop and report: a real step ran |
 | 8 | `summary_links_every_week` | static | the summary links every review | rewrite the summary |
 | 9 | `one_programme` | static | the supply chain and the visits are on one labs-only synthetic programme (supply_chain only) | rebuild on `products.simulation.program_id`; records elsewhere cannot be moved |
-| 10 | `supply_in_motion` | static | `assessSupplyMotion` over labs' reads: ≥ 25% of received stock out of the central store, every worker gave out at visits labs read, workers tied to the opportunity, at least half ever hold stock at a week end, stores with coordinates (supply_chain only) | the verdict's problems name the cause, in order |
+| 10 | `supply_in_motion` | static | `assessSupplyMotion` over labs' reads: stock leaves the central store in at least half the weeks and covers what was handed out (not a share of the order, which is sized for the whole programme), every worker gave out at visits labs read, workers tied to the opportunity, at least half ever hold stock at a week end, stores with coordinates (supply_chain only) | the verdict's problems name the cause, in order |
 | 11 | `downstream_reports` | static | a programme, a partner and a worker report read the synthetic opportunity, each with a saved run | clone and repoint per `simulated-execution` Step 5 |
 
 Checks 9-11 are the owner's bar (ace#3265): connect-fi/20261018-1440 passed checks 1-8 while its

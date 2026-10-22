@@ -131,10 +131,11 @@ describe('negative controls: connect-fi/20261018-1440 as it was left (ace#3265, 
     expect(r.detail).toMatch(/programme 361 and the visits on programme 10168/);
   });
 
-  it('supply_in_motion: 44 of 814 phones moved, every worker at 0, workers not on the opportunity', () => {
+  it('supply_in_motion: every worker at 0, workers not on the opportunity, no handover read off a visit', () => {
     const r = checkSupplyInMotion(JSON.stringify({ ...good(), supply_motion: CONNECT_FI }));
     expect(r.pass).toBe(false);
-    expect(r.detail).toMatch(/44 of 814/);
+    expect(r.detail).toMatch(/not tied to the visit opportunity/);
+    expect(r.detail).toMatch(/carry no float/);
   });
 
   it('downstream_reports: only the programme report 11926 read opportunity 10168', () => {

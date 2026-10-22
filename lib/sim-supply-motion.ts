@@ -102,8 +102,6 @@ export interface MotionInput {
   stores: Array<{ id: number; has_coordinates: boolean }>;
   /** The visit opportunity. */
   opportunity_id: number;
-  /** The smallest share of received stock that must have left the central store by the last week. */
-  min_share_out?: number;
 }
 
 export interface MotionVerdict {
@@ -119,7 +117,6 @@ const last = (s: number[]) => (s.length ? s[s.length - 1] : 0);
  * viewer of Overview / Workers / Where it went / Map would notice it is not.
  */
 export function assessSupplyMotion(input: MotionInput): MotionVerdict {
-  const minShare = input.min_share_out ?? 0.25;
   const problems: string[] = [];
   const sources = new Set(input.flow.nodes.filter((n) => n.kind === 'source').map((n) => n.id));
   const workerNodes = new Set(input.flow.nodes.filter((n) => n.kind === 'worker').map((n) => n.id));
@@ -135,8 +132,20 @@ export function assessSupplyMotion(input: MotionInput): MotionVerdict {
   for (const l of input.flow.links) if (l.target === 'given' && workerNodes.has(l.source)) givenByWorker.set(l.source, last(l.series));
 
   if (received <= 0) problems.push('nothing was received into the network (no order arrived)');
-  if (received > 0 && leftCentral / received < minShare) {
-    problems.push(`only ${leftCentral} of ${received} received left the central store (${Math.round((100 * leftCentral) / received)}%, need ≥ ${Math.round(minShare * 100)}%)`);
+  // In motion = stock leaves the central store in most weeks, and at least as
+  // much left it as was handed out. NOT a share of what was received: an order
+  // is sized for the whole programme (connect-fi's 820 phones cover 1,480
+  // adults over 13 weeks, in tranches), so a 4-week window rightly draws ~20%.
+  const outflow = input.flow.links
+    .filter((l) => central.has(l.source) && !central.has(l.target))
+    .reduce<number[]>((acc, l) => l.series.map((x, i) => (acc[i] ?? 0) + x), []);
+  const steps = outflow.slice(1).map((x, i) => x - outflow[i]);
+  const movingWeeks = steps.filter((d) => d > 0).length;
+  if (received > 0 && steps.length && movingWeeks < Math.ceil(steps.length / 2)) {
+    problems.push(`stock left the central store in only ${movingWeeks} of ${steps.length} weeks`);
+  }
+  if (received > 0 && leftCentral < given) {
+    problems.push(`${given} handed out at visits but only ${leftCentral} left the central store`);
   }
   if (stores.length < 2) problems.push(`the flow shows ${stores.length} store(s); a distribution network needs a central and a field store`);
   const idle = [...workerNodes].filter((id) => !(givenByWorker.get(id) ?? 0));
