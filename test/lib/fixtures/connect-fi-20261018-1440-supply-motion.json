@@ -1,0 +1,462 @@
+{
+ "_source": "live reads 2026-10-21, labs programme 361 item 275 (connect-fi/20261018-1440): supply_chain_stock_flow; supply_chain_worker_stock with opportunity_id=10168 returned workers: []; every worker on_hand 0 at every week end (supply-chain-operate_week-<w>_stock.yaml)",
+ "flow": {
+  "nodes": [
+   {
+    "id": "p438",
+    "kind": "store",
+    "name": "In transit"
+   },
+   {
+    "id": "p426",
+    "kind": "store",
+    "name": "Moroto LLO phone store (simulated)"
+   },
+   {
+    "id": "p427",
+    "kind": "store",
+    "name": "Parish field store, Moroto (simulated)"
+   },
+   {
+    "id": "c323",
+    "kind": "source"
+   },
+   {
+    "id": "given",
+    "kind": "sink"
+   },
+   {
+    "id": "lost",
+    "kind": "sink"
+   },
+   {
+    "id": "p428",
+    "kind": "worker"
+   },
+   {
+    "id": "p429",
+    "kind": "worker"
+   },
+   {
+    "id": "p430",
+    "kind": "worker"
+   },
+   {
+    "id": "p431",
+    "kind": "worker"
+   },
+   {
+    "id": "p432",
+    "kind": "worker"
+   },
+   {
+    "id": "p433",
+    "kind": "worker"
+   },
+   {
+    "id": "p434",
+    "kind": "worker"
+   },
+   {
+    "id": "p435",
+    "kind": "worker"
+   },
+   {
+    "id": "p436",
+    "kind": "worker"
+   },
+   {
+    "id": "p437",
+    "kind": "worker"
+   }
+  ],
+  "links": [
+   {
+    "source": "c323",
+    "target": "p426",
+    "series": [
+     814,
+     814,
+     814,
+     814,
+     814,
+     814,
+     814
+    ]
+   },
+   {
+    "source": "p426",
+    "target": "p438",
+    "series": [
+     0,
+     3,
+     19,
+     34,
+     44,
+     44,
+     44
+    ]
+   },
+   {
+    "source": "p438",
+    "target": "lost",
+    "series": [
+     0,
+     0,
+     4,
+     4,
+     4,
+     4,
+     4
+    ]
+   },
+   {
+    "source": "p438",
+    "target": "p427",
+    "series": [
+     0,
+     3,
+     15,
+     30,
+     40,
+     40,
+     40
+    ]
+   },
+   {
+    "source": "p427",
+    "target": "p428",
+    "series": [
+     0,
+     0,
+     0,
+     2,
+     3,
+     3,
+     3
+    ]
+   },
+   {
+    "source": "p428",
+    "target": "given",
+    "series": [
+     0,
+     0,
+     0,
+     2,
+     3,
+     3,
+     3
+    ]
+   },
+   {
+    "source": "p427",
+    "target": "p429",
+    "series": [
+     0,
+     0,
+     0,
+     1,
+     2,
+     2,
+     2
+    ]
+   },
+   {
+    "source": "p429",
+    "target": "given",
+    "series": [
+     0,
+     0,
+     0,
+     1,
+     2,
+     2,
+     2
+    ]
+   },
+   {
+    "source": "p427",
+    "target": "p430",
+    "series": [
+     0,
+     1,
+     2,
+     3,
+     4,
+     4,
+     4
+    ]
+   },
+   {
+    "source": "p430",
+    "target": "given",
+    "series": [
+     0,
+     1,
+     2,
+     3,
+     4,
+     4,
+     4
+    ]
+   },
+   {
+    "source": "p427",
+    "target": "p431",
+    "series": [
+     0,
+     0,
+     0,
+     0,
+     4,
+     4,
+     4
+    ]
+   },
+   {
+    "source": "p431",
+    "target": "given",
+    "series": [
+     0,
+     0,
+     0,
+     0,
+     4,
+     4,
+     4
+    ]
+   },
+   {
+    "source": "p427",
+    "target": "p432",
+    "series": [
+     0,
+     1,
+     4,
+     6,
+     8,
+     8,
+     8
+    ]
+   },
+   {
+    "source": "p432",
+    "target": "given",
+    "series": [
+     0,
+     1,
+     4,
+     6,
+     8,
+     8,
+     8
+    ]
+   },
+   {
+    "source": "p427",
+    "target": "p433",
+    "series": [
+     0,
+     0,
+     3,
+     6,
+     7,
+     7,
+     7
+    ]
+   },
+   {
+    "source": "p433",
+    "target": "given",
+    "series": [
+     0,
+     0,
+     3,
+     6,
+     7,
+     7,
+     7
+    ]
+   },
+   {
+    "source": "p427",
+    "target": "p434",
+    "series": [
+     0,
+     0,
+     0,
+     3,
+     3,
+     3,
+     3
+    ]
+   },
+   {
+    "source": "p434",
+    "target": "given",
+    "series": [
+     0,
+     0,
+     0,
+     3,
+     3,
+     3,
+     3
+    ]
+   },
+   {
+    "source": "p427",
+    "target": "p435",
+    "series": [
+     0,
+     0,
+     1,
+     2,
+     2,
+     2,
+     2
+    ]
+   },
+   {
+    "source": "p435",
+    "target": "given",
+    "series": [
+     0,
+     0,
+     1,
+     2,
+     2,
+     2,
+     2
+    ]
+   },
+   {
+    "source": "p427",
+    "target": "p436",
+    "series": [
+     0,
+     1,
+     4,
+     5,
+     5,
+     5,
+     5
+    ]
+   },
+   {
+    "source": "p436",
+    "target": "given",
+    "series": [
+     0,
+     1,
+     4,
+     5,
+     5,
+     5,
+     5
+    ]
+   },
+   {
+    "source": "p427",
+    "target": "p437",
+    "series": [
+     0,
+     0,
+     1,
+     2,
+     2,
+     2,
+     2
+    ]
+   },
+   {
+    "source": "p437",
+    "target": "given",
+    "series": [
+     0,
+     0,
+     1,
+     2,
+     2,
+     2,
+     2
+    ]
+   }
+  ]
+ },
+ "workers_on_opportunity": [],
+ "on_hand_by_week": {
+  "moroto_w01": {
+   "1": 0,
+   "2": 0,
+   "3": 0,
+   "4": 0
+  },
+  "moroto_w02": {
+   "1": 0,
+   "2": 0,
+   "3": 0,
+   "4": 0
+  },
+  "moroto_w03": {
+   "1": 0,
+   "2": 0,
+   "3": 0,
+   "4": 0
+  },
+  "moroto_w04": {
+   "1": 0,
+   "2": 0,
+   "3": 0,
+   "4": 0
+  },
+  "moroto_w05": {
+   "1": 0,
+   "2": 0,
+   "3": 0,
+   "4": 0
+  },
+  "moroto_w06": {
+   "1": 0,
+   "2": 0,
+   "3": 0,
+   "4": 0
+  },
+  "moroto_w07": {
+   "1": 0,
+   "2": 0,
+   "3": 0,
+   "4": 0
+  },
+  "moroto_w08": {
+   "1": 0,
+   "2": 0,
+   "3": 0,
+   "4": 0
+  },
+  "moroto_w09": {
+   "1": 0,
+   "2": 0,
+   "3": 0,
+   "4": 0
+  },
+  "moroto_w10": {
+   "1": 0,
+   "2": 0,
+   "3": 0,
+   "4": 0
+  }
+ },
+ "stores": [
+  {
+   "id": 426,
+   "has_coordinates": false
+  },
+  {
+   "id": 427,
+   "has_coordinates": false
+  }
+ ],
+ "opportunity_id": 10168
+}

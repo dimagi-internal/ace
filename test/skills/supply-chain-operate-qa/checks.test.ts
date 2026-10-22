@@ -225,6 +225,29 @@ describe('distributions_reconcile_to_issue_events (ace#3216, connect-fi/20261018
     expect(r.detail).toMatch(/syn-flw-001: 3 issue events/);
   });
 
+  it('with a float, the distribution is the planned top-up, even for a worker with no handovers this week (ace#3265)', () => {
+    const floated = withIssues((p, rb) => {
+      p.issue_events = [
+        { connect_username: 'syn-flw-001', issue_events: 3, quantity: '3', top_up: '6' },
+        { connect_username: 'syn-flw-002', issue_events: 0, quantity: '0', top_up: '2' },
+      ];
+      p.distributions = [
+        { connect_username: 'syn-flw-001', quantity: '6' },
+        { connect_username: 'syn-flw-002', quantity: '2' },
+      ];
+      rb.distribution_lines = p.distributions.map((d) => ({ ...d }));
+    });
+    expect(checkDistributionsReconcileToIssueEvents(floated).pass).toBe(true);
+  });
+
+  it('with a float, resupplying exactly the handovers fails (every worker back at zero)', () => {
+    const r = checkDistributionsReconcileToIssueEvents(
+      withIssues((p) => (p.issue_events = [{ connect_username: 'syn-flw-001', issue_events: 3, quantity: '3', top_up: '6' }])),
+    );
+    expect(r.pass).toBe(false);
+    expect(r.detail).toMatch(/distributed 3, the float top-up gives 6/);
+  });
+
   it('fails when labs holds a different distribution than the issue events give', () => {
     const r = checkDistributionsReconcileToIssueEvents(withIssues((_p, rb) => (rb.distribution_lines = [{ connect_username: 'syn-flw-001', quantity: '4' }])));
     expect(r.pass).toBe(false);

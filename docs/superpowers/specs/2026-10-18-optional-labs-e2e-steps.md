@@ -147,7 +147,7 @@ All of it is new. The Labs surface is large (≈90 `supply_chain_*` atoms) and w
 
 ### F0. Contracts every supply-chain skill follows
 
-- **Explicit parameters, no run coupling.** Each skill takes `program_id` (the Connect program, which is the labs programme) plus its own ids. Inside `/ace:run` they come from `run_state.yaml.phases.execution-management.products.supply_chain.*`; outside a run they are passed directly. This follows the new Inputs contract from the audit (`skills/README.md` § Inputs → parameters + resolver). These skills are the first ones built to it.
+- **Explicit parameters, no run coupling.** Each skill takes `program_id` plus its own ids. **On the simulated track `program_id` is the labs-only synthetic programme the visits are on, never the Connect program** (amended 2026-10-21, § L): labs reads visits into stock only within one synthetic programme. Inside `/ace:run` they come from `run_state.yaml.phases.execution-management.products.supply_chain.*`; outside a run they are passed directly. This follows the new Inputs contract from the audit (`skills/README.md` § Inputs → parameters + resolver). These skills are the first ones built to it.
 - **`source.ref` is deterministic.** Every write carries `source: {ref, sender, sent_on}`. `lib/supply-chain-ref.ts` builds `ref = ace:<run-id>:<skill>:<step>:<stable-key>`. Labs replays the first result when the ref and payload repeat, so a re-run or resume is idempotent with no read-first. `sent_on` is the simulated date (§ G).
 - **Never compute what the counterparty states.** `quote_record` says: "Do NOT compute anything". Leave `freight_basis` and `duties_basis` as `not_specified` and `pack_spec_source` as `not_stated` where the (simulated) supplier didn't say. Simulated quotes vary these on purpose, so `tender_compare` reports `rankable: false` with `blocked_by` at least once and the flow has to resolve it through `quote_correct`.
 - **Money is a decimal string.** Every amount atom refuses JSON numbers.
@@ -246,7 +246,7 @@ Labs has **no delete for tenders, quotes, awards, contracts, shipments, receipts
 - **This is a known inconsistency, and it is documented:** the solicitation and award carry real wall-clock dates, which are later than the simulated procurement. The weekly review states this in its first line. The alternative, future-dated records, would make every as-of read meaningless.
 
 **New skill `simulated-execution`** (+ `-qa`), plus the weekly review skill:
-1. Generate the delivery data **once**, for the whole window. Use `synthetic-data-generate` with `timeline: {start_date: week1.start, end_date: weekN.end, weeks: N}` on a labs-synthetic opportunity cloned from the run's Phase 4 opportunity (`synthetic_clone_to_labs_only`), whose org is `llo_org`. This reuses Phase 7's machinery. It does not create a second real Connect opportunity.
+1. Generate the delivery data **once**, for the whole window, into a labs-only opportunity created with `synthetic_create_labs_only` under `llo_org`, which labs files as its own programme. **Superseded in part by § L:** this happens FIRST (Phase 9 S0b), and the supply chain is then built on that programme. The original wording here (a clone of the Phase 4 opportunity, the supply chain on the Connect program) is what connect-fi/20261018-1440 followed, and it cannot move stock from visits.
 2. For each week `w`: call `supply-chain-operate` with `as_of = week_w`. Week 0 has already run `procure` and `fulfil`.
 3. Then call `workflow_rebuild_history({cadence: weekly, limit: N})` on the opportunity's semantic-snapshot workflow (the `demo-data-setup` C5 pattern), so the weekly review workflow has one completed run per week.
 4. Write **`9-execution-management/simulated-week-<w>_review.md`** for each week, produced by `simulated-weekly-review` (+ `-eval`). It covers:
@@ -321,3 +321,38 @@ phases:
 3. Whether `forms.batchUpdate` populates a form created through `drive.files.create` on a Shared Drive with no further step. **Resolved (PR5 #3171, live):** yes; the blank "Untitled Question" Drive creates is removed in the same batch.
 4. Whether `workflow_rebuild_history` covers weeks whose visits came from `synthetic_clone_to_labs_only`.
 5. Whether supply-chain `*_on` dates may predate the programme's creation date (the § G calendar assumes they may).
+
+## § L. Amendment 2026-10-21: one synthetic programme, and the bar is what a viewer sees (ace#3265)
+
+**Owner's goal, restated after auditing connect-fi/20261018-1440:** the synthetic data must create views that look like the supply chain working (stock leaving the store, workers holding it, handovers at visits, a map), plus downstream reports for workers. That run passed every QA and eval and met neither goal. These are live reads from 2026-10-21:
+
+- **Stock barely moved.** `supply_chain_stock_flow(361, item 275)`: 814 received, 44 out of the central store, 40 given at visits over four weeks.
+- **Workers were never tied to the visits.** `supply_chain_worker_stock(361, 275)`: ten workers, `on_hand` 0, `opportunity_id: null`; the same read filtered to opportunity 10168 returned `[]`.
+- **No downstream reports.** `workflow_list(opportunity 10168)`: one programme report, no partner or worker report.
+
+**L1. One programme.** Labs reads a visit into a worker's ledger only when the dispensing rule's opportunity is a registered labs-only one **filed under the same synthetic programme** as the supply chain (connect-labs `supply_chain/scopes.py` `opportunity_problem`, checked at rule save and at ingest; the hourly beat skips non-synthetic programmes). Labs' own seeder for exactly this case, `supply_seed_phones`, puts both on one programme id. So, on the simulated track:
+- Phase 9 S0b creates the labs-only opportunity (its own programme) and generates the visits.
+- S1-S3 build the supply chain on that programme id.
+- Dimagi is declared runner: a labs-only programme has no Connect manager, and labs never names a labs-only org. The winner org stays the buyer (`partner_org`, `buyer_org_id` = winner).
+- The first runner declaration needs connect-labs to let a Dimagi member declare Dimagi on a registered synthetic programme. Before that change, MCP refused: *"program 10168 has no running organisation yet, and only a member of the organisation that manages it in Connect (or platform support) declares the first one"*.
+
+**L2. Labs reads the handovers.** A dispensing rule per (opportunity, item) reads the issue form's answer off each visit; manual `consumption` postings are retired. Ordering: every week's writes come first, then the rule, then a wait for the hourly reader (no MCP trigger), then every week's reads.
+
+**L3. Workers carry a float.** `planWorkerTopUps` (`lib/sim-supply-motion.ts`) gives an opening float and weekly top-ups. Resupplying exactly the week's handovers left every worker at 0 at every week end.
+
+**L4. The data looks like the programme.**
+- The manifest carries `geography` (PDD-cited coordinates), so visits have GPS and Map places workers.
+- Stores carry coordinates.
+- The issue field is authored at the PDD's eligible share, not left `not_yet` nearly everywhere.
+
+**L5. Downstream reports.** Programme, partner (`indicator_opp_report`) and worker (`indicator_worker_review`) reports are cloned onto the synthetic opportunity and repointed, each with a saved run.
+
+**L6. The gate is the view.** `simulated-execution-qa` adds three checks:
+- `one_programme`;
+- `supply_in_motion`, which runs `assessSupplyMotion` over labs' own `stock_flow` and `worker_stock`;
+- `downstream_reports`.
+
+Their negative controls are connect-fi/20261018-1440's live reads above. The summary links the supply pages (Overview, Map, Workers, Where it went, order, tender), and `output-preview-capture` photographs them.
+
+**What stays:** records on programme 361 and opportunity 10168 cannot be deleted (§ F6). They remain as the audit trail of the first run.
+

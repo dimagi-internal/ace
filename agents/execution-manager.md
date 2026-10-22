@@ -62,7 +62,16 @@ creates or mutates no Connect opportunity, and dispatches none of the three real
 open this agent's `skills:` list.** If a step here seems to need one of those, halt and
 report it; never improvise around it.
 
-Skip a step whose optional step is off: S1-S3 need `supply_chain`, S4 needs `simulate_weeks`.
+Skip a step whose optional step is off: S1-S3 need `supply_chain`, S4 needs `simulate_weeks`, and
+S0b always runs (it generates visits only with `simulate_weeks`).
+
+**The goal is what a viewer opens** (owner, 2026-10-21, ace#3265): labs pages showing a supply
+chain working (stock leaving the store, workers holding stock, handovers read off visits, a map)
+and a programme, partner and worker report. Every QA and eval passing is not enough;
+`simulated-execution-qa`'s `supply_in_motion` and `downstream_reports` checks are the gate.
+**One labs-only synthetic programme holds the visits AND the supply chain**: S0b creates it and
+S1-S3 build on its id, never on the run's Connect program (labs reads visits into stock only
+within one synthetic programme).
 
 ### S0: The calendar
 `npx tsx "$CLAUDE_PLUGIN_ROOT/scripts/sim-calendar.ts" --run-started-at <run_state started_at> --weeks <optional_steps.simulate_weeks, or 1 when only supply_chain is on>`.
@@ -70,8 +79,16 @@ Write the printed `calendar:` to `phases.execution-management.products.simulatio
 (`update_yaml_file`, `merge: deep`) and `phases.execution-management.mode: simulated`. Exit 2
 halts with its message. A resume recomputes the same calendar from the same `started_at`.
 
+### S0b: The simulation programme (`simulated-execution` Steps 1-3)
+Create the labs-only opportunity (its own programme), generate the whole window's visits into it
+with geography and handovers at the PDD's share, and write `products.simulation.{synthetic_opportunity_id, program_id}`.
+With only `supply_chain` on (no `simulate_weeks`), there are no visits to read: build S1-S3 on a
+labs-only programme created the same way, with no generation.
+
 ### S1: `supply-chain-setup` (+ `-qa`)
-The programme registry, with the runner declared per the skill (the winner org on this path).
+The programme registry on `products.simulation.program_id`, with Dimagi declared as runner (a
+labs-only programme names no labs-only org) and the winner as the buyer; stores with
+coordinates, worker points carrying the visit opportunity.
 
 ### S2: `supply-chain-procure` (+ `-qa`, `-eval`)
 Week 0: tender, quotes, award, contract.
@@ -79,9 +96,11 @@ Week 0: tender, quotes, award, contract.
 ### S3: `supply-chain-fulfil` (+ `-qa`)
 Week 0: shipment, receipt, invoice, payment.
 
-### S4: `simulated-execution` (+ `-qa`)
-Weeks 1..N: one generation of synthetic visits for the window, a saved report run per week, and
-per week `supply-chain-operate` (with `supply_chain`) and `simulated-weekly-review` (+ `-eval`).
+### S4: `simulated-execution` Steps 4-9 (+ `-qa`)
+Weeks 1..N on the visits S0b generated: issue events and float top-ups, the programme, partner
+and worker reports, a saved report run per week, every week's stock written, the dispensing rule
+turned on and read, every week's stock read, `simulated-weekly-review` (+ `-eval`) per week, the
+supply-motion verdict, and the summary linking the labs pages.
 
 A step whose QA fails halts the block with that QA's failures; the records cannot be deleted, so
 never stack the next week on a failed one.

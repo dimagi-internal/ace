@@ -24,6 +24,9 @@ import {
   checkSummaryLinksEveryWeek,
   checkSyntheticOpportunityIsolated,
   checkWeek0SupplyChain,
+  checkOneProgramme,
+  checkSupplyInMotion,
+  checkDownstreamReports,
   type SimulationDoc,
 } from '../../../skills/simulated-execution-qa/checks';
 
@@ -33,6 +36,38 @@ const LIVE = JSON.parse(readFileSync(new URL('./fixtures/labs-workflow-7410-hist
 };
 const CTX = JSON.parse(readFileSync(new URL('./fixtures/labs-context-program-10100.json', import.meta.url), 'utf-8')) as {
   organization: { slug: string; name: string; programs: Array<{ opportunities: Array<{ id: number }> }> };
+};
+/**
+ * connect-fi/20261018-1440's live supply reads (labs programme 361, read 2026-10-21): every
+ * per-week QA passed, and the network barely moved (ace#3265). The shared fixture of
+ * test/lib/sim-supply-motion.test.ts.
+ */
+const CONNECT_FI = JSON.parse(
+  readFileSync(new URL('../../lib/fixtures/connect-fi-20261018-1440-supply-motion.json', import.meta.url), 'utf-8'),
+) as NonNullable<SimulationDoc['supply_motion']>;
+/** connect-fi/20261018-1440's Phase 9 products and the live workflow list on its synthetic opportunity. */
+const FI9 = JSON.parse(readFileSync(new URL('./fixtures/connect-fi-20261018-1440-phase9.json', import.meta.url), 'utf-8')) as {
+  run_state: { supply_chain: { program_id: number }; simulation: { synthetic_opportunity_id: number; workflow_id: number } };
+  visit_program_id: number;
+  workflow_list_opportunity_10168: { workflows: Array<{ id: number; template_type: string }> };
+  history_runs_11926: number[];
+};
+/** How simulated-execution-qa § Process maps a workflow_list row to a report role. */
+const ROLE_OF: Record<string, 'programme' | 'partner' | 'worker'> = {
+  indicator_programme_report: 'programme',
+  indicator_opp_report: 'partner',
+  indicator_worker_review: 'worker',
+};
+/** The same network, moving: what a correct simulated Phase 9 leaves. */
+const MOVING: NonNullable<SimulationDoc['supply_motion']> = {
+  ...CONNECT_FI,
+  flow: {
+    nodes: CONNECT_FI.flow.nodes,
+    links: CONNECT_FI.flow.links.map((l) => ({ ...l, series: l.source === 'c323' ? l.series : l.series.map((x) => x * 8) })),
+  },
+  workers_on_opportunity: [{ connect_username: 'moroto_w01', opportunity_id: 10168, dispensed: { amount: '24' } }],
+  on_hand_by_week: Object.fromEntries(Object.keys(CONNECT_FI.on_hand_by_week).map((u) => [u, { 1: 6, 2: 4, 3: 5, 4: 3 }])),
+  stores: CONNECT_FI.stores.map((st) => ({ ...st, has_coordinates: true })),
 };
 /** The captured labs-only org, as the synthetic opportunity's record. */
 const LIVE_OPP = {
@@ -53,6 +88,14 @@ function good(): SimulationDoc {
     selected_llo: { source: 'solicitation', org_slug: 'ace-test-llo-synthetic', synthetic_winner: true, response_id: 1000050 },
     phase9_sends: 0,
     summary_review_ids: ['rev-1', 'rev-2', 'rev-3', 'rev-4'],
+    supply_program_id: LIVE_OPP.id,
+    visit_program_id: LIVE_OPP.id,
+    supply_motion: MOVING,
+    reports: {
+      programme: { workflow_id: 1, opportunity_ids: [LIVE_OPP.id], runs: 4 },
+      partner: { workflow_id: 2, opportunity_ids: [LIVE_OPP.id], runs: 4 },
+      worker: { workflow_id: 3, opportunity_ids: [LIVE_OPP.id], runs: 1 },
+    },
   };
 }
 
@@ -67,12 +110,51 @@ describe('positive control: a complete simulation over the live history', () => 
     expect(checkReviewPerWeek(a).pass).toBe(true);
     expect(checkNoRealLloContact(a).pass).toBe(true);
     expect(checkSummaryLinksEveryWeek(a).pass).toBe(true);
-    expect(CHECKS).toHaveLength(8);
+    expect(checkOneProgramme(a).pass).toBe(true);
+    expect(checkSupplyInMotion(a).pass).toBe(true);
+    expect(checkDownstreamReports(a).pass).toBe(true);
+    expect(CHECKS).toHaveLength(11);
   });
 
   it('the live periods are exactly weeks 1-4 of a 2026-10-06 calendar', () => {
     const cal = computeSimCalendar('2026-10-06', 4);
     expect(cal.weeks.slice(1).map((w) => w.end)).toEqual(LIVE.runs.slice(1).map((r) => r.period_end));
+  });
+});
+
+describe('negative controls: connect-fi/20261018-1440 as it was left (ace#3265, live reads 2026-10-21)', () => {
+  it('one_programme: supply chain on Connect programme 361, visits on labs-only programme 10168', () => {
+    const r = checkOneProgramme(
+      JSON.stringify({ ...good(), supply_program_id: FI9.run_state.supply_chain.program_id, visit_program_id: FI9.visit_program_id }),
+    );
+    expect(r.pass).toBe(false);
+    expect(r.detail).toMatch(/programme 361 and the visits on programme 10168/);
+  });
+
+  it('supply_in_motion: 44 of 814 phones moved, every worker at 0, workers not on the opportunity', () => {
+    const r = checkSupplyInMotion(JSON.stringify({ ...good(), supply_motion: CONNECT_FI }));
+    expect(r.pass).toBe(false);
+    expect(r.detail).toMatch(/44 of 814/);
+  });
+
+  it('downstream_reports: only the programme report 11926 read opportunity 10168', () => {
+    const opp = FI9.run_state.simulation.synthetic_opportunity_id;
+    const reports = Object.fromEntries(
+      FI9.workflow_list_opportunity_10168.workflows.map((w) => [
+        ROLE_OF[w.template_type],
+        { workflow_id: w.id, opportunity_ids: [opp], runs: w.id === FI9.run_state.simulation.workflow_id ? FI9.history_runs_11926.length : 0 },
+      ]),
+    );
+    const r = checkDownstreamReports(JSON.stringify({ ...good(), synthetic_opportunity: { ...LIVE_OPP, id: opp }, reports }));
+    expect(r.pass).toBe(false);
+    expect(r.detail).toMatch(/no partner report; no worker report/);
+  });
+
+  it('the three new checks pass trivially only when supply_chain is off (reports still required)', () => {
+    const off = JSON.stringify({ ...good(), enabled: { supply_chain: false, simulate_weeks: 4 }, supply_motion: null, supply_program_id: null });
+    expect(checkOneProgramme(off).pass).toBe(true);
+    expect(checkSupplyInMotion(off).pass).toBe(true);
+    expect(checkDownstreamReports(JSON.stringify({ ...good(), reports: {} })).pass).toBe(false);
   });
 });
 
