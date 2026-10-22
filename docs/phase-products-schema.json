@@ -1756,11 +1756,35 @@
                       "number"
                     ]
                   },
+                  "program_id": {
+                    "type": [
+                      "string",
+                      "number"
+                    ]
+                  },
                   "workflow_id": {
                     "type": [
                       "string",
                       "number"
                     ]
+                  },
+                  "reports": {
+                    "type": "object",
+                    "additionalProperties": {
+                      "type": "object",
+                      "properties": {
+                        "workflow_id": {
+                          "type": [
+                            "string",
+                            "number"
+                          ]
+                        },
+                        "url": {
+                          "type": "string"
+                        }
+                      },
+                      "additionalProperties": true
+                    }
                   },
                   "weekly_reviews": {
                     "type": "array",

@@ -782,7 +782,13 @@ const ExecutionProducts = z
       .object({
         calendar: z.object({ sim_start: z.string().optional() }).passthrough().optional(),
         synthetic_opportunity_id: z.union([z.string(), z.number()]).optional(),
+        /** The labs-only programme the visits AND the supply chain are on (= the opportunity id; ace#3265). */
+        program_id: z.union([z.string(), z.number()]).optional(),
         workflow_id: z.union([z.string(), z.number()]).optional(),
+        /** The views a viewer opens: programme, partner and worker reports on the synthetic opportunity. */
+        reports: z
+          .record(z.string(), z.object({ workflow_id: z.union([z.string(), z.number()]).optional(), url: z.string().optional() }).passthrough())
+          .optional(),
         weekly_reviews: z.array(z.string()).optional(),
       })
       .passthrough()

@@ -20,13 +20,14 @@ mode only.
 
 | Parameter | Used for | Resolver |
 |---|---|---|
-| `program_id` | the labs programme | explicit arg; default: run_state `phases.execution-management.products.supply_chain.program_id` |
+| `program_id` | the labs programme | explicit arg; default: run_state `phases.execution-management.products.supply_chain.program_id`, which on the simulated track is the labs-only programme the visits are on (`products.simulation.program_id`, ace#3265) |
+| `mode` | `write` (Steps 2-5), `read` (Steps 6-7) or `both` | explicit arg; default `both`. `simulated-execution` writes every week, turns on the dispensing rule, waits for labs to read the visits, then reads every week |
 | `week` | which week (1..N) | explicit arg (from `simulated-execution`) |
 | `week_start`, `week_end` | the week's dates | explicit arg; default: run_state `products.simulation.calendar.weeks[week]` (`lib/sim-calendar.ts`, PR10) |
 | `item_ids` | the trade items moving | explicit arg; default: run_state `products.supply_chain.items` |
 | `supply_points` | `{central, regional, flw: {username: id}}` | explicit arg; default: run_state `products.supply_chain.supply_points` |
 | `opportunity_id` | the opportunity the workers deliver | explicit arg; default: run_state `products.simulation.synthetic_opportunity_id` |
-| `week_activity` | per worker and commodity, the week's **issue events**: `{<connect_username>: {<commodity_slug>: {issue_events, quantity}}}` plus each commodity's `issue_events_source` (what drives distribution) | explicit arg (from `simulated-execution`, `simulated-execution_issue-events.yaml`); outside a simulation, derived with `deriveIssueEvents` (`lib/supply-chain-issue-events.ts`) from the week's visits and the setup plan's `commodities[].issue_event` |
+| `week_activity` | per worker and commodity, the week's **issue events** and planned **top-up**: `{<connect_username>: {<commodity_slug>: {issue_events, quantity, top_up}}}` plus each commodity's `issue_events_source` | explicit arg (from `simulated-execution`, `simulated-execution_issue-events.yaml`); outside a simulation, derived with `deriveIssueEvents` (`lib/supply-chain-issue-events.ts`) from the week's visits and the setup plan's `commodities[].issue_event` |
 | `scope` | the `source.ref` scope | the run id inside `/ace:run`; outside one, `programScope(program_id)` (`lib/supply-chain-ref.ts`) |
 | `simulated` | label every write, backdate, plant the week's events | `true` when Phase 9 `mode: simulated`; explicit arg otherwise |
 
@@ -52,10 +53,15 @@ something real to show. Outside a simulation every movement and count is what wa
 
 1. **Precondition.** `supply_chain_programme_runner_get` must say `programme` (or `operator`).
 2. **Plan the week** (Products, first file):
-   - **Distribution follows the commodity's issue event** (ace#3216). A worker is resupplied with
-     what they handed over: each worker's quantity is that week's issue events for the commodity
-     times the quantity one issue hands over (`issueQuantity`, `lib/supply-chain-issue-events.ts`).
-     A worker with no issue events gets nothing. The issue event is the one the setup plan declares
+   - **Distribution follows the commodity's issue event, through a float** (ace#3216, ace#3265).
+     A worker hands over from stock they already hold. With `top_up` in `week_activity`
+     (`planWorkerTopUps`, `lib/sim-supply-motion.ts`), the week's distribution to that worker is
+     exactly `top_up`: week 1 is the opening float and later weeks replace what was handed over.
+     Without a float (a real week, reported as it happened), each worker's quantity is that week's
+     issue events times the quantity one issue hands over (`issueQuantity`,
+     `lib/supply-chain-issue-events.ts`), and a worker with no issue events gets nothing.
+     Resupplying exactly the week's handovers with no float leaves every worker at 0 at every week
+     end, and the planted stockout then looks like every other week (connect-fi/20261018-1440). The issue event is the one the setup plan declares
      per commodity (`commodities[].issue_event`): a form, a field and the answers that mean "handed
      over", e.g. Connect FI's phone on the UNPAID Follow-up Contact form, `phone_obtained` = "handed
      over today" / "voucher redeemed", to about 55-75% of enrolled adults, usually on a later visit.
@@ -73,7 +79,10 @@ something real to show. Outside a simulation every movement and count is what wa
    `supply_chain_consignment_receive({consignment_id, data: {received_on, quantity_received}, source})`.
    Received short, labs writes the difference off as a loss naming the consignment.
 4. **Distribute.** `supply_chain_distribution_record({program_id, data: {supply_point_id: regional, opportunity_id, commodity_slug, distributed_on, lines: [{connect_username, item_id, quantity, quantity_unit}], source: "partner_reported"}, source})`:
-   one run, one line per worker. The LLO is the partner telling us what it distributed.
+   one run, one line per worker. The LLO is the partner telling us what it distributed. A line by
+   `connect_username` needs that worker's `user_held` point to carry this `opportunity_id`
+   (`supply-chain-setup` Step 7); without it labs refuses "no supply point holds stock for
+   'moroto_w03' on this opportunity" (ace#3265).
 5. **Count.** For each worker, `supply_chain_stock_count_record({program_id, data: {supply_point_id: <worker's user_held point>, commodity_slug, item_id, kind: "self_reported", counted_on, quantity, quantity_unit, connect_username, opportunity_id, source: "commcare_form"}, source})`.
    A zero is a real observation, not a missing one: record it. Never use `kind: override` to make a
    count agree with the ledger; the variance is the finding. The count stands for the worker's
@@ -82,6 +91,30 @@ something real to show. Outside a simulation every movement and count is what wa
    visits and put the form and field in the plan. On a synthetic stream with no form identity
    (labs' de-novo visits carry none; see `lib/supply-chain-issue-events.ts`), the plan's count is
    what the worker holds after the week's distribution and issue events, plus the planted zero.
+**Dispensing rule** (once, by `simulated-execution` Step 7.2, after every week is written).
+Labs takes what a visit handed over off that worker's stock itself, from the visits, when the
+programme carries a dispensing rule for the opportunity and item. Never post handovers as manual
+`consumption` movements: that is what connect-fi/20261018-1440 did when its rule was refused, and
+the "Workers" page then showed nothing given at visits.
+- `supply_chain_dispensing_rule_upsert({program_id, data: {opportunity_id, item_id,
+  resupply_point_id: <the regional store>, active_from: <week 1 start>, forms: [<the issue
+  form>], lines: [...], status: "active"}, source})`. Prefer a `stated` line on the field that
+  records how many were handed over (`{kind: "stated", paths: [...], unit}`); fall back to a
+  `protocol` line on the issue field (`{kind: "protocol", given_paths: [issue_event.field],
+  given_values: issue_event.values, quantity: issue_event.quantity_per_issue, unit}`), which
+  labs marks ESTIMATED. Every path starts `form.` and is read from the visit's `form_json`;
+  `forms` matches the form's `@name` or `@xmlns` (omit it when the visits carry no form
+  identity). Labs refuses a rule whose opportunity is outside the programme, so a refusal here
+  means Step 1 of `simulated-execution` was skipped: halt, never work round it.
+- **Wait for labs to read the visits.** The reader runs hourly (connect-labs beat
+  `supply_chain_visit_consumption`) and has no MCP trigger. Wait with a Monitor loop (never a
+  foreground sleep), up to 90 minutes, on
+  `supply_chain_worker_stock({program_id, item_id, opportunity_id})` until the workers' total
+  `dispensed` equals the plan's total issue events times the quantity per issue. Short after 90
+  minutes: halt with the two numbers.
+- Create it AFTER the writes: a rule that runs first reads handovers off workers who have not
+  yet been issued anything, and labs flags them negative.
+
 6. **Read the week** (Products, second file), every read `as_of` the week's last day where the atom
    takes one: `supply_chain_stock_position` per store, `supply_chain_stock_forecast` per item,
    `supply_chain_resupply_plan` per store, `supply_chain_worker_stock` per item,
@@ -96,7 +129,8 @@ early in the week, distribution after it arrives, counts on the last working day
 
 ## MCP Tools Used
 
-- connect-labs: `supply_chain_programme_runner_get`, `supply_chain_consignment_dispatch`,
+- connect-labs: `supply_chain_programme_runner_get`, `supply_chain_dispensing_rule_upsert`,
+  `supply_chain_dispensing_rule_list`, `supply_chain_consignment_dispatch`,
   `supply_chain_consignment_receive`, `supply_chain_distribution_record`,
   `supply_chain_stock_count_record`, `supply_chain_stock_position`, `supply_chain_stock_forecast`,
   `supply_chain_resupply_plan`, `supply_chain_worker_stock`, `supply_chain_stock_flow`,
@@ -115,7 +149,8 @@ early in the week, distribution after it arrives, counts on the last working day
 
 ## Mode Behavior
 
-- **Auto:** Steps 1-7 for the given week.
+- **Auto:** Steps 1-7 for the given week (`mode: both`); `mode: write` stops after Step 5,
+  `mode: read` runs Steps 1, 6 and 7.
 - **Review:** shows the Step 2 plan and waits before Step 3.
 
 ## Dry-Run Behavior
@@ -127,5 +162,6 @@ When `--dry-run` is active, run Step 1, Step 2 and Step 6's reads. Write both fi
 
 | Date | Change | Author |
 |------|--------|--------|
+| 2026-10-21 | Built on the visits' labs-only programme; distribution is the planned float top-up (`planWorkerTopUps`); `mode: write / read`; labs' dispensing rule reads the handovers off the visits instead of manual consumption postings (owner audit of connect-fi/20261018-1440, ace#3265) | ACE |
 | 2026-10-19 | Distribution follows each commodity's declared issue event, not enrolments x allocation; `week_activity` carries issue events and their source; counts reference the stock-count form (ace#3216, connect-fi/20261018-1440) | ACE |
 | 2026-10-18 | Initial version (optional-track PR9): one week of transfers, distributions driven by enrolments, counts (with a planted short receipt and stockout), and the week's as-of reads | ACE |

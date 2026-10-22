@@ -246,6 +246,43 @@ Writes:
 - **`supply_chain_movement_record`**: a single ledger posting (transfer, loss, expiry write-off).
   Use the receipt and distribution atoms for those events instead.
 
+### Stock from visits (dispensing rules)
+
+Labs takes what a visit handed over off the worker's stock itself, when the programme carries a
+**dispensing rule** for that opportunity and item (`supply_chain_dispensing_rule_upsert`). Source:
+connect-labs `supply_chain/stock/services/{visit_reader,dispensing,workers}.py`, `scopes.py`,
+read 2026-10-21. These are the rules that bit connect-fi/20261018-1440 (ace#3265):
+
+- **One synthetic programme.** The rule's opportunity must be a registered labs-only one, filed
+  under the SAME labs-only programme as the supply chain (`scopes.opportunity_problem`, checked
+  at save and at ingest). Labs reads no real programme's visits, so a supply chain on a Connect
+  program cannot move stock from visits at all. Refusal seen live: *"opportunity 10168 belongs to
+  programme 10168, not 361"*.
+- **What a rule matches.** `forms` matches the visit's `form_json.form.@name` or `@xmlns`
+  (omit it and every form counts). Every path starts `form.`. A `stated` line reads a number and
+  is exact; a `protocol` line (`given_paths`, optional `given_values`, a fixed `quantity`) is
+  marked ESTIMATED. Visits before `active_from` are never read.
+- **Whose stock.** The reader finds the worker's `user_held` point by `connect_username` (then
+  the visit's user UUID) on that programme AND opportunity. A point without `opportunity_id`
+  does not match, and a distribution line by `connect_username` is refused for it:
+  *"no supply point holds stock for 'moroto_w03' on this opportunity"*.
+- **When.** Hourly beat (`supply_chain_visit_consumption`). There is no MCP trigger: the
+  on-demand ingest is internal (`manage.py supply_ingest_visit_consumption`). `as_of` reads use
+  the visit date, so a backdated week reads correctly once the beat has run.
+- **Generate once.** Re-generating synthetic visits into an opportunity labs has already read
+  mints new visit ids, so every handover is taken off stock twice. A second generation needs a
+  fresh opportunity.
+- **Who runs a labs-only programme.** It has no Connect manager and labs never names a labs-only
+  org, so the runner is Dimagi. Declaring the first runner needs the connect-labs change that lets
+  a Dimagi member declare Dimagi on a registered synthetic programme; before it, only platform
+  support could.
+- **Map.** Stores sit at their own `latitude`/`longitude`. A worker sits at the median of their
+  visits' GPS, so synthetic visits need a manifest `geography`. Without either, Map falls back to
+  the org office or country.
+- **Labs' reference:** `manage.py supply_seed_phones` (a phone handed to each adult at a visit,
+  connect-labs `supply_chain/demo/phones.py`) is the shape a simulated phone programme should
+  leave. Overview, the tender, the order, Map, Workers and Where it went all show it moving.
+
 ## Checks and summaries
 
 - **`supply_chain_checks_list`**: every finding is `missing` (a fact nobody supplied),
@@ -297,5 +334,6 @@ label every invented name and excerpt "simulated" (`syntheticName`, `buildSource
 | Date | Change |
 |---|---|
 | 2026-10-18 | Initial reference, from the live schemas (optional-track PR6) |
+| 2026-10-21 | Stock from visits: one synthetic programme, rule matching, worker lookup by opportunity, hourly beat with no MCP trigger, generate once, Dimagi runs labs-only programmes, Map placement (ace#3265) |
 | 2026-10-20 | Sourcing: `fx_rate_to_usd` on non-USD quotes and the DAP + freight-excluded refusal (ace#3262). Finance: `payable_now` is net of payments recorded; on advance terms over-billing shows as `recoverable`, not `over_invoiced` (ace#3260) |
 | 2026-10-18 | Runner declaration is self-serve per connect-labs #2605 (who may declare, LabsOrg frozen once it runs, members hold the programme); a live award to a non-cheapest quote with a stated reason (program 10605 award 95) is the procure control (optional-track PR7) |

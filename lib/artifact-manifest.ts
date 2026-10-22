@@ -2370,7 +2370,16 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     consumedBy: ['supply-chain-operate'],
     phase: 'execution-management',
     required: false,
-    description: "Optional track (simulate_weeks + supply_chain): per commodity, its declared issue_event and how the issue events were obtained (read off the issue form, or generated from the PDD's eligibility share because labs' de-novo synthetic visits carry no per-form identity), and per delivery week and worker the issue events and quantity. Each week's supply-chain-operate week_activity (ace#3216).",
+    description: "Optional track (simulate_weeks + supply_chain): per commodity, its declared issue_event and how the issue events were obtained (read off the issue form, or generated from the PDD's eligibility share because labs' de-novo synthetic visits carry no per-form identity), and per delivery week and worker the issue events, quantity and float top-up (planWorkerTopUps). Each week's supply-chain-operate week_activity (ace#3216, ace#3265).",
+  },
+  {
+    path: '9-execution-manager/simulated-execution_supply-motion.yaml',
+    producedBy: 'simulated-execution',
+    role: 'manifest',
+    consumedBy: ['simulated-execution-qa'],
+    phase: 'execution-management',
+    required: false,
+    description: "Optional track (simulate_weeks + supply_chain): labs' own stock_flow and worker_stock reads as of the last delivery day, and assessSupplyMotion's verdict (lib/sim-supply-motion.ts) on whether the supply chain a viewer opens is in motion. What simulated-execution-qa's supply_in_motion check gates on (ace#3265).",
   },
   {
     path: '9-execution-manager/simulated-execution_summary.md',
@@ -2379,7 +2388,7 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     consumedBy: [],
     phase: 'execution-management',
     required: false,
-    description: 'Optional track (simulate_weeks): links every weekly review, the labs saved report run for each week, and the supply-chain programme pages.',
+    description: 'Optional track (simulate_weeks): links every weekly review, the labs saved report run for each week, the programme / partner / worker reports, and the supply-chain pages a viewer opens (Overview, Map, Workers, Where it went, order, tender).',
   },
   {
     path: '9-execution-manager/simulated-execution-qa_result.yaml',

@@ -33,7 +33,17 @@ export interface OperatePlan {
    * distribution line (`lib/supply-chain-issue-events.ts`). What drives distribution;
    * enrolments are not a proxy for it (ace#3216).
    */
-  issue_events?: Array<{ connect_username: string; issue_events: number; quantity: string }>;
+  issue_events?: Array<{
+    connect_username: string;
+    issue_events: number;
+    quantity: string;
+    /**
+     * The worker's planned issue this week when they carry a float (`planWorkerTopUps`,
+     * `lib/sim-supply-motion.ts`): topped back up to the float, not resupplied exactly what
+     * they handed over. When present, the distribution must equal it (ace#3265).
+     */
+    top_up?: string;
+  }>;
   /** How the issue events were obtained: read from the issue form, generated from the PDD's eligibility share, or one per enrolment. */
   issue_events_source?: IssueEventSource;
   /** True in the week the plan records a zero count (a stockout). */
@@ -223,19 +233,26 @@ export function checkDistributionsReconcileToIssueEvents(artifact: string): QACh
     }
     const bad: string[] = [];
     const issued = new Map(plan.issue_events.map((e) => [e.connect_username, e]));
+    const expected = (e: NonNullable<OperatePlan['issue_events']>[number]) => e.top_up ?? e.quantity;
+    const what = (e: NonNullable<OperatePlan['issue_events']>[number]) => (e.top_up !== undefined ? 'the float top-up gives' : 'issue events give');
     for (const d of plan.distributions) {
       const e = issued.get(d.connect_username);
-      if (!e || e.issue_events <= 0) bad.push(`${d.connect_username}: distributed ${d.quantity} with no issue events this week`);
-      else if (!decimalEq(d.quantity, e.quantity)) bad.push(`${d.connect_username}: distributed ${d.quantity}, issue events give ${e.quantity}`);
+      if (!e || (e.top_up === undefined && e.issue_events <= 0)) bad.push(`${d.connect_username}: distributed ${d.quantity} with no issue events this week`);
+      else if (!decimalEq(d.quantity, expected(e))) bad.push(`${d.connect_username}: distributed ${d.quantity}, ${what(e)} ${expected(e)}`);
     }
     for (const e of plan.issue_events) {
-      if (e.issue_events <= 0) continue;
+      const due = expected(e);
+      if (decimalEq(due, '0') || (e.top_up === undefined && e.issue_events <= 0)) continue;
       if (!plan.distributions.some((d) => d.connect_username === e.connect_username)) {
-        bad.push(`${e.connect_username}: ${e.issue_events} issue events (${e.quantity}) but no distribution planned`);
+        bad.push(
+          e.top_up !== undefined
+            ? `${e.connect_username}: the float top-up gives ${due} but no distribution planned`
+            : `${e.connect_username}: ${e.issue_events} issue events (${e.quantity}) but no distribution planned`,
+        );
       }
       const got = readback.distribution_lines.filter((l) => l.connect_username === e.connect_username).map((l) => l.quantity);
-      if (got.length && !decimalEq(decimalSum(got), e.quantity)) {
-        bad.push(`${e.connect_username}: labs holds ${decimalSum(got)} distributed, issue events give ${e.quantity}`);
+      if (got.length && !decimalEq(decimalSum(got), due)) {
+        bad.push(`${e.connect_username}: labs holds ${decimalSum(got)} distributed, ${what(e)} ${due}`);
       }
     }
     return bad.length === 0
@@ -244,7 +261,7 @@ export function checkDistributionsReconcileToIssueEvents(artifact: string): QACh
           pass: false,
           detail: bad.join('; '),
           auto_fix_hint:
-            "Each worker's distribution is that worker's issue events times the quantity one issue hands over. Re-plan the week from the issue events; correct a distribution already in labs with a stock_count override and a reason, never a reversing movement.",
+            "Each worker's distribution is their planned float top-up (planWorkerTopUps) or, with no float, that week's issue events times the quantity one issue hands over. Re-plan the week from the issue events; correct a distribution already in labs with a stock_count override and a reason, never a reversing movement.",
         };
   });
 }

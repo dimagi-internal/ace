@@ -1,0 +1,30 @@
+{
+ "_source": "connect-fi/20261018-1440: run_state.yaml phases.execution-management.products (read 2026-10-21) and the live workflow_list({opportunity_id: 10168}) of 2026-10-21. labs files 10168 as its own programme (simulated-execution_summary.md: 'as its own programme 10168').",
+ "run_state": {
+  "supply_chain": {
+   "program_id": 361
+  },
+  "simulation": {
+   "synthetic_opportunity_id": 10168,
+   "workflow_id": 11926
+  }
+ },
+ "visit_program_id": 10168,
+ "workflow_list_opportunity_10168": {
+  "workflows": [
+   {
+    "id": 11926,
+    "name": "connect-fi simulated weekly review",
+    "template_type": "indicator_programme_report",
+    "kind": "workflow",
+    "pipeline_source_count": 1
+   }
+  ]
+ },
+ "history_runs_11926": [
+  11927,
+  11928,
+  11930,
+  11932
+ ]
+}

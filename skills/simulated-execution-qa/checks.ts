@@ -21,6 +21,7 @@
  */
 import type { QACheck, QACheckResult } from '../../lib/qa-types';
 import { assertSimCalendar, type SimCalendar } from '../../lib/sim-calendar';
+import { assessSupplyMotion, type MotionInput } from '../../lib/sim-supply-motion';
 
 export interface HistoryRun {
   run_id: number;
@@ -49,7 +50,27 @@ export interface SimulationDoc {
   phase9_sends: number;
   /** The review file ids the summary links. */
   summary_review_ids: string[];
+  /**
+   * The labs programme the supply chain was built on (run_state
+   * `products.supply_chain.program_id`) and the programme labs files the
+   * synthetic opportunity under (`products.simulation.program_id`). They must
+   * be one id: labs reads visits into a worker's ledger only within one
+   * registered synthetic programme (ace#3265).
+   */
+  supply_program_id?: number | null;
+  visit_program_id?: number | null;
+  /** `assessSupplyMotion`'s input, built from labs' reads `as_of` the last delivery day (supply_chain only). */
+  supply_motion?: MotionInput | null;
+  /**
+   * The downstream reports on the synthetic opportunity, from `workflow_list({opportunity_id})`
+   * and `workflow_history_runs` / the run ids recorded in `products.simulation.reports`.
+   */
+  reports?: Partial<Record<ReportRole, { workflow_id: number | null; opportunity_ids: number[]; runs: number }>>;
 }
+
+/** The three views a simulated delivery must leave a viewer: the program, the partner (LLO), and its workers. */
+export const REPORT_ROLES = ['programme', 'partner', 'worker'] as const;
+export type ReportRole = (typeof REPORT_ROLES)[number];
 
 /** Every Phase 9 handover field only the REAL path writes (llo-onboarding, llo-launch). */
 export const REAL_HANDOVER_FIELDS = [
@@ -225,6 +246,65 @@ export function checkSummaryLinksEveryWeek(artifact: string): QACheckResult {
   });
 }
 
+export function checkOneProgramme(artifact: string): QACheckResult {
+  return withDoc(artifact, (doc) => {
+    if (!doc.enabled.supply_chain) return { pass: true, detail: 'supply_chain not enabled: no stock to tie to the visits' };
+    const s = doc.supply_program_id ?? null;
+    const v = doc.visit_program_id ?? null;
+    if (s !== null && v !== null && s === v && v >= LABS_ONLY_ID_FLOOR) return { pass: true };
+    return {
+      pass: false,
+      detail:
+        s === null || v === null
+          ? `supply programme ${s ?? 'unrecorded'}, visit programme ${v ?? 'unrecorded'}`
+          : s !== v
+            ? `the supply chain is on programme ${s} and the visits on programme ${v}: labs cannot read a handover off a visit across programmes`
+            : `programme ${s} is not a labs-only synthetic programme (id < ${LABS_ONLY_ID_FLOOR})`,
+      auto_fix_hint:
+        'Build the supply chain on products.simulation.program_id (the labs-only programme simulated-execution Step 1 created), never on the Connect program (ace#3265). Records already on another programme cannot be moved or deleted: rebuild on a fresh synthetic programme.',
+    };
+  });
+}
+
+export function checkSupplyInMotion(artifact: string): QACheckResult {
+  return withDoc(artifact, (doc) => {
+    if (!doc.enabled.supply_chain) return { pass: true, detail: 'supply_chain not enabled' };
+    if (!doc.supply_motion) {
+      return { pass: false, detail: 'no supply-motion reads recorded', auto_fix_hint: 'Read supply_chain_stock_flow and supply_chain_worker_stock (with and without opportunity_id) as of the last delivery day; see SKILL.md § Process.' };
+    }
+    const v = assessSupplyMotion(doc.supply_motion);
+    return v.pass
+      ? { pass: true, detail: `${v.figures.left_central} of ${v.figures.received} left the central store; ${v.figures.given_at_visits} given out at visits` }
+      : {
+          pass: false,
+          detail: v.problems.join('; '),
+          auto_fix_hint:
+            'A ledger that balances is not a supply chain in motion. Check, in order: one programme for stock and visits; worker points carry opportunity_id; an active dispensing rule (and the hourly ingest has run); workers topped up with planWorkerTopUps; the manifest\'s handover share follows the PDD; stores carry latitude/longitude.',
+        };
+  });
+}
+
+export function checkDownstreamReports(artifact: string): QACheckResult {
+  return withDoc(artifact, (doc) => {
+    const opp = doc.synthetic_opportunity.id;
+    const bad = REPORT_ROLES.flatMap((role) => {
+      const r = doc.reports?.[role];
+      if (!r || r.workflow_id === null) return [`no ${role} report`];
+      if (opp === null || !r.opportunity_ids.includes(opp)) return [`the ${role} report ${r.workflow_id} does not read opportunity ${opp}`];
+      if (r.runs < 1) return [`the ${role} report ${r.workflow_id} has no saved run`];
+      return [];
+    });
+    return bad.length === 0
+      ? { pass: true }
+      : {
+          pass: false,
+          detail: bad.join('; '),
+          auto_fix_hint:
+            'Clone Phase 7\'s cascade.programme_report, an opp report (cascade opp_report) and cascade.worker_review onto the synthetic opportunity (workflow_clone linked:true, then workflow_update_opportunity_ids), and save a run of each; see simulated-execution Step 4.',
+        };
+  });
+}
+
 export const CHECKS: QACheck[] = [
   { id: 'calendar_backdated', type: 'static', description: 'The calendar is Monday-aligned, contiguous, entirely before the run start, and N matches simulate_weeks', run: checkCalendarBackdated },
   { id: 'week0_supply_chain', type: 'static', description: "Week 0's procurement and fulfilment QA passed (supply_chain only)", run: checkWeek0SupplyChain },
@@ -234,4 +314,7 @@ export const CHECKS: QACheck[] = [
   { id: 'review_per_week', type: 'static', description: 'Every delivery week has a weekly review', run: checkReviewPerWeek },
   { id: 'no_real_llo_contact', type: 'static', description: 'The winner is synthetic, no real handover field is set, and Phase 9 sent nothing', run: checkNoRealLloContact },
   { id: 'summary_links_every_week', type: 'static', description: "The summary links every week's review", run: checkSummaryLinksEveryWeek },
+  { id: 'one_programme', type: 'static', description: 'The supply chain and the visits are on one labs-only synthetic programme (supply_chain only)', run: checkOneProgramme },
+  { id: 'supply_in_motion', type: 'static', description: "Labs' own reads show stock moving: out of the central store, through workers who hold a float, given out at visits labs read (supply_chain only)", run: checkSupplyInMotion },
+  { id: 'downstream_reports', type: 'static', description: 'A programme, a partner and a worker report read the synthetic opportunity, each with a saved run', run: checkDownstreamReports },
 ];

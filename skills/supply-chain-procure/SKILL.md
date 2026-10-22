@@ -111,9 +111,11 @@ does not apply.
    advance path; `on_delivery` otherwise), `signed_on` inside week 0, `source: we_recorded`, and
    - `buyer_of_record` = `runner.buyer_of_record` (`buyerOfRecord(role)`,
      `lib/supply-chain-runner.ts`: `programme_org` when the winner runs the programme,
-     `partner_org` when the PM org does);
+     `partner_org` when the PM org does, or when Dimagi runs a labs-only synthetic programme,
+     role `other`);
    - `buyer_org_id` = the buying org's labs id (the runner's on the winner path; the winner's when
-     the PM org runs it and buys for the winner).
+     the PM org or Dimagi runs it and buys for the winner, which is the simulated track since
+     ace#3265).
    Read `supply_chain_contract_landed_cost({contract_id})` back into the record; a duty relief
    claimed with no exemption document comes back unconfirmed, so do not claim one.
 10. **Record.** Write the record file, then, inside a run, the ids into `products.supply_chain`

@@ -22,7 +22,9 @@ simulated mode.
 
 | Parameter | Used for | Resolver |
 |---|---|---|
-| `program_id` | the labs programme (= the Connect program's integer id) | explicit arg; default: run_state `phases.connect-setup.products.connect.program.connect_int_id`, else `opp.yaml.connect.program.connect_int_id` |
+| `program_id` | the labs programme | explicit arg; default on the simulated track: run_state `phases.execution-management.products.simulation.program_id` (the labs-only programme `simulated-execution` Step 3 created for the visits, ace#3265); otherwise (a real programme's supply chain) `phases.connect-setup.products.connect.program.connect_int_id`, else `opp.yaml.connect.program.connect_int_id`. **On the simulated track never the Connect program:** labs reads visits into a worker's stock only on one synthetic programme, so a supply chain on the Connect program can never move stock from visits (connect-fi/20261018-1440 built it on 361 and the visits on 10168) |
+| `opportunity_id` | the opportunity the workers deliver, stamped on every worker's point | explicit arg; default: run_state `products.simulation.synthetic_opportunity_id` on the simulated track |
+| `geography` | store coordinates for Map | explicit arg; default: the `geography` block of `simulated-execution`'s plan (PDD-cited coordinates) |
 | `pm_org` | the Connect org that manages the program | explicit arg; default: run_state `products.connect.pm_org_slug`, else `connect_orgs.pm_org` (`lib/connect-orgs.ts`) |
 | `llo_org` | the ACE-owned winner org, on the `ace_winner` path only | explicit arg; default: run_state `phases.solicitation-management.products.selected_llo.org_slug` when `synthetic_winner: true`, else `connect_orgs.llo_org` |
 | `ace_winner` | whether the winner runs procurement | explicit arg; default: `isOptionalStepEnabled(run_state, 'ace_winner')` (`lib/optional-steps.ts`) |
@@ -50,8 +52,19 @@ only when a run is bound.
 ## Process
 
 1. **Settle the runner** (spec § F1). Read
-   `supply_chain_programme_runner_get({program_id})`. Then decide with `planRunner`
-   (`lib/supply-chain-runner.ts`):
+   `supply_chain_programme_runner_get({program_id})`.
+   - **A labs-only synthetic programme (id ≥ 10000, the simulated track)** has no Connect manager
+     and labs never names a labs-only org as runner, so the winner and PM orgs are not eligible:
+     declare **Dimagi** (labs org slug `dimagi`; read its id from `supply_chain_org_list`) with
+     `supply_chain_programme_runner_set({program_id, org_id: <dimagi>, note, source})`. ace@ is a
+     Dimagi member, so its standing is `programme`, and Step 5 is skipped. The winner org stays
+     the buyer on every contract: `supply-chain-procure` records it as `buyer_of_record:
+     partner_org` with `buyer_org_id` = the winner's labs org id. Before connect-labs allowed a
+     Dimagi member to declare Dimagi on a registered synthetic programme, this call was refused
+     ("program 10168 has no running organisation yet, and only a member of the organisation that
+     manages it in Connect (or platform support) declares the first one", live 2026-10-21,
+     ace#3265); that refusal now means labs regressed, so halt quoting it.
+   - **Any other programme:** decide with `planRunner` (`lib/supply-chain-runner.ts`):
    - **Who:** on the `ace_winner` path, the winner's labs org (`llo_org`) runs the supply chain,
      because the owner's intent is that the winner procures. Otherwise the PM org runs it.
    - **No runner yet → declare one.** Register both orgs first (Step 4's upserts; run them now if
@@ -140,10 +153,17 @@ only when a run is bound.
    optional; if you give one it must pass its GS1 check digit, so never make one up.
 7. **Supply points.** `supply_chain_supply_point_upsert({program_id, data, source})`, with
    `source: "we_recorded"` in `data`:
-   - one `central_store`, `managed_by_org_id` = the runner's labs org id;
+   - one `central_store`, `managed_by_org_id` = the winner's labs org id on the simulated track
+     (the LLO keeps the store), else the runner's;
    - one `regional_store`, `parent_supply_point_id` = the central store;
-   - one `user_held` point per field worker, `connect_username` = that worker,
-     `parent_supply_point_id` = the regional store.
+   - both stores with `latitude` / `longitude` (and `admin_area`) from `geography`, so Map draws
+     them where they are. connect-fi/20261018-1440's stores were created without coordinates;
+   - one `user_held` point per field worker: `slug: user-<opportunity_id>-<connect_username>`,
+     `connect_username` = that worker, **`opportunity_id`** = the visit opportunity,
+     `parent_supply_point_id` = the regional store, `source: "connect_visit"`, and no coordinates
+     (labs places a worker at the median of their visits' GPS). Without `opportunity_id`, labs
+     refuses a distribution line naming the worker, `worker_stock` filtered to the opportunity
+     returns nobody, and the dispensing rule cannot find whose stock a visit drew on (ace#3265).
    Set `min_months_of_stock` / `max_months_of_stock` as decimal strings (`money()` in
    `lib/supply-chain-ref.ts`) when the PDD gives a resupply band; otherwise leave them unset.
 8. **Suppliers.** Read `supply_chain_supplier_list` first to avoid duplicates. Then
@@ -195,6 +215,7 @@ When `--dry-run` is active, run Step 1's read (not the setter), Steps 2-3, and t
 
 | Date | Change | Author |
 |------|--------|--------|
+| 2026-10-21 | Simulated track builds on the visits' labs-only programme (`products.simulation.program_id`), declares Dimagi as runner there, gives stores coordinates and worker points the visit `opportunity_id` (owner audit of connect-fi/20261018-1440, ace#3265) | ACE |
 | 2026-10-20 | Step 4 reads `supply_chain_org_list` first and skips the upsert when the row already matches: labs refuses even an identical upsert of an org that runs a programme, and a mismatched running org is a halt (ace#3261) | ACE |
 | 2026-10-19 | Step 2 declares each commodity's `issue_event` (form + field + issue answers + eligibility share, or `per_enrolment` when the PDD says so) and optional `count_form` (ace#3216) | ACE |
 | 2026-10-18 | Initial version (optional-track PR6): runner gate with self-serve declaration and winner-runs-procurement, registry build, deterministic source refs | ACE |
