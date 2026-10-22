@@ -77,10 +77,10 @@ Setup, once per machine:
    identity (`ACE_GMAIL_ACCOUNT` in `.env`).
 2. Mint a key with Read+Write floor + the HQ scopes
    `/nova:upload_to_hq` needs.
-3. Save to the ACE instance's 1Password vault (`canopy agent env --plugin ace --print`
-   names it), item `ACE - Nova`, field
-   `api_key`.
-4. Run `/ace:setup --force-env`. It re-injects `.env` from 1Password,
+3. Save it as `NOVA_API_KEY` in ACE's Canopy vault on canopy-web
+   (agent `ace`, Settings → Credentials).
+4. Run `/ace:setup --force-env`. It rewrites `.env` from the vault
+   (`canopy agent env --plugin ace`),
    writes `~/.ace/env.sh` (`export NOVA_API_KEY=…`, for Bash-invoked
    scripts), appends a marker-fenced source line to the shell rc, and
    **installs or re-points the user-scope `nova` entry** via
@@ -303,8 +303,8 @@ that re-runs `/ace:setup`) at one Nova-side identity, which is the
 account that minted the key (the ACE Gmail identity). All Nova
 state — apps, HQ binding, settings — lives under that one user.
 
-Rotating the key: regenerate at `commcare.app/settings`, update the
-1Password item in place, then `/ace:setup --force-env` on each
+Rotating the key: regenerate at `commcare.app/settings`, update
+`NOVA_API_KEY` in ACE's Canopy vault, then `/ace:setup --force-env` on each
 machine. The user-scope override is re-registered with the new
 bearer.
 
@@ -436,7 +436,7 @@ check (the HQ role behind Nova's stored HQ API key, on `ACE_HQ_DOMAIN`).
 
 **Two distinct keys.** Don't conflate them:
 - `NOVA_API_KEY` (`sk-nova-v1-…`) authenticates **ACE → Nova**. Lives
-  in 1Password item `ACE - Nova` / `api_key`. Read by the user-scope
+  in ACE's Canopy vault as `NOVA_API_KEY`. Read by the user-scope
   MCP override.
 - HQ API key (UUID) authenticates **Nova → CommCareHQ**. Lives on
   Nova's settings page (server-side). Generated under

@@ -93,19 +93,21 @@ function isChangeLogRow(lines: string[], i: number): boolean {
 }
 
 // ── The instance's own orgs (PM / NM / the ACE-owned winner) ──────────────
-// `.env.tpl` documents each org key with a COMMENTED example value
-// (`# ACE_CONNECT_<ROLE>_ORG=<slug>`). Those examples are this instance's real
-// orgs, so a skill that names one is hardcoding configuration exactly like the
-// legacy default above — and for the winner org (`ACE_CONNECT_LLO_ORG`, the
-// optional `ace_winner` step) it would award a call, bind a seeded response and
-// run a procurement in one instance's org. Read from `.env.tpl` rather than
-// listed here so a new org key is covered the moment it is documented. Scoped
+// The org keys (`ACE_CONNECT_<ROLE>_ORG`) are local-only `.env` values. These
+// slugs are this instance's real orgs, so a skill that names one is hardcoding
+// configuration exactly like the legacy default above — and for the winner org
+// (`ACE_CONNECT_LLO_ORG`, the optional `ace_winner` step) it would award a
+// call, bind a seeded response and run a procurement in one instance's org.
+// Listed here since the retired `.env.tpl` that documented them is gone. Scoped
 // to the prose surfaces an agent acts from; playbook/lib/mcp carry recorded
 // measurements in these orgs and stay under the legacy-slug rail only.
 const INSTANCE_SCAN_DIRS = ['skills', 'agents', 'commands', 'templates'];
-const INSTANCE_ORG_EXAMPLES: string[] = [
-  ...readFileSync(join(ROOT, '.env.tpl'), 'utf8').matchAll(/^#\s*ACE_CONNECT_[A-Z]+_ORG=([A-Za-z0-9][A-Za-z0-9_-]*)\s*$/gm),
-].map((m) => m[1]);
+const INSTANCE_ORGS: Record<string, string> = {
+  ACE_CONNECT_PM_ORG: 'ace-pm-org',
+  ACE_CONNECT_NM_ORG: 'ace-nm-org',
+  ACE_CONNECT_LLO_ORG: 'ace-llo-org',
+};
+const INSTANCE_ORG_EXAMPLES: string[] = Object.values(INSTANCE_ORGS);
 
 /** [file, verbatim snippet, reason] — an instance-org slug that is an example, not an instruction to act in it. */
 const INSTANCE_ALLOWLIST: ReadonlyArray<readonly [string, string, string]> = [
@@ -143,12 +145,10 @@ describe("no skill or agent names one of the instance's own Connect orgs (pm / n
     expect(stale, `INSTANCE_ALLOWLIST entries that no longer match — delete them:\n  ${stale.join('\n  ')}`).toEqual([]);
   });
 
-  it('reads the winner org example from .env.tpl, so the rail covers ACE_CONNECT_LLO_ORG (control)', () => {
-    const tpl = readFileSync(join(ROOT, '.env.tpl'), 'utf8');
-    const llo = /^#\s*ACE_CONNECT_LLO_ORG=(\S+)\s*$/m.exec(tpl);
-    expect(llo, '.env.tpl must document ACE_CONNECT_LLO_ORG with a commented example').not.toBeNull();
-    expect(INSTANCE_ORG_EXAMPLES).toContain(llo![1]);
-    const line = `- award the response to \`${llo![1]}\``;
+  it('covers the winner org, ACE_CONNECT_LLO_ORG (control)', () => {
+    const llo = INSTANCE_ORGS.ACE_CONNECT_LLO_ORG;
+    expect(INSTANCE_ORG_EXAMPLES).toContain(llo);
+    const line = `- award the response to \`${llo}\``;
     expect(INSTANCE_ORG_EXAMPLES.some((s) => new RegExp(`(^|[^A-Za-z0-9_-])${s}([^A-Za-z0-9_-]|$)`).test(line))).toBe(true);
   });
 });

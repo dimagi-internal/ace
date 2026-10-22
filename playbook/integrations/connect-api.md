@@ -459,13 +459,16 @@ Record what you observe here.
 
 ## Operator runbook
 
-### Required env vars (all 1Password-backed in `.env.tpl`)
+### Required env vars (stored in ACE's Canopy vault on canopy-web)
 
 ```
 CONNECT_BASE_URL=https://connect.dimagi.com
-ACE_HQ_USERNAME=op://AI-Agents/ACE - CommCareHQ/username
-ACE_HQ_PASSWORD=op://AI-Agents/ACE - CommCareHQ/password
+ACE_HQ_USERNAME=<ace@ HQ username>
+ACE_HQ_PASSWORD=<ace@ HQ password>
 ```
+
+Add or rotate them in the vault (Settings → Credentials), then
+`/ace:setup --force-env` and restart Claude Code.
 
 ### Establishing a session
 
@@ -547,13 +550,13 @@ of ACE, so it is configuration — resolved in exactly one place,
 | `ACE_CONNECT_PM_ORG` | Program-manager org: creates programs, invites + accepts the NM org (Phase 4), sets PM-only config (verification rules), sends partner LLO invites, owns solicitations' programs. Must have Program Manager enabled. | The legacy default in `lib/connect-orgs.ts`, so an install that never set it behaves exactly as before. |
 | `ACE_CONNECT_NM_ORG` | Network-manager org ACE controls. **Holds Phase 4's build/QA opportunity** (`target_organization_slug`), so every run exercises the real PM→NM flow (operator decision 2026-09-26). | `null` → Phase 4 falls back to the legacy self-managed shape (PM org holds its own opportunity; verification rules cannot be set — ace#2419). |
 
-**Where to set them — and why not `.env.tpl`.** Put the lines in the
+**Where to set them — and why not the vault.** Put the lines in the
 *installed* `.env` (`${CLAUDE_PLUGIN_DATA}/.env`). They are deliberately NOT
-declared in `.env.tpl` (only documented there, commented): `bin/ace-setup
---force-env` preserves every key absent from the template in its
-`# --- ACE local-only secrets ---` block, so a per-instance value survives every
-re-inject and 1Password can never silently override it. Declaring them in the
-template would do the opposite — the injected value would win on every setup.
+stored in ACE's Canopy vault: `bin/ace-setup --force-env` preserves every key
+the vault does not hold in its `# --- ACE local-only secrets ---` block, so a
+per-instance value survives every rewrite and the vault can never silently
+override it. Storing them in the vault would do the opposite — the vault value
+would win on every setup.
 MCP subprocesses read `.env` at startup, so restart Claude Code after changing
 them (CLAUDE.md § MCP changes need a full Claude restart).
 
@@ -606,8 +609,8 @@ invitation addressed to it. That is the same authority ACE has over its own NM o
 the block adds `llo_org_status: warn` plus a remediation. That is a warning, not a
 failure, because only a run requesting `ace_winner` needs it. *Enforced:*
 `test/lib/connect-orgs.test.ts`, `test/lib/run-workspace.test.ts`, and
-`test/skills/no-hardcoded-connect-org.test.ts`. The last refuses the commented example
-slug of every `ACE_CONNECT_*_ORG` key in `.env.tpl` as a literal in skills, agents,
+`test/skills/no-hardcoded-connect-org.test.ts`. The last refuses the example
+slug of every `ACE_CONNECT_*_ORG` key as a literal in skills, agents,
 commands, templates and CLAUDE.md. Prose says `connect_orgs.llo_org`.
 
 **Creating the winner org (one-time).** ACE does it with `connect_create_organization` (ace#3170); the mechanics below are what that atom drives.
@@ -626,7 +629,7 @@ commands, templates and CLAUDE.md. Prose says `connect_orgs.llo_org`.
 
 Steps:
 1. `connect_create_organization({name, notes, dry_run: true})`, then the same without `dry_run`. Re-running is safe: an org of that name the caller belongs to comes back as `existing: true` and nothing is posted. There is no delete.
-2. Put the returned slug in the installed `.env` as `ACE_CONNECT_LLO_ORG`, inside the `# --- ACE local-only secrets` block (never a raw `op inject`).
+2. Put the returned slug in the installed `.env` as `ACE_CONNECT_LLO_ORG`, inside the `# --- ACE local-only secrets` block (a key the vault does not hold, so `/ace:setup --force-env` preserves it).
 3. Fully restart Claude so the MCP subprocesses re-read `.env`.
 4. Register it on the labs side through `supply_chain_org_upsert` with `connect_organization_id`. `supply-chain-setup` does this.
 

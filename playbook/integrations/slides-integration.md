@@ -90,10 +90,10 @@ If you change any of these in the template, you MUST update
 silently no-ops and the deck comes out with raw placeholder tokens
 visible.
 
-The template ID is in `ACE_TRAINING_DECK_TEMPLATE_ID`, populated via
-1Password (`op://AI-Agents/ACE - Open Chat Studio/Config/training_deck_template_id`).
-Every environment runs the bootstrap script once and stashes its own
-template ID in 1Password's vault.
+The template ID is in `ACE_TRAINING_DECK_TEMPLATE_ID`, a value stored in
+ACE's Canopy vault on canopy-web (Settings → Credentials). Every
+environment runs the bootstrap script once and stores its own template
+ID in its vault.
 
 ## Gotchas (the durable-knowledge section)
 
@@ -203,15 +203,6 @@ in `drive.files.list` return "File not found" on `delete`.
 semantics and works. `cleanup-smoke-decks.ts` falls back to this path
 on any 404 / 403 from `delete`.
 
-### `op inject` parses `{{...}}` tokens even inside comments
-
-Out-of-scope for Slides specifically but bit during the 1Password
-roll-out for `ACE_TRAINING_DECK_TEMPLATE_ID`. `op inject` is
-context-blind about `{{TOKEN}}` syntax — sees them as ref delimiters
-even in `# comment` lines. `.env.tpl` documents the placeholder
-tokens as "TITLE / SUBTITLE / BODY (double-curly tokens)" with the
-literal syntax avoided.
-
 ### `mainRequests` order matters
 
 The build code emits requests in this order:
@@ -260,16 +251,15 @@ input).
 
 ## Pre-flight checklist for a fresh environment
 
-Before the first Phase 6 in a new GCP project / 1Password vault:
+Before the first Phase 6 in a new GCP project / ACE instance:
 
 - [ ] **Slides API enabled** on the GCP project. First call to
       `slides.presentations.get` returns the enable URL if not. One-click
       browser fix; propagates in ~1 minute.
 - [ ] **`ACE_TRAINING_DECK_TEMPLATE_ID` set.** Run
-      `npx tsx scripts/bootstrap-training-deck-template.ts`, paste the
-      ID into 1Password under
-      `AI-Agents/ACE - Open Chat Studio/Config/training_deck_template_id`,
-      re-inject `.env`. `bin/ace-doctor` reports PASS or WARN.
+      `npx tsx scripts/bootstrap-training-deck-template.ts`, store the
+      ID as `ACE_TRAINING_DECK_TEMPLATE_ID` in ACE's Canopy vault,
+      then `/ace:setup --force-env` and restart Claude Code. `bin/ace-doctor` reports PASS or WARN.
 - [ ] **Service Account scopes include `presentations`.** Verified by
       `mcp/google-drive-server.ts` `SCOPES` constant.
 - [ ] **Run the smoke** to verify all atoms work end-to-end:

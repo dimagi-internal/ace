@@ -16,7 +16,7 @@ Manual fallback for OCS login. **You usually do not need to run this** — the P
 ## When to run
 
 - The OCS account requires SSO / MFA (auto-login can't drive an interactive flow).
-- You're testing against an OCS account whose creds aren't in 1Password.
+- You're testing against an OCS account whose creds aren't in ACE's Canopy vault.
 - You're forced through an interactive login by a security policy change.
 
 If you're hitting `SessionExpiredError` from a skill, first verify `OCS_USERNAME` and `OCS_PASSWORD` are set in `.env` — `/ace:doctor` reports `ocs_session: ... auto-login on first call ...` when creds are present, in which case you don't need this command at all.

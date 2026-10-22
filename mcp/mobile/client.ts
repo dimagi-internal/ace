@@ -240,7 +240,7 @@ const BOOTSTRAP_ENV_VARS = [
  * Surfaced in `DeviceUserStateError` attempts so an operator who's
  * missing one variable sees its specific name rather than a blanket
  * "bootstrapConfig:absent" — the previous error required a `.env` diff
- * against `.env.tpl` to identify the culprit.
+ * against the env contract to identify the culprit.
  */
 export function missingBootstrapEnvVars(): string[] {
   return BOOTSTRAP_ENV_VARS.filter((name) => !process.env[name]);
@@ -319,7 +319,7 @@ export function mergeTestUserOverride(
  * Reads `ACE_CONNECT_APK_VERSION` (the same env var that pins the APK
  * download in `runLocalBootstrap`), falling back to `2.64.0` when unset
  * or empty so the default tracks the validated baseline. Bump the
- * default here in lockstep with the `.env.tpl` default when a new
+ * default here in lockstep with the vault's value when a new
  * selector baseline is verified and promoted. `skills/connect-apk-upgrade`
  * owns the whole transition; `lib/apk-pin-sites.ts` enumerates every other
  * place the version is written down, so this constant never moves alone.

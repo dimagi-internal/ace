@@ -572,7 +572,7 @@ if [ "$PREFLIGHT" = "1" ]; then
   # A HALT class, and a silent one: a static header is bound at connection time
   # and does not follow a credential rotation, so a rotated LABS_MCP_TOKEN
   # leaves `connect_labs` authenticating with the old value while .env,
-  # 1Password and the plugin's own headersHelper all agree with each other and
+  # the vault and the plugin's own headersHelper all agree with each other and
   # report green. The labs probes below (connect_labs_env /
   # connect_labs_mcp_reachable / connect_labs_connect_oauth) curl labs with the
   # .env token, so they PASS on a credential the session is not using — that is
@@ -1338,7 +1338,7 @@ if [ -n "$ENV_FILE" ]; then
     pass "env_file: $ENV_FILE (CLAUDE_PLUGIN_DATA unset; defaulted DATA_DIR to $DATA_DIR — agents that probe \${CLAUDE_PLUGIN_DATA}/.env directly will miss this path. Resolution order: \$CLAUDE_PLUGIN_DATA/.env → the installed ace@<marketplace> data dir (plugins/data/ace-<marketplace>) → \$ROOT/.env)"
   fi
 else
-  warn "env_file: no .env found (checked $DATA_DIR/.env and $ROOT/.env; CLAUDE_PLUGIN_DATA=${CLAUDE_PLUGIN_DATA:-unset})" "run /ace:setup (or: bash \"$ROOT/bin/ace-setup\") to fetch .env from 1Password"
+  warn "env_file: no .env found (checked $DATA_DIR/.env and $ROOT/.env; CLAUDE_PLUGIN_DATA=${CLAUDE_PLUGIN_DATA:-unset})" "run /ace:setup (or: bash \"$ROOT/bin/ace-setup\") to fill .env from ACE's Canopy vault"
 fi
 
 # get_env KEY — prints the value of KEY from $ENV_FILE, or empty if absent/unresolved.
@@ -1369,7 +1369,7 @@ if [ -n "$ENV_FILE" ]; then
   # Identity comes from config/agent.json ONLY (ace#1147/#1338). It used to be
   # read from .env, where 1Password injected `gmail_client=ace` against
   # agent.json's `canopy` — two probes in the same run printed different
-  # clients, both PASS. `.env.tpl` no longer declares either key.
+  # clients, both PASS. The vault carries neither key.
   GMAIL_ACCT="$(agent_json_field email)"
   DRIVE_ROOT="$(get_env ACE_DRIVE_ROOT_FOLDER_ID)"
   SHARED_COLL="$(get_env OCS_SHARED_COLLECTION_ID)"
@@ -1383,7 +1383,7 @@ if [ -n "$ENV_FILE" ]; then
     [ -z "$OCS_BASE" ] && missing="$missing OCS_BASE_URL"
     [ -z "$OCS_TEAM" ] && missing="$missing OCS_TEAM_SLUG"
     [ -z "$OCS_GTID" ] && missing="$missing OCS_GOLDEN_TEMPLATE_ID"
-    hint="re-inject .env via 1Password, or run /ace:ocs-bootstrap-template (for OCS_GOLDEN_TEMPLATE_ID)"
+    hint="re-fill .env from the vault (/ace:setup --force-env), or run /ace:ocs-bootstrap-template (for OCS_GOLDEN_TEMPLATE_ID)"
     warn "ocs_env: missing or unresolved:$missing" "$hint"
   fi
 
@@ -1394,7 +1394,7 @@ if [ -n "$ENV_FILE" ]; then
   if [ -n "$DRIVE_ROOT" ]; then
     pass "drive_root: ACE_DRIVE_ROOT_FOLDER_ID=$DRIVE_ROOT"
   else
-    warn "drive_root: ACE_DRIVE_ROOT_FOLDER_ID not set (PDD auto-discovery disabled)" "re-inject .env via op inject (var added in 0.5.3)"
+    warn "drive_root: ACE_DRIVE_ROOT_FOLDER_ID not set (PDD auto-discovery disabled)" "set it in ACE's Canopy vault on canopy-web (Settings → Credentials), then /ace:setup --force-env"
   fi
 
   # ACE_WEB_PAT_TOKEN is the per-human Personal Access Token for ace-web,
@@ -1415,12 +1415,12 @@ if [ -n "$ENV_FILE" ]; then
   # clone-to-new-workspace, release, share-run-access, the video skills,
   # upload-transcript, run-summary URLs). WARN (not FAIL): an operator who
   # never touches ace-web doesn't need it. Ships as a non-secret default in
-  # .env.tpl, so this is only unset on a hand-edited .env or a stale inject.
+  # the vault, so this is only unset on a hand-edited .env or a stale fill.
   WEB_BASE_URL="$(get_env ACE_WEB_BASE_URL)"
   if [ -n "$WEB_BASE_URL" ]; then
     pass "ace_web_base_url: ACE_WEB_BASE_URL=$WEB_BASE_URL"
   else
-    warn "ace_web_base_url: ACE_WEB_BASE_URL not set (ace-web automation has no base URL)" "re-inject .env via /ace:setup --force-env (default https://labs.connect.dimagi.com/ace ships in .env.tpl)."
+    warn "ace_web_base_url: ACE_WEB_BASE_URL not set (ace-web automation has no base URL)" "re-inject .env via /ace:setup --force-env (the vault holds https://labs.connect.dimagi.com/ace)."
   fi
 
   # ACE_TRAINING_DECK_TEMPLATE_ID gates the training-deck-build skill.
@@ -1431,7 +1431,7 @@ if [ -n "$ENV_FILE" ]; then
   if [ -n "$TDID" ]; then
     pass "training_deck_template: ACE_TRAINING_DECK_TEMPLATE_ID=$TDID"
   else
-    warn "training_deck_template: ACE_TRAINING_DECK_TEMPLATE_ID not set" "run 'npx tsx scripts/bootstrap-training-deck-template.ts' to create the template, then add the ID to 1Password and re-inject .env (training-deck-build skips silently without it)"
+    warn "training_deck_template: ACE_TRAINING_DECK_TEMPLATE_ID not set" "run 'npx tsx scripts/bootstrap-training-deck-template.ts' to create the template, then add the ID to ACE's Canopy vault and /ace:setup --force-env (training-deck-build skips silently without it)"
   fi
 
   # Template SA-accessibility probes (jjackson/ace#804, #805).
@@ -1524,7 +1524,7 @@ if [ -n "$ENV_FILE" ]; then
   # Content Generator API — gates the multimedia-generation skill family.
   # Passive present/non-empty check only; no live HTTP ping (image generation
   # is too slow and costly to run on every doctor invocation, and the API
-  # contract is still being verified). Both keys are 1Password-backed.
+  # contract is still being verified). Both keys are vault-backed.
   CG_URL="$(get_env CONTENT_GENERATOR_URL)"
   CG_KEY="$(get_env CONTENT_GENERATOR_API_KEY)"
   if [ -n "$CG_URL" ] && [ -n "$CG_KEY" ]; then
@@ -1533,7 +1533,7 @@ if [ -n "$ENV_FILE" ]; then
     cg_missing=""
     [ -z "$CG_URL" ] && cg_missing="$cg_missing CONTENT_GENERATOR_URL"
     [ -z "$CG_KEY" ] && cg_missing="$cg_missing CONTENT_GENERATOR_API_KEY"
-    warn "content_generator: missing or unresolved:$cg_missing (multimedia generation will be unavailable)" "re-inject .env via op inject (vars added in 0.13.x)"
+    warn "content_generator: missing or unresolved:$cg_missing (multimedia generation will be unavailable)" "set it in ACE's Canopy vault on canopy-web (Settings → Credentials), then /ace:setup --force-env"
   fi
 
   # Shared-Drive canary: the configured root MUST live on a Google Shared Drive.
@@ -1641,7 +1641,7 @@ if [ -n "$ENV_FILE" ]; then
     [ -z "$SHARED_COLL" ] && sc_missing="$sc_missing OCS_SHARED_COLLECTION_ID"
     [ -z "$LLM_PROV" ] && sc_missing="$sc_missing OCS_LLM_PROVIDER_ID"
     [ -z "$EMBED_MODEL" ] && sc_missing="$sc_missing OCS_EMBEDDING_MODEL_ID"
-    warn "ocs_shared_collection: missing or unresolved:$sc_missing (per-opp bots will have empty RAG)" "re-inject .env via op inject (vars added in 0.5.1)"
+    warn "ocs_shared_collection: missing or unresolved:$sc_missing (per-opp bots will have empty RAG)" "set it in ACE's Canopy vault on canopy-web (Settings → Credentials), then /ace:setup --force-env"
   fi
 
   # Team-membership probe: confirm OCS_SHARED_COLLECTION_ID actually lives on
@@ -1696,112 +1696,21 @@ if [ -n "$ENV_FILE" ]; then
     warn "gmail_config: config/agent.json is missing $MISSING_ID" "edit config/agent.json — it is the single source of truth for the gog identity; there is deliberately no .env fallback (ace#1147)"
   fi
 
-  # Catch-all: any future .env.tpl addition that the installed .env hasn't
-  # picked up yet. Diff the KEY= sets; warn with a single line listing
-  # whatever is missing. Informational — WARN, not FAIL (per learnings.md
-  # "Runtime-health checks should be WARN, not FAIL").
-  if [ -f "$ROOT/.env.tpl" ]; then
-    TPL_KEYS="$(grep -E '^[[:space:]]*[A-Z_][A-Z0-9_]*=' "$ROOT/.env.tpl" 2>/dev/null | sed -E 's/^[[:space:]]*([A-Z_][A-Z0-9_]*)=.*/\1/' | sort -u)"
+  # env_drift: ACE's env names are declared once, in its Canopy vault on
+  # canopy-web (canopy agent-runtime.md § One declaration). canopy keeps a
+  # vault-fed copy at ~/.ace/.env (`canopy cred env|sync`); a key there that the
+  # installed plugin .env lacks is a vault addition this machine has not picked
+  # up. Informational — WARN, not FAIL (learnings.md "Runtime-health checks
+  # should be WARN, not FAIL").
+  VAULT_ENV="$HOME/.ace/.env"
+  if [ -f "$VAULT_ENV" ] && [ "$VAULT_ENV" != "$ENV_FILE" ]; then
+    VAULT_KEYS="$(grep -E '^[[:space:]]*[A-Z_][A-Z0-9_]*=' "$VAULT_ENV" 2>/dev/null | sed -E 's/^[[:space:]]*([A-Z_][A-Z0-9_]*)=.*/\1/' | sort -u)"
     ENV_KEYS="$(grep -E '^[[:space:]]*[A-Z_][A-Z0-9_]*=' "$ENV_FILE" 2>/dev/null | sed -E 's/^[[:space:]]*([A-Z_][A-Z0-9_]*)=.*/\1/' | sort -u)"
-    ENV_DIFF="$(comm -23 <(printf '%s\n' "$TPL_KEYS") <(printf '%s\n' "$ENV_KEYS") | tr '\n' ' ' | sed 's/ *$//')"
+    ENV_DIFF="$(comm -23 <(printf '%s\n' "$VAULT_KEYS") <(printf '%s\n' "$ENV_KEYS") | tr '\n' ' ' | sed 's/ *$//')"
     if [ -n "$ENV_DIFF" ]; then
-      warn "env_drift: $ENV_FILE is missing keys from .env.tpl: $ENV_DIFF" "run /ace:setup --force-env (= bash \"$ROOT/bin/ace-setup\" --force-env) — it re-injects from 1Password AND preserves local-only secrets (ACE_WEB_PAT_TOKEN etc.); do NOT raw 'op inject -o $ENV_FILE', which drops them"
+      warn "env_drift: $ENV_FILE is missing keys ACE's Canopy vault holds: $ENV_DIFF" "run /ace:setup --force-env (= bash \"$ROOT/bin/ace-setup\" --force-env) — it re-fills from the vault AND preserves local-only secrets (ACE_WEB_PAT_TOKEN etc.), then restart Claude Code"
     else
-      pass "env_drift: $ENV_FILE has every key declared in .env.tpl"
-    fi
-
-    # Class-level preventer: any key declared in .env.tpl but with zero
-    # consumers in actual code is dead ceremony — it gets injected, eats
-    # a 1Password lookup, and adds a paste-this line nobody needs. Grep
-    # every TPL_KEY against the code-bearing dirs; warn on any hit with
-    # zero consumers. Docs (README/CHANGELOG/runs/playbook) don't count.
-    # Added 0.5.7 after the bootstrap-output audit found three dead vars.
-    UNUSED=""
-    CODE_DIRS="mcp lib scripts skills bin hooks agents commands test"
-    for key in $TPL_KEYS; do
-      HITS="$(cd "$ROOT" && grep -rE "\\b$key\\b" $CODE_DIRS 2>/dev/null | head -1)"
-      if [ -z "$HITS" ]; then
-        UNUSED="$UNUSED $key"
-      fi
-    done
-    UNUSED="$(printf '%s' "$UNUSED" | sed 's/^ //')"
-    if [ -n "$UNUSED" ]; then
-      warn "unused_env_keys: declared in .env.tpl but never read by code: $UNUSED" "drop them from .env.tpl, or wire them into a consumer (mcp/ lib/ scripts/ skills/ bin/ hooks/ agents/ commands/ test/)"
-    else
-      pass "unused_env_keys: every .env.tpl key has at least one consumer"
-    fi
-
-    # #753 config-correctness probe ("configured -> configured correctly").
-    # `op inject` is ALL-OR-NOTHING: one op:// ref whose 1Password field is
-    # missing makes the WHOLE render fail, so NOTHING is injected. It does NOT
-    # write an empty .env — measured against op 2.32.1 (ace#986): the run exits
-    # 1 BEFORE writing, leaving an existing .env intact and creating no file
-    # when none was there. So the damage lands on a FRESH machine or container
-    # (the deployed ace-web runner), while a provisioned workstation keeps
-    # working on its previous .env — which is precisely why this went
-    # undiagnosed for weeks. env_drift above only diffs KEY sets; it cannot see
-    # a ref that breaks injection before any .env is written. Test-render to /dev/null
-    # and surface the failing ref by name. Gated on `op` being present; an
-    # auth/session/account error is skipped silently (CI / fresh machine), only
-    # a genuine ref-resolution failure FAILs.
-    # The template's refs read op://${AGENT_VAULT}/… (canopy#899), so the probe needs
-    # the vault of the instance this install is bound to: AGENT_VAULT from the session,
-    # else the binding /ace:setup recorded beside the plugin .env, else canopy-web's
-    # record (`canopy agent env --plugin ace --print`). Never a guessed name.
-    RENDER_VAULT="${AGENT_VAULT:-}"
-    if [ -z "$RENDER_VAULT" ] && [ -f "$DATA_DIR/canopy-instance.json" ]; then
-      RENDER_VAULT="$(node -e "try{console.log(JSON.parse(require('fs').readFileSync(process.argv[1],'utf8')).vault||'')}catch(_){}" "$DATA_DIR/canopy-instance.json" 2>/dev/null)"
-    fi
-    if [ -z "$RENDER_VAULT" ] && command -v canopy >/dev/null 2>&1; then
-      RENDER_VAULT="$(canopy agent env --plugin ace --print 2>/dev/null | node -e "try{console.log(JSON.parse(require('fs').readFileSync(0,'utf8')).vault||'')}catch(_){}" 2>/dev/null)"
-    fi
-    if command -v op >/dev/null 2>&1 && [ -z "$RENDER_VAULT" ]; then
-      warn "env_tpl_render: skipped — no ACE instance vault resolved (AGENT_VAULT unset, no binding in $DATA_DIR, canopy named none)" "run /ace:setup — it binds this install to one ACE instance and records its vault"
-    elif command -v op >/dev/null 2>&1; then
-      # `op inject` scans the whole file, comments included, so a bare op-scheme
-      # token in a `#` line (e.g. an author-contract note) would FAIL this probe
-      # for a reason that has nothing to do with a real unresolvable field.
-      # Neutralize comment-line op-scheme tokens first so the probe tests only
-      # REAL refs on KEY= lines — matching what bin/ace-setup now injects.
-      RENDER_TPL="$(mktemp)"
-      RENDER_OUT="$(mktemp)"
-      awk '/^[[:space:]]*#/ { gsub(/op:\/\//, "op-SCHEME-//") } { print }' "$ROOT/.env.tpl" > "$RENDER_TPL"
-      # Inject to a throwaway temp file (NOT /dev/null — some `op` builds refuse
-      # to write a device file) with --force (skip the overwrite prompt, which
-      # aborts non-interactively). We only care whether every ref RESOLVES; the
-      # rendered secrets are discarded immediately.
-      # RETRY ONCE before classifying. A single `op` invocation must not decide the
-      # run's verdict: this is the only FAIL most machines can produce here, so one
-      # transient flips the summary to "BROKEN — ACE will not function" on a healthy
-      # box (ace#1613).
-      RENDER_ERR="$(AGENT_VAULT="$RENDER_VAULT" op inject -i "$RENDER_TPL" -o "$RENDER_OUT" --force --account dimagi.1password.com 2>&1)"
-      RENDER_RC=$?
-      RENDER_CLASS="$(printf '%s' "$RENDER_ERR" | "$SELF_DIR/scripts/classify-op-inject.sh" "$RENDER_RC")"
-      if [ "$RENDER_CLASS" = "unknown" ]; then
-        sleep 2
-        RENDER_ERR="$(AGENT_VAULT="$RENDER_VAULT" op inject -i "$RENDER_TPL" -o "$RENDER_OUT" --force --account dimagi.1password.com 2>&1)"
-        RENDER_RC=$?
-        RENDER_CLASS="$(printf '%s' "$RENDER_ERR" | "$SELF_DIR/scripts/classify-op-inject.sh" "$RENDER_RC")"
-      fi
-      rm -f "$RENDER_TPL" "$RENDER_OUT"
-      case "$RENDER_CLASS" in
-        ok)
-          pass "env_tpl_render: .env.tpl renders cleanly (every op:// ref resolves)"
-          ;;
-        auth_skip)
-          : # op not signed in / account not configured on this machine — informational skip, not a config defect
-          ;;
-        unresolvable)
-          fail "env_tpl_render: op inject -i .env.tpl FAILS — one or more op:// refs are unresolvable, so a real op inject writes NOTHING: an existing .env is left on its previous (possibly stale) values, and a fresh machine or container gets no .env at all (jjackson/ace#753, corrected by ace#986)" "fix the field named below in 1Password (vault $RENDER_VAULT), or comment the ref out of .env.tpl until the field exists:
-$(printf '%s' "$RENDER_ERR" | sed 's/^/      /')"
-          ;;
-        *)
-          # Twice non-zero, but the error matches no known unresolvable-reference
-          # signature. Do NOT assert a config defect we have no evidence for —
-          # surface it and let the operator read the actual error.
-          warn "env_tpl_render: op inject failed twice with an unrecognised error — NOT classified as a broken ref (ace#1613). If .env writes are actually failing, read the error below" "$(printf '%s' "$RENDER_ERR" | sed 's/^/      /')"
-          ;;
-      esac
+      pass "env_drift: $ENV_FILE has every key ACE's Canopy vault holds"
     fi
   fi
 
@@ -1850,7 +1759,7 @@ $(printf '%s' "$RENDER_ERR" | sed 's/^/      /')"
     [ -z "$CONNECT_BASE" ] && cm="$cm CONNECT_BASE_URL"
     [ -z "$HQ_USER" ] && cm="$cm ACE_HQ_USERNAME"
     [ -z "$HQ_PASS" ] && cm="$cm ACE_HQ_PASSWORD"
-    warn "connect_env: missing or unresolved:$cm" "re-inject .env via op inject (vars added in 0.8.0)"
+    warn "connect_env: missing or unresolved:$cm" "set it in ACE's Canopy vault on canopy-web (Settings → Credentials), then /ace:setup --force-env"
   fi
 
   # ACE_HQ_DOMAIN — the CommCare HQ project space ace@dimagi-ai.com uploads
@@ -1860,7 +1769,7 @@ $(printf '%s' "$RENDER_ERR" | sed 's/^/      /')"
   # run_time_followups (0.10.29).
   HQ_DOMAIN="$(get_env ACE_HQ_DOMAIN)"
   if [ -z "$HQ_DOMAIN" ]; then
-    warn "hq_domain: ACE_HQ_DOMAIN not set (Nova app uploads will fall back; expected connect-ace-prod)" "add ACE_HQ_DOMAIN=connect-ace-prod to 1Password and re-inject .env"
+    warn "hq_domain: ACE_HQ_DOMAIN not set (Nova app uploads will fall back; expected connect-ace-prod)" "set ACE_HQ_DOMAIN=connect-ace-prod in ACE's Canopy vault, then /ace:setup --force-env"
   elif [ "$HQ_DOMAIN" = "connect-ace-prod" ]; then
     pass "hq_domain: ACE_HQ_DOMAIN=$HQ_DOMAIN"
   else
@@ -1968,7 +1877,7 @@ $(printf '%s' "$RENDER_ERR" | sed 's/^/      /')"
   LABS_TOKEN="$(get_env LABS_MCP_TOKEN)"
   LABS_URL="${LABS_MCP_URL:-https://labs.connect.dimagi.com/mcp/}"
   if [ -z "$LABS_TOKEN" ]; then
-    warn "connect_labs_env: LABS_MCP_TOKEN missing or unresolved" "re-inject .env via op inject (ACE - Connect Labs item in 1Password)"
+    warn "connect_labs_env: LABS_MCP_TOKEN missing or unresolved" "set it in ACE's Canopy vault on canopy-web (Settings → Credentials), then /ace:setup --force-env"
   else
     pass "connect_labs_env: LABS_MCP_TOKEN present"
     # Probe 1: PAT validity. POST an initialize frame; expect 200 (or any 2xx).
@@ -2028,7 +1937,7 @@ $(printf '%s' "$RENDER_ERR" | sed 's/^/      /')"
   # and /nova:* falls back to OAuth — broken under concurrent worktrees.
   NOVA_KEY_VAL="$(get_env NOVA_API_KEY)"
   if [ -z "$NOVA_KEY_VAL" ]; then
-    warn "nova_env: NOVA_API_KEY missing or unresolved" "mint at https://commcare.app/settings as the ACE Gmail identity, save to 1Password item \"ACE - Nova\" / field \`api_key\`, then /ace:setup --force-env"
+    warn "nova_env: NOVA_API_KEY missing or unresolved" "mint at https://commcare.app/settings as the ACE Gmail identity, store it as NOVA_API_KEY in ACE's Canopy vault, then /ace:setup --force-env"
   else
     pass "nova_env: NOVA_API_KEY present"
   fi
@@ -2044,7 +1953,7 @@ $(printf '%s' "$RENDER_ERR" | sed 's/^/      /')"
   # liveness probe below catches it pre-flight.
   HQ_KEY_VAL="$(get_env ACE_HQ_API_KEY)"
   if [ -z "$HQ_KEY_VAL" ]; then
-    warn "hq_api_key_env: ACE_HQ_API_KEY missing or unresolved" "mint at https://www.commcarehq.org/account/api_keys/ as ace@dimagi-ai.com, save to 1Password item \"ACE - CommCare HQ API Key (connect-ace-prod)\" / field \`credential\`, then /ace:setup --force-env (preserves local-only secrets; a raw op inject would drop them)"
+    warn "hq_api_key_env: ACE_HQ_API_KEY missing or unresolved" "mint at https://www.commcarehq.org/account/api_keys/ as ace@dimagi-ai.com, store it as ACE_HQ_API_KEY in ACE's Canopy vault, then /ace:setup --force-env (preserves local-only secrets)"
   else
     pass "hq_api_key_env: ACE_HQ_API_KEY present"
   fi
@@ -2101,7 +2010,7 @@ echo "[Auth liveness]"
 # the MCP talks to. PASS = the cred works today. WARN = expired/missing —
 # remediation hint names the exact command to fix it. Useful for the
 # 2-machine workflow where session cookies are per-machine and need
-# re-login on each workstation, but the static `.env` is 1Password-backed.
+# re-login on each workstation, but the static `.env` is vault-backed.
 #
 # Existing live probes elsewhere in this output (drive_shared, ocs_shared_collection_team,
 # connect_csrf_probe, connect_labs_mcp_reachable, connect_labs_connect_oauth)
@@ -2412,7 +2321,7 @@ if [ -n "$HQ_KEY_VAL" ] && [ -n "$HQ_DOMAIN" ] && [ -n "$HQ_USER" ]; then
       pass "hq_api_key_auth: ACE_HQ_API_KEY authed against $HQ_DOMAIN (GET /api/v0.5/user/ → HTTP $HQ_API_PROBE_CODE)"
       ;;
     401|403)
-      warn "hq_api_key_auth: HTTP $HQ_API_PROBE_CODE — ACE_HQ_API_KEY invalid, revoked, or scoped to wrong domain ($HQ_DOMAIN). Connect's create_opportunity / set_verification_flags will fail mid-Phase-3 with \"Failed to fetch apps from CommCare HQ.\"" "mint a new HQ API key at https://www.commcarehq.org/account/api_keys/ as ace@dimagi-ai.com, update 1Password item \"ACE - CommCare HQ API Key (connect-ace-prod)\" field \`credential\`, then /ace:setup --force-env (preserves local-only secrets; a raw op inject would drop them) AND /reload-plugins so the ace-connect MCP picks up the new env"
+      warn "hq_api_key_auth: HTTP $HQ_API_PROBE_CODE — ACE_HQ_API_KEY invalid, revoked, or scoped to wrong domain ($HQ_DOMAIN). Connect's create_opportunity / set_verification_flags will fail mid-Phase-3 with \"Failed to fetch apps from CommCare HQ.\"" "mint a new HQ API key at https://www.commcarehq.org/account/api_keys/ as ace@dimagi-ai.com, update ACE_HQ_API_KEY in ACE's Canopy vault, then /ace:setup --force-env (preserves local-only secrets) AND /reload-plugins so the ace-connect MCP picks up the new env"
       ;;
     000)
       # cchq_auth + net_commcarehq above already prove CCHQ is reachable
@@ -2614,7 +2523,7 @@ if [ -n "$NOVA_KEY_VAL" ]; then
       pass "nova_auth: ace-nova authed (POST initialize → HTTP $NOVA_REACH_CODE)"
       ;;
     401)
-      warn "nova_auth: HTTP 401 — NOVA_API_KEY invalid or revoked" "rotate at https://commcare.app/settings, update 1Password item \"ACE - Nova\" / field \`api_key\`, then /ace:setup --force-env"
+      warn "nova_auth: HTTP 401 — NOVA_API_KEY invalid or revoked" "rotate at https://commcare.app/settings, update NOVA_API_KEY in ACE's Canopy vault, then /ace:setup --force-env"
       ;;
     000)
       warn "nova_auth: cannot reach https://mcp.commcare.app/mcp (network/DNS/timeout)" "check VPN/proxy; net_nova_mcp probe above should also flag this"
@@ -2829,7 +2738,7 @@ else
 fi
 
 # 7a2b. gmail_identity_residual — the gog identity now lives ONLY in
-# config/agent.json. `.env.tpl` no longer declares ACE_GMAIL_ACCOUNT /
+# config/agent.json. The vault no longer carries ACE_GMAIL_ACCOUNT /
 # ACE_GMAIL_CLIENT, and bin/ace-setup lists them as RETIRED_KEYS so a re-inject
 # drops rather than preserves them.
 #
@@ -3316,8 +3225,8 @@ emit_line_probe common_screenshot_pool \
 # it's the canonical one-shot setup that installs Maestro, adb,
 # creates/repairs the AVD, seeds Playwright cookies, and verifies the
 # ACE_E2E_* env vars. The `fix:` hint always points there; for the rare
-# "ACE_E2E_PHONE not set" case, mobile-bootstrap also re-injects from
-# 1Password.
+# "ACE_E2E_PHONE not set" case, mobile-bootstrap also re-fills .env from
+# ACE's Canopy vault.
 MOBILE_ISSUES=()
 
 # Maestro present + executable
@@ -3758,7 +3667,7 @@ for v in ACE_E2E_PHONE ACE_E2E_PIN ACE_E2E_BACKUP_CODE ACE_AVD_NAME; do
   if [ -n "$val" ]; then
     echo "  ${v}:    set    OK"
   else
-    echo "  ${v}:    MISSING — populate via 1Password + op inject"
+    echo "  ${v}:    MISSING — set it in ACE's Canopy vault, then /ace:setup --force-env"
   fi
 done
 

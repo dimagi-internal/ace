@@ -28,8 +28,8 @@ const VAL = `[^\\s"'\\\\,}{;&|]+`;
 
 /**
  * Env var / config keys whose VALUE is always a secret. Kept explicit (not just
- * the generic name rule below) so a rename in `.env.tpl` that drops the
- * password/token/key suffix is still covered. Mirrors the `.env.tpl` key set.
+ * the generic name rule below) so a rename in ACE's Canopy vault that drops the
+ * password/token/key suffix is still covered. Mirrors the vault's secret keys.
  */
 export const SECRET_ENV_KEYS = [
   'ACE_HQ_PASSWORD',

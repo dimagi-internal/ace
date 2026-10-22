@@ -5,7 +5,7 @@
  *
  * The state that shipped a green preflight (spark-facilitator/20260731-0656):
  *
- *   .env.tpl (repo)                  2.63.2
+ *   .env.tpl (repo, since retired)   2.63.2
  *   client.ts DEFAULT_APK_VERSION    2.63.2
  *   newest map on disk               connect-2.63.2.yaml
  *   installed .env on that machine   2.63.0     <- /ace:update never touches it
@@ -22,6 +22,9 @@
  * about to be written into a map the runtime does not load by default — the
  * #591/#593 selector-drift failure re-entered through the front door with a
  * green doctor.
+ *
+ * The pin's env value now lives in ACE's Canopy vault, which CI cannot read;
+ * doctor's selector_map_currency cross-checks it live against the code default.
  */
 import { describe, it, expect } from 'vitest';
 import { readFileSync, readdirSync } from 'node:fs';
@@ -36,12 +39,6 @@ function codeDefault(): string {
   return m![1];
 }
 
-function tplPin(): string {
-  const m = /^ACE_CONNECT_APK_VERSION=(.+)$/m.exec(read('.env.tpl'));
-  expect(m, 'ACE_CONNECT_APK_VERSION not found in .env.tpl').toBeTruthy();
-  return m![1].trim();
-}
-
 function newestMapVersion(): string {
   const versions = readdirSync(url('mcp/mobile/selectors'))
     .map((f) => /^connect-(.+)\.yaml$/.exec(f)?.[1])
@@ -53,12 +50,6 @@ function newestMapVersion(): string {
 }
 
 describe('APK pin currency (#1156)', () => {
-  it('.env.tpl pins exactly the version the code defaults to', () => {
-    // They agree today and nothing enforced it — which is how a machine ends
-    // up pinned a version behind the runtime.
-    expect(tplPin()).toBe(codeDefault());
-  });
-
   it('the code default is the newest selector map on disk', () => {
     // A code default older than the newest map means the calibrated map is
     // dead weight; newer means the runtime loads a map that does not exist.

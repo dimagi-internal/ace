@@ -94,10 +94,12 @@ round.
 
 **Where it goes.** `drive_create_doc_from_markdown` needs a `parentFolderId` on a Shared
 Drive, and this is not an opportunity, so there is no run folder to resolve. ACE's Drive root
-is `ACE_DRIVE_ROOT_FOLDER_ID` in **`.env.tpl`** at the repo root — read it from there with
-`Read`. It is a folder id rather than a secret, which is why it is committed. Do not spend
-calls on `printenv`: a caller turn does not carry it in the environment, and the real `.env`
-is outside this session's readable paths.
+is `ACE_DRIVE_ROOT_FOLDER_ID`, a value in ACE's Canopy vault on canopy-web that `/ace:setup`
+writes into the installed `.env`. It is a folder id rather than a secret, but there is no
+longer a committed copy to `Read` (`.env.tpl` is gone). Do not spend calls on `printenv`: a
+caller turn does not carry it in the environment, and the real `.env` is outside this
+session's readable paths. If this session cannot read it, ask the operator for the folder id
+rather than guessing one.
 
 Then find-or-create a `marketplace-outreach` folder there (`drive_create_folder` is
 find-or-create) and put the doc in it, named for the round and the date. Do NOT reach for

@@ -22,7 +22,7 @@
  * say so on stderr.
  *
  * There are NO env-var fallbacks. `$ACE_GMAIL_ACCOUNT` / `$ACE_GMAIL_CLIENT` were
- * removed here and from `.env.tpl` together: the vault supplied `gmail_client=ace`
+ * removed here and from the env contract together: the vault supplied `gmail_client=ace`
  * against agent.json's `canopy`, no `credentials-ace.json` is ever provisioned, and
  * so every call reading the env var failed with "OAuth client credentials missing"
  * and a remedy (`gog login --client ace`) that is an interactive browser OAuth a

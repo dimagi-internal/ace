@@ -87,9 +87,9 @@ Before dispatching anything:
 3. **Verify `ACE_HQ_USERNAME` / `ACE_HQ_PASSWORD` are set.** Read
    `${CLAUDE_PLUGIN_DATA}/.env`. If either is unset:
 
-   "CommCareHQ creds are not configured. Inject from 1Password via
-   `/ace:setup --force-env` (preserves local-only secrets; do NOT raw
-   `op inject -o $CLAUDE_PLUGIN_DATA/.env`, which drops them) and retry.
+   "CommCareHQ creds are not configured. Set them in ACE's Canopy vault
+   on canopy-web (Settings → Credentials), run `/ace:setup --force-env`
+   (preserves local-only secrets), restart Claude Code, and retry.
    The labs walkthrough login uses these creds to drive the headless
    OAuth-via-CCHQ flow."
 
@@ -264,7 +264,7 @@ flow-testing without browser load.
 |---|---|---|
 | canopy plugin not installed | pre-flight halt | Install canopy plugin and retry. |
 | `browse` binary missing | pre-flight halt | Run `cd ~/.claude/skills/browse && ./setup` and retry. |
-| `ACE_HQ_USERNAME`/`PASSWORD` unset | pre-flight halt | Inject from 1Password via `op inject` (or `/ace:setup --force-env`). |
+| `ACE_HQ_USERNAME`/`PASSWORD` unset | pre-flight halt | Set them in ACE's Canopy vault, then `/ace:setup --force-env` and restart Claude Code. |
 | Persona spec missing | step 1 warn → skip persona | Run `synthetic-walkthrough-spec` first or check that the persona name matches a written spec. |
 | `canopy:walkthrough` returns non-zero (browser crash, auth failed, AI judge malformed) | step 3 surface + skip persona | Read the canopy output verbatim; common cases are stale browse session (kill and retry) or expired token (re-mirror). |
 | One persona fails but others succeed | step 4 partial | Run summary marks `status: partial` and lists which personas need a retry. Re-run with `--persona <name>` to fix individually. |

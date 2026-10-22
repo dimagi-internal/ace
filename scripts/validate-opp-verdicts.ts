@@ -130,7 +130,7 @@ async function main() {
   const aceRootId = process.env.ACE_DRIVE_ROOT_FOLDER_ID;
   if (!aceRootId) {
     console.error('FAIL: ACE_DRIVE_ROOT_FOLDER_ID env var not set.');
-    console.error('  fix: ensure .env was created via op inject and ACE_DRIVE_ROOT_FOLDER_ID is populated.');
+    console.error('  fix: run /ace:setup --force-env so .env is filled from the ACE Canopy vault (ACE_DRIVE_ROOT_FOLDER_ID).');
     process.exit(2);
   }
 

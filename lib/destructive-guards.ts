@@ -14,7 +14,7 @@
  *
  * `assertNotGoldenTemplateCollection` originally read
  * `OCS_GOLDEN_TEMPLATE_COLLECTION_ID`. That variable is declared nowhere — not
- * in `.env.tpl`, not in either installed `.env`. The guard therefore compared
+ * in ACE's env contract, not in either installed `.env`. The guard therefore compared
  * against `undefined` on every call and could never fire, while its unit test
  * injected the phantom key by hand and passed. The audit item read as closed
  * and the shared collection stayed deletable. The real key is
@@ -22,8 +22,8 @@
  * "typically id 350").
  *
  * `GUARD_ENV_KEYS` + its test are the preventer: every env key a guard depends
- * on must be declared in `.env.tpl`, so a guard keyed on a variable nobody
- * sets cannot ship green again.
+ * on must be one `/ace:doctor` checks is set (from ACE's Canopy vault), so a
+ * guard keyed on a variable nobody sets cannot ship green again.
  */
 
 export class DestructiveGuardError extends Error {
@@ -76,7 +76,7 @@ export function assertNotGoldenTemplateCollection(
 
 /**
  * Env keys these guards read. Exported so a test can assert every one is
- * actually declared in `.env.tpl` — see the false-green note at the top of
+ * actually checked by `/ace:doctor` — see the false-green note at the top of
  * this file. A guard keyed on a variable nobody sets is not a guard.
  */
 export const GUARD_ENV_KEYS = [

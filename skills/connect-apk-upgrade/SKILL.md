@@ -402,7 +402,6 @@ npx vitest run test/lib/apk-pin-sites.test.ts   # the enumeration, machine-check
 | `mcp/mobile-server.ts` | `apkVersion: z.string().default('<v>')` — **twice** (`mobile_validate_recipe`, `mobile_resolve_selectors`) |
 | `mcp/mobile/recipe-resolver.ts` | `prepareRecipeForMaestro`'s `apkVersion` default parameter |
 | `scripts/probe-atlas-drift.ts` | `process.env.ACE_CONNECT_APK_VERSION \|\| '<v>'` |
-| `.env.tpl` | `ACE_CONNECT_APK_VERSION=<v>` |
 
 **`doc-claim` — prose that asserts what the default IS; flips or it lies:**
 
@@ -432,10 +431,11 @@ not in git, so the pin-site test cannot see it. § Step 7b produces it, and
 That is how 2.64.0 shipped with no pool for six weeks: the pool was listed only
 as a `doc-example` (dimagi-internal/ace#3060).
 
-**Also declared, and deliberately valueless:** `runtime.yaml` declares
-`ace-connect-apk-version` → `ACE_CONNECT_APK_VERSION` as `optional: true` and
-carries **no version literal**. Nothing to flip; named here so its absence from
-the flip list is a decision rather than an oversight.
+**`vault` — flips by hand, outside git:** `ACE_CONNECT_APK_VERSION=<v>` in
+ACE's Canopy vault on canopy-web (agent `ace`, Settings → Credentials). It is
+what every machine's and runner's `.env` is written from, so a repo-only flip
+leaves every install on the old version. Set it after the PR lands, then Step 7.
+The pin-site test cannot see it.
 
 **Never sed the whole repo.** `2.63.2` → `2.64.0` across the tree rewrites the
 historical maps, the atlas for older versions, and every CHANGELOG entry.
@@ -455,10 +455,11 @@ flip, the pin-site test).
 
 The order is the whole point, and reversing it fails silently.
 
-1. **`/ace:setup --force-env`** — `/ace:update` does **not** touch the installed
-   `.env`, so the machine stays pinned to the old version until this runs. Never
-   a raw `op inject` (it drops local-only keys like `ACE_WEB_PAT_TOKEN`); a
-   `config/gating.json` deny rail blocks that form.
+1. **Set `ACE_CONNECT_APK_VERSION=<v>` in ACE's Canopy vault, then
+   `/ace:setup --force-env`** (it runs `canopy agent env --plugin ace` and keeps
+   local-only keys like `ACE_WEB_PAT_TOKEN`). `/ace:update` does **not** touch
+   the installed `.env`, so the machine stays pinned to the old version until
+   this runs.
 2. **Then quit and reopen Claude Code — a full process restart.** Every MCP
    server calls `dotenvConfig()` at module top level and consumes the result at
    import, so a subprocess spawned *before* the `.env` write holds the old value

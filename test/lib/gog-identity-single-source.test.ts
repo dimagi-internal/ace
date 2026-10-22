@@ -1,7 +1,7 @@
 // The gog identity has exactly one source of truth: `config/agent.json`.
 //
-// It used to have two. `.env.tpl` injected ACE_GMAIL_ACCOUNT / ACE_GMAIL_CLIENT
-// from the 1Password Agent-Ace item, duplicating `email` / `gog_client` that
+// It used to have two. The retired `.env.tpl` injected ACE_GMAIL_ACCOUNT /
+// ACE_GMAIL_CLIENT from the 1Password Agent-Ace item, duplicating `email` / `gog_client` that
 // agent.json already states — and the copies drifted. The vault held
 // `gmail_client=ace` against agent.json's `canopy`; no `credentials-ace.json`
 // is ever provisioned, so anything reading the env var failed with "OAuth
@@ -13,13 +13,11 @@
 // not credentials; the real client_id/secret live in gog's own credentials
 // file that `--client canopy` selects — so they belong in version control.
 //
-// Two things must hold together, and the second is the one that bites:
-//   1. `.env.tpl` must not declare an identity key.
-//   2. `bin/ace-setup` must list retired keys in RETIRED_KEYS.
-// Without (2), removing a key from the template makes bin/ace-setup treat the
-// leftover in an installed `.env` as an operator-added local-only secret and
-// re-append it on every inject — immortalising the exact residual the removal
-// was meant to delete, silently.
+// The env now comes from ACE's Canopy vault, which carries neither key. That
+// alone is not enough: `bin/ace-setup` must list retired keys in RETIRED_KEYS,
+// or it treats the leftover in an installed `.env` as an operator-added
+// local-only secret and re-appends it on every fill — immortalising the exact
+// residual the removal was meant to delete, silently.
 
 import { describe, it, expect } from 'vitest';
 import * as fs from 'node:fs';
@@ -38,14 +36,6 @@ describe('gog identity has one source of truth (ace#1147)', () => {
     // The shared fleet client, not a per-agent one. A per-agent client name
     // here is the #1147 defect re-entering by another door.
     expect(cfg.gog_client).toBe('canopy');
-  });
-
-  it('.env.tpl declares neither identity key', () => {
-    const tpl = read('.env.tpl');
-    for (const key of IDENTITY_KEYS) {
-      const declared = new RegExp(`^\\s*${key}\\s*=`, 'm').test(tpl);
-      expect(declared, `${key} is declared in .env.tpl — agent.json owns it`).toBe(false);
-    }
   });
 
   it('bin/ace-setup lists every retired key so a re-inject drops it', () => {

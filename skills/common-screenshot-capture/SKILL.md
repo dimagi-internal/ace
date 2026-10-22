@@ -39,7 +39,8 @@ The check-in cadence is operator-judgment, not automated.
   Required for Step 0 fork.
 - AVD bootable via `mobile_ensure_avd_running` (this skill cold-boots
   itself; no pre-running AVD required).
-- `op` 1Password CLI authenticated for any rotated secrets.
+- Any rotated secret updated in ACE's Canopy vault and written to `.env`
+  (`/ace:setup --force-env`, then restart Claude Code).
 
 ## Coverage table — what's reachable live, what needs static fixtures
 

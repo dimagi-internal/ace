@@ -32,7 +32,7 @@ OCS chatbot that `ocs-agent-setup` clones for every new opportunity.
 4. Otherwise clones the configured source chatbot (or the first one found on the team)
 5. Sets the cloned pipeline's `LLMResponseWithPrompt.prompt` to the ACE-flavored system prompt skeleton
 6. The clone inherits the source's LLM provider, pipeline structure, and tool wiring; it also gets a new EMBEDDED_WIDGET channel created as part of the clone step
-7. Prints the new `experiment_id` along with an `op item edit` command to record it in 1Password (the source of truth) and an `op inject` command to regenerate your local `.env`
+7. Prints the new `experiment_id` and the steps to record it as `OCS_GOLDEN_TEMPLATE_ID` in ACE's Canopy vault (the source of truth) and rewrite your local `.env` from it
 
 ## Usage
 
@@ -93,21 +93,19 @@ Golden template bootstrapped successfully.
 
 To make this the ACE golden template for your environment:
 
-  1. Update 1Password (source of truth for all ACE env values):
-     op item edit "ACE - Open Chat Studio" \
-       "Config.golden_template_id[text]=<new_id>" \
-       --vault AI-Agents --account dimagi.1password.com
+  1. Set OCS_GOLDEN_TEMPLATE_ID=<new_id> in ACE's Canopy vault on canopy-web
+     (agent `ace`, Settings → Credentials) — the source of truth for ACE env values.
 
-  2. Regenerate your local .env from the vault (preserves local-only secrets):
+  2. Rewrite your local .env from the vault (preserves local-only secrets):
      /ace:setup --force-env    (or: bash bin/ace-setup --force-env)
 
-  3. /reload-plugins (or restart Claude Code) so the MCP server picks up the new id.
+  3. Restart Claude Code so the MCP server picks up the new id.
 ```
 
 The vault is source-of-truth; your local `.env` is always regenerated
-from it. Do NOT hand-edit `.env` — the next `op inject` (triggered by a
-new `.env.tpl` var) will silently revert the edit back to whatever
-1Password holds.
+from it. Do NOT hand-edit `.env` — the next `/ace:setup --force-env`
+(or a runner's prepare) will silently revert the edit back to whatever
+the vault holds.
 
 ## Troubleshooting
 

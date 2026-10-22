@@ -96,8 +96,8 @@ export const PIN_FORMS: readonly PinForm[] = [
   // shell, so the fallback was the operative value and Step 6.5 diffed 2.64.0 dumps
   // against the 2.63.2 map. ace#2078.
   { name: 'env-fallback-shell', kind: 'pin', re: /\$\{ACE_CONNECT_APK_VERSION:-([\d.]+)\}/ },
-  // `ACE_CONNECT_APK_VERSION=2.63.2`                (.env.tpl)
-  { name: 'env-tpl-pin', kind: 'pin', re: /^ACE_CONNECT_APK_VERSION=([\d.]+)\s*$/ },
+  // `ACE_CONNECT_APK_VERSION=2.63.2`                (a shell / .env line)
+  { name: 'env-line-pin', kind: 'pin', re: /^ACE_CONNECT_APK_VERSION=([\d.]+)\s*$/ },
   // `apk_version: "2.63.2"`                         (mcp/mobile/selectors/connect-<v>.yaml)
   { name: 'selector-map-self-declaration', kind: 'map-self-declaration', re: /^apk_version:\s*"([\d.]+)"/ },
   // `(default APK 2.63.2)`                          (CLAUDE.md)
@@ -142,7 +142,7 @@ const SCAN_ROOTS: readonly string[] = [
 ];
 
 /** Single files outside any scanned root. */
-const SCAN_FILES: readonly string[] = ['.env.tpl', 'runtime.yaml', 'CLAUDE.md'];
+const SCAN_FILES: readonly string[] = ['runtime.yaml', 'CLAUDE.md'];
 
 /**
  * This module's own source is excluded: its doc comments quote every pin form

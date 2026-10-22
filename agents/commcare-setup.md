@@ -126,11 +126,12 @@ If `nova_auth` fails:
 
 - `nova_env: NOVA_API_KEY missing or unresolved` → operator hasn't
   minted a key yet. Mint at `https://commcare.app/settings` as the ACE
-  Gmail identity, save to 1Password item `ACE - Nova` / field
-  `api_key`, then run `/ace:setup --force-env`.
+  Gmail identity, save it as `NOVA_API_KEY` in ACE's Canopy vault on
+  canopy-web (Settings → Credentials), then run `/ace:setup --force-env`
+  and restart Claude Code.
 - `nova_auth: HTTP 401` → key invalid or revoked. Rotate at
-  `commcare.app/settings`, update the 1Password item in place, then
-  `/ace:setup --force-env`.
+  `commcare.app/settings`, update `NOVA_API_KEY` in ACE's Canopy vault,
+  then `/ace:setup --force-env` and restart Claude Code.
 - `nova_header_readiness: plugin-connection-is-oauth-only` → no
   user-scope `nova` MCP entry exists. Since nova plugin v2 (2026-09-27,
   voidcraft-labs/nova-plugin#64) the plugin's bundled connection has NO

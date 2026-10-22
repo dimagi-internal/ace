@@ -25,7 +25,6 @@ import { join } from 'node:path';
 
 const REPO_ROOT = join(__dirname, '..');
 const RUN_CMD = join(REPO_ROOT, 'commands/run.md');
-const ENV_TPL = join(REPO_ROOT, '.env.tpl');
 const UPLOAD_SKILL = join(REPO_ROOT, 'skills/upload-transcript/SKILL.md');
 
 const OPT_IN_VAR = 'ACE_WEB_UPLOAD_SESSIONS';
@@ -37,14 +36,6 @@ function read(path: string): string {
 describe('ace-web session upload is opt-in', () => {
   it('commands/run.md documents the opt-in env var', () => {
     expect(read(RUN_CMD)).toContain(OPT_IN_VAR);
-  });
-
-  it('.env.tpl declares the opt-in var and ships it disabled', () => {
-    const tpl = read(ENV_TPL);
-    expect(tpl).toContain(OPT_IN_VAR);
-    // Declared, but never shipped enabled: an uncommented `=1` in the template
-    // would opt every fresh machine in at `/ace:setup` time.
-    expect(tpl).not.toMatch(new RegExp(`^${OPT_IN_VAR}\\s*=\\s*1\\s*$`, 'm'));
   });
 
   it('does NOT re-introduce a PAT-presence implicit default', () => {

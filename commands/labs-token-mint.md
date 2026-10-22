@@ -3,7 +3,7 @@ name: labs-token-mint
 description: >
   Mint a Labs MCP Personal Access Token (PAT) for ace@dimagi-ai.com via
   the self-service UI at labs.connect.dimagi.com/labs/mcp/tokens/, store
-  the raw value in 1Password, and re-inject the local .env. One-time
+  the raw value in ACE's Canopy vault, and rewrite the local .env. One-time
   provisioning per machine; also used to rotate expired or compromised
   tokens.
 ---
@@ -30,14 +30,13 @@ in your local `.env`.
 - `ACE_HQ_USERNAME` / `ACE_HQ_PASSWORD` resolved in
   `${CLAUDE_PLUGIN_DATA}/.env` (the standard ACE service-account creds
   for `ace@dimagi-ai.com`). Run `/ace:setup --force-env` if missing.
-- A 1Password item `ACE - Connect Labs` in the **ACE instance's vault** —
-  the one canopy-web records for the instance this install is bound to
-  (`canopy agent env --plugin ace --print` names it), which is what
-  `.env.tpl` actually reads (`LABS_MCP_TOKEN`, item `ACE - Connect Labs`,
-  field `mcp_token`, vault `${AGENT_VAULT}`). The legacy shared
-  `AI-Agents` vault still holds a same-titled copy that nothing reads;
-  writing there looks like it succeeded and leaves `.env` stale. See
-  `CLAUDE.md § Auth model` for the per-agent vault split.
+- Write access to **ACE's Canopy vault** on canopy-web (agent `ace`,
+  Settings → Credentials) — the one place ACE's env secrets are declared.
+  `LABS_MCP_TOKEN` is a name stored there; `/ace:setup` writes `.env`
+  straight from it (`canopy agent env --plugin ace`). 1Password is no
+  longer read for it: a value written to a 1Password item (the old
+  `ACE - Connect Labs` item, in any vault) looks like it succeeded and
+  leaves `.env` stale. See `CLAUDE.md § Auth model`.
 - Network access to `labs.connect.dimagi.com` and
   `www.commcarehq.org`.
 
@@ -56,38 +55,19 @@ the canonical token and re-run this command annually.
 ## Usage
 
 Default — mint the canonical `ACE-plugin` token with the maximum
-365-day TTL, store in 1Password, and re-inject `.env`:
+365-day TTL, store it in ACE's Canopy vault, and rewrite `.env`:
 
 ```bash
 ACE_ROOT="${CLAUDE_PLUGIN_ROOT:-$(python3 -c "import json,os; d=json.load(open(os.path.expanduser('~/.claude/plugins/installed_plugins.json'))); print(d['plugins']['ace@ace'][0]['installPath'])")}"
 RAW=$(node "$ACE_ROOT/node_modules/tsx/dist/cli.mjs" "$ACE_ROOT/scripts/labs-mint-token.ts" ACE-plugin 365)
 
-# Update 1Password (creates item if missing, otherwise updates field).
-# Vault MUST be the ACE instance's vault — that's what .env.tpl reads
-# (op://${AGENT_VAULT}/…). AI-Agents is the legacy copy and writing there
-# silently leaves .env stale. Never type a vault name: resolve it.
-VAULT="${AGENT_VAULT:-$(canopy agent env --plugin ace --print | python3 -c 'import json,sys; print(json.load(sys.stdin).get("vault") or "")')}"
-[ -n "$VAULT" ] || { echo "no ACE instance vault resolved — run /ace:setup first"; exit 1; }
-if op item get "ACE - Connect Labs" --vault "$VAULT" \
-    --account dimagi.1password.com >/dev/null 2>&1; then
-  op item edit "ACE - Connect Labs" \
-    --vault "$VAULT" --account dimagi.1password.com \
-    "mcp_token=$RAW"
-else
-  op item create --vault "$VAULT" --account dimagi.1password.com \
-    --category "API Credential" --title "ACE - Connect Labs" \
-    "mcp_token=$RAW" \
-    "user[text]=ace@dimagi-ai.com" \
-    "name[text]=ACE-plugin"
-fi
+# Store $RAW as LABS_MCP_TOKEN in ACE's Canopy vault (value on stdin, never
+# argv; needs a vault wrap on this device — else paste it into canopy-web,
+# agent `ace`, Settings → Credentials). Do not print or keep it in a file.
+printf '%s' "$RAW" | canopy vault zk set --agent ace LABS_MCP_TOKEN
 
-# Verify the store round-trips before trusting it
-[ "$(op read --account dimagi.1password.com \
-     "op://$VAULT/ACE - Connect Labs/mcp_token")" = "$RAW" ] \
-  && echo "1Password OK" || echo "MISMATCH — wrong vault or field"
-
-# Re-inject .env from 1Password (preserves local-only secrets like
-# ACE_WEB_PAT_TOKEN — a raw `op inject -o $CLAUDE_PLUGIN_DATA/.env` would drop them)
+# Rewrite .env from the vault (runs `canopy agent env --plugin ace`;
+# preserves local-only secrets like ACE_WEB_PAT_TOKEN)
 bash "$ACE_ROOT/bin/ace-setup" --force-env
 
 # Smoke
@@ -106,7 +86,7 @@ that reads `LABS_MCP_TOKEN` from `.env`, so the steps above are enough
 for it. But a **manually added** user-scope entry (`claude mcp add`)
 stores a *hardcoded* `Authorization: Bearer <token>` header in
 `~/.claude.json` and **never reads `.env`** — it keeps returning
-HTTP 401 with `invalid_token` no matter how many times you re-inject.
+HTTP 401 with `invalid_token` no matter how many times you rewrite `.env`.
 Check with `claude mcp list`; if one is present, either drop it in
 favour of the plugin's entry, or re-point it:
 
@@ -163,7 +143,7 @@ form's markup if that space is not offered (seen 2026-10-08).
 5. **Reads the raw token** from `<code id="raw-token">` in the
    response page.
 6. **Prints to stdout.** Diagnostics go to stderr so the stdout is
-   pipeable to `op item edit` / `op item create`.
+   pipeable into its destination (the vault, or an OCS Auth Provider).
 
 ## Output
 
@@ -204,15 +184,13 @@ form's markup if that space is not offered (seen 2026-10-08).
     `input[name="name"]` before dumping the DOM, or it will wrongly
     conclude the token UI is gone.
 - **`HTTP 401` / `invalid_token` after storing** — in order of
-  likelihood: (1) you wrote to the **`AI-Agents`** vault instead of
-  the **ACE instance's vault**, so `.env` still holds the old token —
-  verify with `op read --account dimagi.1password.com
-  "op://$VAULT/ACE - Connect Labs/mcp_token"` (`$VAULT` resolved as in
-  § Usage); (2) you have a
+  likelihood: (1) the new value is not in ACE's Canopy vault (e.g. it
+  went to a 1Password item, which nothing reads now) or `.env` was not
+  rewritten afterwards — re-run `/ace:setup --force-env`; (2) you have a
   hand-added user-scope `connect_labs` MCP entry with a hardcoded
   header (see § above); (3) you haven't fully restarted Claude Code, so
-  the MCP subprocess still holds the old header; (4) wrong field name
-  on the item.
+  the MCP subprocess still holds the old header; (4) wrong name in the
+  vault (it must be exactly `LABS_MCP_TOKEN`).
 - **`connect_labs_mcp_reachable: HTTP 406` in `bin/ace-doctor`** — a
   **false alarm, not an auth failure**. The probe omits the
   `Accept: application/json, text/event-stream` header the Streamable
@@ -228,8 +206,7 @@ form's markup if that space is not offered (seen 2026-10-08).
   `LABS_MCP_TOKEN` and injects `Authorization: Bearer <token>` for the
   native `connect-labs` HTTP entry in `.claude-plugin/plugin.json`
 - `bin/ace-doctor` — `[Connect Labs]` section verifies the token
-- `.env.tpl` — `LABS_MCP_TOKEN` points at item `ACE - Connect Labs`,
-  field `mcp_token`, in the instance vault (`${AGENT_VAULT}`)
+- ACE's Canopy vault (canopy-web, Settings → Credentials) — holds
+  `LABS_MCP_TOKEN`
 - `playbook/integrations/connect-labs.md` — full integration reference
-- `CLAUDE.md § Auth model` — the per-agent vault split
-  (the instance's vault authoritative, `AI-Agents` legacy)
+- `CLAUDE.md § Auth model` — the vault-backed `.env`

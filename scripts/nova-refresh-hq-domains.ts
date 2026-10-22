@@ -64,7 +64,7 @@ loadPluginEnv(import.meta.url);
 const LOGIN_ITEM = 'Ace - gmail';
 
 /** The 1Password vault of the ACE instance this install is bound to. `op read` does not
- *  expand `${AGENT_VAULT}` in a reference (only `op inject` / `op run` do), so resolve it:
+ *  expand `${AGENT_VAULT}` in a reference (only `op run` does), so resolve it:
  *  the session's AGENT_VAULT, else canopy-web's record via canopy. Throws when neither
  *  names one — never a guessed vault. */
 function instanceVault(): string {

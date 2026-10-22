@@ -32,7 +32,7 @@
  *                      pointing at any ancestor of those XMLs works.
  *   --apk <version>    Connect APK version to compare against. Defaults
  *                      to `$ACE_CONNECT_APK_VERSION` (the pin in
- *                      `.env.tpl`), falling back to 2.63.2 if unset.
+ *                      ACE's Canopy vault), falling back to 2.63.2 if unset.
  *                      Loads `mcp/mobile/selectors/connect-<version>.yaml`.
  *   --out <path>       Write the markdown report to this file. Defaults
  *                      to stdout.

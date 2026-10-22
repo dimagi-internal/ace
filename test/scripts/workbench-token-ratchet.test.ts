@@ -13,7 +13,6 @@ import * as path from 'node:path';
 const ROOT = path.resolve(__dirname, '..', '..');
 
 const ALLOWED: Record<string, string> = {
-  '.env.tpl': 'documents that ACE’s own CANOPY_WEB_PAT exists so the workbench token is never needed',
   'bin/ace-canopy-web': 'the write wrapper — documents the hazard; reads ACE’s .env only',
   'playbook/integrations/canopy-web.md': 'the rule doc explaining why the workbench token is never used',
   'scripts/browser-sessions.ts': 'doc comment on canopyToken stating it never reads the workbench token',

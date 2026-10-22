@@ -30,10 +30,9 @@ canopy CLI on PATH (`/canopy:setup`); the shims exit with the remediation when i
 The identity has ONE source of truth — `config/agent.json` (`email` = `ace@dimagi-ai.com`,
 `gog_client` = `canopy`); `bin/ace-email` and the canopy engine read it from there. There are NO
 `ACE_GMAIL_ACCOUNT` / `ACE_GMAIL_CLIENT` env vars any more: they were RETIRED with ace#1147 /
-#1338 (`.env.tpl` no longer declares them, `bin/ace-setup` lists them as `RETIRED_KEYS`), and a
+#1338 (ACE's Canopy vault carries no such keys), and a
 `$ACE_GMAIL_ACCOUNT` in a shell command expands to EMPTY — so the account flag followed by that
-var silently ran as `-a ` and failed. Write the literals. *Enforced:* `test/lib/env-tpl-identity.test.ts`
-scans every skill/command/agent doc for the retired form.
+var silently ran as `-a ` and failed. Write the literals.
 
 The GOG CLI must be installed (`brew install steipete/tap/gogcli`) and the configured account must
 be authenticated. **Preferred:** connect via the canopy-web "Connect Google mailbox" button —

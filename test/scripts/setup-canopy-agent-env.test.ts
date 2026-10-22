@@ -2,13 +2,14 @@
  * `/ace:setup` binds this install to ONE ACE instance through canopy's shared
  * step (canopy#899, canopy 0.2.681): `canopy agent env --plugin ace` resolves
  * the instance (the only one you can see, the one already bound, or
- * `--agent`), takes the vault from that instance's canopy-web record, records
- * the binding beside the .env, and runs `op inject` with AGENT_VAULT set.
+ * `--agent`) and fills .env from that instance's Canopy vault — the ONLY
+ * declaration of ACE's env names (canopy agent-runtime.md § One declaration).
  *
- * So bin/ace-setup must (1) fill `$DATA_DIR/.env` through that command, never
- * a raw `op inject`, (2) read the Google service-account key from the vault it
- * resolved, never a hardcoded `Agent-Ace`, and (3) stop with canopy's own
- * message when canopy cannot resolve an instance — before npm install.
+ * So bin/ace-setup must (1) fill `$DATA_DIR/.env` through that command with
+ * NO `--template` and no raw `op inject`, (2) name no 1Password vault in code
+ * (the SA key's vault is only ever an override), and (3) stop with canopy's
+ * own message when canopy cannot resolve an instance and the fill is needed —
+ * before npm install.
  *
  * CLASSIFICATION: unit-test truth. Structural pins over the script, plus one
  * run of the real script against stub `canopy` / `op` binaries; no network,
@@ -30,9 +31,11 @@ const code = setup
   .join('\n');
 
 describe('bin/ace-setup fills .env through canopy agent env', () => {
-  it('invokes canopy agent env --plugin ace for the fill, into $DATA_DIR/.env', () => {
-    expect(code).toMatch(/canopy agent env --plugin ace --template "\$INJECT_TPL" --out "\$ENV_OUT"/);
+  it('invokes canopy agent env --plugin ace for the fill, with no template', () => {
+    expect(code).toMatch(/canopy agent env --plugin ace --out "\$FILL_DIR\/\.env" --agent "\$BOUND_AGENT"/);
     expect(code).toMatch(/ENV_OUT="\$DATA_DIR\/\.env"/);
+    expect(code).not.toMatch(/--template/);
+    expect(code).not.toMatch(/\.env\.tpl/);
   });
 
   it('runs no raw `op inject` of its own', () => {
@@ -44,17 +47,17 @@ describe('bin/ace-setup fills .env through canopy agent env', () => {
     }
   });
 
-  it('resolves the instance and vault with --print before anything reads the vault', () => {
-    const printAt = code.indexOf('canopy agent env --plugin ace --template "$ROOT/.env.tpl" --out "$DATA_DIR/.env" --print');
-    const keyFetchAt = code.indexOf('op document get "$GWS_DOC_NAME" --vault "$OP_VAULT"');
+  it('resolves the instance with --print before the fill', () => {
+    const printAt = code.indexOf('canopy agent env --plugin ace --out "$ENV_OUT" --print');
+    const fillAt = code.indexOf('canopy agent env --plugin ace --out "$FILL_DIR/.env"');
     expect(printAt).toBeGreaterThan(-1);
-    expect(keyFetchAt).toBeGreaterThan(printAt);
+    expect(fillAt).toBeGreaterThan(printAt);
   });
 
   it('hardcodes no vault: OP_VAULT starts empty and ACE_OP_VAULT is only an override', () => {
     expect(code).toMatch(/^OP_VAULT=""$/m);
     expect(code).not.toMatch(/Agent-Ace/);
-    expect(code).toMatch(/ACE_OP_VAULT.*--vault/);
+    expect(code).toMatch(/OP_VAULT="\$\{ACE_OP_VAULT:-\$AGENT_VAULT\}"/);
   });
 
   it('requires canopy 0.2.681 or newer', () => {
@@ -103,7 +106,7 @@ describe('when canopy cannot resolve an instance', () => {
       const out = r.stdout + r.stderr;
       expect(r.status).toBe(1);
       expect(out).toMatch(/PASS op: authenticated/);
-      expect(out).toMatch(/FAIL instance: canopy could not resolve this install's ACE instance and vault/);
+      expect(out).toMatch(/FAIL instance: canopy could not resolve this install's ACE instance/);
       expect(out).toContain(several);
       expect(out).toMatch(/re-run \/ace:setup --agent <instance>/);
       expect(out).not.toMatch(/running npm install/);

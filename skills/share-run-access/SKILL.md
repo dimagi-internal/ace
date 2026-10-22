@@ -199,8 +199,8 @@ Pipeline-only: grants access to ONE run's products, so the run is the object (`r
      ace-web principal — `ace@dimagi-ai.com` is an **owner** of `dimagi-team` and mints its OWN bot PAT
      (ace-web#670: the `0005_promote_ace_owner` migration + the `mint_personal_token` command), so ACE
      invites under its own identity, never on behalf of a human. (Bring-up after an ace-web deploy:
-     `python manage.py mint_personal_token --email ace@dimagi-ai.com --label ace-bot`, store in
-     1Password, set as `ACE_WEB_PAT_TOKEN`.) The invitee then signs in once and accepts the pending
+     `python manage.py mint_personal_token --email ace@dimagi-ai.com --label ace-bot`, set as
+     `ACE_WEB_PAT_TOKEN` — a local-only `.env` key, not held in the vault.) The invitee then signs in once and accepts the pending
      invite. Read back `GET /api/workspaces/<workspace>/members` to confirm (pending until they accept).
 
    - **Connect opportunity.** **Read first, read-only:** `connect_list_org_members({ organization_slug: <holding org from step 1> })`

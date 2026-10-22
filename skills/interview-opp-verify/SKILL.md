@@ -86,11 +86,10 @@ The three observation atoms `ocs_get_me`, `ocs_list_chatbots`, and `ocs_inspect_
 To verify a bot on a non-default team:
 
 1. Mint a read-only `UserAPIKey` scoped to the target team via `/users/profile/` → API keys (uncheck "allow write").
-2. Store it in 1Password under `AI-Agents` as `ACE - OCS REST API Key (<slug>)`.
-3. Add to `.env.tpl`: `OCS_API_TOKEN_<SLUG_UPPER>=op://AI-Agents/<uuid>/credential` (slug uppercased, non-alphanumeric → `_`).
-4. Run `bash bin/ace-setup --force-env` to inject.
-5. Restart Claude Code so the MCP subprocess picks up the new env var.
-6. Pass `team_slug: "<slug>"` on every OCS call in the verifier run.
+2. Store it in ACE's Canopy vault on canopy-web (Settings → Credentials) as `OCS_API_TOKEN_<SLUG_UPPER>` (slug uppercased, non-alphanumeric → `_`).
+3. Run `bash bin/ace-setup --force-env` to rewrite `.env` from the vault.
+4. Restart Claude Code so the MCP subprocess picks up the new env var.
+5. Pass `team_slug: "<slug>"` on every OCS call in the verifier run.
 
 A `team_slug` for which no token is registered surfaces a typed error naming the exact env var to add — so misconfigurations don't bleed into 401 mysteries.
 

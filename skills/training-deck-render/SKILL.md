@@ -162,8 +162,8 @@ ace#3232). Identifiers (case properties, slugs, ids, config keys) keep their spe
     no-op here**, despite being the obvious move: it dedupes on
     `TEMPLATE_NAME` in the ACE root folder, so it finds the drifted
     template and returns `Template already exists`. Forcing a real
-    re-mint means a new presentationId, which means a 1Password
-    rotation plus `/ace:setup --force-env` plus a full Claude restart
+    re-mint means a new presentationId, which means a Canopy vault
+    update plus `/ace:setup --force-env` plus a full Claude restart
     (every MCP server reads `.env` at module load). Repair in place
     unless the stencil GEOMETRY changed, not just its tokens.
 

@@ -1,14 +1,14 @@
 /**
- * Config / 1Password drift must be reported as ONE verdict block, not narrated.
+ * Config / vault drift must be reported as ONE verdict block, not narrated.
  *
  * ## The failure class
  *
- * ACE has three surfaces that can disagree about a config key — the 1Password
- * `Agent-Ace` vault (authoritative for every key declared in `.env.tpl`),
- * `.env.tpl` itself (authoritative for WHICH keys must exist), and the installed
- * `${CLAUDE_PLUGIN_DATA}/.env` (what this machine actually has). `bin/ace-doctor`
- * already detects the drift (`env_drift`, `unused_env_keys`, the `op inject`
- * render probe). What it did NOT constrain was how the finding is PRESENTED.
+ * ACE's config surfaces can disagree about a key — its Canopy vault on
+ * canopy-web (authoritative for WHICH keys exist and their values; it replaced
+ * the 1Password vault + `.env.tpl` pair, which were two surfaces of their own)
+ * and the installed `${CLAUDE_PLUGIN_DATA}/.env` (what this machine actually
+ * has). `bin/ace-doctor` already detects the drift (`env_drift`). What it did
+ * NOT constrain was how the finding is PRESENTED.
  *
  * On 2026-08-26/27 a drift diagnosis was delivered as a running commentary — a
  * hypothesis, then a revision, then another — and Jonathan had to ask:
@@ -47,16 +47,16 @@ describe('/ace:doctor config-drift presentation contract', () => {
     expect(src()).toMatch(/ad hoc in\s+conversation/i);
   });
 
-  it('names the three disagreeing surfaces so the verdict cannot hand the question back', () => {
+  it('names the disagreeing surfaces so the verdict cannot hand the question back', () => {
     const body = src();
-    expect(body).toMatch(/instance's\s+1Password vault/);
-    expect(body).toMatch(/\.env\.tpl/);
+    expect(body).toMatch(/Canopy\s+vault/);
     expect(body).toMatch(/CLAUDE_PLUGIN_DATA/);
+    expect(body).not.toMatch(/\.env\.tpl/);
   });
 
   it('carries the two footguns a recommendation must not get wrong', () => {
     const body = src();
-    // Raw `op inject` drops local-only keys; only bin/ace-setup preserves them.
+    // A hand-rewritten .env drops local-only keys; only bin/ace-setup preserves them.
     expect(body).toMatch(/--force-env/);
     expect(body).toMatch(/local-only/i);
     // An MCP subprocess spawned before an .env write holds the old values (ace#880).

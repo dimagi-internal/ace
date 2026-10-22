@@ -348,20 +348,6 @@ function railSuites(runGuard: RunGuard, runRaw: RunRaw): void {
       });
       expect(r.exitCode).toBe(2);
     });
-
-    it.each([
-      ['--out-file long form', 'op inject -i .env.tpl --out-file $CLAUDE_PLUGIN_DATA/.env'],
-      ['redirect form', 'op inject -i .env.tpl > $CLAUDE_PLUGIN_DATA/.env'],
-      ['plugins/data path', 'op inject -i .env.tpl -o ~/.claude/plugins/data/ace/.env'],
-    ])('DENIES op inject plugin-data clobber: %s', (_label, command) => {
-      const r = runGuard('Bash', { command });
-      expect(r.exitCode).toBe(2);
-    });
-
-    it('still ALLOWS op inject to a dev-worktree ./.env', () => {
-      const r = runGuard('Bash', { command: 'op inject -i .env.tpl -o ./.env' });
-      expect(r.exitCode).toBe(0);
-    });
   });
 
   /**

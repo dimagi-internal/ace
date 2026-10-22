@@ -15,9 +15,7 @@ The script:
 2. Uploads it to Drive as a Google Doc named "ACE Work Order Template".
 3. Prints the resulting file_id to stdout.
 
-Record the file_id in 1Password at `AI-Agents/ACE - Drive Templates/work_order_template_id`, then re-run `op inject -i .env.tpl -o $CLAUDE_PLUGIN_DATA/.env --force` (or `/ace:setup --force-env`).
-
-If `ACE - Drive Templates` doesn't exist yet, create it as a `Secure Note` item in the `AI-Agents` vault. The same item holds `training_deck_template_id` (and any future Drive template IDs ACE skills copy from). Keep OCS-specific IDs (e.g. `golden_template_id`) in `ACE - Open Chat Studio` — `ACE - Drive Templates` is the home for Drive file-id references that aren't tied to a specific product.
+Store the file_id as `WORK_ORDER_TEMPLATE_ID` in ACE's Canopy vault on canopy-web (Settings → Credentials), then run `/ace:setup --force-env` (which runs `canopy agent env --plugin ace`) and restart Claude Code.
 
 ## Refresh
 
@@ -28,7 +26,7 @@ ACE_TEMPLATES_FOLDER_ID=<folder id> WORK_ORDER_BOOTSTRAP_FORCE=1 \
   npx tsx scripts/bootstrap-work-order-template.ts
 ```
 
-The old template is trashed (recoverable for 30 days in Drive) and a new one is created. Record the new file_id in 1Password.
+The old template is trashed (recoverable for 30 days in Drive) and a new one is created. Record the new file_id in ACE's Canopy vault.
 
 ## Mirror-vs-live drift
 
@@ -51,7 +49,7 @@ CLAUDE_PLUGIN_DATA=~/.claude/plugins/data/ace-ace npx tsx scripts/probe-work-ord
 
 `/ace:doctor` runs the same probe as `work_order_template_drift` (WARN on drift), alongside the SA-accessibility probes. `test/skills/work-order-template-token-contract.test.ts` pins the three REPO files against each other in CI; this probe is the live half, which CI cannot run.
 
-**Fixing drift: edit the live gdoc, do NOT re-bootstrap.** `WORK_ORDER_BOOTSTRAP_FORCE=1` trashes the current template and mints a **new file id**, which (a) requires a 1Password + `.env` update everywhere and (b) discards the `docs_batch_update` style retrofit described in `skills/pdd-to-work-order/references/style-guide.md`. Apply the minimal `docs_batch_update` instead, then re-run the probe to confirm it reports `OK`.
+**Fixing drift: edit the live gdoc, do NOT re-bootstrap.** `WORK_ORDER_BOOTSTRAP_FORCE=1` trashes the current template and mints a **new file id**, which (a) requires a vault + `.env` update everywhere and (b) discards the `docs_batch_update` style retrofit described in `skills/pdd-to-work-order/references/style-guide.md`. Apply the minimal `docs_batch_update` instead, then re-run the probe to confirm it reports `OK`.
 
 **A zero-match replacement is now visible.** `docs_copy_template` and `slides_copy_template` return `replacementOccurrences` (per-key counts), `unmatchedReplacements`, and a `warning` when any key matched nothing (`lib/replacement-coverage.ts`). Note the API omits `occurrencesChanged` rather than sending `0`, so absence — not a zero — is the signal.
 

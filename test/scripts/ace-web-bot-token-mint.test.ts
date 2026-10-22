@@ -56,13 +56,7 @@ describe('the mint is ACE-owned and uses only public surfaces', () => {
   });
 });
 
-describe('provisioning: automatic per machine — no 1Password, no browser, no separate step', () => {
-  it('.env.tpl declares the name but does NOT ask op inject to resolve it', () => {
-    const tpl = read('.env.tpl');
-    expect(tpl).toMatch(/^# ACE_WEB_PAT_TOKEN=/m);
-    expect(tpl).not.toMatch(/^ACE_WEB_PAT_TOKEN=op:/m);
-  });
-
+describe('provisioning: automatic per machine — no vault, no browser, no separate step', () => {
   it('bin/ace-setup obtains it with --ensure', () => {
     expect(read('bin/ace-setup')).toMatch(/scripts\/ace-web-bot-token-mint\.ts --ensure/);
   });

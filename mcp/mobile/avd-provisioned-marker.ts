@@ -83,7 +83,7 @@ export function writeProvisionedMarker(
  * **Every branch fails closed, and that is a correction, not a preference
  * (ace#1993).** This function used to return `true` whenever the caller passed
  * no map — while both call sites read `process.env.ACE_SELECTOR_MAP`, a
- * variable set nowhere in the repo, in `.env.tpl`, or in any installed `.env`.
+ * variable set nowhere in the repo, in ACE's env contract, or in any installed `.env`.
  * So the guard the header above describes never once executed its comparison,
  * and the header's own promise ("unknown is treated as not-proven") was
  * inverted in code: every marker on every host is unknown-map, and every one

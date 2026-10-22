@@ -69,10 +69,10 @@ node scripts/labs-auth-headers.mjs   # prints {"Authorization":"Bearer …"} or 
 ```
 
 Required env: `LABS_MCP_TOKEN` (per-user PAT from
-`/ace:labs-token-mint`). 1Password is the source of truth; rotate
-there and refresh `.env` with `/ace:setup --force-env` (never a raw
-`op inject -o <plugin-data>/.env`: that drops the local-only keys, and a
-`config/gating.json` rail blocks it).
+`/ace:labs-token-mint`). ACE's Canopy vault on canopy-web (Settings →
+Credentials) is the source of truth; rotate there, refresh `.env` with
+`/ace:setup --force-env` (it runs `canopy agent env --plugin ace` and keeps
+the local-only keys), and restart Claude Code.
 
 `bin/ace-doctor`'s `[Auth liveness]` block runs a one-shot
 `labs_context` against the live PAT; failure points at the rotation

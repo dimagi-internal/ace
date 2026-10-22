@@ -207,7 +207,7 @@ report a `skip` verdict (no OCS session on this machine, env unset,
 `--no-live` passed). A `skip` is not a halt; it means the check could not
 run, and `ocs_auth` in the full `/ace:doctor` says why. And its
 remediation is **not** a restart: fix the team's GENERATION provider key
-in OCS / 1Password (the block names the exact
+in OCS / ACE's Canopy vault (the block names the exact
 `/a/<team>/service_providers/llm/<pk>/` page — note that is *not* the id
 `OCS_LLM_PROVIDER_ID` holds, which is embeddings), then re-run
 `/ace:run`. No Claude Code restart needed, unlike the other two. Halt on
@@ -1350,9 +1350,9 @@ in `inputs/` (the manifest), not to pick one canonical PDD file.
 
    1. Read `ACE_DRIVE_ROOT_FOLDER_ID`. If unset/empty, error:
       `ACE_DRIVE_ROOT_FOLDER_ID is not set in your .env (expected at
-      $CLAUDE_PLUGIN_DATA/.env); re-inject from .env.tpl via "op inject
-      -i .env.tpl -o $CLAUDE_PLUGIN_DATA/.env --account
-      dimagi.1password.com" and retry.`
+      $CLAUDE_PLUGIN_DATA/.env); set it in ACE's Canopy vault on
+      canopy-web (Settings → Credentials), run /ace:setup --force-env
+      (canopy agent env --plugin ace), restart Claude Code, and retry.`
 
    2. **Shared-Drive precondition** (unchanged from prior version) — if
       the root is on My Drive instead of a Shared Drive, every artifact

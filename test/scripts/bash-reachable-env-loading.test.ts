@@ -237,14 +237,14 @@ describe('ace#1957 — the loader is shared, not re-derived per script', () => {
  * Everything above is one instance each. This is the class, and it is
  * DISCOVERED rather than listed: `discoverBashReachableScripts` walks
  * `scripts/*.ts`, keeps the ones named from `skills/` / `agents/` /
- * `commands/` that read a variable `.env.tpl` declares (plus a handful of
+ * `commands/` that read a variable ACE's vault supplies (plus a handful of
  * documented extras), and reports whether each calls
  * `loadPluginEnv(import.meta.url)` before its first such read.
  *
  * A hardcoded list is the thing that goes stale — that is how eight scripts
  * accumulated behind ace#1957's two. Adding a new script that reads a secret
  * and is reachable from a skill fails this test on the day it lands, and so
- * does adding a new key to `.env.tpl` that an existing unloaded script reads.
+ * does an existing unloaded script reading a new vault key in a known family.
  *
  * The check is on textual POSITION, deliberately. A read inside a function
  * defined above the loader is fine at runtime, so the rule is stricter than

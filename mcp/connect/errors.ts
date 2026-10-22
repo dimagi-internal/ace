@@ -28,14 +28,14 @@ export class ConnectError extends Error {
  * then escalate — and the escalation asks for the CREDENTIAL to be repaired,
  * never for a person to authenticate on ACE's behalf. dimagi-internal/ace#2172.
  *
- * Note `/ace:setup --force-env`, never a raw `op inject` — the latter drops
- * local-only keys (CLAUDE.md § Auth model). And a `.env` rewrite needs a full
+ * Note `/ace:setup --force-env`, never a hand-rewritten `.env` — only setup
+ * preserves local-only keys (CLAUDE.md § Auth model). And a `.env` rewrite needs a full
  * Claude Code restart before a running MCP subprocess sees it, which is why
  * the restart is named here rather than left to be rediscovered.
  */
 export const REMEDIATION_ORDER =
-  'Self-remediate first, in this order: (1) re-inject the HQ credentials from ' +
-  '1Password with `/ace:setup --force-env` (NOT a raw `op inject`, which drops ' +
+  'Self-remediate first, in this order: (1) re-fill the HQ credentials from ' +
+  "ACE's Canopy vault with `/ace:setup --force-env` (which keeps " +
   'local-only keys), then fully restart Claude Code so the MCP subprocess picks ' +
   'up the new .env; (2) retry the call, which re-runs the headless ' +
   'OAuth-via-CCHQ login. Only if that still fails, escalate — and escalate to ' +
