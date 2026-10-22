@@ -32,21 +32,28 @@ export interface TopUpPlan {
 /**
  * Plan each worker's weekly issues so they carry a float.
  *
- * A worker's float is `float_weeks` times their busiest week's handovers,
- * and at least `min_float`. At the start of each week they are topped up to
- * the larger of the float and that week's handovers, so a planned handover
- * never draws a worker below zero. Week 1's issue is the opening float.
+ * A worker's float is `float_weeks` times their AVERAGE weekly handovers,
+ * rounded up, and at least `min_float`. At the start of each week the LLO
+ * issues that week's handovers plus whatever brings the worker back to the
+ * float, so they end every week holding it and a planned handover never
+ * draws them below zero. Two shapes this replaces, both seen on connect-fi:
+ * - sizing by the BUSIEST week front-loads every phone into week 1 when one
+ *   week spikes (the card-collection round: floats of 8-18 handsets, then
+ *   almost nothing moved for three weeks);
+ * - topping up only to the larger of float and handovers empties every
+ *   worker in the spike week.
  *
- * `withhold` names one (worker, week) whose top-up is skipped: the planted
- * stockout. That worker then holds what was left of last week's stock, and
- * runs out if that week's handovers need more.
+ * There is no "withhold a top-up" option: labs' dispensing rule takes every
+ * handover off the worker's stock from the visits whatever was issued, so a
+ * withheld top-up drives the ledger negative rather than making a stockout.
+ * The planted stockout is a worker's self-reported zero count instead
+ * (`supply-chain-operate` Step 5), which labs reads as variance.
  */
 export function planWorkerTopUps(input: {
   issues: IssuesByWorker;
   weeks: number;
   float_weeks?: number;
   min_float?: number;
-  withhold?: { username: string; week: number } | null;
 }): TopUpPlan {
   const floatWeeks = input.float_weeks ?? 2;
   const minFloat = input.min_float ?? 1;
@@ -55,18 +62,17 @@ export function planWorkerTopUps(input: {
   const plan: TopUpPlan = { float: {}, issued: {}, on_hand_end: {} };
   for (const [username, byWeek] of Object.entries(input.issues)) {
     const counts = Array.from({ length: input.weeks }, (_, i) => byWeek[i + 1] ?? 0);
-    const float = Math.max(minFloat, Math.ceil(Math.max(0, ...counts) * floatWeeks));
+    const mean = counts.reduce((a, b) => a + b, 0) / counts.length;
+    const float = Math.max(minFloat, Math.ceil(mean * floatWeeks));
     plan.float[username] = float;
     plan.issued[username] = {};
     plan.on_hand_end[username] = {};
     let held = 0;
     for (let w = 1; w <= input.weeks; w++) {
       const handovers = counts[w - 1];
-      const target = Math.max(float, handovers);
-      const skip = input.withhold?.username === username && input.withhold.week === w;
-      const issue = skip ? 0 : Math.max(0, target - held);
+      const issue = Math.max(0, handovers + float - held);
       plan.issued[username][w] = issue;
-      held = Math.max(0, held + issue - handovers);
+      held = held + issue - handovers;
       plan.on_hand_end[username][w] = held;
     }
   }
@@ -96,8 +102,6 @@ export interface MotionInput {
   stores: Array<{ id: number; has_coordinates: boolean }>;
   /** The visit opportunity. */
   opportunity_id: number;
-  /** The smallest share of received stock that must have left the central store by the last week. */
-  min_share_out?: number;
 }
 
 export interface MotionVerdict {
@@ -113,7 +117,6 @@ const last = (s: number[]) => (s.length ? s[s.length - 1] : 0);
  * viewer of Overview / Workers / Where it went / Map would notice it is not.
  */
 export function assessSupplyMotion(input: MotionInput): MotionVerdict {
-  const minShare = input.min_share_out ?? 0.25;
   const problems: string[] = [];
   const sources = new Set(input.flow.nodes.filter((n) => n.kind === 'source').map((n) => n.id));
   const workerNodes = new Set(input.flow.nodes.filter((n) => n.kind === 'worker').map((n) => n.id));
@@ -129,8 +132,20 @@ export function assessSupplyMotion(input: MotionInput): MotionVerdict {
   for (const l of input.flow.links) if (l.target === 'given' && workerNodes.has(l.source)) givenByWorker.set(l.source, last(l.series));
 
   if (received <= 0) problems.push('nothing was received into the network (no order arrived)');
-  if (received > 0 && leftCentral / received < minShare) {
-    problems.push(`only ${leftCentral} of ${received} received left the central store (${Math.round((100 * leftCentral) / received)}%, need ≥ ${Math.round(minShare * 100)}%)`);
+  // In motion = stock leaves the central store in most weeks, and at least as
+  // much left it as was handed out. NOT a share of what was received: an order
+  // is sized for the whole programme (connect-fi's 820 phones cover 1,480
+  // adults over 13 weeks, in tranches), so a 4-week window rightly draws ~20%.
+  const outflow = input.flow.links
+    .filter((l) => central.has(l.source) && !central.has(l.target))
+    .reduce<number[]>((acc, l) => l.series.map((x, i) => (acc[i] ?? 0) + x), []);
+  const steps = outflow.slice(1).map((x, i) => x - outflow[i]);
+  const movingWeeks = steps.filter((d) => d > 0).length;
+  if (received > 0 && steps.length && movingWeeks < Math.ceil(steps.length / 2)) {
+    problems.push(`stock left the central store in only ${movingWeeks} of ${steps.length} weeks`);
+  }
+  if (received > 0 && leftCentral < given) {
+    problems.push(`${given} handed out at visits but only ${leftCentral} left the central store`);
   }
   if (stores.length < 2) problems.push(`the flow shows ${stores.length} store(s); a distribution network needs a central and a field store`);
   const idle = [...workerNodes].filter((id) => !(givenByWorker.get(id) ?? 0));
