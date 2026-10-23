@@ -3,13 +3,21 @@
  *
  *   npx tsx "$ACE_ROOT/scripts/nova-app-lint.ts" --app <nova_app_id> --type learn|deliver \
  *     [--work <work_id>] [--allow-preload id,id] [--declared-modules "A|B"] \
- *     [--out <result.json>] [--bundle-out <bundle.json>] [--from-bundle <bundle.json>]
+ *     [--out <result.json>] [--snapshot-out <snapshot.json>] [--from-bundle <snapshot.json>]
  *
  * Reads `get_app`, every `get_module`, every `get_form` and every BOUND lookup
  * table once (server-side over JSON-RPC, `lib/nova-rpc.ts` — none of it passes
  * through the model's context, which is the point: a Deliver blueprint is
  * 100–400 KB of JSON), runs `lib/nova-app-lint.ts`, prints the report, and
  * writes the structured result with `--out`.
+ *
+ * `--snapshot-out` (alias `--bundle-out`) writes what it read as the Phase 3
+ * Nova app snapshot (`lib/nova-app-snapshot.ts`, ace#3132): stamped with the
+ * app's `updated_at` taken BEFORE the read, so an edit landing mid-read makes
+ * the snapshot stale rather than silently half-new. Every later checker in
+ * the pass reads that file (`scripts/nova-app-snapshot.ts`) instead of
+ * re-walking Nova, and `--from-bundle <snapshot>` re-lints it with no Nova
+ * calls at all.
  *
  * Why a script and not an MCP atom: the Nova reads must happen server-side to
  * keep the blueprint out of context, ACE's MCP servers do not hold a Nova
@@ -27,6 +35,7 @@ import { loadPluginEnv } from '../lib/load-plugin-env.js';
 import { novaCall } from '../lib/nova-rpc.js';
 import { fetchNovaAppBundle, type NovaAppBundle, type NovaCall } from '../lib/nova-app-bundle.js';
 import { formatNovaAppLint, lintNovaApp, type AppType } from '../lib/nova-app-lint.js';
+import { readAppUpdatedAt, stampSnapshot } from '../lib/nova-app-snapshot.js';
 
 function arg(name: string): string | undefined {
   const i = process.argv.indexOf(`--${name}`);
@@ -73,9 +82,17 @@ async function main(): Promise<number> {
   } else {
     loadPluginEnv(import.meta.url);
     const call = withNovaRetry((tool, args) => novaCall(tool, args));
-    bundle = await fetchNovaAppBundle(appId!, call, { workId: arg('work') });
+    const workId = arg('work');
+    const head: any = workId ? null : await call('get_app', { app_id: appId! });
+    const updatedAt = workId ? null : await readAppUpdatedAt(appId!, (head?.app ?? head)?.name, call);
+    const fetchedAt = new Date().toISOString();
+    bundle = stampSnapshot(await fetchNovaAppBundle(appId!, call, { workId }), {
+      fetchedAt,
+      updatedAt,
+      scope: workId ? 'work' : 'saved',
+    });
   }
-  const bundleOut = arg('bundle-out');
+  const bundleOut = arg('snapshot-out') ?? arg('bundle-out');
   if (bundleOut) writeFileSync(bundleOut, JSON.stringify(bundle, null, 1));
 
   const result = lintNovaApp(bundle, {

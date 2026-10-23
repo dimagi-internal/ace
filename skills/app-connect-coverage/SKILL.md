@@ -102,7 +102,18 @@ prevent infinite Nova loops.
 
 ### Step 1: Read the blueprint
 
-Call `get_app({app_id})`. Extract:
+**From the Phase 3 snapshot when you have one (ace#3132).** With a
+`nova_snapshot` from Step 1.4, run
+`node "$ACE_ROOT/node_modules/tsx/dist/cli.mjs" "$ACE_ROOT/scripts/nova-app-snapshot.ts" --snapshot <nova_snapshot> --app <nova_app_id> --check`.
+On exit 0 (`FRESH`), take Step 1's map from
+`scripts/nova-app-snapshot.ts --snapshot <nova_snapshot> --outline` and
+Step 3's per-form reads from `--form <formUuid>` — no `get_app`, no
+`get_form`. On any other exit, or with no snapshot, read live as below.
+**Step 4c stays live regardless:** it verifies this skill's own write,
+which no earlier snapshot can show (`LIVE_READS`,
+`lib/nova-app-snapshot.ts`).
+
+Otherwise call `get_app({app_id})`. Extract:
 - `Connect type` ("learn", "deliver", or absent — abort with a clear
   error if absent but the PDD/skill caller expected a Connect app)
 - The **complete** module + form list, **with their uuids**
@@ -215,7 +226,8 @@ right answer by *defaulting* rather than by knowing.
 
 ### Step 3: Per-form verification
 
-**Issue all per-form `get_form` reads in ONE parallel message** — they
+(Read each form from the snapshot when Step 1's `--check` was `FRESH`.)
+Otherwise, **issue all per-form `get_form` reads in ONE parallel message** — they
 target distinct `(moduleUuid, formUuid)` pairs, share no state, and a
 typical Connect app has 4–12 forms across Learn + Deliver. Batched,
 the reads complete in ~one round-trip; sequentially, ~7s × N forms
@@ -498,6 +510,7 @@ migration` carries the division of labour and the replace-all warning;
 
 | Date | Change | Author |
 |------|--------|--------|
+| 2026-10-23 | **Reads the Phase 3 Nova app snapshot instead of re-walking Nova (ace#3132, P12).** Step 1.4's `nova-app-lint --snapshot-out` reads the app once; with a `nova_snapshot` this skill makes one `nova-app-snapshot.ts --check` call and takes Step 1's uuid map and Step 3's per-form reads from the file. Not `FRESH` → read live as before. Step 4c's post-fix re-fetch stays live (`LIVE_READS`). Before this, checker re-walks were 953 of 1,254 `get_form` calls. *Enforced:* `test/lib/nova-app-snapshot.test.ts`. | ACE team |
 | 2026-09-28 | **Fixes are private-work edits (voidcraft-labs/commcare-nova#693).** Nova now stages every mutation: `configure_connect` / `update_form` take `work_id` + `request_id` (no `app_id`) and change nothing until `save_work`. Step 4 opens one work per fix pass and saves it, requiring `saved: true` (a stale save is returned as data, not an error); Step 4c re-fetches with `app_id` AFTER the save, because a work read shows the unsaved candidate. New failure mode: fix pass not saved. | ACE team |
 | 2026-08-14 | **Step 2's Deliver branch is now role-keyed, not type-keyed (ace#1327).** It expected `deliver_unit` from `type === "registration"`, so a deliberately-unpaid registration form classified `missing` and Step 4 would have added a deliver_unit to a form the PDD says is never payable — via `configure_connect`, which is replace-all. It also had no row for a paid `close`-type form, which reached the right answer only by defaulting. Expectations now come from the PDD's payable-stage declaration; shape votes only when the PDD is silent, and every fallback is recorded. New verdict `extra` (a deliver_unit on an unpaid form is a defect to REMOVE) mirrors the Learn side's pre-test rule (ace#1131). Decision extracted to `deliver-expectations.ts` with a two-form fixture pair — paid/unpaid roles swapped — so the type-keyed reading cannot come back. | ACE team |
 | 2026-08-11 | **Finished the 2026-07-31 expression migration in Step 2 (residual of ace#1132/#1133).** Step 4a's `configure_connect` example already emitted the structured `{parts: […]}` shape, but the Step 2 decision table and the Learn per-form rule still specified the `assessment` slot's `user_score` as the bare XPath string `#form/user_score`. The skill therefore computed a string *expectation*, compared it against the structured value Nova returns, and classified correct forms as `wrong`; the "fix" is then a `configure_connect` call, which is replace-all and can clear markers off every form omitted from `participants[]`. Same residual fixed in `pdd-to-deliver-app` for `entity_id`/`entity_name` (case-CREATE now shows `field-ref` parts, case-UPDATE `case-ref` parts, the optional per-form suffix a `text` part). Preventer added: `test/skills/nova-uuid-addressing.test.ts` now fails on any skill documenting `user_score`/`entity_id`/`entity_name` as a string — the pre-existing uuid lint only inspected spelled-out tool-call argument lists, so a shape stated in prose or a table was invisible to it. | ACE team |

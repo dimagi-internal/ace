@@ -176,6 +176,17 @@ Pipeline-only: grades a run's Nova-built Deliver app against its PDD, which exis
    **Run the deterministic lint FIRST and take these gates from it — do not
    re-derive them by reading.** One call:
    `node "$ACE_ROOT/node_modules/tsx/dist/cli.mjs" "$ACE_ROOT/scripts/nova-app-lint.ts" --app <nova_app_id> --type deliver`
+
+   **Read the Phase 3 snapshot, not Nova (ace#3132).** When the dispatch
+   passes `nova_snapshot`, first run
+   `node "$ACE_ROOT/node_modules/tsx/dist/cli.mjs" "$ACE_ROOT/scripts/nova-app-snapshot.ts" --snapshot <nova_snapshot> --app <nova_app_id> --check`.
+   On exit 0 (`FRESH`), lint with `--from-bundle <nova_snapshot>` in place of
+   `--app`, and take every blueprint read in this rubric from the snapshot:
+   `scripts/nova-app-snapshot.ts --snapshot <nova_snapshot> --outline` for
+   the uuid map (in place of `get_app`), `--form <formUuid>` for each form (in
+   place of `get_form`; the response is byte-for-byte what `get_form`
+   returned). This eval writes nothing to Nova, so nothing it reads needs to
+   be live. On any other exit, or with no `nova_snapshot`, read live as below.
    (`$ACE_ROOT` resolved as in `agents/commcare-setup.md § Step 1.4`). Every
    lint `[BLOCKER]` is a § 5b `[BLOCKER]` here, quoted with its rule and
    location; exit 3 (a rule could not run) makes this eval `incomplete`,
@@ -668,6 +679,7 @@ absorb the disagreement into a score.
 
 | Date | Change | Author |
 |------|--------|--------|
+| 2026-10-23 | **Reads the Phase 3 Nova app snapshot instead of re-walking Nova (ace#3132, P12).** Step 1.4's `nova-app-lint --snapshot-out` reads the app once; with a `nova_snapshot` this skill makes one `nova-app-snapshot.ts --check` call and takes the lint (`--from-bundle`), the uuid map and every `get_form` read from the file. Not `FRESH` → read live as before. Before this, checker re-walks were 953 of 1,254 `get_form` calls. *Enforced:* `test/lib/nova-app-snapshot.test.ts`. | ACE team |
 | 2026-10-16 | **§ 5b `naming_convention` / `terminology` come from `nova-app-lint`, run first.** The rules moved into code (`lib/nova-app-lint.ts`) — as rubric prose they cost a full eval pass each time they fired (smallholder-seasonal/20261015-1402: three passes, ~42 min, for one banned word in 7 lookup rows). Lint blockers are quoted as § 5b blockers; lint exit 3 makes the eval `incomplete`. Phase 3 dispatches this eval only after the lint exits 0. | ACE team |
 | 2026-10-03 | **Build memo retired — decisions.yaml is the review artifact (schema v6).** Every criterion that read the build's disclosures, justifications and check blocks from the summary's memo section now reads the producer's live decision rows (`phase: 3-commcare`, `skill: pdd-to-deliver-app`), the summary's frontmatter blocks and its `## Build notes`; the grading itself is unchanged. Contract: docs/decisions-contract.md. | ACE team |
 | 2026-09-17 | **`threshold_coherence` gains the capped-index pair, and stops re-deriving it by hand (ace#2148).** This criterion caught the defect — a per-step cap of 3 shipped binding at 4 on `spark-facilitator/20260906-2233`, 28 payable events against a declared 21 — by a judge tracing the arithmetic manually, which is not a gate anyone can rely on twice. The clamp constant and the declared cap are a threshold pair, and they are deliberately DIFFERENT numbers: a `casedb` read is the state before this submission, so the correct clamp is `cap - 1` under a pre-increment counter and `cap` under one that already counts it. The criterion now calls `checkPayableCapArithmetic()` rather than comparing the two, and quotes `report.indices` as the trace. | ACE team |
