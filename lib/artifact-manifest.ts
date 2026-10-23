@@ -1214,6 +1214,28 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     description:
       'The media plan for the Deliver app. Same shape and semantics as the Learn plan.',
   },
+  // app-review (Phase 3 Step 1.8, P12): report-only review of the built pair
+  // as CommCare apps, read from the Step 1.4 snapshot. Never gates.
+  {
+    path: '3-commcare/app-review.md',
+    producedBy: 'app-review',
+    role: 'report',
+    consumedBy: ['opp-eval'],
+    phase: 'commcare',
+    required: false,
+    description:
+      'Review of the Learn and Deliver apps as CommCare apps (hal commcare-app-review §§2-5, §9): what the apps are, every defect worst-first routed to builder (Nova), brief (ACE) or platform and marked as already flagged by an eval or new, and what the apps got right. Report-only (not gate-required).',
+  },
+  {
+    path: '3-commcare/app-review.json',
+    producedBy: 'app-review',
+    role: 'findings',
+    consumedBy: [],
+    phase: 'commcare',
+    required: false,
+    description:
+      'Machine-readable app-review findings (lib/nova-app-review.ts shape) plus forVerification: the new builder-routed findings handed to hal for source verification before anything is filed on commcare-nova.',
+  },
 
   // ── QA + Training phase (Phase 6) ──────────────────────────────
   {
