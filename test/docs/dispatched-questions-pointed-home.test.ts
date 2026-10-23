@@ -14,9 +14,9 @@ import { join } from 'node:path';
  * an earlier session. Neither person held an ACE licence, so neither had ever
  * run `canopy agent use ace`, the setup that puts ACE in their own session.
  *
- * Pinned: explain-ace tells people when to use their own session and when to
- * dispatch, and CLAUDE.md tells a dispatched session to answer and point them
- * home, keeping inside the reply limit.
+ * Pinned: explain-ace says ACE runs in your own Claude Code and dispatch is only
+ * for unattended work; CLAUDE.md tells a dispatched session to answer inside
+ * the reply limit and point the sender to their own session.
  *
  * ace#3279.
  */
@@ -25,17 +25,17 @@ const ROOT = join(__dirname, '..', '..');
 const flat = (rel: string) => readFileSync(join(ROOT, rel), 'utf8').replace(/\s+/g, ' ');
 
 describe('dispatched questions are pointed home', () => {
-  it('explain-ace § 3 separates your own Claude Code from a dispatch', () => {
+  it('explain-ace § 3 says ACE runs in your own Claude Code and dispatch is for unattended work', () => {
     const doc = flat('skills/explain-ace/SKILL.md');
     expect(doc).toContain('`canopy agent use ace`');
-    expect(doc).toContain('`canopy agent dispatch --slug ace` is for work that needs ACE itself');
+    expect(doc).toContain('**ACE runs in your own Claude Code.**');
+    expect(doc).toMatch(/is not how to reach ACE\. It hands work to a runner to do UNATTENDED/);
     expect(doc).toMatch(/cut at 2,000 characters/);
-    expect(doc).toMatch(/ACE's access, not theirs/);
   });
 
   it("CLAUDE.md tells a dispatched session to answer, then point the sender to their own session", () => {
     const doc = flat('CLAUDE.md');
-    expect(doc).toContain('A dispatched question that needs nothing of ACE\'s own is answered, then pointed home.');
+    expect(doc).toContain('Dispatch is for unattended work, not for reaching ACE.');
     expect(doc).toContain('`canopy agent use ace`');
     expect(doc).toMatch(/Keep to any length the brief states/);
   });
