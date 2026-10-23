@@ -39,4 +39,12 @@ describe('dispatched questions are pointed home', () => {
     expect(doc).toContain('`canopy agent use ace`');
     expect(doc).toMatch(/Keep to any length the brief states/);
   });
+
+  it('the pointer-home line is scoped to dispatch turns, never other channels', () => {
+    // A Slack thread got the line on 2026-10-23; the owner: "anyone reaching
+    // through another channel intended that channel."
+    const doc = flat('CLAUDE.md');
+    expect(doc).toContain('**That line is for dispatch turns only**');
+    expect(doc).toMatch(/Slack, email, canopy chat or the Labs panel gets no such line/);
+  });
 });
