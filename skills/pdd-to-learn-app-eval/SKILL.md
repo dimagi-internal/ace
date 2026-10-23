@@ -195,6 +195,17 @@ Pipeline-only: grades a run's Nova-built Learn app against its PDD, which exists
    **Run the deterministic lint FIRST and take these gates from it — do not
    re-derive them by reading.** One call:
    `node "$ACE_ROOT/node_modules/tsx/dist/cli.mjs" "$ACE_ROOT/scripts/nova-app-lint.ts" --app <nova_app_id> --type learn`
+
+   **Read the Phase 3 snapshot, not Nova (ace#3132).** When the dispatch
+   passes `nova_snapshot`, first run
+   `node "$ACE_ROOT/node_modules/tsx/dist/cli.mjs" "$ACE_ROOT/scripts/nova-app-snapshot.ts" --snapshot <nova_snapshot> --app <nova_app_id> --check`.
+   On exit 0 (`FRESH`), lint with `--from-bundle <nova_snapshot>` in place of
+   `--app`, and take every blueprint read in this rubric from the snapshot:
+   `scripts/nova-app-snapshot.ts --snapshot <nova_snapshot> --outline` for
+   the uuid map (in place of `get_app`), `--form <formUuid>` for each form (in
+   place of `get_form`; the response is byte-for-byte what `get_form`
+   returned). This eval writes nothing to Nova, so nothing it reads needs to
+   be live. On any other exit, or with no `nova_snapshot`, read live as below.
    (`$ACE_ROOT` resolved as in `agents/commcare-setup.md § Step 1.4`). Its
    rules `app-name` (`naming_convention`), `learn-form-navigation`
    (`form_navigation`), `connect-markers` (exactly one assessment —
@@ -710,6 +721,7 @@ absorb the disagreement into a score.
 
 | Date | Change | Author |
 |------|--------|--------|
+| 2026-10-23 | **Reads the Phase 3 Nova app snapshot instead of re-walking Nova (ace#3132, P12).** Step 1.4's `nova-app-lint --snapshot-out` reads the app once; with a `nova_snapshot` this skill makes one `nova-app-snapshot.ts --check` call and takes the lint (`--from-bundle`), the uuid map and every `get_form` read from the file. Not `FRESH` → read live as before. Before this, checker re-walks were 953 of 1,254 `get_form` calls. *Enforced:* `test/lib/nova-app-snapshot.test.ts`. | ACE team |
 | 2026-10-16 | **§ 5b gates come from `nova-app-lint`, run first.** `naming_convention`, `form_navigation`, `single_gating_assessment` and `learn_module_display_gating` are lint rules in code (`lib/nova-app-lint.ts`); the eval quotes them and keeps only the judgment parts (multi-role restructuring recorded, pass-label truth). Phase 3 dispatches this eval only after the lint exits 0. | ACE team |
 | 2026-10-16 | **Added § 5b `learn_module_display_gating` (ace#3036).** Connect computes Learn completion over every `learn_module` in the app, so a `learn_module` (or assessment) form display-gated on a user/role property cannot be completed by any worker who cannot see it. `kaduna-graduation/20261015-1411` gated 9 modules to FLWs and 5 to enumerators; an FLW passed and Connect read 9/14 = 64.3%, `learn_complete: false`, Deliver locked — and this eval passed the build. Now a `[BLOCKER]` → `fail`; other display conditions on marked forms are `[WARN]`; a pass label promising the work app opens on such an app also fails. Released-CCZ backstop in `app-release-qa` (`lib/learn-module-display-gating.ts`). | ACE team |
 | 2026-10-03 | **Build memo retired — decisions.yaml is the review artifact (schema v6).** Everything this rubric read from the Learn build memo (the displaced-topic trade in `assessment_gating`, the language-layer counts, the taught-vs-collectable result) now comes from the producer's live decision rows (`phase: 3-commcare`, `skill: pdd-to-learn-app` / `pdd-to-deliver-app`) and the summaries' `## Build notes`; both are listed in § Inputs. Contract: docs/decisions-contract.md. | ACE team |

@@ -677,7 +677,8 @@ turn-0 check confirms the app is saved):
 ```bash
 ACE_ROOT="${CLAUDE_PLUGIN_ROOT:-$(python3 -c "import json,os; d=json.load(open(os.path.expanduser('~/.claude/plugins/installed_plugins.json'))); print(d['plugins']['ace@ace'][0]['installPath'])")}"
 node "$ACE_ROOT/node_modules/tsx/dist/cli.mjs" "$ACE_ROOT/scripts/nova-app-lint.ts" \
-  --app <nova_app_id> --type learn|deliver --out "<scratch>/nova-app-lint_<app>.json"
+  --app <nova_app_id> --type learn|deliver --out "<scratch>/nova-app-lint_<app>.json" \
+  --snapshot-out "<scratch>/nova-app-snapshot_<app>.json"
 ```
 
 (`--work <work_id>` lints unsaved private work instead of the saved app;
@@ -724,6 +725,19 @@ re-run, never treat it as pass.
    surface (new or removed fields, logic, teaching content) changes what the
    eval judges → re-run the eval. `evalRerunNeeded()` is the rule.
 
+**The snapshot — read the app once per pass (ace#3132).** `--snapshot-out`
+writes everything the lint read as `nova-app-snapshot_<app>.json`, stamped
+with the app's `updated_at`. Pass its path as `nova_snapshot` to every
+checker dispatched below (Steps 1.5, 1.6, 1.7); each reads forms from it via
+`scripts/nova-app-snapshot.ts` (`--outline` for the uuid map, `--form` for
+one `get_form` response) after ONE `--check` call, instead of walking every
+form through `get_app` + `get_form` again. Before P12 those re-walks were 953
+of 1,254 `get_form` calls. Every write is followed by a re-lint (rule 2
+below), and the re-lint rewrites the snapshot, so a checker never inherits a
+pre-edit read. A `--check` that is not `FRESH` means read live, never "close
+enough". Only read-backs that verify the checker's OWN write stay live —
+`LIVE_READS` in `lib/nova-app-snapshot.ts` names each one.
+
 Record each run as `phases.commcare-setup.steps.nova-app-lint-<app>`
 (`status`, `verdict`, `blockers`, `warns`) in `run_state.yaml`. The script
 is the authority; the Step 2.8 `app-release-qa` CCZ checks stay as the
@@ -733,7 +747,8 @@ backstop on the compiled artifact.
 Invoke the `app-connect-coverage` skill **once per app** (Learn, Deliver),
 **before any eval and after the Step 1.4 lint**; it edits forms, so
 **re-run the Step 1.4 lint after it** (exit 0 required) before Step 1.6.
-- Input: `nova_app_id` from each app summary; PDD for context
+- Input: `nova_app_id` from each app summary; `nova_snapshot` from Step 1.4;
+  PDD for context
 - Output: `3-commcare/app-connect-coverage_{learn,deliver}.md`
   reporting before/after state per form. The Nova app on Firestore is
   mutated in place — every form's `connect` block (`learn_module` /
@@ -772,7 +787,8 @@ Invoke the `app-connect-coverage` skill **once per app** (Learn, Deliver),
 
 Unless `--no-evals`, dispatch `pdd-to-learn-app-eval` and
 `pdd-to-deliver-app-eval` — **only for an app whose Step 1.4 lint, re-run
-after Step 1.5, exited 0.** Each eval re-runs the lint itself and takes its
+after Step 1.5, exited 0.** Pass each eval that re-lint's `nova_snapshot`.
+Each eval re-runs the lint itself (from the snapshot, no Nova reads) and takes its
 standing-instruction gates (`naming_convention`, `terminology`,
 `single_gating_assessment`, `learn_module_display_gating`,
 `form_navigation`) from it instead of re-deriving them, so the judge spends
@@ -784,8 +800,9 @@ and re-run the eval only when `evalRerunNeeded()` says so.
 Invoke the `app-media-coverage` skill **once per app** (Learn, Deliver), or
 once with `--app=both`.
 
-- Input: `nova_app_id` per app; `ACE/<opp>/inputs/media/` if the opp supplies
-  one; `pdd.md` for the Application Context.
+- Input: `nova_app_id` per app; `nova_snapshot` per app (Step 1.4, as
+  re-written by the latest re-lint); `ACE/<opp>/inputs/media/` if the opp
+  supplies one; `pdd.md` for the Application Context.
 - Output: images and built-in menu icons attached **in the Nova blueprint** —
   field labels, select options, module and form tiles — plus
   `3-commcare/app-media-coverage_plan-<app>.yaml` and a dated report.

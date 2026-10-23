@@ -90,7 +90,14 @@ makes the scratch match.
 
 ### 1. Resolve the apps and their addressable parts
 
-Read `nova_app_id` per app from the Step 1 summaries. For each app call
+Read `nova_app_id` per app from the Step 1 summaries. **With a
+`nova_snapshot` (Phase 3 Step 1.4, ace#3132), run
+`node "$ACE_ROOT/node_modules/tsx/dist/cli.mjs" "$ACE_ROOT/scripts/nova-app-snapshot.ts" --snapshot <nova_snapshot> --app <nova_app_id> --check`
+first; on exit 0 (`FRESH`) read every form from it
+(`scripts/nova-app-snapshot.ts --snapshot <nova_snapshot> --forms`, or
+`--form <formUuid>` one at a time) instead of `get_form`.** Step 9's
+saved-app read-back stays live: it verifies this skill's own `save_work`
+(`LIVE_READS`, `lib/nova-app-snapshot.ts`). Without a fresh snapshot, call
 `get_app`, then `get_form` per form, to collect the **stable UUIDs** every
 attach call needs: `moduleUuid`, `formUuid`, `fieldUuid`, and `optionUuid` for
 select options. `search_blueprint` is the cheaper route on a large app.
@@ -381,6 +388,7 @@ with status and the counts above (only when run-bound; there is no run to update
 
 | Date | Change | Author |
 |------|--------|--------|
+| 2026-10-23 | **Reads the Phase 3 Nova app snapshot instead of re-walking Nova (ace#3132, P12).** Step 1.4's `nova-app-lint --snapshot-out` reads the app once; with a `nova_snapshot` this skill makes one `nova-app-snapshot.ts --check` call and takes step 1's form reads from the file. Not `FRESH` → read live as before. Step 9's read-back stays live (`LIVE_READS`). Before this, checker re-walks were 953 of 1,254 `get_form` calls. *Enforced:* `test/lib/nova-app-snapshot.test.ts`. | ACE team |
 | 2026-10-19 | **Form-tile revert guard retired (ace#3201).** Upstream `voidcraft-labs/commcare-nova#625` closed 2026-09-20, and the fix held live on `connect-fi/20261018-1440` (11 form tiles staged; candidate and saved `get_form` both returned the icon, no `invalid_input`). Step 8 now sends module and form tiles in one `set_menu_media` batch and saves once; step 9's candidate read and revert-to-null procedure, the failure-mode row and the `form_tiles` frontmatter field are gone. The saved-app `get_form({app_id})` read-back stays. `test/skills/media-form-tile-revert-guard.test.ts` deleted with it. | ACE team |
 | 2026-10-16 | **Generated imagery is pinned to the programme's locale (ace#2895).** Step 6's directive had no country constraint, so a Ghana (`GHS`) programme (`turmeric-market-study-ghana/20261012-1749`) shipped a guidance photo of a Ugandan `UGX 1000` MTN card and a `FLW-UG045` badge — the one image a new worker studies to learn the procedure. Every directive now carries `opportunity_country` / `opportunity_currency` read from the PDD § Program Parameters (not Phase 4's run_state block, which does not exist yet): depicted currency, badges, documents and identifiers match that country, or the image depicts none. *Enforced:* `test/skills/media-locale-constraint.test.ts`. | ACE team |
 | 2026-10-16 | **Per-app scratch root and per-app report name (ace#2142).** Every transient file (listing, classification, downloads, Content Generator input/output, prepared uploads) now lives under `<scratch>/app-media-coverage/<opp>/<app>/`, because two concurrent per-app runs in one session rewrote each other's generation inputs (`spark-facilitator/20260906-2233`). The report is `_report-<app>.md` instead of `_report-<YYYY-MM-DD>.md`, which collided on same-day per-app runs (`smallholder-seasonal/20261014-0859`) and never matched the manifest's `_report.md`. *Enforced:* `test/skills/app-media-coverage-per-app-paths.test.ts`. | ACE team |
