@@ -1229,7 +1229,7 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
   {
     path: '3-commcare/app-review.json',
     producedBy: 'app-review',
-    role: 'findings',
+    role: 'results',
     consumedBy: [],
     phase: 'commcare',
     required: false,
