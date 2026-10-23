@@ -5,6 +5,24 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.13.2150 — 2026-10-23
+
+**Phase 3 now reviews the apps it built as CommCare apps (P12 / T71, ace#3132).** The evals ask "was
+the brief built?". New Step 1.8 `app-review` asks "is it a good CommCare app?", using hal's
+`commcare-app-review` §§2-5 and the §9 catalog. It reads the same Step 1.4 snapshot as the other
+checkers: one `--check` per app, then no Nova reads. `lib/nova-app-review.ts` decides the structural
+checks in code and is pinned on three real Nova apps:
+- case types created but never acted on, and types opened but never created
+- case lists with no search
+- paragraph-long questions
+- inlined languages
+- the §9-B/C/E workaround signatures
+
+The skill adds the field-worker, content and seam passes. Every defect is routed to builder (Nova),
+brief (ACE) or platform. Report-only: it never blocks the build and never edits the app. New
+builder findings are not filed on commcare-nova. They go to hal as one issue per run, for
+verification against source (§6) first.
+
 ## 0.13.2137 — 2026-10-20
 
 **An installed ACE no longer costs ~180MB per version.** One machine held 93 cached versions, 16GB:

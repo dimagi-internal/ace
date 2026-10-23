@@ -12,6 +12,7 @@ skills:
   - { name: pdd-to-deliver-app,      has_judge: true,  eval_skill: pdd-to-deliver-app-eval }
   - { name: app-connect-coverage,    has_judge: false }
   - { name: app-media-coverage,      has_judge: false }
+  - { name: app-review,              has_judge: false }
   - { name: app-deploy,              has_judge: false }
   - { name: app-test-cases,          has_judge: false }
   - { name: app-hq-settings,         has_judge: false }
@@ -831,6 +832,23 @@ once with `--app=both`.
   - **A Nova attach batch is rejected:** Nova names the offending row and
     changes nothing. Fix that row and re-send the batch. If it cannot be
     fixed, drop the row and continue — see above.
+
+### Step 1.8: App review (report-only)
+Invoke the `app-review` skill **once, for the Learn/Deliver pair**, after
+Step 1.7. The evals asked "was the brief built?". This asks "is it a good
+CommCare app?" (hal's `commcare-app-review` §§2-5 and §9, P12).
+
+- Input: both apps' `nova_snapshot` (re-lint first if Step 1.7 attached
+  anything); the Step 1.6 eval verdicts; the PDD, read only to clear
+  structural findings that are correct by design.
+- Reads: one `nova-app-snapshot.ts --check` per app, then only the snapshot.
+  `scripts/nova-app-review.ts` runs the code checks.
+- Output: `3-commcare/app-review.md` + `app-review.json`, with every defect
+  routed to **builder** (Nova), **brief** (ACE) or **platform**.
+- **Never blocks and never edits.** A failure here (snapshot unreadable,
+  skill error) is logged in `run_state.yaml` and Phase 3 continues to Step 2.
+- New builder findings are **not filed on commcare-nova**. They go to hal as
+  one `dimagi-internal/hal` issue per run, for source verification first.
 
 ### Step 2: Deploy Apps
 Invoke the `app-deploy` skill.
