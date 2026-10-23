@@ -55,6 +55,18 @@ whole session live while email returns only the output (Jon, 2026-10-07 — some
 one, some the other); one thread per task, and separate threads run in parallel; approvals and
 who gives them; that routing a person or channel to another runner moves who oversees it.
 
+**Your own Claude Code, or a dispatch to ACE.** A teammate with Claude Code asks a question in
+their OWN session: reviewing a PR, reading Labs data, explaining a workflow, writing a summary.
+To give that session ACE's skills, they run `canopy agent use ace` once (read its `--help` for
+the current steps; it ends with the line that starts ACE locally). `canopy agent dispatch
+--slug ace` is for work that needs ACE itself: an opp run and its Drive state, ACE's Connect
+orgs, OCS bot or mailbox, or a task on ACE's board. Say why plainly. Each dispatch starts a
+fresh cloud session that remembers nothing earlier, and a follow-up starts another. The reply
+read back through `canopy agent turns` is cut at 2,000 characters. The session also reads with
+ACE's access, not theirs. Measured 2026-10-23: two editors sent 17 read-only questions this
+way in a day. 12 of the replies were cut at exactly 2,000 characters, and about half the
+sessions only re-asked for the cut text, each one redoing the work from scratch.
+
 **Security model:** who counts as whom and that a From: line proves nothing; that outsiders get
 a confined session; manual mode; the rails enforced in code; and data.
 

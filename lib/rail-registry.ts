@@ -185,6 +185,7 @@ export function citationsIn(source: string): { issues: string[]; runs: string[] 
  */
 export const RAILS: Readonly<Record<string, RailProvenance>> = {
   'test/docs/ace-web-primary-surface.test.ts': { issues: ['ace#2378'] },
+  'test/docs/dispatched-questions-pointed-home.test.ts': { issues: ['ace#3279'] },
   'test/docs/canopy-routes-callers.test.ts': { issues: ['ace#2389', 'dimagi-internal/canopy-web#1265'] },
   'test/docs/no-flat-canopy-urls.test.ts': { issues: ['ace#2824', 'dimagi-internal/canopy-web#1337'] },
   'test/docs/playbook-index.test.ts': { issues: ['ace#3153'] },
