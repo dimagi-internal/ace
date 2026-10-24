@@ -11,6 +11,8 @@ Every field path is the released Deliver app's (Nova ef133601, Community Meeting
 Mechanics worth copying (connect-labs generator, mirror mode):
   * the transplant pool is AUTHORED, not profiled: one series per followed entity, `owner` = its worker,
     so ownership, cadence and visit count are exact (synthetic slot mode draws a random entity per visit);
+  * numbers: "authored" -- labs (connect-labs #2718) treats any other mirror pool as replaying real cases,
+    so the opp would never count as generated and agents would be refused on it;
   * jitter_frac: 0 -- integer counts stay integers and a repeated count stays identical;
   * a categorical that never varies across an entity's visits is stamped onto ALL of them (incl. not-held
     records), so leave out constant answers that only belong on one branch;
@@ -156,7 +158,8 @@ def manifest_for(partner, opp_id, seed):
                      "weeks": WEEKS, "visit_cadence_per_week_per_flw": {"mean": 1, "stddev": 0}},
         "flw_personas": personas,
         "beneficiary_cohorts": [{"id": "communities", "size": 12, "field_distributions": {}, "progression": "flat",
-                                 "longitudinal": {"mode": "mirror", "jitter_frac": 0.0, "transplant_pool": pool}}],
+                                 "longitudinal": {"mode": "mirror", "numbers": "authored", "jitter_frac": 0.0,
+                                                  "transplant_pool": pool}}],
         "anomalies": [],
         "kpi_config": [{"kpi": "meeting_held", "field_path": "form.about_this_meeting.meeting_conducted",
                         "aggregation": "non_null_rate", "threshold_underperform": 0.5}],

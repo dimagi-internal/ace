@@ -194,3 +194,40 @@ describe('scripts/run-labs-synthetic-generate.ts — registry gate', () => {
     ).toBe(1);
   });
 });
+
+// ── --expect-generated (connect-labs #2718) ──────────────────────────────────
+// A cascade pool is authored by ACE, so it must say numbers: authored or labs
+// treats the data as replaying real cases and never marks it generated.
+describe('scripts/run-labs-synthetic-generate.ts — --expect-generated', () => {
+  const POOL = '[{owner: w1, start_date: "2026-06-22", visits: [{day: 0, values: {}}]}]';
+  function run(manifest: string): { status: number; stdout: string; stderr: string } {
+    const dir = mkdtempSync(join(tmpdir(), 'labs-gen-'));
+    const file = join(dir, 'm.yaml');
+    writeFileSync(file, manifest);
+    try {
+      const stdout = execFileSync(
+        'npx',
+        ['tsx', SCRIPT, file, '--opportunity-id', '7', '--dry-run', '--expect-generated', ...SKIP],
+        { encoding: 'utf8', cwd: resolve(__dirname, '../..'), stdio: 'pipe' },
+      );
+      return { status: 0, stdout, stderr: '' };
+    } catch (e) {
+      const err = e as { status: number; stdout: string; stderr: string };
+      return { status: err.status, stdout: String(err.stdout ?? ''), stderr: String(err.stderr ?? '') };
+    }
+  }
+
+  it('refuses an unmarked mirror pool before sending (exit 4)', () => {
+    const r = run(`beneficiary_cohorts:\n  - longitudinal: {mode: mirror, jitter_frac: 0, transplant_pool: ${POOL}}\n`);
+    expect(r.status).toBe(4);
+    expect(r.stdout).toBe('');
+    expect(r.stderr).toMatch(/numbers: authored/);
+  });
+
+  it('sends an authored mirror pool byte for byte', () => {
+    const m = `beneficiary_cohorts:\n  - longitudinal: {mode: mirror, numbers: authored, jitter_frac: 0, transplant_pool: ${POOL}}\n`;
+    const r = run(m);
+    expect(r.status).toBe(0);
+    expect(JSON.parse(r.stdout).params.arguments.manifest_yaml).toBe(m);
+  });
+});

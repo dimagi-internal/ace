@@ -185,7 +185,9 @@ Its § Process (ace-run) C0–C7 runs, in order:
    partners; `review_routing` — what the PDD does with each flagged record;
    `single_child_levels` the PDD fixes, cited), gated by `checkCascadeStoryPlan`
    and `checkPlannedWorkerRates`, then one mirror-mode manifest per partner keyed
-   on the released Deliver app's form paths.
+   on the released Deliver app's form paths, its pool marked `numbers: authored`
+   and generated with `--expect-generated`: labs must answer `generated: true`
+   (connect-labs #2718); on `false`, stop and report labs' reason.
 4. **C4** — `indicator_programme_report` bound to the registry (its companion
    `indicator_worker_review` comes with it), its `visits` pipeline set to the
    registry's Layer-1 fields.

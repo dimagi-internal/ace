@@ -5,6 +5,16 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.13.2153 — 2026-10-24
+
+**ACE's programme cascade now counts as generated data in labs (connect-labs #2718).** The cascade
+writes its transplant pool by hand but generates it in `mode: mirror`, and labs treats every
+unmarked mirror pool as a near-copy of real cases. So no cascade opp was ever marked generated, and
+canopy's agent panel was refused on all of them. `demo-data-setup` § C3 now marks each pool
+`numbers: authored` and generates with `scripts/run-labs-synthetic-generate.ts --expect-generated`,
+which refuses an unmarked pool before sending and exits 4 when labs answers `generated: false`
+(`lib/labs-generated-provenance.ts`). The clone path never carries the mark.
+
 ## 0.13.2150 — 2026-10-23
 
 **Phase 3 now reviews the apps it built as CommCare apps (P12 / T71, ace#3132).** The evals ask "was

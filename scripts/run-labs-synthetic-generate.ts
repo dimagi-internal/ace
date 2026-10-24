@@ -58,18 +58,31 @@
  * (denovo / clone providers). The skip is echoed to stderr so the caller records
  * it; it is never implied by omission. Exit 3 = gate blocked.
  *
+ * ## `--expect-generated` (the ace-run cascade passes it)
+ *
+ * Labs counts a dataset as GENERATED only when no transplant pool in it replays
+ * real cases (connect-labs #2718, `provenance.replays_real_cases`): a
+ * `mode: mirror` pool must declare `numbers: authored`, which says ACE wrote
+ * every series itself. The programme cascade's pools are authored, so with this
+ * flag the script refuses (exit 4) before sending a manifest whose mirror or
+ * modelled pool lacks the mark (`lib/labs-generated-provenance.ts`), and exits 4
+ * after sending when labs answers `generated: false`, printing labs'
+ * `not_generated_because`. A clone replays real cases and never passes it.
+ *
  * `--dry-run` builds and prints the exact JSON-RPC request without sending it,
  * and without needing a token. Generation is a real mutation against a labs
  * opportunity, so the request is inspectable before it is made.
  *
  * Output (stdout): the tool's own JSON result, one line.
  * Exit codes: 0 generated (or dry-run printed), 1 usage/IO/auth error,
- *             2 labs rejected the manifest, 3 registry gate blocked.
+ *             2 labs rejected the manifest, 3 registry gate blocked,
+ *             4 --expect-generated and the data is (or would be) not generated.
  */
 
 import { readFileSync, existsSync } from 'node:fs';
 import { loadPluginEnv } from '../lib/load-plugin-env.js';
 import { checkRegistryEvalGate, describeRegistryEvalGate } from '../lib/registry-eval-gate.js';
+import { readGenerated, unmarkedPools } from '../lib/labs-generated-provenance.js';
 
 // Before the first process.env read below — a Bash-invoked script inherits
 // none of ACE's secrets (ace#1957).
@@ -118,13 +131,14 @@ async function main() {
   const argv = process.argv.slice(2);
   const oppIdx = argv.indexOf('--opportunity-id');
   const dryRun = argv.includes('--dry-run');
+  const expectGenerated = argv.includes('--expect-generated');
   const verdictIdx = argv.indexOf('--registry-eval-verdict');
   const skipIdx = argv.indexOf('--registry-gate-skip');
   // Indices holding a flag's VALUE, so a value is never mistaken for the manifest.
   const valueIdx = new Set([oppIdx, verdictIdx, skipIdx].filter((i) => i !== -1).map((i) => i + 1));
   const file = argv.find((a, i) => !a.startsWith('--') && !valueIdx.has(i));
 
-  if (!file) die('usage: run-labs-synthetic-generate.ts <manifest.yaml> --opportunity-id <id> (--registry-eval-verdict <file> | --registry-gate-skip "<reason>") [--dry-run]');
+  if (!file) die('usage: run-labs-synthetic-generate.ts <manifest.yaml> --opportunity-id <id> (--registry-eval-verdict <file> | --registry-gate-skip "<reason>") [--expect-generated] [--dry-run]');
   if (!existsSync(file)) die(`no such file: ${file}`);
 
   // The registry gate — before anything is built or sent (see header).
@@ -157,6 +171,23 @@ async function main() {
   // The ONE read. Nothing re-serialises this between here and the wire.
   const manifestYaml = readFileSync(file, 'utf8');
   const request = buildRequest(opportunityId, manifestYaml);
+
+  if (expectGenerated) {
+    let unmarked: string[];
+    try {
+      unmarked = unmarkedPools(manifestYaml);
+    } catch (e) {
+      die(`--expect-generated: the manifest does not parse as YAML: ${(e as Error).message}`);
+    }
+    if (unmarked.length > 0) {
+      die(
+        `--expect-generated: labs would treat these pools as replaying real cases, so the data would not ` +
+          `count as generated: ${unmarked.join(', ')}. Every series in a cascade pool is written by ACE: ` +
+          `add numbers: authored to each longitudinal block (demo-data-setup § C3).`,
+        4,
+      );
+    }
+  }
 
   if (dryRun) {
     process.stdout.write(`${request}\n`);
@@ -204,6 +235,20 @@ async function main() {
   if (!text) die(`labs returned no payload: ${body.slice(0, 300)}`, 2);
 
   process.stdout.write(`${text}\n`);
+
+  if (expectGenerated) {
+    const answer = readGenerated(text);
+    if (answer.generated === false) {
+      die(
+        `labs says this data is NOT generated: ${answer.reason ?? '(no reason given)'} ` +
+          `Stop and report it; do not build the cascade on it.`,
+        4,
+      );
+    }
+    if (answer.generated === undefined) {
+      process.stderr.write('run-labs-synthetic-generate: labs did not report `generated` (older labs?); check the opp is marked generated before building on it\n');
+    }
+  }
 }
 
 main().catch((e) => die(`unexpected failure: ${(e as Error).message}`));
