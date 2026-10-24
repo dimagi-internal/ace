@@ -1548,15 +1548,35 @@ output):
 
 Then generate one manifest per partner with `synthetic_generate_from_manifest` —
 sent through `scripts/run-labs-synthetic-generate.ts <manifest> --opportunity-id <partner opp>
---registry-eval-verdict <local verdict copy>` (the registry gate, § C2) —
+--registry-eval-verdict <local verdict copy> --expect-generated` (the registry gate, § C2) —
 using **mirror mode with an AUTHORED transplant pool**
-(`beneficiary_cohorts[0].longitudinal: {mode: mirror, jitter_frac: 0,
+(`beneficiary_cohorts[0].longitudinal: {mode: mirror, numbers: authored, jitter_frac: 0,
 transplant_pool}`): one series per followed entity with `owner` = its worker, and
 per visit `{day, form, values, cats, dates}` keyed on the released Deliver app's
 exact form paths. Synthetic slot mode cannot express this — it draws a random
 entity per visit, so one case would be visited by every worker. This is still
 curation, not mirroring of real data ("curate invents signal"): the pool is
-written, not profiled. Mechanics that bite (all observed, ace#2510):
+written, not profiled.
+
+**`numbers: authored` is required on every cascade pool** (connect-labs #2718).
+Labs treats any `mode: mirror` pool as a near-copy of real cases
+(`provenance.replays_real_cases`), so without the mark it never marks the
+partner opps as generated, and canopy's agent panel and `data_query` refuse
+agents on them (every cascade opp built before the mark — Kaduna, Bednet,
+Newborn care, Spark, Smallholder, Apedor — has `generated_folder_id = NULL`).
+`numbers: authored` is ACE's word that it wrote every series itself, from no
+real case; labs takes it, so set it ONLY on a pool ACE wrote. A clone's
+profiled pool (§ Process (clone), `synthetic_profile_from_prod(mirror=true)`)
+replays real cases and must never carry it. Labs' answer is the authority:
+`synthetic_generate_from_manifest` returns `generated`, and on a cascade it must
+be `true`. `--expect-generated` enforces both halves: it refuses (exit 4) before
+sending a manifest with an unmarked mirror/modelled pool
+(`lib/labs-generated-provenance.ts`), and exits 4 when labs answers
+`generated: false`, printing labs' `not_generated_because`. On that exit **stop
+and report it with labs' reason** — do not build the trio on data labs does not
+count as generated.
+
+Mechanics that bite (all observed, ace#2510):
 - **give every worker its own per-worker effect on every per-visit draw**, not
   only partner-level ranges (ace#2746). Over ~30 visits a worker, values drawn
   per visit from one partner range all converge on the partner mean, so ten
@@ -2227,6 +2247,7 @@ nobody has enumerated yet. Run both — neither is a substitute for the other.
 
 | Date | Change | Author |
 |------|--------|--------|
+| 2026-10-24 | **§ C3: every cascade pool declares `numbers: authored`, and labs' `generated` must come back `true` (connect-labs #2718).** Labs treated ACE's hand-written mirror pools as replaying real cases, so no cascade opp was ever marked generated and canopy's agent panel was refused on all of them. C3 now writes `numbers: authored` and generates with `--expect-generated` (`lib/labs-generated-provenance.ts`): refuse an unmarked pool before sending, exit 4 on `generated: false` with labs' reason. The clone path never gets the mark. | Claude |
 | 2026-10-16 | **§ C7: the cascade reports follow ACE's Labs template workflows (`scripts/labs-report-templates.ts follow`).** The trio used to follow the deployed code template, so a page defect needed a connect-labs release and the DDD loop pinned every one out of scope (ace#2337, connect-labs#2578). Template workflows (`config/labs-report-templates.yaml`, home program 10157) make a page fix one publish; the run records `cascade.report_templates`, and Phase 7 freezes the pages at its end. | ACE team |
 | 2026-10-16 | **§ C7 "Sweep handles": the handle lives only in a field no frame renders (ace#2733).** Programme report and opp reports carry it in `description`, the synthetic opportunity in `notes`; registry, cohort and org keep it in `name`. The run id in the programme report's breadcrumb was scored a trust defect by the DDD user-artifact judge on three runs, and on noora-health/20261015-1129 put a real organisation's name on an illustrative page. `sweep-labs` matches name, description or notes (`sweepHandleField`). | ACE team |
 | 2026-10-16 | **Step 3c no longer runs `checkGapCopy`; `demo-narrative` § 3d does (ace#2244).** The check needs the why-brief's `gaps[]`, which `demo-narrative` authors one step later, so at this position it could never run. 3c now records each dashboard's `workflow_id` + scope for 3d to read the uploaded render back, and keeps the authoring rules. | ACE team |
