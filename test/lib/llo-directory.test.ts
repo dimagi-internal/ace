@@ -21,7 +21,10 @@ import {
   diffRowReadBack,
   expectedFormulas,
   findDuplicates,
+  dataWidth,
   formulaColumns,
+  nearestFormulaColumns,
+  isLiveFormula,
   planRowWrites,
   rowFormula,
   fold,
@@ -189,6 +192,28 @@ describe('row arithmetic — the 2026-10-14 off-by-one', () => {
     expect(nextEmptyRow([['X'], ['Y']], 200)).toBe(202);
   });
 
+  // ace#3288: live Contacts rows 237–238 on 2026-10-24. ACE's own row 238 has a
+  // blank name (a contact known only by address); keying on column A aimed the
+  // next write at 238.
+  it('a filled row with a blank first column still counts', () => {
+    const contacts = [
+      ['Contact Full Name', 'Organization Name', 'Role / Title', 'Main POC?', 'Email Address'],
+      ['Emmanuel Sunday', 'GCCHRI', 'Finance and Ops coordinator', 'Yes', 'emmanuel.gcchri@gmail.com'],
+      ['', 'Kubur Sasilka Innovation & Environmental Initiative', '', 'No', 'executivedirector@ksiei.com.ng'],
+    ];
+    expect(nextEmptyRow(contacts)).toBe(4);
+  });
+
+  // ace#3288: the dates tab keeps an explainer past a blank header (column I,
+  // rows to 203) while data runs to 261; it must not move the target.
+  it('dataWidth stops at the first blank header, so a side note block does not count', () => {
+    const header = ['Organization Name', 'Joined Connect Network', 'Joined — basis', 'Notes', '', 'How these two columns were built'];
+    expect(dataWidth(header)).toBe(4);
+    expect(dataWidth(['A', 'B'])).toBe(2);
+    const rows = [header, ['Org A', '2026-10-01', 'x', ''], ['', '', '', '', '', 'explainer line'], ['', '', '', '', '', 'more']];
+    expect(nextEmptyRow(rows.map((r) => r.slice(0, dataWidth(header))))).toBe(3);
+  });
+
   it('rowIsEmpty: the API omits an empty row; a formula or value is not empty', () => {
     expect(rowIsEmpty([])).toBe(true);
     expect(rowIsEmpty([['', '  ']])).toBe(true);
@@ -268,6 +293,32 @@ describe('formula columns', () => {
   it('formulaColumns finds only cells that hold a formula', () => {
     expect([...formulaColumns(['Org', '', 'x=1', LIVE_L(241)])]).toEqual([[3, LIVE_L(241)]]);
     expect(formulaColumns([]).size).toBe(0);
+  });
+
+  // ace#3289: live Contacts F237 on 2026-10-24 — a phone typed with a leading
+  // `=` reads back as a "formula" and was copied into the next contact's row.
+  it('a literal typed with a leading = is not a formula column', () => {
+    expect(formulaColumns(['Emmanuel Sunday', 'GCCHRI', '=2349066136747', '=+234 906 613 6747', '="text"', '=TRUE']).size).toBe(0);
+    expect(isLiveFormula('=2349066136747')).toBe(false);
+    expect(isLiveFormula('="A5"')).toBe(false);
+    expect(isLiveFormula(LIVE_L(241))).toBe(true);
+    expect(isLiveFormula('=A5+1')).toBe(true);
+    expect(isLiveFormula('=$B$2')).toBe(true);
+    expect(isLiveFormula("='Other tab'!C3")).toBe(true);
+    expect(isLiveFormula('=SUM(E:E)')).toBe(true);
+    expect(isLiveFormula('=TODAY()')).toBe(true);
+  });
+
+  // ace#3289: live Organizations rows 261-263 on 2026-10-24 — 263 was added by
+  // hand with typed emails in the formula column.
+  it('nearestFormulaColumns skips a hand-typed row and re-bases the formula to the row above', () => {
+    const rows = [
+      ['Shea Network Ghana', LIVE_L(261)],
+      ['Kubur Sasilka Innovation & Environmental Initiative', LIVE_L(262)],
+      ['Godiya Cherished Care', 'emmanuel.gcchri@gmail.com, abbatiibrahim775@gmail.com'],
+    ];
+    expect([...nearestFormulaColumns(rows, 261, 263)]).toEqual([[1, LIVE_L(263)]]);
+    expect(nearestFormulaColumns([['a', 'b']], 10, 10).size).toBe(0);
   });
 
   it('rowFormula moves the live formula from row 241 to 243', () => {

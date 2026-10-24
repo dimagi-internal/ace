@@ -46,7 +46,10 @@ import {
   expectedFormulas,
   findDuplicates,
   fold,
+  dataWidth,
+  FORMULA_WINDOW,
   formulaColumns,
+  nearestFormulaColumns,
   headerIndex,
   headerKey,
   nextEmptyRow,
@@ -155,9 +158,16 @@ export function main(argv: string[], deps: Deps = defaultDeps): number {
   const contactRow = buildRow(contactHeader, contactFields, contactTab);
   const datesRow = buildRow(datesHeader, datesFields, datesTab);
 
-  /** Formula columns of `tab`, read from the row above `target` (the precedent). Header row has none. */
-  const formulasAbove = (tab: string, header: string[], target: number) =>
-    target > 2 ? formulaColumns(sheetGet(id, rowRange(tab, header, target - 1), 'FORMULA')[0] ?? []) : new Map<number, string>();
+  /**
+   * Formula columns of `tab`, from the last FORMULA_WINDOW rows above `target`
+   * (nearest live formula per column), re-based to the row above. Header row has none.
+   */
+  const formulasAbove = (tab: string, header: string[], target: number) => {
+    if (target <= 2) return new Map<number, string>();
+    const first = Math.max(2, target - FORMULA_WINDOW);
+    const range = rowRange(tab, header, first).replace(/(\d+)$/, String(target - 1));
+    return nearestFormulaColumns(sheetGet(id, range, 'FORMULA'), first, target - 1);
+  };
 
   const verify = (orgN: number, contactN: number, datesN: number) => {
     const check = (tab: string, header: string[], row: string[], n: number) =>
@@ -213,13 +223,14 @@ export function main(argv: string[], deps: Deps = defaultDeps): number {
     }));
     const duplicates = findDuplicates({ name, website: fieldFor(orgFields, 'Website') }, existing);
 
-    // Target rows from the real last filled row of each tab's name column.
-    const orgTarget = nextEmptyRow(orgAll.map((r) => [r[nameCol]]));
-    const cIdx = headerIndex(contactHeader).get(headerKey(contract.contactColumns[0]))!;
-    const contactTarget = nextEmptyRow(sheetGet(id, `${quoteTab(contactTab)}!A:ZZ`).map((r) => [r[cIdx]]));
+    // Target rows from the real last filled row of each tab's data block — any
+    // cell, not one column: a contact row can have a blank name (ace#3288).
+    const dataRows = (rows: unknown[][], header: string[]) => rows.map((r) => (r ?? []).slice(0, dataWidth(header)));
+    const orgTarget = nextEmptyRow(dataRows(orgAll, orgHeader));
+    const contactTarget = nextEmptyRow(dataRows(sheetGet(id, `${quoteTab(contactTab)}!A:ZZ`), contactHeader));
     const dIdx = headerIndex(datesHeader).get(headerKey(contract.orgNameHeader))!;
     const datesAll = sheetGet(id, `${quoteTab(datesTab)}!A:ZZ`);
-    const datesTarget = nextEmptyRow(datesAll.map((r) => [r[dIdx]]));
+    const datesTarget = nextEmptyRow(dataRows(datesAll, datesHeader));
     // A dates row already naming this org (labs keeps the last one) is the sheet owner's to resolve.
     const existingDates = datesAll
       .map((r, i) => ({ row: i + 1, name: String(r[dIdx] ?? '').trim() }))
