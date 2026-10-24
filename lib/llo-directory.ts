@@ -333,18 +333,34 @@ function blank(cell: unknown): boolean {
 }
 
 /**
- * The 1-based sheet row of the last non-blank cell in a single-column read.
+ * The 1-based sheet row of the last row with ANY non-blank cell in a read.
  *
  * `values[i]` is sheet row `startRow + i` — the Sheets API returns rows, not a
  * count, and a read of `Tab!A:A` starts at row 1. The 2026-10-14 off-by-one came
  * from treating `values.length` (a count that includes the header) as if it were
- * a 0-based index. Returns `startRow - 1` for an all-blank column.
+ * a 0-based index. Returns `startRow - 1` for an all-blank read.
+ *
+ * Any cell, not the first: a filled row can have a blank first column. On
+ * Contacts, column A is the person's name, which ACE itself leaves blank for a
+ * contact known only by address, and keying on it aimed the next write at that
+ * occupied row (ace#3288). Pass rows cut to `dataWidth(header)` so a note
+ * block parked to the right of the data does not count.
  */
 export function lastFilledRow(values: unknown[][], startRow = 1): number {
   for (let i = values.length - 1; i >= 0; i--) {
-    if (!blank(values[i]?.[0])) return startRow + i;
+    if ((values[i] ?? []).some((c) => !blank(c))) return startRow + i;
   }
   return startRow - 1;
+}
+
+/**
+ * The width of a tab's data block: the columns up to the first blank header.
+ * The dates tab keeps a free-text explainer in a column past a blank header;
+ * its rows are not data rows and must not move the target row (ace#3288).
+ */
+export function dataWidth(headerRow: unknown[]): number {
+  const i = (headerRow ?? []).findIndex((c) => blank(c));
+  return i < 0 ? (headerRow ?? []).length : i;
 }
 
 /** The row to write: one past the real last filled row. Callers still confirm it is empty. */
@@ -415,12 +431,52 @@ export function diffReadBack(written: string[], readBack: unknown[][]): { column
 // formulas is the sheet's own fact, so it is read, never listed here: the
 // precedent row (the last filled row) read with `--render FORMULA`.
 
-/** 0-based column → formula, for every cell of a `--render FORMULA` row read that holds one. */
+/**
+ * True when a `--render FORMULA` cell is a real formula: it calls a function or
+ * refers to a cell or range. A hand-typed literal with a leading `=` (a phone
+ * number entered as `=2349066136747`) also reads back starting with `=`, and
+ * copying it down would write one contact's number into the next contact's row
+ * (ace#3289). Text inside quotes does not count.
+ */
+export function isLiveFormula(cell: unknown): boolean {
+  if (typeof cell !== 'string' || !cell.startsWith('=')) return false;
+  const code = cell.slice(1).replace(/"(?:[^"]|"")*"/g, '""');
+  if (/[A-Za-z_][A-Za-z0-9_.]*\s*\(/.test(code)) return true; // function call
+  if (/!/.test(code)) return true; // another tab
+  if (/(^|[^A-Za-z0-9_.])\$?[A-Za-z]{1,3}\$?\d+(?![A-Za-z0-9_(])/.test(code)) return true; // A1 reference
+  if (/(^|[^A-Za-z0-9_.])\$?[A-Za-z]{1,3}:\$?[A-Za-z]{1,3}(?![A-Za-z0-9_(])/.test(code)) return true; // A:A range
+  return false;
+}
+
+/** 0-based column → formula, for every cell of a `--render FORMULA` row read that holds a live one. */
 export function formulaColumns(precedentFormulaRow: unknown[]): Map<number, string> {
   const out = new Map<number, string>();
   (precedentFormulaRow ?? []).forEach((cell, i) => {
-    if (typeof cell === 'string' && cell.startsWith('=')) out.set(i, cell);
+    if (isLiveFormula(cell)) out.set(i, cell as string);
   });
+  return out;
+}
+
+/** How many rows above the target are searched for each formula column. */
+export const FORMULA_WINDOW = 5;
+
+/**
+ * Formula columns from the last few rows above the target, each re-based to
+ * `precedentRow` (the row directly above the target) so callers can treat it as
+ * a single precedent. Per column, the NEAREST row holding a live formula wins.
+ * One hand-added row with a literal in a formula column must not drop the
+ * column: on 2026-10-24 Organizations row 263 held typed emails in "Email
+ * addresses from Contacts sheet" while rows 241-262 held the TEXTJOIN formula,
+ * so the next org's row would have been written without it (ace#3289, the
+ * ace#2957 class). `rowsAbove[i]` is sheet row `firstRow + i`.
+ */
+export function nearestFormulaColumns(rowsAbove: unknown[][], firstRow: number, precedentRow: number): Map<number, string> {
+  const out = new Map<number, string>();
+  for (let i = rowsAbove.length - 1; i >= 0; i--) {
+    for (const [col, f] of formulaColumns(rowsAbove[i] ?? [])) {
+      if (!out.has(col)) out.set(col, rowFormula(f, firstRow + i, precedentRow));
+    }
+  }
   return out;
 }
 
