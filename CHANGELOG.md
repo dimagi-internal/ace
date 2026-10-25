@@ -5,6 +5,14 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.13.2154 — 2026-10-25
+
+**`cost-effectiveness` and `defend-a-figure` now load the GiveWell project's shared skills.** Their
+method lives once, as skills of the canopy workspace project `connect/givewell-kb`, beside
+GiveWell's knowledge base and its `cea` and `givewell-review` skills, so every agent values and
+defends a figure the same way. ACE's files keep their names and their run products and modes, so
+`targeting-analyst`, `target-geographies` and `build-targeting-model` hand off as before.
+
 ## 0.13.2153 — 2026-10-24
 
 **ACE's programme cascade now counts as generated data in labs (connect-labs #2718).** The cascade
