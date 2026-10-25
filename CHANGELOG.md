@@ -5,6 +5,12 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.13.2155 — 2026-10-25
+
+**The GiveWell project is now `connect/givewell`.** `cost-effectiveness` and `defend-a-figure`
+load its shared skills at the new address; canopy-web keys a project's stored files by the
+project since canopy-web#2047, so the rename kept its knowledge base, originals and versions.
+
 ## 0.13.2154 — 2026-10-25
 
 **`cost-effectiveness` and `defend-a-figure` now load the GiveWell project's shared skills.** Their
