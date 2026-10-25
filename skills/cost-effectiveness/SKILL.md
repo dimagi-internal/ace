@@ -10,11 +10,11 @@ disable-model-invocation: false
 # Cost-effectiveness
 
 **The method lives in the GiveWell project, not here.** It is the shared skill
-`cost-effectiveness` of the canopy workspace project `connect/givewell-kb`, so every agent and
+`cost-effectiveness` of the canopy workspace project `connect/givewell`, so every agent and
 person values Connect programs the same way. Load it and follow it:
 
 ```
-project_skill "connect/givewell-kb" "cost-effectiveness"
+project_skill "connect/givewell" "cost-effectiveness"
 ```
 
 (`mcp__plugin_canopy_projects__project_skill`, from the canopy plugin.) It picks the Connect Labs
@@ -38,4 +38,4 @@ never by copying it back into this file.
 
 | Date | Change | Author |
 |------|--------|--------|
-| 2026-10-25 | Method moved to the GiveWell project's shared `cost-effectiveness` skill (connect/givewell-kb); this file keeps ACE's products and modes | Eva |
+| 2026-10-25 | Method moved to the GiveWell project's shared `cost-effectiveness` skill (connect/givewell); this file keeps ACE's products and modes | Eva |

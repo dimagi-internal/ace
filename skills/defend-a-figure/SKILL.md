@@ -9,11 +9,11 @@ disable-model-invocation: false
 # Defend a Figure
 
 **The method lives in the GiveWell project, not here.** It is the shared skill
-`defend-a-figure` of the canopy workspace project `connect/givewell-kb`, so every agent and
+`defend-a-figure` of the canopy workspace project `connect/givewell`, so every agent and
 person defends a figure the same way. Load it and follow it:
 
 ```
-project_skill "connect/givewell-kb" "defend-a-figure"
+project_skill "connect/givewell" "defend-a-figure"
 ```
 
 (`mcp__plugin_canopy_projects__project_skill`, from the canopy plugin.) Its rule is **lead with
@@ -41,4 +41,4 @@ Sources table. Change the method there, never by copying it back into this file.
 | 2026-09-01 | `off_method_units` became `inherited_units` | ACE team |
 | 2026-09-07 | Added the criterion spread (`targeting_compare_criteria`) as step 6 | ACE team |
 | 2026-09-07 | Corrected the ADM2 caveat: the ceiling is geoBoundaries coverage (18/55 countries), not the indicators | ACE team |
-| 2026-10-25 | Method moved to the GiveWell project's shared `defend-a-figure` skill (connect/givewell-kb); this file keeps ACE's products and modes | Eva |
+| 2026-10-25 | Method moved to the GiveWell project's shared `defend-a-figure` skill (connect/givewell); this file keeps ACE's products and modes | Eva |
