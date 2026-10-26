@@ -144,6 +144,7 @@ authored from the PDD per run):
 | [`entity-state-taxonomy`](#entity-state-taxonomy) | Learn + Deliver | The followed entity carries STATES the app must name — always for `archetype: longitudinal-visits`, and for any archetype whose PDD declares a phase / stage / status vocabulary the worker sees | `pdd-to-deliver-app-eval § entity_state_fidelity` (hard-gate); `pdd-to-deliver-app § Step 4l` (mechanical, `lib/entity-state-taxonomy.ts`) |
 | [`partner-option-register`](#partner-option-register) | Deliver | The PDD sources a field's options from a NAMED PARTNER REGISTER the partner already maintains (activity register, commodity list, cadre list, facility roster) | `pdd-to-deliver-app-eval § option_register_fidelity` (hard-gate); `pdd-to-deliver-app § Step 4f` register halt (mechanical, `lib/option-register.ts`) |
 | [`no-starter-module`](#no-starter-module) | Learn + Deliver | Always | `app-release-qa § Step 4` starter-module check (mechanical, `lib/starter-module.ts`) |
+| [`nova-authoring-rules`](#nova-authoring-rules) | Learn + Deliver | Always | `test/skills/nova-authoring-rules-brief.test.ts` pins the brief text; effect measured by invalid_input rejections and `get_authoring_guide` lookups per build (ace#3300) |
 
 ---
 
@@ -517,7 +518,8 @@ library is the only place ACE names them:
 Nova is **uuid-addressed** — `moduleUuid` / `formUuid` / `fieldUuid`, not
 indexes. Resolve them from `get_app` / `get_module` / `get_form`, or in one
 call from a semantic id with
-`search_blueprint({query: '<field id>', app_id | work_id})`.
+`search_blueprint({query: '<field id>', app_id | work_id})`. Prefer it (or `get_field`) to `get_form` when you want one field
+([`nova-authoring-rules`](#nova-authoring-rules) clause 9).
 
 **When no suitable lookup table exists.** Do NOT fall through to `kind: text` —
 that is the exact failure this rule exists to stop.
@@ -841,7 +843,8 @@ a single re-authoring pass that drops the `#form/` prefix silently
 breaks the whole scoring chain — `get_app` still shows every field, the
 build still succeeds, `make_build` still passes, and the FLW's score is
 wrong. Same rule applies to a `relevant` / `constraint` referencing
-another question.
+another question. Inside a group or repeat the reference is the FULL path,
+`#form/<group>/<field>` ([`nova-authoring-rules`](#nova-authoring-rules) clause 2).
 
 **EXACTLY ONE form in a Learn app may carry `connect.assessment`
 (dimagi-internal/ace#1131).** Connect stores a single `passing_score` per
@@ -2391,6 +2394,74 @@ payable unit.
 > report whether it was present and removed. Do not repurpose it into a real
 > module: build the brief's modules explicitly and remove the seed.
 
+### nova-authoring-rules
+
+- **App:** Learn + Deliver
+- **Trigger:** always.
+- **Enforced by:** `test/skills/nova-authoring-rules-brief.test.ts` pins the
+  paragraph and both emit-checklist entries. There is no eval dimension: these
+  are instruction-only fixes for tool refusals and lookups, not properties of
+  the finished app.
+
+**Why this exists (ace#3300).** The "Nova × ACE — build efficiency audit
+(Oct 2026)" (Google Doc `1zsAv_4Fo5nUUBqv9b73RgA3-_DXe3uZwuPyFHRgAtI0`) counted
+6,805 Nova calls over 120 days and found the same refusals and lookups recurring
+because the architect's brief never said the rule. Each clause below maps to one
+of them: declare-before-use (25 rejections), full paths in groups (13), reserved
+case properties (6), per-kind slots (14), function names and expression context
+(166 single-function `get_authoring_guide` lookups, 10 context rejections),
+`evaluate_form` on lookup tables, throttling (37 of 102 throttled calls retried
+inside 5 s), `continue_app_test` arguments, and `get_form` walks of up to 13.
+Clause 7 asks for no waiting because the architect cannot wait: its tools are
+ToolSearch and Nova only (nova-plugin 2.2.1 `agents/nova-architect-autonomous.md`),
+so "back off N seconds" would be an instruction it has no way to follow. What
+keeps it under the limit is ACE running one build per Nova account (ace#3301);
+the clause only stops the burst re-sends and the "did that write land?" re-reads.
+The brief reaches the architect intact: the truncation behind ace#989 is fixed
+(`voidcraft-labs/commcare-nova#363`) and the architect's operating prompt ends
+with a `NOVA-PROMPT-END` sentinel it checks for.
+
+This component is the ONE place these rules are written. It extends rather than
+repeats three rules that already exist: the `#form/` prefix rule
+([`assessment-gate`](#assessment-gate)), the `search_blueprint` uuid lookup
+(§ Nova's authoring contract tool list above), and app-test batching (the
+App-test economy paragraph in `pdd-to-deliver-app` Step 3).
+
+**Brief paragraph (verbatim):**
+
+> REQUIRED — Nova authoring rules (each one is a refusal or a lookup that
+> recurs across builds):
+> (1) Declare before use: declare record types and their properties with
+> `generate_schema` before any form, case operation or case list references
+> them, and set a relationship only after BOTH record types exist.
+> (2) Full paths: inside a group or repeat, reference an answer by its full
+> path, `#form/<group>/<field>`, never `#form/<field>`. If you are unsure of a
+> path, read it with `search_blueprint` first.
+> (3) Reserved properties: do not write `opened_on`, `category` or any other
+> property a case operation sets by itself as a property of
+> `add_case_operations`; Nova rejects it.
+> (4) Slots differ by field kind: a `geopoint` has no `validate`, a `repeat` has
+> no `hint`, and an `image` has no hint media. Do not set a slot the kind does
+> not have; if unsure, check the kind once in `get_authoring_guide`.
+> (5) Functions: `jr:choice-name`, `choice-name`, `decimal-date-time`, `once`
+> and `lookup-table` are CommCare/ODK names, not Nova functions. Look a name up
+> once, for several functions at a time, rather than one call per function.
+> `selected()` and `string-length()` work in form expressions but NOT in record
+> expressions.
+> (6) `evaluate_form` does not evaluate lookup-table expressions (it answers
+> `"kind":"unsupported"` every time), so do not try; check that logic with an
+> app test.
+> (7) Rate limit: "Too many requests" means the call did NOT apply. Never
+> resend it back-to-back; re-read only the entity it touched, then resend with
+> the SAME `request_id`. If the same call is throttled three times running,
+> stop and return `rate-limited` with what is done so far, rather than looping.
+> (8) `continue_app_test`: each action's `kind` is one of `menu`, `form`,
+> `answer` and the other kinds the tool schema lists; pass exactly one of
+> `app_id` or `work_id`. A media question (image, audio, signature) cannot be
+> answered in a test, so do not try to answer one.
+> (9) Read narrowly: to find one field use `search_blueprint` or `get_field`;
+> call `get_form` only when you need the whole form.
+
 
 ## Label-fidelity components (added 2026-08-26)
 
@@ -2471,6 +2542,7 @@ direct comparison sees it. *Enforced:* `lib/choice-label-integrity.ts` +
 
 | Date | Change | By |
 |---|---|---|
+| 2026-10-26 | **New component `nova-authoring-rules` (ace#3300).** One brief paragraph carrying the nine instruction-only fixes from the Oct 2026 Nova × ACE build-efficiency audit: declare before use, full paths inside groups, reserved `add_case_operations` properties, per-kind slots, function names and expression context, `evaluate_form` and lookup tables, 429 handling (no timed wait: the architect has no tool to wait with), `continue_app_test` arguments, targeted reads. Written once here; both build skills emit it by name. Extends the `#form/` rule and the `search_blueprint` lookup rather than repeating them. Not re-observed live: the full `action.kind` list, the full reserved-property list and the full per-kind slot table are left to the tool schema and `get_authoring_guide`, because the issue evidence names only examples. | ACE team |
 | 2026-10-16 | **`section-timestamps`: the first timestamp is `format-date(now(), '%Y-%m-%d %H:%M:%S')`, never a bare `now()` (ace#2935).** ace#995 left `visit_start_time` as a bare `now()` because form-init is its meaning — true of when it evaluates, false of what it renders: an unbound hidden field has text semantics and keeps only the calendar date. On `tekzal/20261013-2314` two openings minutes apart gave the identical key `ace@dimagi-ai.com \| 2026-10-15 \| no`, so a whole day's surveys would pay as one. `format-date` keeps the time and still references no node. `pdd-to-deliver-app § entity_id`'s `concat` example now uses a time-bearing component and states the per-day grain of a date-only one. *Enforced:* `test/skills/no-bare-now-timestamp.test.ts`. | ACE team |
 | 2026-10-16 | **`live-photo-capture`: "applies" → "ensures" (ace#2953).** Nova's compiler was observed emitting `appearance="acquire"` on every Deliver image `<upload>` (`tekzal/20261013-2314`), so `app-hq-settings` Step 3 verifies and patches only if missing. Step and `app-release-qa` gate unchanged — they fail closed if Nova stops. | ACE team |
 | 2026-10-08 | **New component `case-choice-attendance` (voidcraft-labs/commcare-nova#728).** Nova PR #730 added a third choice source, `kind: 'cases'`, so a group's members can be ONE checklist. `group-payment-test/20261007-1700` had shipped one yes/no screen per member because only inline and table sources existed. The recipe was built and verified live on a throwaway app: choices scoped to the selected group's open members, and after tick-three-untick-one the roster keeps all three with the unticked member at `attended = 'no'`. The brief forbids the design ACE itself proposed in #728, a repeat driven by the checklist, because repeats keep rows after deselection. *Enforced:* `lib/case-choice-attendance.ts` + `test/scripts/nova-case-choices-probe.test.ts`; live tripwire `scripts/probe-nova-case-choices.ts`. | ACE team |
