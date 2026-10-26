@@ -226,11 +226,18 @@ export interface LeaseOut {
   params?: Record<string, unknown> | null;
   /**
    * A ready pool lease's slot data, served only to the user who acquired it:
-   * `{public: {...}, secret: {...}}`, or null when the slot has none
+   * `{public: {...}, secret: {...}}` from an older canopy-web, or
+   * `{public, sealed: {key: "zks1:…"}, agent_id}` once canopy-web seals them
+   * (open with lib/slot-data-open.ts), or null when the slot has none
    * (ace#2955). Holds SECRETS — never log or echo it; mask with
    * `maskSecretsDeep` (lib/test-worker-pool.ts).
    */
-  slot_data?: { public?: Record<string, unknown> | null; secret?: Record<string, unknown> | null } | null;
+  slot_data?: {
+    public?: Record<string, unknown> | null;
+    secret?: Record<string, unknown> | null;
+    sealed?: Record<string, string> | null;
+    agent_id?: string;
+  } | null;
 }
 
 /**

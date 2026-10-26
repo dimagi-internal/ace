@@ -44,6 +44,20 @@ export function slotDataFor(slot: string): FakeSlotData {
   };
 }
 
+/** Stand-in for a zks1 seal (the fake opener reverses it); never the plaintext. */
+export function fakeSeal(v: string): string {
+  return 'zks1:' + Buffer.from(v).toString('base64url');
+}
+
+/** What `canopy vault open-slot-data` does, for the fake seal. */
+export function fakeOpener(input: string): string {
+  const { slot_data: d } = JSON.parse(input) as { slot_data: { public: object; sealed: Record<string, string> } };
+  const secret = Object.fromEntries(
+    Object.entries(d.sealed).map(([k, v]) => [k, Buffer.from(v.slice(5), 'base64url').toString()]),
+  );
+  return JSON.stringify({ public: d.public, secret });
+}
+
 export class FakeCanopyPool {
   slots: string[];
   mode: 'live' | 'undeclared' | 'ungranted' = 'live';
@@ -52,6 +66,8 @@ export class FakeCanopyPool {
   slotData = new Map<string, FakeSlotData>();
   /** False: the acquire answer omits slot_data (the holder's GET carries it). */
   slotDataOnAcquire = true;
+  /** True: serve `{public, sealed, agent_id}` (a sealing canopy-web) instead of plaintext `secret`. */
+  sealed = false;
   /** False: the slot routes 404, as a canopy-web that predates them. */
   slotRoutes = true;
   /** Every PUT body received, verbatim (tests assert what was SENT). */
@@ -73,6 +89,10 @@ export class FakeCanopyPool {
   private view(l: FakeLease, opts: { withSlotData: boolean }): Record<string, unknown> {
     if (l.status !== 'ready' || !opts.withSlotData) return { ...l };
     const d = this.slotData.get(l.ready_info!.slot!);
+    if (d && this.sealed) {
+      const sealed = Object.fromEntries(Object.entries(d.secret).map(([k, v]) => [k, fakeSeal(v)]));
+      return { ...l, capability: 'test-worker', slot_data: { public: { ...d.public }, sealed, agent_id: 'agent-1' } };
+    }
     return { ...l, slot_data: d ? { public: { ...d.public }, secret: { ...d.secret } } : null };
   }
 

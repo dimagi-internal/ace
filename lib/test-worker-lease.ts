@@ -22,7 +22,10 @@
  * The worker's credentials ride on the lease (owner directive 2026-10-15): a
  * ready lease, read by the user who acquired it, carries `slot_data:
  * {public: {phone, phoneLocal, countryCode, name}, secret: {pin,
- * backupCode}}` for its slot. Missing `slot_data` or any required key fails
+ * backupCode}}` for its slot — or, from a canopy-web that can no longer read
+ * them, `{public, sealed, agent_id}` with the secrets sealed to ACE's machines,
+ * opened here by `canopy vault open-slot-data` (lib/slot-data-open.ts). Both
+ * shapes are accepted. Missing `slot_data` or any required key fails
  * TEST_WORKER_NO_CREDENTIALS naming the slot, the missing keys and the
  * `scripts/test-worker-set.ts` command, and releases the lease. No pool slot
  * ever falls back to the shared `ACE_E2E_PIN` / `ACE_E2E_BACKUP_CODE`. The
@@ -64,6 +67,7 @@ import path from 'node:path';
 import { canopyApiBase, canopyToken } from './ace-canopy-pat.js';
 import { LEGACY_SLOT, legacyTestWorker, maskSecretsDeep, workerFromSlotData, type TestWorker } from './test-worker-pool.js';
 import { fetchSlotDataReport, type SlotDataReport } from './test-worker-slots.js';
+import { canopyOpener, openSlotData, type SlotDataOpener } from './slot-data-open.js';
 import { MobileError } from '../mcp/mobile/errors.js';
 import { logInfo } from '../mcp/mobile/logging.js';
 import { brokerRequest, curlDeleteSync, type BrokerHttpConfig } from '../mcp/mobile/backends/broker-http.js';
@@ -123,6 +127,8 @@ export interface TestWorkerCheckoutOpts {
   backgroundHeartbeat?: boolean;
   /** The local lease ledger (ace#3033); omitted → `defaultLedgerPath(env)`, null → none. */
   ledgerPath?: string | null;
+  /** Opens sealed slot secrets (default: `canopy vault open-slot-data`). */
+  openSlotDataImpl?: SlotDataOpener;
 }
 
 /** Who this process is, for the lease ledger and the holder header (ace#3033). */
@@ -185,6 +191,7 @@ export class TestWorkerCheckout {
   private readonly backgroundHeartbeat: boolean;
   private readonly holder: LeaseHolder;
   private readonly ledgerPath: string | null;
+  private readonly opener: SlotDataOpener;
 
   private held: HeldWorker[] = [];
   private modeValue: WorkerLockMode | null = null;
@@ -218,6 +225,7 @@ export class TestWorkerCheckout {
     this.sleep = opts.sleepImpl ?? ((ms) => new Promise((r) => setTimeout(r, ms)));
     this.warnImpl = opts.warn ?? ((m) => console.warn(m));
     this.backgroundHeartbeat = opts.backgroundHeartbeat ?? true;
+    this.opener = opts.openSlotDataImpl ?? canopyOpener();
   }
 
   get mode(): WorkerLockMode | null {
@@ -320,7 +328,9 @@ export class TestWorkerCheckout {
         }
         // Throws TEST_WORKER_NO_CREDENTIALS (slot + missing keys + the set
         // command) — the catch below releases every lease this call took.
-        const worker = workerFromSlotData(slot, lease.slot_data);
+        // Sealed secrets are opened by the canopy CLI with this machine's
+        // device key; a plaintext `secret` (older canopy-web) passes through.
+        const worker = workerFromSlotData(slot, openSlotData(lease, slot, this.opener));
         fresh.push({ slot, worker, leaseId: lease.lease_id, mode: 'locked' });
       }
       this.held.push(...fresh);
