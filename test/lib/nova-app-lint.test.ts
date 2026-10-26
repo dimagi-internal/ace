@@ -23,6 +23,7 @@ import {
   repairWarranted,
 } from '../../lib/nova-app-lint';
 import { withNovaRetry } from '../../scripts/nova-app-lint';
+import { unwrapToolResult } from '../../lib/nova-rpc';
 
 const FIX = join(__dirname, '../fixtures/nova/lint');
 const load = (name: string): NovaAppBundle => JSON.parse(readFileSync(join(FIX, name), 'utf8'));
@@ -339,5 +340,36 @@ describe('fetchNovaAppBundle', () => {
       throw new Error('Nova get_app rejected the call: no access');
     }, async () => {});
     await expect(hard('get_app', {})).rejects.toThrow('no access');
+  });
+
+  // ace#3301: the tool-error form of a 429 carries no status code. unwrapToolResult
+  // produces exactly this message, so build it through the real function.
+  it('withNovaRetry retries the tool-error form of a 429, backs off >=10s doubling, re-reads before resend', async () => {
+    const msg = (() => {
+      try {
+        unwrapToolResult(
+          { isError: true, content: [{ text: 'Error POSTing to endpoint: {"message":"Too many requests. Please try again later."}' }] },
+          'edit_field',
+        );
+      } catch (e) {
+        return (e as Error).message;
+      }
+      throw new Error('unwrapToolResult did not throw');
+    })();
+    expect(msg).not.toMatch(/HTTP 429/); // the old regex could not have matched this
+    let n = 0;
+    const sleeps: number[] = [];
+    const reread: string[] = [];
+    const call = withNovaRetry(
+      async () => {
+        if (++n < 4) throw new Error(msg);
+        return 'ok';
+      },
+      async (ms) => void sleeps.push(ms as number),
+      { beforeResend: async (tool) => void reread.push(tool) },
+    );
+    expect(await call('edit_field', { request_id: 'r1' })).toBe('ok');
+    expect(sleeps).toEqual([10_000, 20_000, 40_000]);
+    expect(reread).toEqual(['edit_field', 'edit_field', 'edit_field']);
   });
 });
