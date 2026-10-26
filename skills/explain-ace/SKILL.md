@@ -76,7 +76,8 @@ safer or more restricted place than a person's own Claude. Say this plainly when
 what they may share, and do not suggest ACE adds protections. Zero-data-retention (ZDR) mode
 exists, but only Jon may use it. Nobody else can ask for it, so for everyone else the normal AI
 rules apply. Labs reports still read Connect as each viewer, and the Labs agent panel acts as
-the visitor. Do not present Slack as riskier than ACE itself; the real risk worth naming is
+the person who sent, whoever they are (owner included): on a labs page ACE reads labs only
+through their act-as-you permission, never its own account ([`skills/_labs-on-a-page.md`](../_labs-on-a-page.md)). Do not present Slack as riskier than ACE itself; the real risk worth naming is
 Canopy itself making a mistake.
 
 **Honest limits:** say what is early, unverified, or not live, as the sources show it today.

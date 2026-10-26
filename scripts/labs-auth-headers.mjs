@@ -130,15 +130,61 @@ export function resolveToken(callerPath, env = process.env) {
   return null;
 }
 
+/** The Connected site name canopy-web knows connect-labs by. */
+export const LABS_SITE = 'connect-labs';
+
+/**
+ * Is this session a canopy turn held on a connect-labs PAGE? There ACE reaches labs
+ * only as the person who sent — canopy's `site_tools` / `site_call`, under the
+ * act-as-you permission they granted from the page — whoever they are, ACE's owner
+ * included. Its own labs login (ace@dimagi-ai.com) must not authenticate this
+ * session's native connect-labs MCP, even when a token is on disk.
+ *
+ *   - cloud runner: `CANOPY_PAGE_SITE=connect-labs` in the turn's environment (the
+ *     runner also leaves LABS_MCP_TOKEN out of it);
+ *   - laptop runner: emdash starts the session, so the runner leaves
+ *     `~/.canopy/page/task/<EMDASH_TASK_NAME>.json` ({site, withheld}).
+ */
+export function isLabsPageTurn(env = process.env) {
+  const site = (env.CANOPY_PAGE_SITE || '').trim();
+  if (site) return site === LABS_SITE;
+  const task = (env.EMDASH_TASK_NAME || '').trim();
+  if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,200}$/.test(task)) return false;
+  const home = env.HOME || homedir();
+  try {
+    const marker = JSON.parse(
+      readFileSync(path.join(home, '.canopy', 'page', 'task', `${task}.json`), 'utf8'),
+    );
+    const withheld = Array.isArray(marker?.withheld) ? marker.withheld : [];
+    return marker?.site === LABS_SITE || withheld.includes('LABS_MCP_TOKEN');
+  } catch {
+    return false;
+  }
+}
+
+/** The headers this helper prints: none on a labs page turn, else ACE's own token. */
+export function headersFor(callerPath, env = process.env) {
+  if (isLabsPageTurn(env)) return {};
+  return buildAuthHeaders(resolveToken(callerPath, env));
+}
+
 function main() {
   const callerPath = fileURLToPath(import.meta.url);
-  const token = resolveToken(callerPath);
-  if (!token) {
+  if (isLabsPageTurn()) {
+    process.stderr.write(
+      '[labs-auth-headers] a turn on a connect-labs page: labs is reached only as the person ' +
+        '(canopy site_tools / site_call); emitting empty headers\n',
+    );
+    process.stdout.write('{}');
+    return;
+  }
+  const headers = headersFor(callerPath);
+  if (!headers.Authorization) {
     process.stderr.write(
       '[labs-auth-headers] LABS_MCP_TOKEN not found in env or .env; emitting empty headers\n',
     );
   }
-  process.stdout.write(JSON.stringify(buildAuthHeaders(token)));
+  process.stdout.write(JSON.stringify(headers));
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {

@@ -13,6 +13,9 @@ actually done — delivered as blocks a human clicks to open in Gmail.
 
 ## Before anything: get the selection, do not ask for it
 
+**On a connect-labs page** (the caller envelope's `site` block names `connect-labs` — the Connect Labs agent panel, whoever asked, ACE's owner included): every labs read and write below goes through canopy's `site_tools` / `site_call`, as the person who sent — never the native `connect-labs` MCP, which is unauthenticated there. See [`skills/_labs-on-a-page.md`](../_labs-on-a-page.md).
+
+
 When this comes from the canopy agent panel, the page has already said which organisations
 are on screen and which round is being looked at. Read it:
 

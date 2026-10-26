@@ -24,3 +24,17 @@ export function resolveToken(
   callerPath: string,
   env?: Record<string, string | undefined>,
 ): string | null;
+
+/** The Connected site name canopy-web knows connect-labs by. */
+export const LABS_SITE: string;
+
+/** True when this session is a canopy turn held on a connect-labs page
+ * (`CANOPY_PAGE_SITE`, or a laptop runner's `~/.canopy/page/task/<task>.json`):
+ * there labs is reached only as the person, never with ACE's own token. */
+export function isLabsPageTurn(env?: Record<string, string | undefined>): boolean;
+
+/** The headers the helper prints: `{}` on a labs page turn, else ACE's own token. */
+export function headersFor(
+  callerPath: string,
+  env?: Record<string, string | undefined>,
+): Record<string, string>;
