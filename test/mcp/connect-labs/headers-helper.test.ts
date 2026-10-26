@@ -10,6 +10,8 @@ import {
   extractTokenFromEnv,
   buildAuthHeaders,
   resolveToken,
+  isLabsPageTurn,
+  headersFor,
 } from '../../../scripts/labs-auth-headers.mjs';
 import { derivePluginDataDir as libDerivePluginDataDir } from '../../../lib/plugin-data-dir.js';
 
@@ -186,5 +188,60 @@ describe('labs-auth-headers: executable contract (stdout JSON, exit 0)', () => {
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
+  });
+});
+
+// A canopy turn held on a connect-labs PAGE reaches labs only as the person who sent
+// (canopy's site_tools / site_call, their act-as-you permission) — ACE's owner
+// included. ACE's own labs token must not authenticate the native MCP there, even
+// when one is on disk.
+describe('labs-auth-headers: a turn on a connect-labs page sends no token of ACE\'s', () => {
+  it('emits {} on a cloud page turn (CANOPY_PAGE_SITE) even with a token in env and on disk', () => {
+    const home = mkdtempSync(path.join(tmpdir(), 'labs-auth-page-'));
+    try {
+      const dataDir = path.join(home, '.claude', 'plugins', 'data', 'ace-ace');
+      mkdirSync(dataDir, { recursive: true });
+      writeFileSync(path.join(dataDir, '.env'), 'LABS_MCP_TOKEN=on-disk\n');
+      const env = { HOME: home, LABS_MCP_TOKEN: 'in-env', CANOPY_PAGE_SITE: 'connect-labs' };
+      expect(isLabsPageTurn(env)).toBe(true);
+      expect(headersFor('/nowhere/scripts/labs-auth-headers.mjs', env)).toEqual({});
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+
+  it('still authenticates on a page of ANOTHER site, and off any page', () => {
+    const env = { HOME: '/nonexistent', LABS_MCP_TOKEN: 'tok' };
+    expect(headersFor('/x/scripts/h.mjs', { ...env, CANOPY_PAGE_SITE: 'ace-web' })).toEqual({
+      Authorization: 'Bearer tok',
+    });
+    expect(headersFor('/x/scripts/h.mjs', env)).toEqual({ Authorization: 'Bearer tok' });
+  });
+
+  it("emits {} on a laptop page turn (the runner's ~/.canopy/page/task/<task>.json marker)", () => {
+    const home = mkdtempSync(path.join(tmpdir(), 'labs-auth-laptop-'));
+    try {
+      const dir = path.join(home, '.canopy', 'page', 'task');
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(
+        path.join(dir, 'ace-chat-1.json'),
+        JSON.stringify({ site: 'connect-labs', withheld: ['LABS_MCP_TOKEN'] }),
+      );
+      const env = { HOME: home, LABS_MCP_TOKEN: 'tok', EMDASH_TASK_NAME: 'ace-chat-1' };
+      expect(isLabsPageTurn(env)).toBe(true);
+      expect(headersFor('/x/scripts/h.mjs', env)).toEqual({});
+      // Another task (no marker) is an ordinary session.
+      expect(isLabsPageTurn({ ...env, EMDASH_TASK_NAME: 'ace-other' })).toBe(false);
+      // A task name that is not a plain name is never joined onto a path.
+      expect(isLabsPageTurn({ ...env, EMDASH_TASK_NAME: '../page/task/ace-chat-1' })).toBe(false);
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+
+  it('the executable prints {} on a page turn', () => {
+    const env = { ...process.env, LABS_MCP_TOKEN: 'exec-tok', CANOPY_PAGE_SITE: 'connect-labs' };
+    const out = execFileSync('node', [HELPER], { env, encoding: 'utf8' });
+    expect(JSON.parse(out)).toEqual({});
   });
 });

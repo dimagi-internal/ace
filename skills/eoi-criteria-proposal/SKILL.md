@@ -56,6 +56,9 @@ which labs returns as `criteria_basis`). § The rubric shape says what goes in e
 
 ## Process
 
+**On a connect-labs page** (the caller envelope's `site` block names `connect-labs` — the Connect Labs agent panel, whoever asked, ACE's owner included): every labs read and write below goes through canopy's `site_tools` / `site_call`, as the person who sent — never the native `connect-labs` MCP, which is unauthenticated there. See [`skills/_labs-on-a-page.md`](../_labs-on-a-page.md).
+
+
 1. **Resolve the round.**
    - From the canopy panel, read `current_page`. A `labs-marketplace://rounds/<slug>` page
      names the round, so don't ask for it.
