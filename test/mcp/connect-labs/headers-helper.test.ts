@@ -85,6 +85,27 @@ describe('labs-auth-headers: resolveToken', () => {
     ).toBe('env-wins');
   });
 
+  it("reads a runner's per-turn env file ($CANOPY_AGENT_ENV_FILE) before any .env on disk", () => {
+    // A cloud runner keeps agent secrets off disk: the turn's values are in a tmpfs
+    // file named by CANOPY_AGENT_ENV_FILE, and no ~/.ace/.env or plugin-data .env
+    // exists in the unit's home (cloud-ec2-2, 2026-10-25).
+    const dir = mkdtempSync(path.join(tmpdir(), 'labs-auth-turn-'));
+    const data = mkdtempSync(path.join(tmpdir(), 'labs-auth-'));
+    try {
+      writeFileSync(path.join(dir, 'turn.env'), 'OTHER=x\nLABS_MCP_TOKEN=from-turn-file\n');
+      writeFileSync(path.join(data, '.env'), 'LABS_MCP_TOKEN=stale-on-disk\n');
+      expect(
+        resolveToken('/irrelevant/path.mjs', {
+          CANOPY_AGENT_ENV_FILE: path.join(dir, 'turn.env'),
+          CLAUDE_PLUGIN_DATA: data,
+        }),
+      ).toBe('from-turn-file');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+      rmSync(data, { recursive: true, force: true });
+    }
+  });
+
   it('falls back to <CLAUDE_PLUGIN_DATA>/.env when no env token is set', () => {
     const dir = mkdtempSync(path.join(tmpdir(), 'labs-auth-'));
     try {
