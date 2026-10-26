@@ -480,6 +480,35 @@ connection because the user-scope override registers it once for the
 session; every subagent dispatch sees the same `get_hq_connection`
 result.
 
+### Step 0.9: Take the Nova-account lease (before ANY Nova-writing step)
+
+Nova rate-limits per account, not per build: two Phase 3 builds under one
+account produced 103 of the 124 HTTP 429s in the T140 baseline (ace#3301).
+Before dispatching the architect or any Nova-writing step, take the lease:
+
+```bash
+node "$ACE_ROOT/node_modules/tsx/dist/cli.mjs" "$ACE_ROOT/scripts/nova-account-lease.ts" \
+  acquire --holder "<opp>/<run-id>"
+```
+
+A second build **waits and prints why** (it never fails). The lease lasts as
+long as the holding session's `claude` process is alive — Phase 3 builds have
+run 8–20 hours, so no clock can stand in for that — and is free the moment that
+process exits; a 24h TTL is only a backstop (`lib/nova-account-lease.ts`).
+Re-running `acquire` as the same holder renews it, so a mid-phase resume in a
+new session keeps its place. Run the matching
+`release --holder "<opp>/<run-id>"` on EVERY exit from this phase — `done`,
+`partial`, halt. The lease is per home directory; builds on different runners,
+or under different canopy users on one runner, that share a Nova key are not
+serialised by it.
+
+The architect cannot back off on a 429: its only tools are ToolSearch and Nova,
+so it has no way to wait. This lease is what keeps it under the limit; its 429
+brief text (a throttled write did not apply — re-read the affected entity,
+resend with the same `request_id`, never back-to-back) is owned by ace#3300
+item 7. ACE's own scripts back off from `NOVA_RATE_LIMIT_MIN_BACKOFF_MS` in
+`lib/nova-rpc.ts`.
+
 ### Step 1: PDD to Apps (sequential)
 
 Invoke `pdd-to-learn-app`, then `pdd-to-deliver-app`. The Learn-app

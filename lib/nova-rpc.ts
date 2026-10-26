@@ -90,6 +90,25 @@ export function unwrapToolResult(result: unknown, toolName: string): unknown {
   }
 }
 
+/** Nova gives no `retry_after`; this is the floor for backing off a 429 (ace#3301). */
+export const NOVA_RATE_LIMIT_MIN_BACKOFF_MS = 10_000;
+
+/**
+ * Is this error message a Nova rate limit? Nova throttles in TWO shapes: the
+ * transport form (`Nova tools/call → HTTP 429 …`, thrown by `novaRpc`) and the
+ * tool-error form (`Nova <tool> rejected the call: Error POSTing to endpoint:
+ * {"message":"Too many requests. Please try again later."}`, thrown by
+ * `unwrapToolResult`), which carries no status code at all (ace#3301).
+ */
+export function isNovaRateLimit(message: string): boolean {
+  return /HTTP 429/.test(message) || /too many requests/i.test(message);
+}
+
+/** Transport-level 5xx — transient, retried like a rate limit. */
+export function isNovaTransient(message: string): boolean {
+  return /HTTP 5\d\d/.test(message);
+}
+
 let nextId = 0;
 
 /** Make one JSON-RPC call against Nova's MCP endpoint. */

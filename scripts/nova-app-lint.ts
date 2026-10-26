@@ -32,7 +32,7 @@
  */
 import { readFileSync, writeFileSync } from 'node:fs';
 import { loadPluginEnv } from '../lib/load-plugin-env.js';
-import { novaCall } from '../lib/nova-rpc.js';
+import { isNovaRateLimit, isNovaTransient, NOVA_RATE_LIMIT_MIN_BACKOFF_MS, novaCall } from '../lib/nova-rpc.js';
 import { fetchNovaAppBundle, type NovaAppBundle, type NovaCall } from '../lib/nova-app-bundle.js';
 import { formatNovaAppLint, lintNovaApp, type AppType } from '../lib/nova-app-lint.js';
 import { readAppUpdatedAt, stampSnapshot } from '../lib/nova-app-snapshot.js';
@@ -43,21 +43,37 @@ function arg(name: string): string | undefined {
 }
 
 /**
- * Nova answers bursts with HTTP 429 and occasionally a 5xx; both are
- * transient. Back off and retry — a lint that dies on a rate limit would
- * read as "incomplete" and stall the gate for no reason.
+ * Nova answers bursts with a 429 and occasionally a 5xx; both are transient.
+ * Back off and retry — a lint that dies on a rate limit would read as
+ * "incomplete" and stall the gate for no reason.
+ *
+ * A 429 arrives either as `HTTP 429` or as a tool error ("Too many requests")
+ * with no status code, so both are matched (`isNovaRateLimit`, ace#3301). Nova
+ * returns no `retry_after`; a rate limit backs off at least
+ * `NOVA_RATE_LIMIT_MIN_BACKOFF_MS`, doubling. A throttled write did not apply,
+ * but the caller cannot assume that, so `beforeResend` runs ahead of every
+ * retry — a write path passes a re-read of the affected entity there and then
+ * resends with the SAME `request_id`.
  */
-export function withNovaRetry(call: NovaCall, sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))): NovaCall {
+export function withNovaRetry(
+  call: NovaCall,
+  sleep = (ms: number) => new Promise((r) => setTimeout(r, ms)),
+  opts: { beforeResend?: (tool: string, args: Record<string, unknown>) => Promise<void> } = {},
+): NovaCall {
   return async (tool, args) => {
     let delay = 2000;
+    let limitedDelay = NOVA_RATE_LIMIT_MIN_BACKOFF_MS;
     for (let attempt = 0; ; attempt++) {
       try {
         return await call(tool, args);
       } catch (e) {
         const msg = (e as Error).message ?? '';
-        if (attempt >= 5 || !/HTTP (429|5\d\d)/.test(msg)) throw e;
-        await sleep(delay);
-        delay *= 2;
+        const limited = isNovaRateLimit(msg);
+        if (attempt >= 5 || !(limited || isNovaTransient(msg))) throw e;
+        await sleep(limited ? limitedDelay : delay);
+        if (limited) limitedDelay *= 2;
+        else delay *= 2;
+        await opts.beforeResend?.(tool, args);
       }
     }
   };
