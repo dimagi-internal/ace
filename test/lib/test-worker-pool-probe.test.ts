@@ -1,7 +1,7 @@
 // ace#2955 — the doctor signal that keeps the unlocked rollout fallback from
 // persisting silently, and the manifest the lock is published from.
 import { describe, it, expect } from 'vitest';
-import { readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { parse } from 'yaml';
 import { classifyTestWorkerPool, probeTestWorkerPool } from '../../lib/test-worker-pool-probe.js';
@@ -26,7 +26,7 @@ describe('classifyTestWorkerPool', () => {
     const v = classifyTestWorkerPool({ hasToken: true, status: 200, body: { capabilities: [] } });
     expect(v.status).toBe('warn');
     expect(v.summary).toMatch(/NOT published.*UNLOCKED as the legacy ACE_E2E_\* worker.*ace#2955/);
-    expect(v.remediation).toContain('canopy-runtime publish-capabilities --spec runtime.yaml --agent ace');
+    expect(v.remediation).toContain('canopy-runtime publish-capabilities --dir infra/capabilities --agent ace');
   });
 
   it('WARNs while published but ungranted, and still reports slot-data gaps', () => {
@@ -106,13 +106,15 @@ describe('infra/capabilities/test-worker/capability.yaml', () => {
     expect(new Set(manifest.slots).size).toBe(manifest.slots.length);
   });
 
-  it('is declared in runtime.yaml next to the emulator', () => {
-    const runtime = parse(readFileSync(join(ROOT, 'runtime.yaml'), 'utf8'));
-    const refs = runtime.capabilities.map((c: { manifest: string }) => c.manifest);
-    expect(refs).toEqual([
-      'infra/capabilities/android-emulator/capability.yaml',
-      'infra/capabilities/test-worker/capability.yaml',
-    ]);
+  it('sits in infra/capabilities next to the emulator, where the directory publish finds both', () => {
+    // `publish-capabilities --dir infra/capabilities` retires any capability its list
+    // leaves out and releases its live leases, so a manifest the glob cannot see
+    // would kill that pool. canopy-runtime globs `<dir>/*/capability.yaml`.
+    const dirs = readdirSync(join(ROOT, 'infra/capabilities'), { withFileTypes: true })
+      .filter((d) => d.isDirectory() && existsSync(join(ROOT, 'infra/capabilities', d.name, 'capability.yaml')))
+      .map((d) => d.name)
+      .sort();
+    expect(dirs).toEqual(['android-emulator', 'test-worker']);
   });
 
   it('declares worker-1..10 — the ten workers signed up in PersonalID (+74260000101..110)', () => {
@@ -120,11 +122,9 @@ describe('infra/capabilities/test-worker/capability.yaml', () => {
   });
 
   it('pool credentials are canopy-web slot data, not env: no ACE_E2E_WORKERS / connect-test-workers anywhere', () => {
-    for (const f of ['runtime.yaml', 'skills/test-worker-pool/SKILL.md', 'infra/capabilities/test-worker/capability.yaml']) {
+    for (const f of ['skills/test-worker-pool/SKILL.md', 'infra/capabilities/test-worker/capability.yaml']) {
       const text = readFileSync(join(ROOT, f), 'utf8');
       expect(text, f).not.toMatch(/ACE_E2E_WORKERS|connect-test-workers|pool-json/);
     }
-    // The per-run flag stays off: the owner chose the pool (ace#2955).
-    expect(readFileSync(join(ROOT, 'runtime.yaml'), 'utf8')).not.toMatch(/ACE_PER_RUN_TEST_USER/);
   });
 });

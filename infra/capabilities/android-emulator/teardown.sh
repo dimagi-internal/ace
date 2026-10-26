@@ -22,9 +22,9 @@
 # when it cannot tell which AMI the parameter points at (an unreadable
 # parameter is never read as "none").
 #
-# Do this FIRST, so canopy-web stops leasing: remove the capability from
-# runtime.yaml `capabilities:` and run
-#   canopy-runtime publish-capabilities --spec runtime.yaml --agent ace
+# Do this FIRST, so canopy-web stops leasing: delete its directory under
+# infra/capabilities/ and run
+#   canopy-runtime publish-capabilities --dir infra/capabilities --agent ace
 # (a capability missing from the list is retired and its live leases released).
 set -euo pipefail
 

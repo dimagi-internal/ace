@@ -3,8 +3,8 @@
 #
 # Schema: canopy_runtime.schema.CapabilityManifest, version 1. Contract:
 # canopy-web docs/superpowers/specs/2026-10-14-cloud-capabilities-design.md
-# §1-§2. Declared in runtime.yaml `capabilities:` and published by deploy.sh
-# (`canopy-runtime publish-capabilities --spec runtime.yaml --agent ace`).
+# §1-§2. Published by deploy.sh
+# (`canopy-runtime publish-capabilities --dir infra/capabilities --agent ace`).
 #
 # `params.state.enum` must equal the states the image bakes: one `cc-<version>`
 # per entry of `commcare_versions` in image/variables.pkr.hcl, written to

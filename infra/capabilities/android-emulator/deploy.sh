@@ -127,7 +127,10 @@ done
 [[ "$(stack_output Capability)" == "$CAPABILITY" ]] || die "stack output Capability != $CAPABILITY"
 
 # ── Publish to canopy-web ──────────────────────────────────────────────────
-PUBLISH=(canopy-runtime publish-capabilities --spec "$REPO_ROOT/runtime.yaml" --agent "$OWNER")
+# canopy-runtime >= 0.5.0 (`--dir`), pinned to a canopy-web commit rather than the template's
+# release tag: dimagi-canopy-v* tags follow sdk/python, and this CLI is not part of it.
+RUNTIME_PIN="canopy-runtime @ git+https://github.com/dimagi-internal/canopy-web@4d06b9a6e82368db8871076e75b00b9154b729de#subdirectory=packages/canopy_runtime"
+PUBLISH=(canopy-runtime publish-capabilities --dir "$REPO_ROOT/infra/capabilities" --agent "$OWNER")
 if [[ -n "$SKIP_PUBLISH" ]]; then
   note "Skipping publish. To publish: ${PUBLISH[*]}"
   exit 0
@@ -138,7 +141,7 @@ ERROR: the stack is deployed, but canopy-runtime is not installed, so the
 capability is NOT published. Install it from the same canopy tag and re-run
 (the deploy step is a no-op the second time):
 
-  pip install "canopy-runtime @ git+https://github.com/$T_REPO@$T_REF#subdirectory=packages/canopy_runtime"
+  pip install "$RUNTIME_PIN"
   ${PUBLISH[*]}
 
 publish-capabilities authenticates as an admin of agent '$OWNER' on canopy-web.

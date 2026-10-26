@@ -174,7 +174,7 @@ export function leaseHttpError(
           `${LEASE_AGENT} has not declared ${capability} on canopy-web${said ? `: ${said}` : ''}`,
           capability === LEASE_CAPABILITY
             ? 'Publish the manifest: infra/capabilities/android-emulator/deploy.sh (runs canopy-runtime publish-capabilities).'
-            : `Publish ACE's capability manifests: canopy-runtime publish-capabilities --spec runtime.yaml --agent ${LEASE_AGENT}.`,
+            : `Publish ACE's capability manifests: canopy-runtime publish-capabilities --dir infra/capabilities --agent ${LEASE_AGENT}.`,
         );
       }
       return new MobileError(

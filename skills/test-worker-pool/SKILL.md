@@ -170,7 +170,7 @@ TSX="node $ACE_ROOT/node_modules/tsx/dist/cli.mjs"
 5. **Declare the slot.** If the planner said the slot is new, add it to `slots:` in
    `infra/capabilities/test-worker/capability.yaml`, ship the PR with
    `skills/shipping`, then publish:
-   `canopy-runtime publish-capabilities --spec runtime.yaml --agent ace` (ACE's own
+   `canopy-runtime publish-capabilities --dir infra/capabilities --agent ace` (ACE's own
    PAT can publish). The first publish also needs a workspace admin to grant
    `test-worker` to agent `ace` in ACE's canopy-web workspace.
 6. **Verify it.** `$TSX "$ACE_ROOT/scripts/test-worker-set.ts" --list` shows the slot

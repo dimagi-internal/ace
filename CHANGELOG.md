@@ -5,6 +5,16 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.13.2157 — 2026-10-26
+
+**ACE no longer ships a `runtime.yaml`; capabilities publish from their `capability.yaml`.**
+Nothing read the file except `canopy-runtime publish-capabilities`, and that read only its two
+manifest pointers. `deploy.sh`, `PUBLISH_CMD`, the broker's remedy text and the test-worker-pool
+skill now run `canopy-runtime publish-capabilities --dir infra/capabilities --agent ace` (every
+`*/capability.yaml`: the emulator and the test-worker pool). The `--dir` CLI is canopy-web#2104;
+`deploy.sh` pins its install to that commit. Tests that pinned runtime.yaml now check the
+capability directory holds both manifests. `lib/apk-pin-sites.ts` stops scanning the deleted file.
+
 ## 0.13.2155 — 2026-10-25
 
 **The GiveWell project is now `connect/givewell`.** `cost-effectiveness` and `defend-a-figure`

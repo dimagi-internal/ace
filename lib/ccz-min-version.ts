@@ -224,7 +224,7 @@ export interface CczMinVersionInput {
   /**
    * Whether this run will actually walk a device. Default `true`. Pass `false`
    * only when the run demonstrably skips Phase 6's device leg (a headless box
-   * — `runtime.yaml` marks every mobile var optional for exactly that case).
+   * — the mobile env vars are optional for exactly that case).
    */
   devicePhasePlanned?: boolean;
 }
