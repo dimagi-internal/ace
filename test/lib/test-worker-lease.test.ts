@@ -3,7 +3,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { TestWorkerCheckout, type TestWorkerCheckoutOpts } from '../../lib/test-worker-lease.js';
 import { MobileError } from '../../mcp/mobile/errors.js';
-import { FakeCanopyPool, legacyEnv, slotDataFor } from '../fixtures/fake-canopy-pool.js';
+import { FakeCanopyPool, fakeOpener, legacyEnv, slotDataFor } from '../fixtures/fake-canopy-pool.js';
 
 function make(pool: FakeCanopyPool, opts: TestWorkerCheckoutOpts = {}) {
   let clock = 0;
@@ -302,5 +302,63 @@ describe('TestWorkerCheckout — rollout fallback (capability not live)', () => 
       retry: { retries: 0, sleepImpl: async () => {} },
     });
     expect((await rejection(co.ensure(1))).code).toBe('LEASE_HTTP_500');
+  });
+});
+
+describe('TestWorkerCheckout — sealed slot secrets (canopy-web cannot read them)', () => {
+  it('opens a sealed lease through the canopy CLI and takes the same worker', async () => {
+    const pool = new FakeCanopyPool(['worker-1']);
+    pool.sealed = true;
+    const inputs: string[] = [];
+    const { co } = make(pool, { openSlotDataImpl: (i) => (inputs.push(i), fakeOpener(i)) });
+    const held = await co.ensure(1);
+    const d = slotDataFor('worker-1');
+    expect(held[0].worker).toEqual({ slot: 'worker-1', ...d.public, ...d.secret });
+    // The CLI gets what it needs to bind each value: capability, slot, the sealed map.
+    const sent = JSON.parse(inputs[0]);
+    expect(sent).toMatchObject({ capability: 'test-worker', slot: 'worker-1' });
+    expect(Object.keys(sent.slot_data.sealed).sort()).toEqual(['backupCode', 'pin']);
+    for (const v of Object.values(d.secret)) expect(inputs[0]).not.toContain(v);
+  });
+
+  it("an older canopy-web's plaintext secret never calls the CLI", async () => {
+    const pool = new FakeCanopyPool(['worker-1']);
+    const opener = vi.fn(fakeOpener);
+    const { co } = make(pool, { openSlotDataImpl: opener });
+    expect((await co.ensure(1))[0].worker.pin).toBe(slotDataFor('worker-1').secret.pin);
+    expect(opener).not.toHaveBeenCalled();
+  });
+
+  it('a CLI that cannot open the secrets fails the checkout and releases the slot', async () => {
+    const pool = new FakeCanopyPool(['worker-1']);
+    pool.sealed = true;
+    const { co } = make(pool, {
+      openSlotDataImpl: () => {
+        throw new MobileError('TEST_WORKER_SEALED', 'canopy vault open-slot-data failed: not sealed to this device');
+      },
+    });
+    expect((await rejection(co.ensure(1))).code).toBe('TEST_WORKER_SEALED');
+    expect(pool.heldSlots()).toEqual([]);
+  });
+
+  it('opened secrets never reach a log line, a warning or the status report', async () => {
+    const pool = new FakeCanopyPool(['worker-1']);
+    pool.sealed = true;
+    const secrets = Object.values(slotDataFor('worker-1').secret);
+    const out: string[] = [];
+    const w = vi.spyOn(process.stderr, 'write').mockImplementation(((chunk: unknown) => {
+      out.push(String(chunk));
+      return true;
+    }) as never);
+    try {
+      const { co, warn } = make(pool, { openSlotDataImpl: fakeOpener });
+      await co.ensure(1);
+      out.push(JSON.stringify(co.status()), ...warn.mock.calls.map((c) => String(c[0])));
+    } finally {
+      w.mockRestore();
+    }
+    const all = out.join('\n');
+    expect(all).toContain('worker-1');
+    for (const sec of secrets) expect(all).not.toContain(sec);
   });
 });
