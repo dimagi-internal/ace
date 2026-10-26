@@ -924,6 +924,33 @@ code-level phrase that stays as written.
        the source of truth — not the PDD prose, not the architect's
        return string.
 
+    **Read the built app ONCE, from the snapshot (ace#3132).** This skill runs
+    BEFORE Phase 3's Step 1.4 lint, so there is usually no snapshot yet. Get
+    one with a single server-side call (none of the blueprint enters your
+    context), or reuse the caller's:
+
+    ```bash
+    ACE_ROOT="${CLAUDE_PLUGIN_ROOT:-$(python3 -c "import json,os; d=json.load(open(os.path.expanduser('~/.claude/plugins/installed_plugins.json'))); print(d['plugins']['ace@ace'][0]['installPath'])")}"
+    TSX="node $ACE_ROOT/node_modules/tsx/dist/cli.mjs"
+    # caller passed nova_snapshot: it must be FRESH (exit 0), else take your own
+    $TSX "$ACE_ROOT/scripts/nova-app-snapshot.ts" --snapshot <nova_snapshot> --app <nova_app_id> --check
+    # no snapshot, or not FRESH:
+    $TSX "$ACE_ROOT/scripts/nova-app-lint.ts" --app <nova_app_id> --type deliver \
+      --snapshot-out "<scratch>/nova-app-snapshot_<app>.json"
+    ```
+
+    Ignore the lint's verdict here (Phase 3 Step 1.4 owns the gate) and use
+    only the file it wrote. `FRESH`, or the file you just wrote → take the
+    uuid map from `nova-app-snapshot.ts --snapshot <file> --outline` (it also
+    prints the app's `connect` type) and each form from `--form <formUuid>`;
+    **do not call `get_app` or `get_form`** for steps 2–3 below, nor for
+    4e step 1–2. Any other result (exit 3/4, no file written) → read live as
+    written below, never "close enough". **After ANY edit of this app, take a
+    new snapshot with the same lint command** before re-reading — the old
+    file predates the edit. Reads that verify this skill's OWN write stay live
+    (`LIVE_READS`, `lib/nova-app-snapshot.ts`): the `get_form` inside each
+    `/nova:edit` prompt, and the post-save `get_app` re-fetch in 4e step 3 (it stays live: it proves the save landed and that `configure_connect` cleared no form).
+
     2. **Read the built app** via one `get_app({app_id})` call. Compare
        module + form names against the expected map. **Halt** if any
        expected `(module, form)` is missing — that's a structural gap
@@ -980,7 +1007,10 @@ code-level phrase that stays as written.
        requested field is present."
        ```
 
-       Re-run step 3 + step 4 after the edit returns.
+       Re-run step 3 + step 4 after the edit returns, from a NEW snapshot
+       (same lint command, `--snapshot-out`) — the old one predates the edit.
+       The `get_form` inside the `/nova:edit` prompt is the editor's own
+       read-back of its write and stays live.
 
     7. **Bounded loop, max 3 iterations.** If any form is still short
        after the third iteration, halt with a structured failure
@@ -1156,10 +1186,12 @@ code-level phrase that stays as written.
     post-release, but that is a full deploy→build→release cycle too late
     — assert it here, cheaply, on the already-built app.
 
-    1. Call `get_app({app_id})`. Its summary header prints the app's
-       Connect type (e.g. `Connect type: deliver` / `Connect type:
-       learn`); a standard app prints none. **Keep this response** — you
-       need its complete form list and `[uuid …]` markers for step 3.
+    1. Read the app's Connect type and complete form list from the § 4a
+       snapshot (`--outline`: `connect` + `forms[]` with uuids); no
+       `get_app`. Live fallback only when 4a left no `FRESH` snapshot: call
+       `get_app({app_id})` — its summary header prints the Connect type
+       (e.g. `Connect type: deliver`; a standard app prints none) — and
+       **keep that response** for its form list and `[uuid …]` markers.
     2. **Assert the header reads `Connect type: deliver`.** Do NOT rely
        on the per-form `[Connect enabled]` flag — it is a false positive
        for compile (see above, and Step 3's marker-mechanism bullet).
@@ -1204,6 +1236,8 @@ code-level phrase that stays as written.
        Then `save_work` (require `saved: true`), re-run `get_app({app_id})`
        and re-assert BOTH the header and that every
        form that carried a Connect block before still carries one.
+       **This re-fetch stays live** (`LIVE_READS`): it verifies this
+       step's own write, which the § 4a snapshot predates.
        **Bounded loop, max 3 iterations.** The per-form
        `connect.deliver_unit` blocks the architect already built stay
        intact, so the marker compiles on the next deploy with **no

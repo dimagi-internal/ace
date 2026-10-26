@@ -112,6 +112,17 @@ describe('Phase 3 reads the snapshot; own-write read-backs stay live', () => {
     });
   }
 
+  for (const skill of ['pdd-to-learn-app', 'pdd-to-deliver-app']) {
+    it(`${skill} post-build steps read the snapshot (FRESH-or-fallback), not get_app/get_form`, () => {
+      const s = read(`skills/${skill}/SKILL.md`);
+      expect(s).toMatch(/scripts\/nova-app-snapshot\.ts"? --snapshot <nova_snapshot> --app <nova_app_id> --check/);
+      expect(s).toContain('--snapshot-out');
+      expect(s).toContain('--outline');
+      expect(s).toMatch(/`FRESH`/);
+      expect(s).toMatch(/Live fallback only when/);
+    });
+  }
+
   for (const { skill, step } of LIVE_READS) {
     it(`${skill} ${step} is named as a live read`, () => {
       const s = read(`skills/${skill}/SKILL.md`);
