@@ -637,6 +637,9 @@ code-level phrase that stays as written.
        contract and the ACE-direct recipe.) Graded by
        `language_conformance`.
      - `deliver-app-naming` — always. App name must contain "Deliver app".
+     - `nova-authoring-rules` — always (Learn + Deliver). One paragraph of
+       the nine refusals and lookups that recur across Nova builds (ace#3300);
+       insert it verbatim, do not restate its clauses here.
      - `no-starter-module` — always (Learn + Deliver). Apps created before
        2026-09-27 were seeded with a placeholder module (top-level menu
        "Survey" → form "Survey" → one text field `question_1` labelled

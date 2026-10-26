@@ -469,6 +469,9 @@ written.
      placeholders from the PDD. Emit-checklist (see the library for full
      text + triggers):
 
+     - `nova-authoring-rules` — always (Learn + Deliver). One paragraph of
+       the nine refusals and lookups that recur across Nova builds (ace#3300);
+       insert it verbatim, do not restate its clauses here.
      - `assessment-gate` — trigger: PDD specifies a readiness /
        competency gate before delivery. (Gate stays Connect-side — Learn
        forms carry no case blocks per the rule above.)
