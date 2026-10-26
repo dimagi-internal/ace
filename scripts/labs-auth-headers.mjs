@@ -80,6 +80,11 @@ export function buildAuthHeaders(token) {
 /**
  * Resolve the labs token. Order, matching the retired proxy's loadToken():
  *   1. `LABS_MCP_TOKEN` already in the environment (lets operators override).
+ *   1b. `$CANOPY_AGENT_ENV_FILE`, a canopy runner's per-turn env file. A cloud
+ *      runner keeps agent secrets off disk, so a unit's home has no `.env` of
+ *      ACE's at all, and Claude Code does not pass the secret itself to this
+ *      helper. Without it the helper emitted {} and every turn saw connect-labs
+ *      as "needs authorization" (cloud-ec2-2, 2026-10-25).
  *   2. `<plugin-data-dir>/.env`, where the data dir is taken from
  *      `$CLAUDE_PLUGIN_DATA` if it's a real path, else self-derived from
  *      `callerPath`.
@@ -100,6 +105,7 @@ export function resolveToken(callerPath, env = process.env) {
   if (env.LABS_MCP_TOKEN) return env.LABS_MCP_TOKEN;
 
   const candidates = [];
+  if (env.CANOPY_AGENT_ENV_FILE) candidates.push(env.CANOPY_AGENT_ENV_FILE);
   if (env.CLAUDE_PLUGIN_DATA && env.CLAUDE_PLUGIN_DATA !== '${CLAUDE_PLUGIN_DATA}') {
     candidates.push(path.join(env.CLAUDE_PLUGIN_DATA, '.env'));
   }
