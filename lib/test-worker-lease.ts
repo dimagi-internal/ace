@@ -78,7 +78,7 @@ import {
 import { resolveRetry, type RetryOpts } from '../mcp/mobile/backends/remote-io.js';
 
 export const ISSUE = 'ace#2955';
-export const PUBLISH_CMD = `canopy-runtime publish-capabilities --spec runtime.yaml --agent ${LEASE_AGENT}`;
+export const PUBLISH_CMD = `canopy-runtime publish-capabilities --dir infra/capabilities --agent ${LEASE_AGENT}`;
 
 export type WorkerLockMode = 'locked' | 'unlocked-fallback';
 

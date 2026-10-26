@@ -142,7 +142,7 @@ const SCAN_ROOTS: readonly string[] = [
 ];
 
 /** Single files outside any scanned root. */
-const SCAN_FILES: readonly string[] = ['runtime.yaml', 'CLAUDE.md'];
+const SCAN_FILES: readonly string[] = ['CLAUDE.md'];
 
 /**
  * This module's own source is excluded: its doc comments quote every pin form

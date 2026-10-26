@@ -517,7 +517,7 @@ describe('LeaseBackend queueing and failure codes', () => {
 
   it('maps 422 (no validation errors) to LEASE_UNDECLARED, and 422 with errors to LEASE_INVALID_REQUEST', async () => {
     const b = new FakeBroker();
-    const und = "ace declares no capability 'android-emulator' (declared: none). Declare it in runtime.yaml and run `canopy-runtime publish-capabilities`.";
+    const und = "ace declares no capability 'android-emulator' (declared: none). Add its capability.yaml and run `canopy-runtime publish-capabilities --dir infra/capabilities`.";
     b.acquireResponse = { status: 422, body: { title: und, detail: und, status: 422 } };
     await expect(backend(b).ensureAvdRunning('cc-2.63.0')).rejects.toMatchObject({ code: 'LEASE_UNDECLARED' });
     b.acquireResponse = { status: 422, body: { title: 'Request validation failed', status: 422, extras: { errors: [{ loc: ['params', 'state'] }] } } };

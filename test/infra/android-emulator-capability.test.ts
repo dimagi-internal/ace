@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { spawnSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { join } from 'node:path'
@@ -11,7 +11,7 @@ import { ENVIRONMENT_BASELINE_KEYS } from '../../mcp/mobile/environment-baseline
 //   - capability.yaml   (what canopy-web lets an acquire ask for)
 //   - image/            (what the machine actually bakes and boots)
 //   - stack.params.json (which stack canopy-web reads, which AMI parameter)
-//   - runtime.yaml      (what deploy.sh publishes)
+//   - infra/capabilities (deploy.sh publishes the whole directory)
 // A state in the manifest's enum that the image never baked passes canopy-web's
 // validation and then fails on the machine, minutes into a lease, as
 // ready.json {ok:false, reason:"unknown-state"}. This file is that check, moved
@@ -23,7 +23,6 @@ const read = (p: string) => readFileSync(join(CAP, p), 'utf8')
 
 const manifest = parse(read('capability.yaml'))
 const params = JSON.parse(read('stack.params.json'))
-const runtime = parse(readFileSync(join(ROOT, 'runtime.yaml'), 'utf8'))
 
 function bakedVersions(): string[] {
   const hcl = read('image/variables.pkr.hcl')
@@ -32,7 +31,7 @@ function bakedVersions(): string[] {
   return [...block[1].matchAll(/"([^"]+)"/g)].map((m) => m[1])
 }
 
-describe('android-emulator capability: manifest ↔ image ↔ stack ↔ runtime', () => {
+describe('android-emulator capability: manifest ↔ image ↔ stack ↔ publish', () => {
   it('is the spec §1 manifest', () => {
     expect(manifest.version).toBe(1)
     expect(manifest.name).toBe('android-emulator')
@@ -64,10 +63,17 @@ describe('android-emulator capability: manifest ↔ image ↔ stack ↔ runtime'
     expect(params.template.path).toBe('sdk/python/src/canopy_sdk/ondemand/assets/ondemand-capability.cfn.yaml')
   })
 
-  it('is declared in runtime.yaml', () => {
-    const refs = (runtime.capabilities ?? []).map((c: { manifest: string }) => c.manifest)
-    expect(refs).toContain('infra/capabilities/android-emulator/capability.yaml')
-    for (const r of refs) expect(existsSync(join(ROOT, r)), r).toBe(true)
+  it('is published by deploy.sh from the capabilities directory, which holds both manifests', () => {
+    // deploy.sh publishes `--dir infra/capabilities`; canopy-web retires any
+    // capability the list leaves out. Pin the command and what its glob finds.
+    expect(read('deploy.sh')).toContain('publish-capabilities --dir "$REPO_ROOT/infra/capabilities"')
+    // The CLI that understands --dir is not in the template's release tag: it is pinned by commit.
+    expect(read('deploy.sh')).toMatch(/RUNTIME_PIN="canopy-runtime @ git\+https:\/\/github\.com\/dimagi-internal\/canopy-web@[0-9a-f]{40}#/)
+    const found = readdirSync(join(CAP, '..'), { withFileTypes: true })
+      .filter((d) => d.isDirectory() && existsSync(join(CAP, '..', d.name, 'capability.yaml')))
+      .map((d) => d.name)
+      .sort()
+    expect(found).toEqual(['android-emulator', 'test-worker'])
   })
 
   it('puts every allow-listed CLI on PATH in the image', () => {

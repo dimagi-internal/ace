@@ -254,7 +254,7 @@ describe('TestWorkerCheckout — rollout fallback (capability not live)', () => 
     expect(co.mode).toBe('unlocked-fallback');
     const msg = warn.mock.calls[0][0] as string;
     expect(msg).toContain('ace#2955');
-    expect(msg).toContain('canopy-runtime publish-capabilities --spec runtime.yaml --agent ace');
+    expect(msg).toContain('canopy-runtime publish-capabilities --dir infra/capabilities --agent ace');
     expect(msg).toContain('UNLOCKED');
     expect(co.status().warning).toContain('ace#2955');
   });

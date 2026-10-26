@@ -24,7 +24,7 @@ sweep. Everything specific to the emulator is here. The lease client is
 | `_common.sh` | Config and helpers the three scripts share (stack identity, state-tag check, image pruning). |
 
 `test/infra/android-emulator-capability.test.ts` fails CI when the manifest, the
-image, the stack params, `runtime.yaml`, the CLI's constants and the local
+image, the stack params, the sibling capability manifests, the CLI's constants and the local
 backend disagree. `test/infra/android-emulator-cli.test.ts` runs the CLI's
 Python tests and shellchecks every script here.
 
@@ -57,10 +57,12 @@ Run them from this directory.
   ```bash
   gh release view dimagi-canopy-v0.9.0 -R dimagi-internal/canopy-web
   ```
-- **Publishing:** `canopy-runtime` from the same tag:
+- **Publishing:** `canopy-runtime` 0.5.0 or later (`--dir`), pinned to a canopy-web commit
+  (the release tags follow `sdk/python`, which the CLI is not part of; `deploy.sh` carries
+  the same pin as `RUNTIME_PIN`):
 
   ```bash
-  pip install "canopy-runtime @ git+https://github.com/dimagi-internal/canopy-web@dimagi-canopy-v0.9.0#subdirectory=packages/canopy_runtime"
+  pip install "canopy-runtime @ git+https://github.com/dimagi-internal/canopy-web@4d06b9a6e82368db8871076e75b00b9154b729de#subdirectory=packages/canopy_runtime"
   ```
 - **ACE's canopy-web PAT** for the lease calls in step 4: `CANOPY_WEB_PAT` in
   ACE's `.env` (`~/.claude/plugins/data/ace-ace/.env`, written by `/ace:setup`
@@ -131,7 +133,8 @@ Before it writes anything, it checks:
 Then it runs `aws cloudformation deploy` (stack `canopy-cap-ace-android-emulator`,
 `CAPABILITY_NAMED_IAM`, a no-op when nothing changed), checks the stack exposes
 `LaunchTemplateId`, `ArtifactsBucketName`, `InstanceRoleArn` and `Capability`,
-and runs `canopy-runtime publish-capabilities --spec runtime.yaml --agent ace`.
+and runs `canopy-runtime publish-capabilities --dir infra/capabilities --agent ace`
+(every `*/capability.yaml` under `infra/capabilities/`: the emulator and the test-worker pool).
 Without `canopy-runtime` it exits 3 after the deploy and prints the install
 command; re-run after installing it. `--skip-publish` deploys only;
 `--template-file <path>` deploys a local template instead of the pinned one.
@@ -219,9 +222,9 @@ separate machines (`mobile_diagnose` shows each lease's instance).
 - **Prune old images:** `./teardown.sh --yes --images-only [--keep N]`. Keeps the
   newest N (default 3) and the AMI the parameter points at; refuses to run when
   the parameter cannot be read, and only ever deletes `ami-`/`snap-` shaped ids.
-- **Tear down:** retire the capability on canopy-web first (remove it from
-  `runtime.yaml` `capabilities:`, then
-  `canopy-runtime publish-capabilities --spec runtime.yaml --agent ace`), then
+- **Tear down:** retire the capability on canopy-web first (delete its
+  directory under `infra/capabilities/`, then
+  `canopy-runtime publish-capabilities --dir infra/capabilities --agent ace`), then
   `./teardown.sh --yes` (`--images` also deletes every baked AMI, its snapshots
   and the SSM parameter). Re-runnable after a partial failure.
 
