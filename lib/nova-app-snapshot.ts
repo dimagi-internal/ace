@@ -154,4 +154,14 @@ export const LIVE_READS: ReadonlyArray<{ skill: string; step: string; why: strin
     step: 'step 9',
     why: 'saved-app read-back proves the attaches survived save_work',
   },
+  {
+    skill: 'pdd-to-learn-app',
+    step: '4b',
+    why: 'post-save get_app re-fetch proves configure_connect landed and cleared no form; 4c step 3 and Repair mode step 3 re-read their own save the same way',
+  },
+  {
+    skill: 'pdd-to-deliver-app',
+    step: '4e',
+    why: 'post-save get_app re-fetch proves configure_connect landed and cleared no form',
+  },
 ];
