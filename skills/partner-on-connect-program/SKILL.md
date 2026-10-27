@@ -101,6 +101,14 @@ Reading and answering are not changes.
 
 **Whose account makes it.** A labs change (a workflow, a dashboard, the semantic layer) is made as ACE unless the person said "as me". Either way, name the account before writing: [`skills/_acting-as-you.md`](../_acting-as-you.md).
 
+**Hiding a run is not closing an opportunity.** Connect has no archive or delete for an opportunity
+(deactivating is the only move, `connect_update_opportunity active:false`, and the opportunity
+stays listed). To tidy what people SEE, archive the run in ace-web: `POST` / `DELETE
+/api/w/{ws}/opps/{opp}/runs/{run}/archive` with ACE's `ACE_WEB_PAT_TOKEN`, listed at
+`/w/{ws}/archive`. It writes only an ace-web row, so Drive, Connect, HQ and OCS are untouched and
+it needs none of the checks below. Say plainly which of the two was done; Connect still lists
+the opportunity.
+
 **Procedure:**
 
 1. **Name the object and its current state.** Resolve it from the context doc (§ Every
