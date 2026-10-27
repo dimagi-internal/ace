@@ -1,26 +1,22 @@
 /**
- * bin/ace-setup must not stop at 1Password, or at an instance canopy cannot
- * resolve, when this run does not need them. ACE's env comes from its Canopy
- * vault (`canopy agent env --plugin ace`, no template); 1Password holds only
- * the Google service-account key.
+ * bin/ace-setup must not stop at an instance canopy cannot resolve when this
+ * run does not need one. ACE's env comes from its Canopy vault
+ * (`canopy agent env --plugin ace`, no template); there is no 1Password step and
+ * no service-account key any more (Google is ace@'s canopy token, ace#3310).
  *
  * The incident (cloud-ec2-2, 2026-10-18): `canopy agent prepare --runner` runs
- * `bin/ace-setup --skip-doctor` with the agent's own op service-account key.
- * op was authenticated, but `canopy agent env --print` takes a PERSON's
+ * `bin/ace-setup --skip-doctor`, but `canopy agent env --print` takes a PERSON's
  * canopy-web token, which a runner does not have, so every run ended at
  * "FAIL instance: … not signed in to canopy-web" — and deps, ~/.ace/env.sh,
- * the user-scope nova entry and the ace-web token never got set up. By hand
- * with --skip-env and no op key it stopped one step earlier, at "FAIL op: not
- * authenticated", though --skip-env reads nothing from the vault.
+ * the user-scope nova entry and the ace-web token never got set up.
  *
- * Now: canopy hands over the .env it already filled (AGENT_ENV_FILE); op is a
- * FAIL only when a missing SA key must be fetched, and the instance only when
- * $DATA_DIR/.env must be filled and none is there to keep.
+ * Now: canopy hands over the .env it already filled (AGENT_ENV_FILE), and the
+ * instance is a FAIL only when $DATA_DIR/.env must be filled and none is there
+ * to keep.
  *
  * CLASSIFICATION: unit-test truth. The real script against stub `canopy`,
- * `op`, `gh`, `gog` and a `node` shim that stands in for the two networked
- * helpers (doctor-nova-header --heal, ace-web-bot-token-mint); no network,
- * no 1Password session.
+ * `gh`, `gog` and a `node` shim that stands in for the two networked helpers
+ * (doctor-nova-header --heal, ace-web-bot-token-mint); no network.
  */
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { spawnSync } from 'node:child_process';
@@ -44,11 +40,6 @@ let data: string;
 
 function stub(name: string, body: string) {
   writeFileSync(join(bin, name), `#!/bin/bash\n${body}\n`, { mode: 0o755 });
-}
-
-/** op: --version always; signed in → whoami / vault list succeed. */
-function stubOp(signedIn: boolean) {
-  stub('op', `[ "$1" = --version ] && { echo 2.40.0; exit 0; }\nexit ${signedIn ? 0 : 1}`);
 }
 
 function run(args: string[], extraEnv: Record<string, string> = {}) {
@@ -94,31 +85,23 @@ beforeEach(() => {
   );
   stub('gh', 'exit 1');
   stub('gog', 'exit 1');
-  // The service-account key is already in place.
-  writeFileSync(join(data, 'gws-sa-key.json'), JSON.stringify({ client_email: 'sa@example.iam' }));
 });
 
 afterEach(() => {
   rmSync(dir, { recursive: true, force: true });
 });
 
-describe('on a runner (canopy prepare: op key set, no person token, AGENT_ENV_FILE)', () => {
+describe('on a runner (canopy prepare: no person token, AGENT_ENV_FILE)', () => {
   it('syncs the canopy-filled env and runs to completion', () => {
-    stubOp(true);
     const supplied = join(dir, 'supplied.env');
     writeFileSync(supplied, filledEnv('fresh'));
     // An older data-dir .env with a local-only secret this machine minted.
     writeFileSync(join(data, '.env'), filledEnv('stale') + 'ACE_WEB_TOKEN_LOCAL_ONLY=keep-me\n');
 
-    const { status, out } = run([], {
-      OP_SERVICE_ACCOUNT_TOKEN: 'ops_stub',
-      AGENT_ENV_FILE: supplied,
-      AGENT_VAULT: 'Agent-Stub',
-    });
+    const { status, out } = run([], { AGENT_ENV_FILE: supplied });
 
     expect(out).not.toMatch(/^FAIL /m);
     expect(status).toBe(0);
-    expect(out).toMatch(/PASS op: authenticated as service-account/);
     expect(out).toMatch(/WARN instance: not resolved — not needed this run/);
     expect(out).toMatch(/PASS env: synced .* \(filled by canopy; preserved 1 local-only secret/);
     const env = readFileSync(join(data, '.env'), 'utf8');
@@ -133,21 +116,19 @@ describe('on a runner (canopy prepare: op key set, no person token, AGENT_ENV_FI
   });
 
   it('is a no-op on the env when the data-dir copy already matches', () => {
-    stubOp(true);
     const supplied = join(dir, 'supplied.env');
     writeFileSync(supplied, filledEnv('same'));
     writeFileSync(join(data, '.env'), filledEnv('same'));
-    const { status, out } = run([], { OP_SERVICE_ACCOUNT_TOKEN: 'ops_stub', AGENT_ENV_FILE: supplied });
+    const { status, out } = run([], { AGENT_ENV_FILE: supplied });
     expect(status).toBe(0);
     expect(out).toMatch(/PASS env: .* already matches .* \(filled by canopy\)/);
     expect(out).not.toMatch(/RESTART REQUIRED/);
   });
 
   it('ignores an unresolved supplied env and still needs canopy to fill', () => {
-    stubOp(true);
     const supplied = join(dir, 'supplied.env');
     writeFileSync(supplied, 'NOVA_API_KEY=op://Agent-Stub/ACE - Nova/api_key\n');
-    const { status, out } = run([], { OP_SERVICE_ACCOUNT_TOKEN: 'ops_stub', AGENT_ENV_FILE: supplied });
+    const { status, out } = run([], { AGENT_ENV_FILE: supplied });
     expect(out).toMatch(/WARN env: AGENT_ENV_FILE=.* has unresolved op:\/\/ refs/);
     expect(status).toBe(1);
     expect(out).toMatch(/FAIL instance: canopy could not resolve/);
@@ -156,24 +137,20 @@ describe('on a runner (canopy prepare: op key set, no person token, AGENT_ENV_FI
 });
 
 describe('when nothing this run reads the vault', () => {
-  it('--skip-env with op signed out and the key present: WARN, then the rest runs', () => {
-    stubOp(false);
+  it('--skip-env: WARN that the instance is unresolved, then the rest runs', () => {
     writeFileSync(join(data, '.env'), filledEnv('have'));
     const { status, out } = run(['--skip-env', '--no-shell-edit']);
     expect(out).not.toMatch(/^FAIL /m);
     expect(status).toBe(0);
-    expect(out).toMatch(/WARN op: not authenticated to 1Password — not needed this run \(key present\)/);
     expect(out).toMatch(/WARN instance: not resolved — not needed this run/);
     expect(existsSync(join(dir, '.ace', 'env.sh'))).toBe(true);
     expect(out).toMatch(/STATUS: COMPLETE/);
   });
 
-  it('an existing env, the key present and no instance: WARNs, keeps the env, runs on', () => {
-    stubOp(false);
+  it('an existing env and no instance: WARNs, keeps the env, runs on', () => {
     writeFileSync(join(data, '.env'), filledEnv('have'));
     const { status, out } = run(['--no-shell-edit']);
     expect(status).toBe(0);
-    expect(out).toMatch(/WARN op: not authenticated to 1Password — not needed this run \(key present\)/);
     expect(out).toMatch(/WARN env: kept the existing/);
     expect(readFileSync(join(data, '.env'), 'utf8')).toBe(filledEnv('have'));
   });
@@ -196,7 +173,6 @@ describe('filling from the Canopy vault', () => {
   }
 
   it('writes .env from the vault with no template, keeping local-only secrets', () => {
-    stubOp(false);
     stubCanopyVault('vault');
     writeFileSync(join(data, '.env'), filledEnv('stale') + 'ACE_WEB_PAT_TOKEN=keep-me\nACE_GMAIL_CLIENT=ace\n');
     const { status, out } = run(['--no-shell-edit']);
@@ -222,36 +198,9 @@ describe('filling from the Canopy vault', () => {
 
 describe('when this run needs what it cannot get', () => {
   it('no .env to keep and canopy cannot resolve the instance: FAIL instance', () => {
-    stubOp(false);
     const { status, out } = run([]);
     expect(status).toBe(1);
     expect(out).toMatch(/FAIL instance: canopy could not resolve this install's ACE instance/);
     expect(out).not.toMatch(/running npm install/);
-  });
-
-  it('op signed out and the SA key missing, even with --skip-env: FAIL op', () => {
-    stubOp(false);
-    rmSync(join(data, 'gws-sa-key.json'));
-    const { status, out } = run(['--skip-env']);
-    expect(status).toBe(1);
-    expect(out).toMatch(/FAIL op: not authenticated to 1Password \(needed: the Google service-account key is missing\)/);
-  });
-
-  it('a missing key is fetched from AGENT_VAULT when canopy cannot resolve the instance', () => {
-    rmSync(join(data, 'gws-sa-key.json'));
-    // op document get writes the key to --output; everything else succeeds.
-    stub(
-      'op',
-      `[ "$1" = --version ] && { echo 2.40.0; exit 0; }\n` +
-        `if [ "$1" = document ]; then\n` +
-        `  while [ $# -gt 0 ]; do [ "$1" = --vault ] && echo "$2" > "${dir}/vault-used"; [ "$1" = --output ] && out="$2"; shift; done\n` +
-        `  echo '{"client_email":"sa@example.iam"}' > "$out"; exit 0\nfi\nexit 0`,
-    );
-    writeFileSync(join(data, '.env'), filledEnv('have'));
-    const { status, out } = run(['--no-shell-edit'], { OP_SERVICE_ACCOUNT_TOKEN: 'ops_stub', AGENT_VAULT: 'Agent-Stub' });
-    expect(out).toMatch(/INFO vault=Agent-Stub \(from AGENT_VAULT/);
-    expect(out).toMatch(/PASS gws_key: fetched sa@example\.iam/);
-    expect(readFileSync(join(dir, 'vault-used'), 'utf8').trim()).toBe('Agent-Stub');
-    expect(status).toBe(0);
   });
 });

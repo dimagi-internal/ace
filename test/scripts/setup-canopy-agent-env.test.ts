@@ -54,10 +54,9 @@ describe('bin/ace-setup fills .env through canopy agent env', () => {
     expect(fillAt).toBeGreaterThan(printAt);
   });
 
-  it('hardcodes no vault: OP_VAULT starts empty and ACE_OP_VAULT is only an override', () => {
-    expect(code).toMatch(/^OP_VAULT=""$/m);
+  it('reads no 1Password: no op CLI check, no vault, no SA-key fetch (ace#3310)', () => {
+    expect(code).not.toMatch(/\bOP_VAULT\b|ACE_OP_VAULT|AGENT_VAULT|GWS_DOC_NAME|op document get|gws-sa-key/);
     expect(code).not.toMatch(/Agent-Ace/);
-    expect(code).toMatch(/OP_VAULT="\$\{ACE_OP_VAULT:-\$AGENT_VAULT\}"/);
   });
 
   it('requires canopy 0.2.681 or newer', () => {
@@ -71,7 +70,7 @@ describe('bin/ace-setup fills .env through canopy agent env', () => {
 });
 
 describe('when canopy cannot resolve an instance', () => {
-  it('stops after the 1Password checks with canopy\'s message verbatim, before npm install', () => {
+  it('stops with canopy\'s message verbatim, before npm install', () => {
     const dir = mkdtempSync(join(tmpdir(), 'ace-setup-canopy-'));
     try {
       const bin = join(dir, 'bin');
@@ -88,10 +87,6 @@ describe('when canopy cannot resolve an instance', () => {
           `cat >&2 <<'MSG'\nError: ${several}\nMSG\nexit 1\n`,
         { mode: 0o755 },
       );
-      // An authenticated op: --version and whoami succeed.
-      writeFileSync(join(bin, 'op'), '#!/bin/bash\n[ "$1" = --version ] && echo 2.32.1\nexit 0\n', {
-        mode: 0o755,
-      });
       const r = spawnSync('bash', [SETUP], {
         cwd: dir,
         encoding: 'utf8',
@@ -105,7 +100,7 @@ describe('when canopy cannot resolve an instance', () => {
       });
       const out = r.stdout + r.stderr;
       expect(r.status).toBe(1);
-      expect(out).toMatch(/PASS op: authenticated/);
+      expect(out).not.toMatch(/\bop:/);
       expect(out).toMatch(/FAIL instance: canopy could not resolve this install's ACE instance/);
       expect(out).toContain(several);
       expect(out).toMatch(/re-run \/ace:setup --agent <instance>/);

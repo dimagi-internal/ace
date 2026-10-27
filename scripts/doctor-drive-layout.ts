@@ -17,6 +17,7 @@ import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import dotenv from 'dotenv';
 import { google } from '../lib/google-shim.js';
+import { AceGoogleAuth } from '../lib/ace-google-auth.js';
 import { resolvePluginDataDir } from '../lib/plugin-data-dir.js';
 import {
   detectDuplicateFolders,
@@ -34,7 +35,6 @@ import { loadPluginEnv } from '../lib/load-plugin-env.js';
 loadPluginEnv(import.meta.url);
 
 const PROJECT_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const LEGACY_KEY_PATH = path.join(PROJECT_ROOT, '.gws-sa-key.json');
 const FOLDER_MIME = 'application/vnd.google-apps.folder';
 
 function pass(msg: string) { console.log(`PASS ${msg}`); }
@@ -43,23 +43,6 @@ function warn(msg: string, fix?: string) {
   if (fix) console.log(`  fix: ${fix}`);
 }
 function info(msg: string) { console.log(`INFO ${msg}`); }
-
-function resolveKeyPath(): string | null {
-  const envPath = process.env.GOOGLE_APPLICATION_CREDENTIALS;
-  if (envPath && fs.existsSync(envPath)) return envPath;
-  const dataDir = resolvePluginDataDir(import.meta.url);
-  if (dataDir) {
-    const dataKey = path.join(dataDir, 'gws-sa-key.json');
-    if (fs.existsSync(dataKey)) return dataKey;
-  }
-  const homeDataKey = path.join(
-    process.env.HOME || '',
-    '.claude', 'plugins', 'data', 'ace-ace', 'gws-sa-key.json',
-  );
-  if (fs.existsSync(homeDataKey)) return homeDataKey;
-  if (fs.existsSync(LEGACY_KEY_PATH)) return LEGACY_KEY_PATH;
-  return null;
-}
 
 function loadEnv() {
   const dataDir = resolvePluginDataDir(import.meta.url);
@@ -101,16 +84,7 @@ async function main() {
     info('drive_layout: ACE_DRIVE_ROOT_FOLDER_ID not set — skipping');
     return;
   }
-  const keyPath = resolveKeyPath();
-  if (!keyPath) {
-    info('drive_layout: GWS service-account key not found — skipping (parent doctor will FAIL on gws_key already)');
-    return;
-  }
-
-  const auth = new google.auth.GoogleAuth({
-    keyFile: keyPath,
-    scopes: ['https://www.googleapis.com/auth/drive'],
-  });
+  const auth = new AceGoogleAuth();
   const driveClient = google.drive({ version: 'v3', auth });
   const drive = { list: (id: string) => listFolder(driveClient, id) };
 

@@ -1,20 +1,19 @@
 ---
-description: Install plugin deps, fetch GWS service-account key from 1Password, write .env from ACE's Canopy vault, verify with doctor
+description: Install plugin deps, write .env from ACE's Canopy vault, verify with doctor
 argument-hint: [--agent <instance>] [--rebind] [--auto-update] [--force-install] [--force-env] [--skip-env] [--skip-doctor]
 allowed-tools: [Bash, Read]
 ---
 
 # /ace:setup
 
-One-shot installer for the ACE plugin. Order is "cheap pre-flight checks first, slow state changes after, doctor last" so a missing 1Password signin fails in <1s instead of 60s. Drives:
+One-shot installer for the ACE plugin. Order is "cheap pre-flight checks first, slow state changes after, doctor last" so an unresolvable ACE instance fails in <1s instead of 60s. Drives:
 
-1. Verify Node/npm, **resolve this install's ACE instance** (`canopy agent env --plugin ace --print`, canopy ≥ 0.2.681 — an install binds to ONE instance on canopy-web), then **1Password CLI is installed + authenticated** — FAST FAIL only when the Google service-account key is missing and must be fetched
-2. **Fetches the Google service-account key from 1Password if missing** (vault `ACE_OP_VAULT`, else `AGENT_VAULT`; Document `ACE - Google Service Account`; overridable via `ACE_GWS_KEY_OP_DOC`) → `$CLAUDE_PLUGIN_DATA/gws-sa-key.json`
-3. `bin/ace-install-deps`: an installed plugin gets runtime-only deps, installed once per lockfile into the data dir and linked in as `node_modules` (old cached versions are pruned); a dev checkout gets a plain `npm install`
-4. **Writes `.env` from ACE's Canopy vault** (canopy-web, agent `ace`, Settings → Credentials — the one declaration of ACE's env secrets, layered over the `dimagi/Shared` workspace vault) via `canopy agent env --plugin ace` (no template; records the binding in `$CLAUDE_PLUGIN_DATA/canopy-instance.json`), preserving the local-only marker block (keys the vault does not hold, e.g. `ACE_WEB_PAT_TOKEN`). To add or rotate a value, set it in the vault, re-run with `--force-env`, and restart Claude Code
-5. **Downloads `commcare-cli.jar` from `dimagi/commcare-core` releases** (latest tagged release, ~10MB, cached at `$CLAUDE_PLUGIN_DATA/commcare-cli.jar` + sidecar `.version` file). Gates Phase 3 `app-release-qa` Step 4.5 (runtime install validation). Skip with no jar already present — `--force-install` re-downloads. Requires `gh` CLI authenticated; falls back to a `WARN` if missing.
-6. Optionally registers a `SessionStart` hook that runs `bin/ace-update-check` so ACE auto-updates (`--auto-update`)
-7. Runs `bin/ace-doctor` and surfaces remaining issues (Mobile, OCS, Connect, Drive)
+1. Verify Node/npm, **resolve this install's ACE instance** (`canopy agent env --plugin ace --print`, canopy ≥ 0.2.681 — an install binds to ONE instance on canopy-web)
+2. `bin/ace-install-deps`: an installed plugin gets runtime-only deps, installed once per lockfile into the data dir and linked in as `node_modules` (old cached versions are pruned); a dev checkout gets a plain `npm install`
+3. **Writes `.env` from ACE's Canopy vault** (canopy-web, agent `ace`, Settings → Credentials — the one declaration of ACE's env secrets, layered over the `dimagi/Shared` workspace vault) via `canopy agent env --plugin ace` (no template; records the binding in `$CLAUDE_PLUGIN_DATA/canopy-instance.json`), preserving the local-only marker block (keys the vault does not hold, e.g. `ACE_WEB_PAT_TOKEN`). To add or rotate a value, set it in the vault, re-run with `--force-env`, and restart Claude Code
+4. **Downloads `commcare-cli.jar` from `dimagi/commcare-core` releases** (latest tagged release, ~10MB, cached at `$CLAUDE_PLUGIN_DATA/commcare-cli.jar` + sidecar `.version` file). Gates Phase 3 `app-release-qa` Step 4.5 (runtime install validation). Skip with no jar already present — `--force-install` re-downloads. Requires `gh` CLI authenticated; falls back to a `WARN` if missing.
+5. Optionally registers a `SessionStart` hook that runs `bin/ace-update-check` so ACE auto-updates (`--auto-update`)
+6. Runs `bin/ace-doctor` and surfaces remaining issues (Mobile, OCS, Connect, Drive)
 
 **This is a rigid, scripted skill.** Run the bash block EXACTLY as written. Do not improvise. The real logic lives in `bin/ace-setup`; this launcher just locates and execs the script.
 
@@ -31,12 +30,9 @@ One-shot installer for the ACE plugin. Order is "cheap pre-flight checks first, 
 
 Forward `$ARGUMENTS` to the script unchanged.
 
-## 1Password auth (service-account key only)
+## Google access
 
-The script handles this — if you're not signed in, `/ace:setup` fails fast with the exact `! op signin --account dimagi.1password.com` command to type in the chat. Two supported auth paths:
-
-- **Interactive personal signin:** type `! op signin --account dimagi.1password.com` in the chat (the `!` prefix runs in this session). On Mac, alternatively enable 1Password.app → Settings → Developer → CLI integration for biometric unlock.
-- **Service account (non-interactive):** add `export OP_SERVICE_ACCOUNT_TOKEN=ops_...` to your shell rc and reopen the Claude Code session. The SA must have read on the GWS-key Document.
+ACE reaches Drive/Docs/Slides/Sheets/Forms as `ace@dimagi-ai.com` with the token `canopy cred google-token --agent ace` keeps (`~/.canopy/google-token/ace.json`); there is no service-account key to fetch. `/ace:doctor`'s `google_token` check proves it works and carries the scopes.
 
 ## Step 1: Locate bin/ace-setup and run it
 
@@ -99,9 +95,6 @@ Read the script output and tell the user:
 3. For each `WARN`, list briefly. These are non-blocking but worth resolving.
 4. **Special-case the most common first-run FAILs** with explicit hand-holding:
    - **`FAIL instance:`** → quote canopy's message verbatim (it is relayed under the FAIL line). Several instances → ask the user which one this install is for, then re-run `/ace:setup --agent <instance>`; never pick one yourself. Not signed in → `/canopy:setup`. canopy too old → `/canopy:update`.
-   - **Any `ACCESS:` lines** (printed with every 1Password failure) → quote both lines verbatim: the person needs the 1Password CLI signed in to dimagi.1password.com with read access to the vault holding ACE's service-account key (the line names it, or says to set `ACE_OP_VAULT`), and the second line names who grants it. That access is how the service-account key reaches the machine.
-   - `FAIL op: not authenticated to 1Password` → tell the user verbatim: "Type `! op signin --account dimagi.1password.com` now (the `!` prefix runs it in this session). After it succeeds, re-run `/ace:setup`."
-   - `FAIL gws_key: missing and could not auto-fetch from 1Password` → if the script printed candidate Document items, tell the user: "Pick the right item from the candidate list above and re-run with `ACE_GWS_KEY_OP_DOC='<exact name>' /ace:setup` — or if no candidate looks right, ask Jon for the SA key JSON and drop it at the path the script printed."
 5. **If the output contains `PASS env: wrote` or `PASS env: synced` — say the restart out loud, first, before anything else** (ace#880). `.env` was rewritten, and every MCP subprocess already running is now holding the previous values; they call `dotenvConfig()` at import and never re-read the file. Tell the user verbatim: *"`.env` was rewritten — fully quit and reopen Claude Code (Cmd-Q) before running anything else. `/reload-plugins` does NOT respawn MCP subprocesses."* Do not bury this under the PASS list: the failure mode is silent (an MCP that answers normally with stale values), and the operator has no other signal. If the script also printed a `WARN env_freshness` line, quote it — it names the exact stale pids.
 6. If everything passes:
    - **If mobile is needed (Phase 6 `qa-and-training`):** suggest `/ace:mobile-bootstrap` next.

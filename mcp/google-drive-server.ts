@@ -2,7 +2,7 @@
  * Google Drive MCP Server for ACE
  *
  * Exposes Google Drive and Sheets tools over stdio using the Model Context
- * Protocol. Uses a service account JSON key for auth.
+ * Protocol. Authenticates as ace@dimagi-ai.com via `canopy cred google-token`.
  *
  * Adapted from chrome-sales/mcp/google-drive-server.ts
  */
@@ -82,6 +82,7 @@ import {
 import { assertDimagiOwnerRecipient, assertRevocablePermission, DestructiveGuardError } from '../lib/destructive-guards.js';
 import { googleDriveLookup, installDriveTenancyGuard } from '../lib/drive-tenancy-guard.js';
 import { extractSheetHyperlinks } from '../lib/sheets-hyperlinks.js';
+import { AceGoogleAuth } from '../lib/ace-google-auth.js';
 import { createIdentityGate, installIdentityGate, DRIVE_REFUSAL_HINT } from '../lib/agent-identity-gate.js';
 import {
   runDecisionsRender,
@@ -89,11 +90,9 @@ import {
 } from '../scripts/decisions-render.js';
 
 const PROJECT_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const LEGACY_KEY_PATH = path.join(PROJECT_ROOT, '.gws-sa-key.json');
 
 // One-line stderr diag so MCP log shows exactly what CLAUDE_PLUGIN_DATA /
-// CLAUDE_PLUGIN_ROOT the subprocess received and which tier resolveKeyPath
-// will use. See anthropics/claude-code#9427 for the underlying env-block
+// CLAUDE_PLUGIN_ROOT the subprocess received. See anthropics/claude-code#9427 for the underlying env-block
 // substitution bug this works around.
 logPluginDataDirDiag('ace-gdrive', import.meta.url);
 
@@ -117,86 +116,20 @@ dotenvConfig({
   quiet: true,
 });
 
-const SCOPES = [
-  'https://www.googleapis.com/auth/spreadsheets',
-  'https://www.googleapis.com/auth/drive',
-  'https://www.googleapis.com/auth/documents',
-  'https://www.googleapis.com/auth/presentations',
-  'https://www.googleapis.com/auth/forms.body.readonly',
-  // forms_create_from_spec / forms_set_publish_settings / forms_list_responses.
-  'https://www.googleapis.com/auth/forms.body',
-  'https://www.googleapis.com/auth/forms.responses.readonly',
-];
+// Scopes this server needs on ace@'s Google token (checked against
+// ~/.canopy/google-token/ace.json, which carries all of them): drive, documents,
+// presentations, spreadsheets, forms.body, forms.responses.readonly.
 
 // ============================================================================
 // Auth
 // ============================================================================
 
-/**
- * Resolve the Google service-account key path.
- *
- * Priority:
- *   1. $GOOGLE_APPLICATION_CREDENTIALS — Google's standard env var. Operators
- *      who set it explicitly keep working.
- *   2. <plugin-data-dir>/gws-sa-key.json via `resolvePluginDataDir`, which
- *      tries `$CLAUDE_PLUGIN_DATA` first, then self-derives the data dir
- *      from this module's path at runtime. The derivation is the real
- *      workaround for https://github.com/anthropics/claude-code/issues/9427:
- *      in our testing (Claude Code 2.1.116, 2026-04-21), Claude Code does
- *      NOT expand `${CLAUDE_PLUGIN_DATA}` inside env blocks for plugin MCP
- *      configs — neither in `.mcp.json` nor in inline `plugin.json`
- *      `mcpServers` — even though the docs imply it should. By deriving the
- *      data dir from `import.meta.url` we sidestep the broken env path
- *      entirely.
- *   3. <plugin-root>/.gws-sa-key.json — legacy fallback for pre-migration
- *      local-dev checkouts.
- */
-function resolveKeyPath(): string {
-  const envPath = process.env.GOOGLE_APPLICATION_CREDENTIALS;
-  if (envPath && fs.existsSync(envPath)) {
-    return envPath;
-  }
-  // Tier 2: the plugin-data-dir helper tries $CLAUDE_PLUGIN_DATA first, then
-  // self-derives from the server's module path as a fallback. Handles both
-  // the "env var was passed" and "env var wasn't passed (9427)" cases.
-  const dataDir = resolvePluginDataDir(import.meta.url);
-  if (dataDir) {
-    const dataKey = path.join(dataDir, 'gws-sa-key.json');
-    if (fs.existsSync(dataKey)) {
-      return dataKey;
-    }
-  }
-  if (fs.existsSync(LEGACY_KEY_PATH)) {
-    return LEGACY_KEY_PATH;
-  }
-  throw new Error(
-    `No Google service-account key found. Set GOOGLE_APPLICATION_CREDENTIALS, ` +
-      `place the key at $CLAUDE_PLUGIN_DATA/gws-sa-key.json, ` +
-      `or place it at ${LEGACY_KEY_PATH}. Run /ace:setup for help.`,
-  );
-}
-
-function getAuth() {
-  return new google.auth.GoogleAuth({
-    keyFile: resolveKeyPath(),
-    scopes: SCOPES,
-  });
-}
-
-// Auth init is tolerant of missing credentials so the module is importable in
-// tests that mock the Drive client entirely (no real Google calls). Production
-// MCP server runs always have a valid SA key — `/ace:doctor` flags missing keys
-// before any tool call, and the underlying `googleapis` calls would surface a
-// clear auth error if the key were missing at runtime.
-let auth: ReturnType<typeof getAuth> | undefined;
-try {
-  auth = getAuth();
-} catch {
-  // Leave undefined; downstream `drive`/`sheets`/etc. clients will be unusable
-  // until a real key is in place. Tests inject mocked Drive clients directly
-  // into the exported handlers (e.g. handleCreateFolder) and never touch the
-  // module-level `drive`.
-}
+// ACE signs in AS ace@dimagi-ai.com with the token canopy keeps for the agent's
+// own Google login (`canopy cred google-token`) — no service-account key, no
+// fallback (ace#3310). Construction never touches the token, so the module
+// stays importable in tests that inject mocked Drive clients; the token is read
+// (and renewed when under 5 minutes remain) on each request.
+const auth = new AceGoogleAuth();
 const sheets = google.sheets({ version: 'v4', auth });
 const drive = google.drive({ version: 'v3', auth });
 const docs = google.docs({ version: 'v1', auth });

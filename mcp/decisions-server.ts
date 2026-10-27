@@ -21,11 +21,10 @@ import { config as dotenvConfig } from 'dotenv';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
-import fs from 'fs';
 import path from 'path';
-import { fileURLToPath } from 'url';
 
 import { google } from '../lib/google-shim.js';
+import { AceGoogleAuth } from '../lib/ace-google-auth.js';
 import { resolvePluginDataDir, logPluginDataDirDiag } from '../lib/plugin-data-dir.js';
 import { parse as yamlParse } from 'yaml';
 import {
@@ -67,7 +66,7 @@ import {
 
 logPluginDataDirDiag('ace-decisions', import.meta.url);
 
-// Load .env so GOOGLE_APPLICATION_CREDENTIALS (if set there) and any
+// Load .env so any
 // future ACE env vars are visible. Matches the boot pattern of every
 // other ace-* MCP. Must run before any code that reads process.env.
 const __aceDecisionsPluginDataDir = resolvePluginDataDir(import.meta.url);
@@ -83,35 +82,9 @@ dotenvConfig({
   quiet: true,
 });
 
-const SCOPES = ['https://www.googleapis.com/auth/drive'];
-const PROJECT_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const LEGACY_KEY_PATH = path.join(PROJECT_ROOT, '.gws-sa-key.json');
-
-function resolveKeyPath(): string {
-  const envPath = process.env.GOOGLE_APPLICATION_CREDENTIALS;
-  if (envPath && fs.existsSync(envPath)) return envPath;
-  const dataDir = resolvePluginDataDir(import.meta.url);
-  if (dataDir) {
-    const dataKey = path.join(dataDir, 'gws-sa-key.json');
-    if (fs.existsSync(dataKey)) return dataKey;
-  }
-  if (fs.existsSync(LEGACY_KEY_PATH)) return LEGACY_KEY_PATH;
-  throw new Error(
-    `No Google service-account key found. Set GOOGLE_APPLICATION_CREDENTIALS, ` +
-    `place the key at $CLAUDE_PLUGIN_DATA/gws-sa-key.json, ` +
-    `or place it at ${LEGACY_KEY_PATH}. Run /ace:setup for help.`,
-  );
-}
-
-let auth: ReturnType<typeof getAuth> | undefined;
-try {
-  auth = getAuth();
-} catch {
-  // Tests mock the drive client directly via the exported handler.
-}
-function getAuth() {
-  return new google.auth.GoogleAuth({ keyFile: resolveKeyPath(), scopes: SCOPES });
-}
+// Authenticates as ace@dimagi-ai.com via `canopy cred google-token` (ace#3310);
+// no service-account key. The token is read on each request.
+const auth = new AceGoogleAuth();
 const drive = google.drive({ version: 'v3', auth });
 
 // ─ Drive primitives (small, decisions-specific) ───────────────────────────

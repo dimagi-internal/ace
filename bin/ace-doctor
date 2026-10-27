@@ -320,12 +320,6 @@ if [ "$PREFLIGHT" = "1" ]; then
     PLUGIN_VERSION="$(tr -d '[:space:]' < "$ROOT/VERSION")"
   fi
   GIT_EMAIL="$(git config user.email 2>/dev/null || true)"
-  SA_KEY=""
-  if [ -f "$DATA_DIR/gws-sa-key.json" ]; then
-    SA_KEY="$DATA_DIR/gws-sa-key.json"
-  elif [ -f "$ROOT/.gws-sa-key.json" ]; then
-    SA_KEY="$ROOT/.gws-sa-key.json"
-  fi
 
   # Public values orchestrator needs verbatim
   ACE_DRIVE_ROOT="$(pf_get_env ACE_DRIVE_ROOT_FOLDER_ID)"
@@ -718,7 +712,6 @@ plugin:
   version: ${PLUGIN_VERSION:-unknown}
   install_path: $ROOT
   env_file: ${ENV_FILE:-MISSING}
-  sa_key: ${SA_KEY:-MISSING}
 git:
   user_email: ${GIT_EMAIL:-MISSING}
 env:
@@ -1106,32 +1099,41 @@ if [ -d "$CACHE_PARENT" ]; then
   fi
 fi
 
-# --- Google service-account key ---
-# Canonical: $CLAUDE_PLUGIN_DATA/gws-sa-key.json — survives plugin updates.
-# Legacy: $ROOT/.gws-sa-key.json — for pre-migration installs.
+# --- Google token (ace@dimagi-ai.com via canopy) ---
+# ace-gdrive / ace-decisions sign in as ace@ with the short-lived token canopy
+# keeps for the agent's own Google login (`canopy cred google-token`); there is
+# no service-account key (ace#3310). GTOKEN is that token file, or empty.
 DATA_DIR="$(ace_data_dir "$ROOT")"
-CANONICAL_KEY="$DATA_DIR/gws-sa-key.json"
-LEGACY_KEY="$ROOT/.gws-sa-key.json"
-
-KEY=""
-KEY_LOC=""
-if [ -f "$CANONICAL_KEY" ] && [ -r "$CANONICAL_KEY" ]; then
-  KEY="$CANONICAL_KEY"; KEY_LOC="canonical"
-elif [ -f "$LEGACY_KEY" ] && [ -r "$LEGACY_KEY" ]; then
-  KEY="$LEGACY_KEY"; KEY_LOC="legacy"
-fi
-
-if [ -n "$KEY" ]; then
-  CE="$(node -e "try { console.log(JSON.parse(require('fs').readFileSync('$KEY','utf8')).client_email); } catch(e) { console.log('unreadable'); }" 2>/dev/null || echo unreadable)"
-  if [ "$CE" = "unreadable" ]; then
-    fail "gws_key: $KEY is not valid JSON" "re-drop the service-account key"
-  elif [ "$KEY_LOC" = "legacy" ]; then
-    warn "gws_key: $CE at LEGACY path $LEGACY_KEY" "migrate to $CANONICAL_KEY so it survives plugin updates: mv \"$LEGACY_KEY\" \"$CANONICAL_KEY\" && chmod 600 \"$CANONICAL_KEY\""
-  else
-    pass "gws_key: $CE at $CANONICAL_KEY"
-  fi
+GTOKEN=""
+GTOKEN_ACCOUNT=""
+if ! command -v canopy >/dev/null 2>&1; then
+  fail "google_token: canopy CLI not on PATH" "install canopy (its plugin + CLI), then /canopy:setup"
 else
-  fail "gws_key: missing (checked $CANONICAL_KEY and $LEGACY_KEY)" "mkdir -p \"$DATA_DIR\" && drop the service-account JSON at $CANONICAL_KEY (ask Jon for the ACE key)"
+  GTOKEN_PATH="$(canopy cred google-token --agent ace 2>/tmp/ace-doctor-gtoken.err | tail -n 1)"
+  if [ -n "$GTOKEN_PATH" ] && [ -r "$GTOKEN_PATH" ]; then
+    GTOKEN_SCOPES="$(node -e "
+      try {
+        const t = JSON.parse(require('fs').readFileSync(process.argv[1], 'utf8'));
+        const have = new Set(String(t.scope || '').split(/\s+/));
+        const need = ['drive', 'documents', 'presentations', 'spreadsheets', 'forms.body', 'forms.responses.readonly'];
+        const miss = need.filter(n => !have.has('https://www.googleapis.com/auth/' + n));
+        console.log((t.account || '') + '|' + miss.join(','));
+      } catch (e) { console.log('|unreadable'); }
+    " "$GTOKEN_PATH" 2>/dev/null)"
+    GTOKEN_ACCOUNT="${GTOKEN_SCOPES%%|*}"
+    GTOKEN_MISSING="${GTOKEN_SCOPES#*|}"
+    if [ "$GTOKEN_MISSING" = "unreadable" ]; then
+      fail "google_token: $GTOKEN_PATH is not valid JSON" "canopy cred google-token --agent ace"
+    elif [ -n "$GTOKEN_MISSING" ]; then
+      fail "google_token: $GTOKEN_ACCOUNT's token lacks scope(s): $GTOKEN_MISSING" "re-consent the agent's Google login in canopy-web with Drive, Docs, Slides, Sheets and Forms"
+    else
+      GTOKEN="$GTOKEN_PATH"
+      pass "google_token: ${GTOKEN_ACCOUNT:-ace} (drive, docs, slides, sheets, forms scopes) at $GTOKEN"
+    fi
+  else
+    fail "google_token: canopy cred google-token --agent ace gave no token ($(tr '\n' ' ' </tmp/ace-doctor-gtoken.err | cut -c1-200))" "sign in with /canopy:setup; the agent's Google login must be connected in canopy-web"
+  fi
+  rm -f /tmp/ace-doctor-gtoken.err
 fi
 
 # --- MCP manifest sanity ---
@@ -1435,7 +1437,7 @@ if [ -n "$ENV_FILE" ]; then
   fi
 
   # Template SA-accessibility probes (jjackson/ace#804, #805).
-  # A configured template ID the SA cannot READ is worse than an unset one: the
+  # A configured template ID ace@ cannot READ is worse than an unset one: the
   # env check above is green, but the copy/render fails MID-RUN with a confusing
   # "File not found" (pdd-to-work-order docs_copy_template; training-deck-render /
   # partnership-deck-build slides_copy_template). The presence checks can't catch
@@ -1443,8 +1445,8 @@ if [ -n "$ENV_FILE" ]; then
   # silent mid-run failure into a doctor-time WARN with the exact remediation.
   # Both #804 (work-order, still failing) and #805 (training-deck, since resolved)
   # are this class; the probe is the class-level preventer.
-  if [ -n "$KEY" ] && [ -d "$ROOT/node_modules/@googleapis/drive" ]; then
-    TPL_SA_EMAIL="$(node -e "try{console.log(JSON.parse(require('fs').readFileSync('$KEY','utf8')).client_email||'the ACE service account')}catch{console.log('the ACE service account')}" 2>/dev/null)"
+  if [ -n "$GTOKEN" ] && [ -d "$ROOT/node_modules/@googleapis/drive" ]; then
+    TPL_SA_EMAIL="${GTOKEN_ACCOUNT:-ace@dimagi-ai.com}"
     for tpl in "WORK_ORDER_TEMPLATE_ID:work_order_template:pdd-to-work-order (docs_copy_template)" \
                "ACE_TRAINING_DECK_TEMPLATE_ID:training_deck_template:training-deck-render (slides_copy_template)" \
                "ACE_PARTNERSHIP_DECK_TEMPLATE_ID:partnership_deck_template:partnership-deck-build (slides_copy_template)"; do
@@ -1452,10 +1454,10 @@ if [ -n "$ENV_FILE" ]; then
       TPL_ID="$(get_env "$TPL_VAR")"
       [ -z "$TPL_ID" ] && continue  # unset is a separate concern (skill skips / uses fallback)
       # cd "$ROOT" — see DRIVE_ROOT_PROBE above for the module-resolution rationale.
-      TPL_PROBE="$(cd "$ROOT" && GOOGLE_APPLICATION_CREDENTIALS="$KEY" node --input-type=module -e "
+      TPL_PROBE="$(cd "$ROOT" && ACE_GOOGLE_TOKEN_FILE="$GTOKEN" node --input-type=module -e "
         import { drive as makeDrive } from '@googleapis/drive';
-        import { GoogleAuth } from 'google-auth-library';
-        const auth = new GoogleAuth({ keyFile: process.env.GOOGLE_APPLICATION_CREDENTIALS, scopes: ['https://www.googleapis.com/auth/drive'] });
+        import { OAuth2Client } from 'google-auth-library'; import { readFileSync } from 'node:fs';
+        const auth = new OAuth2Client(); auth.setCredentials({ access_token: JSON.parse(readFileSync(process.env.ACE_GOOGLE_TOKEN_FILE, 'utf8')).access_token });
         const drive = makeDrive({ version: 'v3', auth });
         try {
           const r = await drive.files.get({ fileId: '$TPL_ID', fields: 'name, mimeType, capabilities(canCopy), copyRequiresWriterPermission', supportsAllDrives: true });
@@ -1474,7 +1476,7 @@ if [ -n "$ENV_FILE" ]; then
       TPL_MSG="$(printf '%s' "$TPL_PROBE" | node -e "try { const d=JSON.parse(require('fs').readFileSync(0,'utf8')); console.log(d.message||''); } catch { console.log(''); }" 2>/dev/null)"
       TPL_CANCOPY="$(printf '%s' "$TPL_PROBE" | node -e "try { const d=JSON.parse(require('fs').readFileSync(0,'utf8')); console.log(d.canCopy===false?'0':'1'); } catch { console.log('?'); }" 2>/dev/null)"
       if [ "$TPL_OK" = "1" ]; then
-        pass "${TPL_LABEL}_access: SA can read $TPL_VAR (\"$TPL_NAME\")"
+        pass "${TPL_LABEL}_access: ace@ can read $TPL_VAR (\"$TPL_NAME\")"
         # READ IS NOT COPY, and every consumer of these templates COPIES.
         #
         # This is the gap that produced a plain-text work order on
@@ -1487,17 +1489,17 @@ if [ -n "$ENV_FILE" ]; then
         # honestly without mutating anything (a real copy per doctor run would
         # litter Drive with probe files).
         if [ "$TPL_CANCOPY" = "0" ]; then
-          warn "${TPL_LABEL}_copyable: SA can READ $TPL_VAR but Drive reports canCopy=false" "the SA needs copy rights, not just Viewer: re-share the template with $TPL_SA_EMAIL, and if the doc has 'Viewers cannot download, print, or copy' set (copyRequiresWriterPermission), turn it off or grant the SA Writer. Otherwise $TPL_CONSUMER fails mid-run — and for the work order that used to mean a synthesized plain doc shipping as a contract"
+          warn "${TPL_LABEL}_copyable: ace@ can READ $TPL_VAR but Drive reports canCopy=false" "ace@ needs copy rights, not just Viewer: re-share the template with $TPL_SA_EMAIL, and if the doc has 'Viewers cannot download, print, or copy' set (copyRequiresWriterPermission), turn it off or grant ace@ Writer. Otherwise $TPL_CONSUMER fails mid-run — and for the work order that used to mean a synthesized plain doc shipping as a contract"
         else
           pass "${TPL_LABEL}_copyable: Drive reports canCopy=true for $TPL_VAR"
         fi
       elif [ "$TPL_OK" = "0" ]; then
-        warn "${TPL_LABEL}_access: $TPL_VAR=$TPL_ID is set but the SA cannot read it ($TPL_MSG)" "share the template doc with $TPL_SA_EMAIL as Viewer, or re-point $TPL_VAR to an SA-accessible copy — otherwise $TPL_CONSUMER fails mid-run with 'File not found'"
+        warn "${TPL_LABEL}_access: $TPL_VAR=$TPL_ID is set but ace@ cannot read it ($TPL_MSG)" "share the template doc with $TPL_SA_EMAIL as Viewer, or re-point $TPL_VAR to an copy ace@ can read — otherwise $TPL_CONSUMER fails mid-run with 'File not found'"
       fi
     done
 
     # Work-order template mirror-vs-live drift (dimagi-internal/ace#2126).
-    # The probe above proves the SA can READ the template; this one proves the
+    # The probe above proves ace@ can READ the template; this one proves the
     # template still says what the repo thinks it says. `templates/work-order-
     # template.md` is a MIRROR — pdd-to-work-order renders from the Drive doc,
     # never from the repo file — and nothing checked the two agree. A token in
@@ -1510,7 +1512,7 @@ if [ -n "$ENV_FILE" ]; then
       # CLAUDE_PLUGIN_DATA is passed explicitly so the probe's loadPluginEnv
       # finds the real .env in --here / dev-checkout mode too, where it cannot
       # derive the data dir from its own module path.
-      WO_DRIFT_OUT="$(cd "$ROOT" && CLAUDE_PLUGIN_DATA="$DATA_DIR" GOOGLE_APPLICATION_CREDENTIALS="$KEY" node "$TSX_CLI" scripts/probe-work-order-template-drift.ts 2>&1)"
+      WO_DRIFT_OUT="$(cd "$ROOT" && CLAUDE_PLUGIN_DATA="$DATA_DIR" node "$TSX_CLI" scripts/probe-work-order-template-drift.ts 2>&1)"
       WO_DRIFT_RC=$?
       if [ "$WO_DRIFT_RC" = "0" ]; then
         pass "work_order_template_drift: live template carries exactly the tokens templates/work-order-template.md declares"
@@ -1542,16 +1544,16 @@ if [ -n "$ENV_FILE" ]; then
   # opportunity created. Files on a Shared Drive carry a non-empty `driveId`;
   # files in My Drive don't. One files.get probe catches the entire class.
   # (2026-04-27, after dogfood run #1 surfaced this as a silent My-Drive fallback.)
-  if [ -n "$DRIVE_ROOT" ] && [ -n "$KEY" ] && [ -d "$ROOT/node_modules/@googleapis/drive" ]; then
+  if [ -n "$DRIVE_ROOT" ] && [ -n "$GTOKEN" ] && [ -d "$ROOT/node_modules/@googleapis/drive" ]; then
     # cd "$ROOT" so the inline `import` from '@googleapis/drive' resolves
     # against the plugin's node_modules instead of doctor's CWD. Same fix as
     # gdrive_auth in the [Auth liveness] block (0.13.25); without it, doctor
     # invocations from outside the plugin dir silently fail the import (stderr
     # suppressed by 2>/dev/null) and the probe falls through with no output.
-    DRIVE_ROOT_PROBE="$(cd "$ROOT" && GOOGLE_APPLICATION_CREDENTIALS="$KEY" node --input-type=module -e "
+    DRIVE_ROOT_PROBE="$(cd "$ROOT" && ACE_GOOGLE_TOKEN_FILE="$GTOKEN" node --input-type=module -e "
       import { drive as makeDrive } from '@googleapis/drive';
-      import { GoogleAuth } from 'google-auth-library';
-      const auth = new GoogleAuth({ keyFile: process.env.GOOGLE_APPLICATION_CREDENTIALS, scopes: ['https://www.googleapis.com/auth/drive'] });
+      import { OAuth2Client } from 'google-auth-library'; import { readFileSync } from 'node:fs';
+      const auth = new OAuth2Client(); auth.setCredentials({ access_token: JSON.parse(readFileSync(process.env.ACE_GOOGLE_TOKEN_FILE, 'utf8')).access_token });
       const drive = makeDrive({ version: 'v3', auth });
       try {
         const r = await drive.files.get({ fileId: '$DRIVE_ROOT', fields: 'name, driveId, mimeType', supportsAllDrives: true });
@@ -1571,10 +1573,10 @@ if [ -n "$ENV_FILE" ]; then
       if [ -n "$PROBE_DRIVE_ID" ]; then
         pass "drive_shared: \"$PROBE_NAME\" lives on Shared Drive ($PROBE_DRIVE_ID)"
       else
-        fail "drive_shared: \"$PROBE_NAME\" is in My Drive (no driveId) — every artifact write will fail with 'user storage quota exceeded'" "move the folder onto a Shared Drive that the SA is a member of, or set ACE_DRIVE_ROOT_FOLDER_ID to a folder that already lives on one"
+        fail "drive_shared: \"$PROBE_NAME\" is in My Drive (no driveId) — every artifact write will fail with 'user storage quota exceeded'" "move the folder onto a Shared Drive that ace@ is a member of, or set ACE_DRIVE_ROOT_FOLDER_ID to a folder that already lives on one"
       fi
     elif [ -n "$PROBE_MSG" ]; then
-      warn "drive_shared: could not probe ACE_DRIVE_ROOT_FOLDER_ID: $PROBE_MSG" "verify the SA has Editor access to the folder; re-inject .env if the ID is stale"
+      warn "drive_shared: could not probe ACE_DRIVE_ROOT_FOLDER_ID: $PROBE_MSG" "verify ace@ has Editor access to the folder; re-inject .env if the ID is stale"
     fi
   fi
 
@@ -1582,12 +1584,12 @@ if [ -n "$ENV_FILE" ]; then
   # exist under the Drive root. Without one, /ace:run zero-arg fires
   # the new-layout setup error. INFO (not WARN) — first-time installs
   # legitimately have nothing yet.
-  if [ -n "$DRIVE_ROOT" ] && [ -n "$KEY" ] && [ -d "$ROOT/node_modules/@googleapis/drive" ]; then
+  if [ -n "$DRIVE_ROOT" ] && [ -n "$GTOKEN" ] && [ -d "$ROOT/node_modules/@googleapis/drive" ]; then
     # cd "$ROOT" — see DRIVE_ROOT_PROBE above for the explanation.
-    INPUTS_PROBE="$(cd "$ROOT" && GOOGLE_APPLICATION_CREDENTIALS="$KEY" node --input-type=module -e "
+    INPUTS_PROBE="$(cd "$ROOT" && ACE_GOOGLE_TOKEN_FILE="$GTOKEN" node --input-type=module -e "
       import { drive as makeDrive } from '@googleapis/drive';
-      import { GoogleAuth } from 'google-auth-library';
-      const auth = new GoogleAuth({ keyFile: process.env.GOOGLE_APPLICATION_CREDENTIALS, scopes: ['https://www.googleapis.com/auth/drive'] });
+      import { OAuth2Client } from 'google-auth-library'; import { readFileSync } from 'node:fs';
+      const auth = new OAuth2Client(); auth.setCredentials({ access_token: JSON.parse(readFileSync(process.env.ACE_GOOGLE_TOKEN_FILE, 'utf8')).access_token });
       const drive = makeDrive({ version: 'v3', auth });
       try {
         const root = '$DRIVE_ROOT';
@@ -1626,7 +1628,7 @@ if [ -n "$ENV_FILE" ]; then
         info "input_packs: no opps with inputs/ found yet — first-time setup, see /ace:run for the new-layout howto"
       fi
     else
-      warn "input_packs: could not probe ACE_DRIVE_ROOT_FOLDER_ID for inputs/: $INPUTS_MSG" "verify the SA has Editor access to the Drive root and re-run /ace:doctor"
+      warn "input_packs: could not probe ACE_DRIVE_ROOT_FOLDER_ID for inputs/: $INPUTS_MSG" "verify ace@ has Editor access to the Drive root and re-run /ace:doctor"
     fi
   fi
 
@@ -2017,18 +2019,18 @@ echo "[Auth liveness]"
 # stay where they are — those are context-specific. This block is the
 # always-on per-MCP auth liveness summary.
 
-# 1. ace-gdrive — service-account about.get
-# Always on if SA key is present; doesn't depend on ACE_DRIVE_ROOT_FOLDER_ID.
-if [ -n "$KEY" ] && [ -d "$ROOT/node_modules/@googleapis/drive" ]; then
+# 1. ace-gdrive — about.get as ace@
+# Always on if the google_token check passed; doesn't depend on ACE_DRIVE_ROOT_FOLDER_ID.
+if [ -n "$GTOKEN" ] && [ -d "$ROOT/node_modules/@googleapis/drive" ]; then
   # cd "$ROOT" so the inline `import` from '@googleapis/drive' resolves
   # against the plugin's node_modules instead of whatever CWD doctor was
   # invoked from. Without this, an /ace:doctor run from outside the plugin
   # dir silently fails the import (stderr suppressed by 2>/dev/null) and
   # the probe falls through with an empty error message.
-  GDRIVE_AUTH_PROBE="$(cd "$ROOT" && GOOGLE_APPLICATION_CREDENTIALS="$KEY" node --input-type=module -e "
+  GDRIVE_AUTH_PROBE="$(cd "$ROOT" && ACE_GOOGLE_TOKEN_FILE="$GTOKEN" node --input-type=module -e "
     import { drive as makeDrive } from '@googleapis/drive';
-    import { GoogleAuth } from 'google-auth-library';
-    const auth = new GoogleAuth({ keyFile: process.env.GOOGLE_APPLICATION_CREDENTIALS, scopes: ['https://www.googleapis.com/auth/drive.metadata.readonly'] });
+    import { OAuth2Client } from 'google-auth-library'; import { readFileSync } from 'node:fs';
+    const auth = new OAuth2Client(); auth.setCredentials({ access_token: JSON.parse(readFileSync(process.env.ACE_GOOGLE_TOKEN_FILE, 'utf8')).access_token });
     const drive = makeDrive({ version: 'v3', auth });
     try {
       const r = await drive.about.get({ fields: 'user(emailAddress)' });
@@ -2043,22 +2045,22 @@ if [ -n "$KEY" ] && [ -d "$ROOT/node_modules/@googleapis/drive" ]; then
   if [ "$GDRIVE_OK" = "1" ]; then
     pass "gdrive_auth: ace-gdrive authed as $GDRIVE_EMAIL (drive.about.get)"
   else
-    warn "gdrive_auth: drive.about.get failed: $GDRIVE_MSG" "rotate gws-sa-key.json in 1Password and re-run /ace:setup; verify the SA hasn't been disabled in Google Cloud Console"
+    warn "gdrive_auth: drive.about.get failed: $GDRIVE_MSG" "run canopy cred google-token --agent ace; if it keeps failing, reconnect the agent's Google login in canopy-web"
   fi
 else
-  warn "gdrive_auth: skipped — gws_key missing or node_modules/@googleapis/drive not installed" "see gws_key warning above; npm ci if deps are missing"
+  warn "gdrive_auth: skipped — google_token missing or node_modules/@googleapis/drive not installed" "see the google_token check above; npm ci if deps are missing"
 fi
 
-# 1b. forms_api — is the Google Forms API enabled on the SA's GCP project?
+# 1b. forms_api — is the Google Forms API enabled on the token's GCP project?
 # forms_create_from_spec / forms_set_publish_settings / forms_list_responses
 # fail with 403 SERVICE_DISABLED until it is. A get of a form id that cannot
 # exist answers 404 when the API is on, so a 404 is the PASS signal.
-if [ -n "$KEY" ] && [ -d "$ROOT/node_modules/@googleapis/forms" ]; then
-  FORMS_PROJECT="$(node -e "try { console.log(JSON.parse(require('fs').readFileSync(process.argv[1],'utf8')).project_id || '') } catch { console.log('') }" "$KEY" 2>/dev/null)"
-  FORMS_PROBE="$(cd "$ROOT" && GOOGLE_APPLICATION_CREDENTIALS="$KEY" node --input-type=module -e "
+if [ -n "$GTOKEN" ] && [ -d "$ROOT/node_modules/@googleapis/forms" ]; then
+  FORMS_PROJECT=""
+  FORMS_PROBE="$(cd "$ROOT" && ACE_GOOGLE_TOKEN_FILE="$GTOKEN" node --input-type=module -e "
     import { forms as makeForms } from '@googleapis/forms';
-    import { GoogleAuth } from 'google-auth-library';
-    const auth = new GoogleAuth({ keyFile: process.env.GOOGLE_APPLICATION_CREDENTIALS, scopes: ['https://www.googleapis.com/auth/forms.body.readonly'] });
+    import { OAuth2Client } from 'google-auth-library'; import { readFileSync } from 'node:fs';
+    const auth = new OAuth2Client(); auth.setCredentials({ access_token: JSON.parse(readFileSync(process.env.ACE_GOOGLE_TOKEN_FILE, 'utf8')).access_token });
     const forms = makeForms({ version: 'v1', auth });
     try {
       await forms.forms.get({ formId: 'ace-doctor-forms-api-probe' });
@@ -2069,14 +2071,14 @@ if [ -n "$KEY" ] && [ -d "$ROOT/node_modules/@googleapis/forms" ]; then
       console.log(status === 404 ? 'ok' : (/SERVICE_DISABLED|has not been used|is disabled/.test(blob) ? 'disabled' : 'other:' + status + ' ' + (e.message || '').slice(0, 160)));
     }
   " 2>/dev/null)"
-  FORMS_ENABLE_URL="https://console.cloud.google.com/apis/library/forms.googleapis.com?project=${FORMS_PROJECT:-<sa-project>}"
+  FORMS_ENABLE_URL="https://console.cloud.google.com/apis/library/forms.googleapis.com?project=${FORMS_PROJECT:-<canopy-oauth-project>}"
   case "$FORMS_PROBE" in
     ok) pass "forms_api: Google Forms API enabled on project ${FORMS_PROJECT:-?}" ;;
-    disabled) warn "forms_api: Google Forms API is disabled on the SA's GCP project ${FORMS_PROJECT:-?} — forms_* atoms will 403" "enable the Forms API on the SA's GCP project: $FORMS_ENABLE_URL (needs a project admin)" ;;
+    disabled) warn "forms_api: Google Forms API is disabled on the Google project ${FORMS_PROJECT:-?} — forms_* atoms will 403" "enable the Forms API on the Google project behind canopy's OAuth client: $FORMS_ENABLE_URL (needs a project admin)" ;;
     *) warn "forms_api: probe inconclusive (${FORMS_PROBE:-no output})" "check gdrive_auth above; if it passes, enable the Forms API: $FORMS_ENABLE_URL" ;;
   esac
 else
-  warn "forms_api: skipped — gws_key missing or node_modules/@googleapis/forms not installed" "see gws_key warning above; npm ci if deps are missing"
+  warn "forms_api: skipped — google_token missing or node_modules/@googleapis/forms not installed" "see the google_token check above; npm ci if deps are missing"
 fi
 
 # 2. ace-ocs — GET /a/<team>/chatbots/ with session cookies, --max-redirs 0

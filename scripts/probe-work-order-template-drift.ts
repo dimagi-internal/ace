@@ -29,6 +29,7 @@
  */
 
 import { google } from '../lib/google-shim.js';
+import { AceGoogleAuth } from '../lib/ace-google-auth.js';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -40,8 +41,6 @@ import { diffTemplateTokens, formatTokenDrift } from '../lib/template-token-drif
 // the plugin-data .env before the first WORK_ORDER_TEMPLATE_ID read (ace#1957).
 loadPluginEnv(import.meta.url);
 
-const PLUGIN_DATA = `${process.env.HOME}/.claude/plugins/data/ace-ace`;
-
 async function main(): Promise<number> {
   const templateId = process.env.WORK_ORDER_TEMPLATE_ID;
   if (!templateId) {
@@ -52,21 +51,11 @@ async function main(): Promise<number> {
     return 1;
   }
 
-  const keyFile =
-    process.env.GOOGLE_APPLICATION_CREDENTIALS ?? path.join(PLUGIN_DATA, 'gws-sa-key.json');
-  if (!fs.existsSync(keyFile)) {
-    console.error(`No Google service-account key at ${keyFile}. Run /ace:setup.`);
-    return 1;
-  }
-
   const scriptDir = path.dirname(fileURLToPath(import.meta.url));
   const mirrorPath = path.resolve(scriptDir, '..', 'templates', 'work-order-template.md');
   const mirrorText = fs.readFileSync(mirrorPath, 'utf8');
 
-  const auth = new google.auth.GoogleAuth({
-    keyFile,
-    scopes: ['https://www.googleapis.com/auth/drive.readonly'],
-  });
+  const auth = new AceGoogleAuth();
   const drive = google.drive({ version: 'v3', auth });
 
   let liveText: string;

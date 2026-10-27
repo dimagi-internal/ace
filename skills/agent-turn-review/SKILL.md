@@ -146,8 +146,8 @@ Same pass, same draft. Not an appendix, not a follow-up.
   *"the tooling rejects it"* — must be backed by a probe you ran **this turn**, or by an upstream
   issue you re-read **this turn** and confirmed still open. Never by absence of evidence.
   **Grepping ACE's own skills or MCP atoms proves only that ACE has not WIRED it — not that it
-  cannot be done.** ACE reaches Google through TWO identities (the `gws-sa-key.json` service
-  account behind `ace-gdrive`, and `ace@dimagi-ai.com` via `gog`) with different grants and
+  cannot be done.** ACE reaches Google through TWO paths to ONE account (`ace@dimagi-ai.com`: its
+  canopy-minted token behind `ace-gdrive`, and `gog`) with different scopes and
   different surfaces, plus whatever the underlying API supports; a missing atom is evidence about
   one of those, and a capability question is only settled once you have checked the one that would
   actually own it. When a probe is genuinely not available, say what you checked and what you did

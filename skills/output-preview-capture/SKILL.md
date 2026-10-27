@@ -116,7 +116,7 @@ reads any mapping there with a `file_id` as an output.
      `/ace:ocs-login` is not needed for previews. So EVERY `auth: ocs` output —
      a `chatbot`, or a `link` such as `products.ocs_coach` — is photographed on its public
      chat or skipped; its admin URL is never a target (ace#2887).
-   - **google:** the Drive service account key (`gws-sa-key.json`).
+   - **google:** ace@dimagi-ai.com's canopy Google token (`canopy cred google-token`).
 
 3. **LOOK at every frame — this is the gate, not the screen verdict.** `Read`
    each PNG listed for a `captured` gap. Reject a frame that shows a login or

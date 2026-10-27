@@ -8,11 +8,9 @@
  *                    the training skills' preflight can branch on the exit code
  *   --version=<v>    check this version instead of the pinned one
  */
-import * as fs from 'node:fs';
-import * as path from 'node:path';
 import { google } from '../lib/google-shim.js';
+import { AceGoogleAuth } from '../lib/ace-google-auth.js';
 import { loadPluginEnv } from '../lib/load-plugin-env.js';
-import { resolvePluginDataDir } from '../lib/plugin-data-dir.js';
 import { classifyCommonPool, type CommonPoolVerdict } from '../lib/common-screenshot-pool.js';
 import { getConfiguredApkVersion } from '../mcp/mobile/client.js';
 
@@ -23,14 +21,6 @@ const DOC_MIME = 'application/vnd.google-apps.document';
 
 function arg(name: string): string | undefined {
   return process.argv.find((a) => a.startsWith(`--${name}=`))?.split('=')[1];
-}
-
-function resolveKeyPath(): string | null {
-  const envPath = process.env.GOOGLE_APPLICATION_CREDENTIALS;
-  if (envPath && fs.existsSync(envPath)) return envPath;
-  const dataDir = resolvePluginDataDir(import.meta.url);
-  const dataKey = dataDir ? path.join(dataDir, 'gws-sa-key.json') : '';
-  return dataKey && fs.existsSync(dataKey) ? dataKey : null;
 }
 
 type Entry = { id: string; name: string; mimeType: string };
@@ -65,9 +55,7 @@ async function readText(drive: any, f: Entry): Promise<string> {
 async function probe(pinnedVersion: string): Promise<CommonPoolVerdict | { skipped: string }> {
   const rootId = process.env.ACE_DRIVE_ROOT_FOLDER_ID;
   if (!rootId) return { skipped: 'ACE_DRIVE_ROOT_FOLDER_ID not set' };
-  const keyPath = resolveKeyPath();
-  if (!keyPath) return { skipped: 'GWS service-account key not found' };
-  const auth = new google.auth.GoogleAuth({ keyFile: keyPath, scopes: ['https://www.googleapis.com/auth/drive.readonly'] });
+  const auth = new AceGoogleAuth();
   const drive = google.drive({ version: 'v3', auth });
 
   const folder = async (parent: string, name: string) =>

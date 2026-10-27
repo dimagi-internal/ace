@@ -3,25 +3,21 @@
 #
 # Order is "cheap pre-flight checks first, slow state changes after,
 # verification last", so the user never waits through npm install just
-# to find out 1Password isn't signed in.
+# to find out the instance can't be resolved.
 #
 # Steps:
 #   1. Detect plugin root + data dir
 #   2. Verify Node/npm; resolve this install's ACE instance via
 #      `canopy agent env --plugin ace --print` (canopy >= 0.2.681)
-#   3. Verify 1Password CLI is installed and authenticated (FAST FAIL — but
-#      only when the Google service-account key is missing and must be
-#      fetched. Otherwise a WARN, and setup carries on.)
-#   4. Fetch the Google service-account key from 1Password if missing
-#   5. bin/ace-install-deps (shared runtime-only store for an installed plugin)
-#   6. Fill .env from ACE's Canopy vault via `canopy agent env --plugin ace`
+#   3. bin/ace-install-deps (shared runtime-only store for an installed plugin)
+#   4. Fill .env from ACE's Canopy vault via `canopy agent env --plugin ace`
 #      (binds the install to one instance; the vault is the ONLY list of ACE's
 #      env names — canopy agent-runtime.md § One declaration. No template.)
-#   7. Download commcare-cli.jar from dimagi/commcare-core's latest
+#   5. Download commcare-cli.jar from dimagi/commcare-core's latest
 #      tagged release (skip if cached + not --force-install; WARN if gh
 #      missing). Gates Phase 3 app-release-smoke Step 4.5.
-#   8. Optionally register the SessionStart auto-update hook
-#   9. Run bin/ace-doctor and surface remaining issues
+#   6. Optionally register the SessionStart auto-update hook
+#   7. Run bin/ace-doctor and surface remaining issues
 #
 # Flags:
 #   --auto-update      register SessionStart hook for /ace:update
@@ -34,15 +30,9 @@
 #   --print-root       resolve the plugin root, print it, exit. No side effects.
 #
 # Env overrides:
-#   ACE_GWS_KEY_OP_DOC  1Password Document item name for the GWS service-account
-#                       key (default: "ACE - Google Service Account")
-#   ACE_OP_VAULT        1Password vault holding the GWS service-account key
-#                       (only read when the key is missing)
-#   OP_SERVICE_ACCOUNT_TOKEN  if set, op uses this and skips --account flag
 #   AGENT_ENV_FILE      a .env canopy already filled from this instance's vault
 #                       (`canopy agent prepare --runner` sets it). Used instead of
 #                       filling when it carries no unresolved op:// ref.
-#   AGENT_VAULT         1Password vault for the SA key when ACE_OP_VAULT is unset
 #   ACE_PLUGIN_REGISTRY       override ~/.claude/plugins/installed_plugins.json
 #
 # Exit status: 0 on success, 1 on any FAIL the user must fix.
@@ -87,27 +77,6 @@ fail() { printf 'FAIL %s\n' "$1"; [ -n "${2:-}" ] && printf '  fix: %s\n' "$2"; 
 
 EXIT_CODE=0
 mark_fail() { EXIT_CODE=1; }
-
-# The two lines a first-time user needs when 1Password is the blocker: what
-# access setup requires and who grants it. Printed at every 1Password failure
-# (CLI missing, not signed in, vault unreadable, SA-key fetch failed) so the
-# answer never depends on which step tripped first. The owner is read from
-# plugin.json's author, so it can't go stale in prose.
-# 1Password now holds only the Google service-account key; ACE's env comes from
-# its Canopy vault on canopy-web. The note names the vault it was told to read
-# (ACE_OP_VAULT / AGENT_VAULT), else where to look rather than guessing a name.
-access_note() {
-  _owner="$(node -e "try{const a=require(process.argv[1]).author||{};console.log(a.email?a.name+' ('+a.email+')':(a.name||''))}catch(_){}" "${ROOT:-$SELF_DIR}/.claude-plugin/plugin.json" 2>/dev/null)"
-  if [ -n "$OP_VAULT" ]; then _vault_desc="the \"$OP_VAULT\" vault"; else _vault_desc="the 1Password vault holding \"$GWS_DOC_NAME\" (set ACE_OP_VAULT to it)"; fi
-  printf '  ACCESS: /ace:setup needs the 1Password CLI signed in to dimagi.1password.com, with read access to %s.\n' "$_vault_desc"
-  printf '          No access yet? Ask ACE'"'"'s owner%s to share %s with you, then re-run /ace:setup.\n' "${_owner:+, $_owner,}" "$_vault_desc"
-}
-
-# ---- defaults / config
-# OP_VAULT is NOT defaulted: it is only the 1Password vault holding the SA key
-# (ACE_OP_VAULT, else AGENT_VAULT, else what a legacy canopy record names).
-OP_VAULT=""
-GWS_DOC_NAME="${ACE_GWS_KEY_OP_DOC:-ACE - Google Service Account}"
 
 # ---- plugin root detection
 #
@@ -214,9 +183,9 @@ ROOT_VERSION="$(_version_at "$ROOT")"
 REG_VERSION="$(_registry_version)"
 
 if [ "$PRINT_ROOT" = "1" ]; then
-  # Resolution-only mode: no network, no npm, no op, no writes. This is the
+  # Resolution-only mode: no network, no npm, no writes. This is the
   # seam `test/bin/ace-setup-plugin-root.test.ts` drives, so the ordering above
-  # is testable without a 1Password session or an npm install.
+  # is testable without a canopy session or an npm install.
   echo "plugin_root=$ROOT"
   echo "plugin_root_source=$ROOT_SOURCE"
   echo "plugin_root_version=$ROOT_VERSION"
@@ -363,19 +332,6 @@ if [ -n "${AGENT_ENV_FILE:-}" ] && [ "$SKIP_ENV" != "1" ]; then
   fi
 fi
 
-# ---- Will this run read 1Password at all?
-#
-# Only fetching a MISSING Google service-account key does — ACE's env comes
-# from its Canopy vault on canopy-web. When the key is present a missing or
-# signed-out `op` is not a reason to stop: everything after (deps, env.sh, the
-# nova entry, ace-web) still has to run. It is a WARN then, and a FAIL only
-# when the key must be fetched.
-KEY_PRESENT=0
-{ [ -r "$DATA_DIR/gws-sa-key.json" ] || [ -r "$ROOT/.gws-sa-key.json" ]; } && KEY_PRESENT=1
-NEED_OP_WHY=""
-[ "$KEY_PRESENT" = "0" ] && NEED_OP_WHY="the Google service-account key is missing"
-NO_OP_NEEDED="key present"
-
 # Will this run fill $ENV_OUT from the vault (which needs the instance)?
 NEED_FILL=0
 [ "$SKIP_ENV" != "1" ] && [ -z "$SUPPLIED_ENV" ] && NEED_FILL=1
@@ -405,8 +361,7 @@ fi
 # the only one you can see, the one already bound, or `--agent` — and fills
 # .env from that instance's Canopy vault. Resolved here with `--print` (no side
 # effects); the env step below calls the same command for real. A failure here
-# is recorded, not fatal yet: the 1Password checks still run first so their
-# messages are not masked, and the stop comes right after them.
+# is recorded, not fatal yet: the stop comes right after the checks below.
 CANOPY_MIN="0.2.681"
 CANOPY_ERR=""
 CANOPY_FIX=""
@@ -429,9 +384,6 @@ else
     _crc=$?
     if [ "$_crc" -eq 0 ]; then
       BOUND_AGENT="$(printf '%s' "$BIND_JSON" | node -e "try{console.log(JSON.parse(require('fs').readFileSync(0,'utf8')).agent||'')}catch(_){}" 2>/dev/null)"
-      # A legacy 1Password-backed record still names its vault; a canopy-vault
-      # instance names none. Only the SA-key fetch ever reads it.
-      OP_VAULT="$(printf '%s' "$BIND_JSON" | node -e "try{console.log(JSON.parse(require('fs').readFileSync(0,'utf8')).vault||'')}catch(_){}" 2>/dev/null)"
     fi
     if [ -z "$BOUND_AGENT" ]; then
       # Relay canopy verbatim: it names the instances (with re-run lines) or
@@ -444,112 +396,15 @@ $(cat "$_cerr" 2>/dev/null; [ "$_crc" -eq 0 ] && printf '%s\n' "$BIND_JSON")"
   fi
 fi
 [ -n "$BOUND_AGENT" ] && echo "INFO instance=$BOUND_AGENT (canopy agent env --print)"
-# The SA key's 1Password vault: ACE_OP_VAULT wins, then AGENT_VAULT (a runner
-# has no person token, so `--print` cannot resolve there), then a legacy
-# record's vault from above.
-if [ -n "${ACE_OP_VAULT:-${AGENT_VAULT:-}}" ]; then
-  OP_VAULT="${ACE_OP_VAULT:-$AGENT_VAULT}"
-  echo "INFO vault=$OP_VAULT (from $([ -n "${ACE_OP_VAULT:-}" ] && echo ACE_OP_VAULT || echo AGENT_VAULT); 1Password, SA key only)"
-fi
-
-OP_ACCOUNT_FLAG=""
-OP_READY=1
-# ---- 1Password CLI installed?
-if ! command -v op >/dev/null 2>&1; then
-  if [ -z "$NEED_OP_WHY" ]; then
-    warn "op: 1Password CLI not installed — not needed this run ($NO_OP_NEEDED)" \
-         "install it before a run that fetches the SA key: brew install 1password-cli"
-    OP_READY=0
-  else
-    fail "op: 1Password CLI not installed (needed: $NEED_OP_WHY)" \
-         "install with: brew install 1password-cli (or https://developer.1password.com/docs/cli/get-started/)"
-    access_note
-    exit 1
-  fi
-fi
-[ "$OP_READY" = "1" ] && pass "op: 1Password CLI v$(op --version 2>/dev/null)"
-
-# ---- 1Password authenticated?
-# Prefer service-account token if present, else require interactive signin.
-AUTH_OK=0
-AUTH_MODE=""
-if [ "$OP_READY" = "0" ]; then
-  :
-elif [ -n "${OP_SERVICE_ACCOUNT_TOKEN:-}" ]; then
-  if op whoami >/dev/null 2>&1; then
-    AUTH_OK=1
-    AUTH_MODE="service-account"
-  fi
-fi
-if [ "$AUTH_OK" = "0" ] && [ "$OP_READY" = "1" ]; then
-  if op whoami --account dimagi.1password.com >/dev/null 2>&1; then
-    AUTH_OK=1
-    AUTH_MODE="dimagi.1password.com (interactive)"
-    OP_ACCOUNT_FLAG="--account dimagi.1password.com"
-  fi
-fi
-if [ "$AUTH_OK" = "0" ] && [ "$OP_READY" = "1" ]; then
-  # 1Password's desktop-app CLI integration (biometric unlock) authenticates
-  # every `op` invocation via Touch ID and issues NO persistent session token,
-  # so `op whoami` reports "account is not signed in" even though `op read` /
-  # `op document get` / `op inject` all succeed. Don't trust whoami as the sole
-  # gate — fall back to a real READ probe (every setup step downstream is a
-  # read anyway). If a vault listing succeeds, auth is live. (Without this,
-  # biometric-integration users were hard-blocked by a false negative.)
-  if op vault list --account dimagi.1password.com >/dev/null 2>&1; then
-    AUTH_OK=1
-    AUTH_MODE="dimagi.1password.com (desktop/biometric integration)"
-    OP_ACCOUNT_FLAG="--account dimagi.1password.com"
-  fi
-fi
-
-if [ "$AUTH_OK" = "0" ] && [ "$OP_READY" = "1" ] && [ -z "$NEED_OP_WHY" ]; then
-  warn "op: not authenticated to 1Password — not needed this run ($NO_OP_NEEDED)" \
-       "sign in (op signin --account dimagi.1password.com) before a run that fetches the SA key"
-elif [ "$AUTH_OK" = "0" ] && [ "$OP_READY" = "1" ]; then
-  # On macOS, GUI apps inherit env from launchd — not from ~/.zshrc — so
-  # OP_SERVICE_ACCOUNT_TOKEN can be defined in shell rc and still be unset
-  # for a Claude Code session opened from the dock. Detect that case so the
-  # user knows the fix is "move it to ~/.zshenv" instead of "set the var".
-  GUI_HINT=""
-  if [ "$(uname -s)" = "Darwin" ] && [ -z "${OP_SERVICE_ACCOUNT_TOKEN:-}" ]; then
-    SHELL_RC_HIT=""
-    for rc in "$HOME/.zshrc" "$HOME/.bashrc" "$HOME/.zprofile" "$HOME/.bash_profile" "$HOME/.profile"; do
-      if [ -f "$rc" ] && grep -qE '^[[:space:]]*(export[[:space:]]+)?OP_SERVICE_ACCOUNT_TOKEN=' "$rc"; then
-        SHELL_RC_HIT="$rc"; break
-      fi
-    done
-    if [ -n "$SHELL_RC_HIT" ]; then
-      GUI_HINT="
-       NOTE: OP_SERVICE_ACCOUNT_TOKEN is defined in $SHELL_RC_HIT but not visible
-       to this process. macOS GUI apps inherit env from launchd (not ~/.zshrc).
-       Move the export to ~/.zshenv so launchd-spawned zsh sees it too, then
-       quit and reopen Claude Code from the dock:
-         grep '^[[:space:]]*\(export[[:space:]]\+\)\?OP_SERVICE_ACCOUNT_TOKEN=' $SHELL_RC_HIT >> ~/.zshenv
-         # then: Cmd-Q Claude Code, reopen from dock, re-run /ace:setup"
-    fi
-  fi
-  fail "op: not authenticated to 1Password (needed: $NEED_OP_WHY)" "type one of these in the chat (the \`!\` prefix runs in this session):
-       ! op signin --account dimagi.1password.com   # interactive personal signin
-       ! eval \$(op signin --account dimagi.1password.com)   # if you need session env exported
-       (or set OP_SERVICE_ACCOUNT_TOKEN=ops_... in your shell rc and reopen the session)
-       (Mac alt: open the 1Password.app, Settings → Developer → enable CLI integration)$GUI_HINT
-     Then re-run /ace:setup."
-  access_note
-  exit 1
-fi
-[ "$AUTH_OK" = "1" ] && pass "op: authenticated as $AUTH_MODE"
-
 # The instance is needed to FILL $ENV_OUT (`canopy agent env` binds it). Stop
-# only when this run needs it. A missing key with no 1Password vault named is
-# caught at the key fetch, with its own fix.
+# only when this run needs it.
 if [ -z "$CANOPY_ERR" ]; then
   pass "instance: $BOUND_AGENT (Canopy vault, from canopy agent env)"
 elif [ "$NEED_FILL" = "1" ] && { [ "$FORCE_ENV" = "1" ] || [ ! -f "$ENV_OUT" ] || grep -qE '=op://' "$ENV_OUT" 2>/dev/null; }; then
   fail "instance: $CANOPY_ERR" "$CANOPY_FIX"
   exit 1
 else
-  warn "instance: not resolved — not needed this run ($NO_OP_NEEDED${OP_VAULT:+; vault $OP_VAULT})" \
+  warn "instance: not resolved — not needed this run (an existing .env is kept)" \
        "$(printf '%s' "$CANOPY_ERR" | tail -n +2 | head -3 | tr '\n' ' ')"
   NEED_FILL=0
 fi
@@ -557,75 +412,6 @@ fi
 # =====================================================================
 # Phase 2 — Slow state changes (only run if pre-flight passed)
 # =====================================================================
-
-# ---- Google service-account key (canonical = $DATA_DIR/gws-sa-key.json)
-CANONICAL_KEY="$DATA_DIR/gws-sa-key.json"
-LEGACY_KEY="$ROOT/.gws-sa-key.json"
-KEY=""
-KEY_LOC=""
-if [ -f "$CANONICAL_KEY" ] && [ -r "$CANONICAL_KEY" ]; then
-  KEY="$CANONICAL_KEY"; KEY_LOC="canonical"
-elif [ -f "$LEGACY_KEY" ] && [ -r "$LEGACY_KEY" ]; then
-  KEY="$LEGACY_KEY"; KEY_LOC="legacy"
-fi
-
-if [ -z "$KEY" ] && [ -z "$OP_VAULT" ]; then
-  fail "gws_key: missing, and no 1Password vault named to fetch it from" "set ACE_OP_VAULT=<the vault holding \"$GWS_DOC_NAME\"> and re-run /ace:setup, or drop the key at $CANONICAL_KEY (chmod 600)"
-  access_note
-  mark_fail
-elif [ -z "$KEY" ]; then
-  # Try to fetch from 1Password as a Document item.
-  echo "INFO gws_key: missing — attempting fetch from 1Password vault $OP_VAULT, document \"$GWS_DOC_NAME\""
-  GET_OUT="$(op document get "$GWS_DOC_NAME" --vault "$OP_VAULT" --output "$CANONICAL_KEY" --force $OP_ACCOUNT_FLAG 2>&1)"
-  GET_RC=$?
-  if [ "$GET_RC" -eq 0 ] && [ -s "$CANONICAL_KEY" ]; then
-    # Validate JSON and chmod 600
-    CLIENT_EMAIL="$(node -e "try { console.log(JSON.parse(require('fs').readFileSync('$CANONICAL_KEY','utf8')).client_email); } catch(e) { console.log('NOT_JSON'); }" 2>/dev/null)"
-    if [ "$CLIENT_EMAIL" = "NOT_JSON" ] || [ -z "$CLIENT_EMAIL" ]; then
-      fail "gws_key: fetched document is not valid JSON" "verify \"$GWS_DOC_NAME\" in 1Password is the SA key file, then re-run /ace:setup"
-      mark_fail
-    else
-      chmod 600 "$CANONICAL_KEY" 2>/dev/null
-      KEY="$CANONICAL_KEY"; KEY_LOC="canonical"
-      pass "gws_key: fetched $CLIENT_EMAIL from 1Password to $CANONICAL_KEY"
-    fi
-  else
-    # Discovery: surface candidate Document items so the user can pick the right one.
-    echo "INFO gws_key: \"$GWS_DOC_NAME\" not found in $OP_VAULT. Listing Document items that might be the SA key..."
-    CANDIDATES="$(op item list --vault "$OP_VAULT" --categories Document --format json $OP_ACCOUNT_FLAG 2>/dev/null \
-                  | node -e "
-                    try {
-                      const items = JSON.parse(require('fs').readFileSync(0,'utf8'));
-                      const re = /(google|gws|service[\\s.]account|sa[\\s._-]?key|gcp|drive)/i;
-                      for (const it of items) {
-                        if (re.test(it.title || '')) console.log('  - ' + it.title);
-                      }
-                    } catch(_) {}
-                  " 2>/dev/null)"
-    fail "gws_key: missing and could not auto-fetch from 1Password" "options:
-       (a) set ACE_GWS_KEY_OP_DOC=<exact item name> and re-run /ace:setup
-       (b) drop the key manually at $CANONICAL_KEY (mkdir -p \"$DATA_DIR\" && mv key.json \"$CANONICAL_KEY\" && chmod 600 \"$CANONICAL_KEY\")
-       (c) ask Jon for the ACE Google service-account JSON
-     candidate Document items in vault $OP_VAULT (set ACE_GWS_KEY_OP_DOC to one):
-$([ -n "$CANDIDATES" ] && printf '%s\n' "$CANDIDATES" || echo "       (none matched 'google|gws|service account|sa key|gcp|drive')")
-     1Password error from the attempted fetch:
-$(printf '%s\n' "$GET_OUT" | sed 's/^/       /')"
-    access_note
-    mark_fail
-  fi
-elif [ "$KEY_LOC" = "legacy" ]; then
-  CLIENT_EMAIL="$(node -e "try { console.log(JSON.parse(require('fs').readFileSync('$KEY','utf8')).client_email); } catch(e) { console.log('unreadable'); }" 2>/dev/null)"
-  warn "gws_key: $CLIENT_EMAIL at LEGACY path $LEGACY_KEY" \
-       "migrate so it survives plugin updates: mv \"$LEGACY_KEY\" \"$CANONICAL_KEY\" && chmod 600 \"$CANONICAL_KEY\""
-else
-  CLIENT_EMAIL="$(node -e "try { console.log(JSON.parse(require('fs').readFileSync('$KEY','utf8')).client_email); } catch(e) { console.log('unreadable'); }" 2>/dev/null)"
-  if [ "$CLIENT_EMAIL" = "unreadable" ]; then
-    fail "gws_key: $KEY is not valid JSON" "re-drop the service-account key (or unset to re-fetch from 1Password)"
-    mark_fail
-  else
-    pass "gws_key: $CLIENT_EMAIL at $CANONICAL_KEY"
-  fi
-fi
 
 # ---- npm install (only after pre-flight passed)
 cd "$ROOT" || { fail "cd $ROOT failed"; exit 1; }
