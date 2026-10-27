@@ -2468,9 +2468,9 @@ App-test economy paragraph in `pdd-to-deliver-app` Step 3).
 > call `get_form` only when you need the whole form.
 > (10) Android only: this is a CommCare Connect app, and Connect workers open
 > it only in the Connect app on Android. Before the first `configure_connect`,
-> call `update_app` with `runs_only_on: "android"`; Nova refuses to turn
-> Connect on in an app that also runs in Web Apps (commcare-nova#822). Never
-> set `"web-apps"`.
+> call `update_app` with `runs_only_on: "android"`. Never set `"web-apps"`.
+> (voidcraft-labs/commcare-nova#822) Nova refuses to turn Connect on in an app
+> that also runs in Web Apps.
 
 
 ## Label-fidelity components (added 2026-08-26)
