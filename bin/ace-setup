@@ -619,6 +619,12 @@ fi
 if [ "$SKIP_ENV" != "1" ] && [ -f "$ENV_OUT" ]; then
   ACEWEB_TSX="$ROOT/node_modules/tsx/dist/cli.mjs"
   if [ -f "$ACEWEB_TSX" ] && [ -f "$ROOT/scripts/ace-web-bot-token-mint.ts" ]; then
+    # The mint drives a headless Chromium. A fresh machine (a cloud runner's
+    # first turn) has none, and the mint's WARN was swallowed into a "re-run
+    # setup" hint that a turn cannot act on — so the token stayed missing and
+    # the first ace-web write needed a hand-run `npx playwright install`.
+    # Idempotent: a no-op when the browser is already there.
+    (cd "$ROOT" && npx playwright install chromium >/dev/null 2>&1) || true
     ACEWEB_OUT="$(cd "$ROOT" && CLAUDE_PLUGIN_DATA="$DATA_DIR" node "$ACEWEB_TSX" scripts/ace-web-bot-token-mint.ts --ensure 2>/dev/null | grep -E '^(PASS|WARN) ace_web_token' | tail -1)"
     case "$ACEWEB_OUT" in
       PASS*) pass "${ACEWEB_OUT#PASS }" ;;

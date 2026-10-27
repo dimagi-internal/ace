@@ -47,6 +47,17 @@ improvements ship once (a canopy PR) instead of N backports.
   2026-10-12 — plist correctly populated, daemon restarted, `pgrep -P <runner-pid>` zero children,
   session still dead. The daemon's own probe keeps passing, which is why canopy-web's
   `mailboxes_readable` can advertise the mailbox as readable while no turn can read it.
+- **Bootstrap a bare runner BEFORE preflight.** A canopy cloud runner's first turn can start with
+  no plugin-data `.env` at all: no Connect/Drive/OCS credentials and no `ACE_WEB_PAT_TOKEN`, so every
+  tool call fails and the turn can only say so. Observed 2026-10-27 (Sophie Feintuch's "Archiving
+  builds"): the first attempt could read nothing and changed nothing; the rerun worked only after
+  someone minted ACE's ace-web token and installed Chromium by hand. If
+  `~/.claude/plugins/data/ace-ace/.env` is absent, or lacks `ACE_WEB_PAT_TOKEN` and the request
+  touches ace-web, run `bash "$ACE_ROOT/bin/ace-setup"` (resolve `ACE_ROOT` as in the probe below)
+  FIRST. It writes `.env` from the vault, installs the Chromium the ace-web mint needs, and mints
+  ACE's own token. MCP servers started before the write keep their old env until Claude restarts, so
+  for the rest of this turn reach ace-web with the token read from `.env`, never `source` the file
+  (values contain shell metacharacters; it prints fragments of stored passwords).
 - **Preflight (core Step 1) specifics:** `bin/ace-doctor --installed` — read the `[Auth liveness]`
   block. **Start it in the BACKGROUND and gate the turn on the inbox read instead — the doctor is
   slow AND silent.** It runs ~3-4 minutes (measured 3m39s, 2026-09-01) because it makes live HTTP
