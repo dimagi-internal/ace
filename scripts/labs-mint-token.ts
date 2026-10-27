@@ -202,6 +202,21 @@ async function main() {
   ]);
 
   console.error(`[5/5] submitted; reading raw token from DOM`);
+  // A full-access token for an account labs does not let self-mint goes to canopy for a
+  // passkey approval instead (labs `mcp/full_access.py`). ACE's account is ticked
+  // (Django admin › Full-access self-mints); if that is ever undone, say so plainly
+  // rather than timing out on a token that was never created.
+  const host = new URL(page.url()).hostname;
+  const askedForApproval =
+    host !== new URL(TOKENS_URL).hostname ||
+    (await page.locator('[data-testid="full-access-refused"], [data-testid="full-access-waiting"]').count()) > 0;
+  if (askedForApproval) {
+    throw new Error(
+      `labs asked for a passkey approval instead of creating the token (now on ${page.url()}). ` +
+        `A full-access token for this account needs it ticked in labs' Django admin › ` +
+        `Full-access self-mints, or mint with scope "no-uservisit-data". No token was created.`,
+    );
+  }
   // The created token is rendered as <code id="raw-token">...</code>
   const rawTokenLocator = page.locator('#raw-token');
   try {
