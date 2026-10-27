@@ -11,7 +11,7 @@ ACE is a Claude Code plugin with the same architecture as canopy: agents orchest
 3. `/ace:setup` — binds this install to ONE ACE instance on canopy-web and fills
    `$CLAUDE_PLUGIN_DATA/.env` from ACE's Canopy vault on canopy-web
    (`canopy agent env --plugin ace`), alongside the npm install, the
-   service-account key, the commcare-cli jar and a closing `/ace:doctor`.
+   commcare-cli jar and a closing `/ace:doctor`.
    Several instances visible → `/ace:setup --agent <instance>`.
 
 Reading ACE's docs and skills needs no setup.
@@ -21,9 +21,6 @@ Reading ACE's docs and skills needs no setup.
 Before `/ace:setup` will succeed, you need:
 
 - **Node.js v18+** with `npm` (https://nodejs.org). Apple Silicon: `brew install node`.
-- **1Password CLI** (`op`). Mac: `brew install 1password-cli`. Other platforms: https://developer.1password.com/docs/cli/get-started/.
-  - On Mac, also enable 1Password.app → Settings → Developer → "Connect with 1Password CLI" for biometric unlock — that's the smoothest auth path. Alternative: `op signin --account dimagi.1password.com` interactively when `/ace:setup` prompts.
-- **1Password account** at `dimagi.1password.com`, with **read access to your ACE instance's 1Password vault** (`canopy agent env --plugin ace --print` names it; today `Agent-Ace`) — the only item ACE still reads from it is the `ACE - Google Service Account` Document, which `/ace:setup` fetches as `gws-sa-key.json`. Ask ACE's owner, Jonathan Jackson, to grant access — `/ace:setup` names the vault and who grants it when access is missing.
 - **Access to ACE's Canopy vault on canopy-web** (agent `ace`, Settings → Credentials). It is the one place ACE's env secrets are declared; `/ace:setup` writes `.env` straight from it, with shared fleet values (the gog OAuth clients) layered in from the `dimagi/Shared` workspace vault.
 - **GitHub access to `dimagi-internal/ace`** (currently public; no extra step needed). `gh auth login` is not required unless you plan to push.
 - **Network reachability** to `openchatstudio.com`, `connect.dimagi.com`, `commcarehq.org`, `labs.connect.dimagi.com`, `googleapis.com`. Corp VPNs and proxies sometimes block these — `/ace:doctor` reports an explicit status per host.
@@ -36,7 +33,7 @@ Before `/ace:setup` will succeed, you need:
 ```
 /plugin marketplace add dimagi-internal/ace     # Add the ACE marketplace
 /plugin install ace@ace                  # Install the plugin
-/ace:setup                               # Install deps + verify the service-account key
+/ace:setup                               # Install deps + write .env from the vault
 /ace:doctor                              # Sanity-check everything
 
 /ace:run                                 # Run full lifecycle (smart defaults)
@@ -60,19 +57,9 @@ Stop at any step that fails — the next step won't work.
    `/plugin install ace@ace`.
 
 2. **Run `/ace:setup`** — does almost everything for you in one shot:
-   verifies Node + `op` + 1Password signin, resolves your ACE instance and
-   its vault (`canopy agent env --plugin ace --print`), fetches the GWS
-   service-account key from that vault into `${CLAUDE_PLUGIN_DATA}/gws-sa-key.json`,
-   runs `npm install`, fills `.env` via `canopy agent env --plugin ace`, and
+   verifies Node, resolves your ACE instance (`canopy agent env --plugin ace --print`),
+   installs deps, fills `.env` via `canopy agent env --plugin ace`, and
    finishes by running `/ace:doctor`.
-   - If `op` isn't signed in, the script prints the exact
-     `! op signin --account dimagi.1password.com` line — type it in the
-     chat (the `!` prefix runs the command in this session), then re-run
-     `/ace:setup`.
-   - If 1Password can't find the SA-key Document, the script lists
-     candidate items in the vault so you can pick the right one with
-     `ACE_GWS_KEY_OP_DOC=...`. Worst case, ask Jon for the JSON and drop
-     it manually at the path the script printed.
 
 3. **Authenticate to OCS** — `/ace:ocs-login` opens a headed browser so you
    can sign in (SSO/MFA included). Session state is saved to
@@ -124,40 +111,22 @@ that forced it.)
 
 This detects the plugin root (whether you're in a marketplace install or a
 local dev checkout), runs `npm install` so `tsx` and the Google API client are
-available, verifies the service-account key is present, cross-checks the MCP
+available, verifies ace@'s Google token, cross-checks the MCP
 manifest, and (optionally with `--auto-update`) registers a `SessionStart` hook
 that runs background update checks.
 
-The one thing `/ace:setup` can't do for you is drop in the service-account
-key — it's a secret you have to supply. When the setup script reports
-`GWS_KEY: MISSING`, it prints the canonical path (under `$CLAUDE_PLUGIN_DATA`)
-and the exact `mkdir -p … && mv … && chmod 600 …` command to run. That
-location is persistent across plugin updates and shared by every worktree and
-install, so you only drop the key once per machine.
-
-The `plugin.json` `mcpServers.ace-gdrive.env` block passes
-`CLAUDE_PLUGIN_DATA` through; the server composes the key path in Node as
-`$CLAUDE_PLUGIN_DATA/gws-sa-key.json`. Operators can still set
-`GOOGLE_APPLICATION_CREDENTIALS` explicitly if they want to override.
-
-The service account needs `https://www.googleapis.com/auth/spreadsheets`,
-`https://www.googleapis.com/auth/drive`, and
-`https://www.googleapis.com/auth/documents` scopes. The ACE service account is
-`ace-service-account@connect-labs.iam.gserviceaccount.com` — ask Jon for the
-key. It must be added as Editor on the ACE folder inside the Shared Drive for
-artifact creation to work; see the "Shared Drive" note below.
-
-After dropping the key, re-run `/ace:setup` and then `/reload-plugins`. The
-`ace-gdrive` MCP server should appear in `/mcp`.
+Google access needs nothing dropped in by hand: `ace-gdrive` and `ace-decisions`
+sign in as `ace@dimagi-ai.com` with the token `canopy cred google-token --agent ace`
+keeps at `~/.canopy/google-token/ace.json` (renewed when under 5 minutes remain).
+The agent's Google login must carry the `drive`, `documents`, `presentations`,
+`spreadsheets`, `forms.body` and `forms.responses.readonly` scopes; `/ace:doctor`'s
+`google_token` check verifies that. There is no service-account key and no fallback.
 
 #### Shared Drive requirement
 
 ACE skills create Google Docs inside an ACE folder that **must live in a
-Google Shared Drive**, not in anyone's "My Drive". Service accounts have zero
-personal Drive storage quota, so creating files under a My Drive folder fails
-with `Service Accounts do not have storage quota`. Inside a Shared Drive the
-Drive itself owns the files, and the SA only needs Editor permission on the
-target folder.
+Google Shared Drive**, not in anyone's "My Drive". `ace@dimagi-ai.com` needs
+Content manager (fileOrganizer) on the Shared Drive — it has it today.
 
 ### Verify
 
@@ -165,7 +134,7 @@ target folder.
 /ace:doctor
 ```
 
-Cross-checks version consistency, dependencies, the service-account key, the
+Cross-checks version consistency, dependencies, the Google token, the
 MCP manifest, and related repos (`ace-web`, `connect-labs`). Prints PASS / WARN
 / FAIL for each check with a fix hint. Run this any time something feels off.
 
@@ -178,7 +147,7 @@ MCP manifest, and related repos (`ace-web`, `connect-labs`). Prints PASS / WARN
 Pulls the latest release from `~/.claude/plugins/marketplaces/ace`, copies it
 into a new versioned cache dir, reinstalls deps, updates
 `installed_plugins.json`, and tells you to `/reload-plugins`. Your
-service-account key lives in `$CLAUDE_PLUGIN_DATA`, which is outside the
+`.env` lives in `$CLAUDE_PLUGIN_DATA`, which is outside the
 versioned cache dir, so it automatically carries forward without any special
 handling. See [CHANGELOG.md](CHANGELOG.md) for release notes.
 
@@ -200,7 +169,7 @@ All five MCP servers are wired inline in `.claude-plugin/plugin.json`
 under `mcpServers` and auto-register on plugin install:
 
 - **`ace-gdrive`** — Google Drive + Docs + Slides + Sheets. Authenticated
-  via the service-account key dropped by `/ace:setup`.
+  as `ace@dimagi-ai.com` via `canopy cred google-token`.
 - **`ace-ocs`** — Open Chat Studio (composite REST + Playwright backend).
   Authenticate with `/ace:ocs-login` for SSO/MFA edge cases; otherwise
   the MCP auto-logs-in from `OCS_USERNAME` / `OCS_PASSWORD` in `.env`.

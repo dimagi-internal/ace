@@ -41,7 +41,7 @@
  *   canopy       ACE's own canopy PAT as a Bearer header — CANOPY_WEB_PAT from ACE's
  *                .env only (browser-sessions.ts canopyToken; ace#2805).
  *   ocs          none — the chatbot's PUBLIC chat page is anonymous by design.
- *   google       the Drive service account (gws-sa-key.json), no browser session.
+ *   google       ace@'s canopy Google token (lib/ace-google-auth.ts), no browser session.
  *   public       none.
  */
 
@@ -50,7 +50,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { parse as parseYaml } from 'yaml';
 import { google } from '../lib/google-shim.js';
-import { resolvePluginDataDir } from '../lib/plugin-data-dir.js';
+import { AceGoogleAuth } from '../lib/ace-google-auth.js';
 import { CHAT_VIEWPORT, Sessions, VIEWPORT } from './browser-sessions.js';
 import { assertPreviewsIndexReadable, outputSlug, serializePreviewsIndex } from '../lib/output-previews.js';
 import {
@@ -373,19 +373,10 @@ async function frameExchange(page: Page): Promise<void> {
   await page.waitForTimeout(400);
 }
 
-function saKeyPath(): string {
-  const env = process.env.GOOGLE_APPLICATION_CREDENTIALS;
-  if (env && fs.existsSync(env)) return env;
-  const data = resolvePluginDataDir(import.meta.url);
-  const p = data ? path.join(data, 'gws-sa-key.json') : '';
-  if (p && fs.existsSync(p)) return p;
-  throw new Error('no Drive service-account key (gws-sa-key.json) — run /ace:setup');
-}
-
 async function captureDriveFile(browser: Browser, plan: CapturePlan, dir: string): Promise<{ frames: FrameOut[]; fail?: string }> {
   const fileId = plan.gap.file_id ?? /\/d\/([A-Za-z0-9_-]{10,})|[?&]id=([A-Za-z0-9_-]{10,})/.exec(plan.gap.url ?? '')?.slice(1).find(Boolean);
   if (!fileId) return { frames: [], fail: 'no Drive file id' };
-  const auth = new google.auth.GoogleAuth({ keyFile: saKeyPath(), scopes: ['https://www.googleapis.com/auth/drive.readonly'] });
+  const auth = new AceGoogleAuth();
   const drive = google.drive({ version: 'v3', auth });
   const meta = await drive.files.get({ fileId, fields: 'name,mimeType,thumbnailLink', supportsAllDrives: true });
   const mime = meta.data.mimeType ?? '';

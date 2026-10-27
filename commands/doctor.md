@@ -73,7 +73,7 @@ exec "$SCRIPT"
 
 Read the output and tell the user:
 
-1. A one-line headline: "All checks passed" (only PASS lines) / "N warnings, M failures — see below" (mixed) / "Critical failures — ACE will not work until these are fixed" (any FAIL on node/deps/gws_key/mcp_manifest).
+1. A one-line headline: "All checks passed" (only PASS lines) / "N warnings, M failures — see below" (mixed) / "Critical failures — ACE will not work until these are fixed" (any FAIL on node/deps/google_token/mcp_manifest).
 2. If the output contains an `INFO cwd_is_ace_checkout=` line, mention it — the user is inside a dev worktree that is NOT being audited; they can pass `--here` to `bin/ace-doctor` directly to audit that checkout instead.
 3. For each **FAIL**, quote the line verbatim and tell the user the exact command from the `fix:` hint.
 4. For each **WARN**, list them briefly. These are non-blocking.
