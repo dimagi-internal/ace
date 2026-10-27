@@ -160,6 +160,16 @@ form's markup if that space is not offered (seen 2026-10-08).
 [done] minted token "ACE-plugin", length=43
 ```
 
+## Full access and the passkey approval
+
+Labs asks for a person's passkey approval (through canopy) before it creates any
+full-access token. ACE's account, `ace@dimagi-ai.com`, is ticked in labs' Django admin
+under **Full-access self-mints** (Jonathan, 2026-10-27: ACE is never in a project space
+with real data), so this command still creates the token in one pass. If that tick is
+ever removed, the script stops with `labs asked for a passkey approval instead of
+creating the token` and creates nothing: re-tick it, or mint with scope
+`no-uservisit-data`.
+
 ## Troubleshooting
 
 - **`Did not reach CCHQ login. Current URL: ...`** — Connect login
