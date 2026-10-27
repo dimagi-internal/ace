@@ -6,6 +6,8 @@ Connect Labs agent panel). Linked from each skill that can run there; *enforced:
 `test/skills/labs-on-a-page.test.ts` (the links) and
 `test/mcp/connect-labs/headers-helper.test.ts` (the helper).
 
+Off a labs page, in someone's own Claude Code, the rule is [`_acting-as-you.md`](_acting-as-you.md) ("as me").
+
 ## How you know you are on one
 
 The caller envelope has a `site` block naming `connect-labs` (canopy-web

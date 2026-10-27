@@ -99,6 +99,8 @@ verification flags, payment units, dates or budget, the Learn passing score, a b
 knowledge or tools, a solicitation's fields, and a Labs workflow's opportunities or template.
 Reading and answering are not changes.
 
+**Whose account makes it.** A labs change (a workflow, a dashboard, the semantic layer) is made as ACE unless the person said "as me". Either way, name the account before writing: [`skills/_acting-as-you.md`](../_acting-as-you.md).
+
 **Procedure:**
 
 1. **Name the object and its current state.** Resolve it from the context doc (§ Every
