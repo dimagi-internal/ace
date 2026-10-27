@@ -32,6 +32,8 @@ describe('nova-authoring-rules component', () => {
     ['429 handling', /did NOT apply[\s\S]*back-to-back[\s\S]*SAME `request_id`/],
     ['continue_app_test args', /exactly one of\s*> `app_id` or `work_id`/],
     ['targeted reads', /`search_blueprint` or `get_field`[\s\S]*`get_form` only/],
+    // ace#3308: Nova refuses configure_connect on an app that also runs in Web Apps.
+    ['android only before Connect', /Before the first `configure_connect`,\s*> call `update_app` with `runs_only_on: "android"`/],
   ])('brief paragraph carries: %s', (_n, re) => {
     expect(paragraph).toMatch(re);
   });

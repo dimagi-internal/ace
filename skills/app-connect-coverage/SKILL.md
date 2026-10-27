@@ -277,6 +277,12 @@ most damaging mistake this skill can make, so branch explicitly:
 > marker-deletion, which is strictly worse than the gap you came to close.
 > This is the exact inverse of `update_form({connect})`.
 
+**Precondition: the app runs only on Android.** Nova refuses
+`configure_connect` on an app that also runs in Web Apps (since 2026-10-27,
+ace#3308). If `get_app` does not show the app as Android-only, call
+`update_app({work_id, request_id, runs_only_on: "android"})` first. A Connect
+app is Android-only by definition, so this never changes what workers get.
+
 So the participant list must be **every form that should carry a Connect
 block after this call** — the `match` forms included, not just the broken
 ones. Build it from the Step 1 complete form list unioned with the Step 2

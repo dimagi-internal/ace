@@ -227,9 +227,10 @@ export const NOVA_CONTRACT: Record<string, ToolExpectation> = {
     why: 'Module rename / case-type / display-condition edits.',
   },
   update_app: {
-    required: ['name', ...WORK],
+    required: [...WORK],
+    mustHaveProps: ['name', 'runs_only_on'],
     forbiddenProps: ['connect_type', 'app_id'],
-    why: 'App display name ONLY. `connect_type` was removed 2026-07-31 (#1133) — configure_connect replaced it.',
+    why: 'Display name, and runs_only_on: "android", which configure_connect requires since 2026-10-27 (ace#3308). `connect_type` was removed 2026-07-31 (#1133) — configure_connect replaced it.',
   },
   configure_connect: {
     required: ['mode', ...WORK],

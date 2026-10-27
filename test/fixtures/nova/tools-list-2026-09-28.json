@@ -2462,12 +2462,20 @@
    "request_id": {
     "type": "string"
    },
+   "runs_only_on": {
+    "union": true
+   },
+   "show_incomplete_forms": {
+    "type": "boolean"
+   },
+   "show_saved_forms": {
+    "type": "boolean"
+   },
    "work_id": {
     "type": "string"
    }
   },
   "required": [
-   "name",
    "work_id",
    "request_id"
   ]

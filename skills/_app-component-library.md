@@ -2421,6 +2421,11 @@ The brief reaches the architect intact: the truncation behind ace#989 is fixed
 (`voidcraft-labs/commcare-nova#363`) and the architect's operating prompt ends
 with a `NOVA-PROMPT-END` sentinel it checks for.
 
+Clause 10 came later (ace#3308): Nova's "where the app runs" release
+(`voidcraft-labs/commcare-nova` #814–#822, 2026-10-27) made `configure_connect`
+refuse on any app that runs on both platforms, which is how every new app
+starts. App tests and form checks still run on an Android-only app.
+
 This component is the ONE place these rules are written. It extends rather than
 repeats three rules that already exist: the `#form/` prefix rule
 ([`assessment-gate`](#assessment-gate)), the `search_blueprint` uuid lookup
@@ -2461,6 +2466,11 @@ App-test economy paragraph in `pdd-to-deliver-app` Step 3).
 > answered in a test, so do not try to answer one.
 > (9) Read narrowly: to find one field use `search_blueprint` or `get_field`;
 > call `get_form` only when you need the whole form.
+> (10) Android only: this is a CommCare Connect app, and Connect workers open
+> it only in the Connect app on Android. Before the first `configure_connect`,
+> call `update_app` with `runs_only_on: "android"`; Nova refuses to turn
+> Connect on in an app that also runs in Web Apps (commcare-nova#822). Never
+> set `"web-apps"`.
 
 
 ## Label-fidelity components (added 2026-08-26)
