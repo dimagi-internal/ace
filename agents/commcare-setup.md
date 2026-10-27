@@ -450,7 +450,9 @@ const work = await NovaWork.begin({ newApp: { name } });          // begin_work;
 const { moduleUuid } = await work.stage('create_module', { name: 'Training', case_type: null });
 const { formUuid } = await work.stage('create_form', { moduleUuid, name: 'Module 1', type: 'survey' }); // EMPTY form
 await work.stage('add_fields', { moduleUuid, formUuid, fields: [/* the questions */] });
-// … further modules/forms, then configure_connect({mode, participants}) …
+// … further modules/forms …
+await work.stage('update_app', { runs_only_on: 'android' }); // Nova refuses Connect on a both-platform app (ace#3308)
+// … then configure_connect({mode, participants}) …
 const { appId } = await work.save();   // throws unless Nova answered saved:true
 // write appId to run_state.yaml NOW — this is nova_app_id (§ Completion)
 ```
