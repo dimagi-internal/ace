@@ -196,6 +196,7 @@ export const RAILS: Readonly<Record<string, RailProvenance>> = {
   'test/skills/deliver-summary-nova-uuids.test.ts': { issues: ['ace#2144'], observed: 'spark-facilitator/20260906-2233' },
   'test/skills/demo-set-decisions.test.ts': { issues: ['dimagi-internal/canopy-web#1516'], note: 'PR, not a defect report: canopy-web accepts decisions[] rows and retired the brief lists; a publisher still sending them is refused (storyboard feedback rounds, Task 11).' },
   'test/skills/ace-web-attribution.test.ts': { issues: ['ace#2572'], observed: 'spark-facilitator/20261001-2208' },
+  'test/skills/acting-as-you.test.ts': { issues: ['dimagi-internal/canopy#1081'], note: 'Seen 2026-10-27: a member\'s ACE on DIM-SI-W021 held two labs connections that only answered as the member because ACE\'s vault had not loaded (the plugin connection flips to ace@ once it does), and the owner\'s claude.ai labs connector answered labs_context as ace@dimagi-ai.com.' },
   'test/skills/labs-on-a-page.test.ts': { issues: ['dimagi-internal/canopy-web#2142'], note: 'Seen in connect-labs data_chat_eval outside-selection (ACE read opp 10061 off a KMC run page with its own labs login); the PR is the owner decision that page turns read labs only as the person.' },
   'test/skills/ace-winner-demonstration-award.test.ts': { issues: ['ace#3257'], observed: 'connect-fi/20261018-1440' },
   'test/skills/ampersand-not-banned.test.ts': { issues: ['ace#2150'], observed: 'spark-facilitator/20260925-1536' },

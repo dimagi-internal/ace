@@ -55,6 +55,8 @@ whole session live while email returns only the output (Jon, 2026-10-07 — some
 one, some the other); one thread per task, and separate threads run in parallel; approvals and
 who gives them; that routing a person or channel to another runner moves who oversees it.
 
+**Acting as you.** To have ACE change Connect Labs (workflows, dashboards, the semantic layer) as yourself rather than as ACE, say **"as me"** in the request. Before any labs write ACE names the account it will write as, and "as me" only goes through a connection signed in as you; with none it stops and says how to add one. Only labs can be "as me" today. Connect, HQ, OCS and Drive changes are made as ACE's own accounts. Rule and setup: [`skills/_acting-as-you.md`](../_acting-as-you.md).
+
 **ACE runs in your own Claude Code.** Anyone with ACE access who uses Claude Code works with
 ACE in their own session: questions, reviews, Labs reads, even an opp run. They set it up once
 with `canopy agent use ace` (read its `--help` for the current steps; it ends with the line that

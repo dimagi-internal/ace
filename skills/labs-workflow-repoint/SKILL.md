@@ -17,6 +17,8 @@ template. Common cases:
 Platform facts: [`connect-labs.md` § Workflow template lifecycle](../../playbook/integrations/connect-labs.md#workflow-template-lifecycle-follow-freeze-refollow),
 § Changing live labs objects and § History (simulated time).
 
+Whose account makes the change, and what "as me" means: [`skills/_acting-as-you.md`](../_acting-as-you.md). Name it in the proposal.
+
 ## Inputs
 
 | Parameter | Used for | Resolver |

@@ -25,6 +25,8 @@ Worked example — accepted live as labs registry 6369, rendered as programme re
 `docs/examples/cascade/spark-facilitator/registry.py` and the fixture it produced,
 `test/fixtures/cascade/spark-facilitator-registry.json`. Read them before authoring.
 
+Outside a run, a registry written for a person ("as me") follows [`skills/_acting-as-you.md`](../_acting-as-you.md): name the account before writing, and never fall back to ACE's.
+
 ## Terminology
 
 Every human-readable string you write — `display.title`, labels, `plain`
