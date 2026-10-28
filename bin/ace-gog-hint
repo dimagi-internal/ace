@@ -37,8 +37,8 @@ if command -v canopy >/dev/null 2>&1; then
 fi
 
 case "$(uname -s 2>/dev/null)" in
-  Darwin) INSTALL_GOG="brew install steipete/tap/gogcli" ;;
-  *) INSTALL_GOG="install gog from https://github.com/steipete/gogcli/releases and put it on PATH" ;;
+  Darwin) INSTALL_GOG="brew install gogcli" ;;
+  *) INSTALL_GOG="install gog from https://github.com/openclaw/gogcli/releases and put it on PATH" ;;
 esac
 PRE=""
 [ "$NO_GOG" = 1 ] && PRE="$INSTALL_GOG, then "
