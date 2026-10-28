@@ -8,6 +8,8 @@ disable-model-invocation: false
 
 # App Release Eval
 
+**Worker role (multi-role runs):** when the dispatch carries a `worker_role: {key, label}` block, scope this run to that role's apps and its part of the PDD, and read and write every `3-commcare/` (or `4-connect/`) file at the same name under `3-commcare/roles/<key>/` (`4-connect/roles/<key>/`). No block = a single-role run, unchanged. Contract: [`skills/_worker-roles.md`](../_worker-roles.md).
+
 `app-release` makes versioned + released builds for the Learn and Deliver
 apps Nova uploaded as drafts. Connect's `Sync Deliver Units` reads only
 *released* builds, so an unreleased app silently breaks the next phase

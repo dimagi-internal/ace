@@ -66,6 +66,7 @@ import {
   generateRunReadme,
   phaseStatusFromRunState,
   lloHandoverFromRunState,
+  workerRolesFromRunState,
   PHASE_README_STATUSES,
   type PhaseStatus,
 } from '../lib/run-readme.js';
@@ -4929,6 +4930,7 @@ async function refreshRunReadme(
     const runId = meta.data.name ?? runFolderId;
     const markdown = generateRunReadme(runId, phaseStatusFromRunState(parsedRunState), {
       lloHandover: lloHandoverFromRunState(parsedRunState),
+      workerRoles: workerRolesFromRunState(parsedRunState),
     });
     await handleCreateFile(
       { name: 'README.md', content: markdown, parentFolderId: runFolderId, findOrCreate: true },

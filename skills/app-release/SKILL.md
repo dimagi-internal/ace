@@ -8,6 +8,8 @@ disable-model-invocation: false
 
 # App Release
 
+**Worker role (multi-role runs):** when the dispatch carries a `worker_role: {key, label}` block, scope this run to that role's apps and its part of the PDD, and read and write every `3-commcare/` (or `4-connect/`) file at the same name under `3-commcare/roles/<key>/` (`4-connect/roles/<key>/`). No block = a single-role run, unchanged. Contract: [`skills/_worker-roles.md`](../_worker-roles.md).
+
 **Run workspace:** when the dispatch carries a `run_workspace:` block, its values replace the `.env` ones this skill names — `ACE_HQ_DOMAIN` → `run_workspace.hq_domain` — and a partner workspace never falls back to `.env`. Contract: [`skills/_run-workspace.md`](../_run-workspace.md).
 
 Make a new build of each app on CCHQ and mark it as **Released**, so Connect

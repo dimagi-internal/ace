@@ -54,6 +54,18 @@ returned 0/4).
 Pass `phaseFolderId` to **all three** skills as the `parentFolderId` for every
 artifact write. Hold onto `runFolderId` for the Step 0 self-check at completion.
 
+### Step 0.5: Worker-role entry guard (every dispatch, before Step 1)
+
+Download the PDD and
+`phases.commcare-setup.products` (as JSON) and run
+`node "$ACE_ROOT/node_modules/tsx/dist/cli.mjs" "$ACE_ROOT/scripts/worker-roles.ts" --pdd <pdd.md> --commcare-products <p3.json>`.
+A non-empty `owed_by_phase3` means the PDD declares a role Phase 3 has not
+built — the normal shape when the PDD gained a role after Phase 3 finished.
+**HALT before creating anything** with a `[BLOCKER]`: *"Phase 3 has not built
+<roles>; re-run commcare-setup (its Step 0.95 builds only the missing roles)
+before Phase 4."* Creating the opportunities first would leave that role
+without one, and the primary's would be named for a single-role run.
+
 ### Step 1: Program Setup
 Invoke the `connect-program-setup` skill.
 
@@ -84,6 +96,8 @@ Invoke the `connect-program-setup` skill.
 Invoke the `connect-opp-setup` skill.
 
 - **Input:** program UUID from Step 1; PDD; deployment summary from Phase 3.
+  On a multi-role run (`apps.worker_roles` present) also pass
+  `worker_role: {key: worker_roles[0], label}, primary: true` — see Step 2b.
 - **Output:**
   - Opportunity created with `is_test=true`, verification flags +
     payment units configured, **activated**, and ACE test user
@@ -109,6 +123,44 @@ Invoke the `connect-opp-setup` skill.
   Phase 9's `llo-launch` sends the awardee email. `llo-launch` becomes
   idempotent on already-active opps (skip-and-log) and still owns the
   real-LLO invite.
+
+### Step 2b: One opportunity per worker role (multi-role runs only)
+
+Read `phases.commcare-setup.products.apps.worker_roles` (Step 0.5 has already
+confirmed it matches the PDD). **Absent → single-role run: skip this step**; Step 2 already made the run's
+one opportunity.
+
+Present (`[primary, extra, …]`, written by Phase 3 Step 0.95 — contract in
+[`skills/_worker-roles.md`](../skills/_worker-roles.md)): every role gets its own
+opportunity on the ONE program from Step 1, held by the same org, and each is
+wired to THAT role's released Learn + Deliver apps. Never two opportunities on
+one Deliver release: Connect binds one `DeliverUnit` per (holding org, released
+Deliver app), so the second could never create its payment units (ace#573).
+
+1. **Step 2 is the primary role's opportunity.** Dispatch it with
+   `worker_role: {key: <worker_roles[0]>, label}`, `primary: true`, so it is
+   named `"<run_id> · <Role> · <PDD display name>"` and records `tile_token` +
+   `primary_role` (see `connect-opp-setup` § Multi-role runs). Its block stays at
+   `products.connect.opportunity` / `ace_test_user` — every reader of the primary
+   shape is unchanged.
+2. **Then invoke `connect-opp-setup` once per extra role, in `worker_roles`
+   order**, with `worker_role: {key, label}` and that role's apps from
+   `products.apps.roles.<key>` (HQ ids) and `3-commcare/roles/<key>/` (summaries).
+   Each run creates its own opportunity, its own verification flags, its own
+   payment units (the PDD's payment units for the work that role's Deliver app
+   records), its own test-user invite, and writes
+   `products.connect.role_opportunities.<key>`. Program setup (Step 1) and the
+   holding org's program application (its Step 3) are shared and already done —
+   it reuses them.
+3. **Re-dispatch is safe per role.** Each invocation's Step 4.0 resume check
+   adopts the role's own opportunity — by the id recorded the moment its create
+   returned (`role_opportunities.<key>.opportunity.id`), else by its exact
+   role-named title — and passes the other roles' titles as `siblingNames`, so
+   one role's opportunity is never read as a run-id collision for another.
+   `connect_create_opportunity` itself refuses a second create of an existing
+   name.
+4. Dispatch `connect-opp-setup-eval` per opportunity (role verdicts under
+   `4-connect/roles/<key>/`).
 
 ### Completion
 
@@ -139,6 +191,9 @@ Write the phase summary to `connect-setup_summary.md` with
 - Orgs: `pm_org_slug` (program) and `holding_org_slug` (opportunity) plus
   `org_mode` (`pm-nm` | `self-managed`)
 - Connect deep-link: `<CONNECT_BASE_URL>/a/<holding_org_slug>/opportunity/<uuid>/`
+- **Multi-role runs:** one section per role — opportunity name, UUID, status,
+  payment units, test-user read-back, deep-link — and the tile token Phase 6
+  uses for each (`opportunity.tile_token`).
 - **To confirm before launch:** the live `review_ask` rows `decisions_enrich`
   reports (id + `plain` + `confirm_reason`) — the list a reviewer must settle.
 

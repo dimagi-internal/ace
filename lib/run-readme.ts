@@ -163,6 +163,58 @@ function renderLloHandover(llo: LloHandover | null): string {
   return out;
 }
 
+/** One worker role's row in the README's § Worker roles (multi-role runs only). */
+export interface WorkerRoleRow {
+  key: string;
+  label: string;
+  primary: boolean;
+  learn_hq_app_id?: string;
+  deliver_hq_app_id?: string;
+  opportunity?: string;
+}
+
+/**
+ * The per-role build of a MULTI-ROLE run (`lib/worker-roles.ts`), or `null` on
+ * a single-role run (no `apps.worker_roles`). The primary role is read from
+ * the top-level `apps.{learn,deliver}` / `connect.opportunity`, every other
+ * role from `apps.roles.<key>` / `connect.role_opportunities.<key>` — so a role
+ * Phase 4 has not created an opportunity for shows as missing, not absent.
+ */
+export function workerRolesFromRunState(runState: unknown): WorkerRoleRow[] | null {
+  const phases = (runState as any)?.phases;
+  const apps = phases?.['commcare-setup']?.products?.apps;
+  const keys = apps?.worker_roles;
+  if (!Array.isArray(keys) || keys.length < 2) return null;
+  const connect = phases?.['connect-setup']?.products?.connect ?? {};
+  const s = (v: unknown) => (typeof v === 'string' && v !== '' ? v : undefined);
+  return keys
+    .filter((k: unknown): k is string => typeof k === 'string')
+    .map((key, i) => {
+      const primary = i === 0;
+      const pair = primary ? apps : apps.roles?.[key] ?? {};
+      const opp = primary ? connect.opportunity : connect.role_opportunities?.[key]?.opportunity;
+      return {
+        key,
+        label: s(pair?.label) ?? s(connect.role_opportunities?.[key]?.label) ?? key,
+        primary,
+        learn_hq_app_id: s(pair?.learn?.hq_app_id),
+        deliver_hq_app_id: s(pair?.deliver?.hq_app_id),
+        opportunity: s(opp?.url) ?? s(opp?.id),
+      };
+    });
+}
+
+function renderWorkerRoles(rows: WorkerRoleRow[] | null): string {
+  if (!rows || rows.length === 0) return '';
+  let out = `\n---\n\n## Worker roles\n\nOne Learn app, one Deliver app and one Connect opportunity per role.\n\n| Role | Learn (HQ) | Deliver (HQ) | Opportunity |\n|---|---|---|---|\n`;
+  for (const r of rows) {
+    const dash = '— not yet';
+    out += `| ${r.label}${r.primary ? ' (primary)' : ''} | ${r.learn_hq_app_id ?? dash} | ${r.deliver_hq_app_id ?? dash} | ${r.opportunity ?? dash} |\n`;
+  }
+  out += `\nFull record: \`run_state.yaml\` → \`phases.commcare-setup.products.apps.roles\`, \`phases.connect-setup.products.connect.role_opportunities\`.\n`;
+  return out;
+}
+
 const OPP_LEVEL_PATHS = new Set<string>([
   'inputs/',
   'opp.yaml',
@@ -187,7 +239,7 @@ const OPP_LEVEL_PATHS = new Set<string>([
 export function generateRunReadme(
   runId: string,
   phaseStatus: Partial<Record<string, PhaseStatus>> = {},
-  opts: { lloHandover?: LloHandover | null } = {},
+  opts: { lloHandover?: LloHandover | null; workerRoles?: WorkerRoleRow[] | null } = {},
 ): string {
   // Normalize incoming keys (short Phase keys OR long agent-file names)
   // to short Phase keys so both key-spaces flip their rows. Unknown
@@ -218,6 +270,7 @@ export function generateRunReadme(
     body += `| ${phaseFolder} | ${filename} | ${a.producedBy} | ${status} |\n`;
   }
 
+  body += renderWorkerRoles(opts.workerRoles ?? null);
   body += renderLloHandover(opts.lloHandover ?? null);
   body += `\n---\n\n**Run state:** \`run_state.yaml\` (in this folder)\n**Latest cross-run truth:** \`../current/\` (shortcuts under the opp root)\n`;
   return body;

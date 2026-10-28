@@ -212,6 +212,40 @@ exempts the real `llo-onboarding` / `llo-uat` / `llo-launch` artifacts from
 the fence and nothing else. `lib/run-state-validator.ts` refuses any other
 `execution-management.mode`.
 
+**Multi-role products** (only on a run whose PDD lists two or more
+`worker_roles` and does not choose one shared opportunity — `lib/worker-roles.ts`
+`planWorkerRoles`; contract `skills/_worker-roles.md`). ADDITIVE: the
+single-object keys keep holding the PRIMARY role (the PDD's first role), so
+every reader of `apps.{learn,deliver}` / `connect.opportunity` is unchanged; a
+single-role run writes none of these keys:
+
+```yaml
+phases:
+  commcare-setup:
+    products:
+      apps:
+        learn: {…}   deliver: {…}           # primary role, unchanged
+        worker_roles: [coach, enumerator]   # every role key, primary FIRST — written before any build
+        roles:
+          enumerator: { label, learn: {…AppEntry}, deliver: {…AppEntry} }
+  connect-setup:
+    products:
+      connect:
+        opportunity: {…, tile_token}        # primary role's; tile_token = "<run_id> · <Role>"
+        ace_test_user: {…}
+        primary_role: coach
+        role_opportunities:
+          enumerator: { label, opportunity: {…, tile_token}, ace_test_user: {…}, payment_units, postcondition }
+```
+
+`verify_phase_products` enforces it: with `worker_roles` written, a terminal
+Phase 3 owes `apps.roles.<key>.{learn,deliver}.hq_app_id` per extra role, and a
+terminal Phase 4 owes `role_opportunities.<key>.opportunity.url` +
+`.ace_test_user.invite_row_present` for every extra role Phase 3 built. Phase 3
+resumes by building only roles short of a released pair (`planRoleBuilds`).
+Deliberately primary-only, each saying so in its own summary: the Phase 6
+device walk, the Phase 7 synthetic cascade, the Phase 9 partner opportunity.
+
 See `docs/superpowers/specs/2026-05-10-state-consolidation.md` for
 historical context (the original design had cross-run inheritance via
 a seed step; that was reverted in favour of run independence).

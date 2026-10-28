@@ -7,6 +7,8 @@ description: >
 
 # App Media Coverage
 
+**Worker role (multi-role runs):** when the dispatch carries a `worker_role: {key, label}` block, scope this run to that role's apps and its part of the PDD, and read and write every `3-commcare/` (or `4-connect/`) file at the same name under `3-commcare/roles/<key>/` (`4-connect/roles/<key>/`). No block = a single-role run, unchanged. Contract: [`skills/_worker-roles.md`](../_worker-roles.md).
+
 Put pictures in front of the frontline worker. Three sources, one plan:
 
 1. **The opp's own files** — `ACE/<opp>/inputs/media/`, plus whatever guidance
