@@ -456,6 +456,11 @@ Record what you observe here.
   - The opportunity's app wiring still named the same HQ app id, and the 7 `form_field_rules` (read with `connect_get_verification_flags`) still pointed at the same deliver-unit ids.
   - No `Sync Deliver Units` was needed or clicked.
   - This does NOT settle the marker-change case or device update timing. Both remain unobserved.
+- **Observed, marker-change case: a new Learn module** (Kangaroo Care demo program, opp `73985c73…`, EU `connect-demo`, 2026-10-28):
+  - A sixth Learn form with a new `kmc_learn-06` marker was added and released (Learn build 165). The released CCZ carried the marker.
+  - After the release, the opportunity's learn module table still listed **5** modules. Connect did NOT pick up the new module on its own.
+  - Running the opportunity's `Sync Deliver Units` action (the wizard button) brought it to **6**. Deliver units and payment units were unchanged.
+  - So after any release that adds or changes Connect markers, run `Sync Deliver Units`, then read back the module and deliver-unit lists. Device update timing is still unobserved.
 
 ## Operator runbook
 
