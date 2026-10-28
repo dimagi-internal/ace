@@ -2599,14 +2599,15 @@ emit_line_probe nova_scopes
 GOG_SERVICES="gmail,calendar,drive,docs,slides,sheets,forms"
 GMAIL_CLIENT_DECLARED="$(agent_json_field gog_client)"
 GMAIL_CLIENT_VAL="$(bash "$ROOT/bin/ace-gog-client" --root "$ROOT" 2>/dev/null)"
-# The printed remedy always offers the canopy-web button first and, for the
-# terminal path, hard-codes `--client canopy` — never $GMAIL_CLIENT_VAL. That
-# variable can legitimately resolve to `canopy-web` (this machine's mailbox
-# was connected via the button), and `gog login --client canopy-web` cannot
-# work from a terminal: canopy-web only mints a token via its own button.
-GOG_LOGIN_HINT="connect via the canopy-web 'Connect Google mailbox' button (preferred, self-service), or at a terminal: brew install steipete/tap/gogcli && gog login ${GMAIL_ACCT:-<agent.json email>} --client canopy --services $GOG_SERVICES --force-consent"
+# The printed remedy depends on HOW this machine runs ace (bin/ace-gog-hint asks
+# `canopy agent runs-as`): a licence holder gets `canopy agent google-login`, a runner
+# gets Refresh, an admin gets bootstrap or the canopy-web button. A licensee was told to
+# `gog login` as ace@ and to press an admin-only button (2026-10-28, investigation 17).
+# The terminal path still hard-codes `--client canopy`, never $GMAIL_CLIENT_VAL: canopy-web
+# only mints a `canopy-web` token via its own button.
+GOG_LOGIN_HINT="$(bash "$ROOT/bin/ace-gog-hint" --mailbox "${GMAIL_ACCT:-<agent.json email>}" --services "$GOG_SERVICES")"
 if ! command -v gog >/dev/null 2>&1; then
-  warn_turn "gog_auth: GOG CLI not installed — email-communicator (Phase 8 invites, training emails) + Google user-identity ops unavailable" "$GOG_LOGIN_HINT"
+  warn_turn "gog_auth: GOG CLI not installed — email-communicator (Phase 8 invites, training emails) + Google user-identity ops unavailable" "$(bash "$ROOT/bin/ace-gog-hint" --no-gog --mailbox "${GMAIL_ACCT:-<agent.json email>}" --services "$GOG_SERVICES")"
 elif [ -z "$GMAIL_ACCT" ] || [ -z "$GMAIL_CLIENT_VAL" ]; then
   warn_turn "gog_auth: config/agent.json email or gog_client not set — cannot select GOG credentials" "see gmail_config above; fix config/agent.json, then: $GOG_LOGIN_HINT"
 else
@@ -2656,7 +2657,7 @@ else
     info "gog_client: declared '$GMAIL_CLIENT_DECLARED' in config/agent.json, using '$GMAIL_CLIENT_VAL' (the client this machine holds a token under)"
   fi
   if ! _gog auth status --account "$GMAIL_ACCT" --client "$GMAIL_CLIENT_VAL" --json | grep -q '"credentials_exists": true'; then
-    warn_turn "gog_auth: no stored GOG credentials for $GMAIL_ACCT (client=$GMAIL_CLIENT_VAL) — never authorized on this machine; email + Google ops will fail" "run once (interactive browser OAuth): $GOG_LOGIN_HINT"
+    warn_turn "gog_auth: no stored GOG credentials for $GMAIL_ACCT (client=$GMAIL_CLIENT_VAL) — never authorized on this machine; email + Google ops will fail" "$GOG_LOGIN_HINT"
   else
     # Live scope probes, classified by the SUCCESS shape.
     #

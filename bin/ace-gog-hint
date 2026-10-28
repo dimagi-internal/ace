@@ -1,0 +1,58 @@
+#!/usr/bin/env bash
+# ace-gog-hint — the fix line ace-doctor prints for gog_auth, chosen by HOW this
+# machine runs ace (`canopy agent runs-as --slug ace`: runner | admin | license | unknown).
+#
+# Usage: bin/ace-gog-hint [--mailbox <ace mailbox>] [--services <list>] [--no-gog]
+#
+# Why (2026-10-28, failure investigation 17, turn c10c9748): a licence holder set ace up
+# with `canopy agent use ace` on a Windows laptop. Her turn aborted on a missing gog OAuth
+# client file, and this doctor told her to press canopy-web's "Connect Google mailbox"
+# (agent admins only) or to `brew install … && gog login ace@… --force-consent`. A licensee
+# can't sign in as ace@, Windows has no brew, and anyone who could would re-mint ace's
+# login from their laptop. A licensee's fix is canopy's, which imports ace's login from the
+# vault: `canopy agent google-login`. An older canopy without `runs-as` answers nothing, and
+# the hint stays the admin one it always was.
+set -u
+
+MAILBOX="<agent.json email>"
+SERVICES="gmail,calendar,drive,docs,slides,sheets,forms"
+NO_GOG=0
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --mailbox) MAILBOX="${2:-$MAILBOX}"; shift 2 ;;
+    --services) SERVICES="${2:-$SERVICES}"; shift 2 ;;
+    --no-gog) NO_GOG=1; shift ;;
+    *) shift ;;
+  esac
+done
+
+MODE=""
+if command -v canopy >/dev/null 2>&1; then
+  TO_BIN="$(command -v timeout 2>/dev/null || command -v gtimeout 2>/dev/null)"
+  if [ -n "$TO_BIN" ]; then
+    MODE="$("$TO_BIN" 10 canopy agent runs-as --slug ace 2>/dev/null | head -1 | tr -d '[:space:]')"
+  else
+    MODE="$(canopy agent runs-as --slug ace 2>/dev/null | head -1 | tr -d '[:space:]')"
+  fi
+fi
+
+case "$(uname -s 2>/dev/null)" in
+  Darwin) INSTALL_GOG="brew install steipete/tap/gogcli" ;;
+  *) INSTALL_GOG="install gog from https://github.com/steipete/gogcli/releases and put it on PATH" ;;
+esac
+PRE=""
+[ "$NO_GOG" = 1 ] && PRE="$INSTALL_GOG, then "
+
+case "$MODE" in
+  license)
+    # Never `gog login` as ace@, never the admin-only button.
+    echo "${PRE}run \`canopy agent google-login --slug ace\` (or re-run \`canopy agent use ace\`) — it imports ace's Google login from its vault; you never sign in as ace yourself"
+    ;;
+  runner)
+    echo "${PRE}Refresh this runner on canopy-web (it re-stages ace's Google login from the vault); if ace's login itself is dead, an ace admin re-connects it with the 'Connect Google mailbox' button"
+    ;;
+  *)
+    # admin, unknown, or a canopy too old to answer: the admin remedy.
+    echo "${PRE}run \`canopy agent bootstrap --slug ace\` (imports ace's login from its vault); if that login is dead, re-connect it with canopy-web's 'Connect Google mailbox' button, or at a terminal: gog login $MAILBOX --client canopy --services $SERVICES --force-consent"
+    ;;
+esac
