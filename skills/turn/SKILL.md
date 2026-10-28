@@ -140,6 +140,19 @@ improvements ship once (a canopy PR) instead of N backports.
   end, don't fix silently. Also ask: did I repeat work by hand that SHOULD be a skill (or an
   issue)?
 
+  **A defect you worked AROUND is a defect you found — fix it in the turn, wherever it lives.**
+  The convention covers bugs in the shared engine (`canopy email read`, `send --reply-all`, gog
+  wrappers) exactly as it covers ACE's own code: "it's canopy's, not ours" is not an exemption,
+  it only changes the repo. Reproduce it, search that repo's issues, write the failing test,
+  fix, bump, PR, arm auto-merge, wait for the merge (`skills/shipping`). A turn may do this
+  while the person is present or absent; it never waits to be told. Falling back to another
+  path (a raw `gog` read, a `--to` send instead of `--reply-all`) is the workaround, not the
+  resolution, and **`skill-self-check: none` is a false claim when this turn worked around
+  anything** — name the fix or the issue on that line. (Origin: 2026-10-28 — a blank-subject
+  email crashed `canopy email read` and `--reply-all` with `KeyError: 'value'`; the turn
+  sent via `--to`, noted the crash in prose, reported `skill-self-check: none`, and filed
+  nothing. Jon: *"you should always be fixing bugs you've found."* Fixed in canopy#1103.)
+
   **Mechanism — do this, don't just intend it.** The obligation is the **REQUIRED close-out
   line**: report the outcome on the **Issues filed / skills changed** line —
   `skill-self-check: none` is a valid outcome, an ABSENT line is not. That line needs no tool
