@@ -140,3 +140,35 @@ export function buildCommcareProducts(input: CommcareProductsInput): CommcarePro
   if (input.deliver) apps.deliver = entry('deliver', input.deliver, known);
   return { apps };
 }
+
+// ─── Multi-role runs (lib/worker-roles.ts, skills/_worker-roles.md) ───
+
+/**
+ * The patch `app-deploy` writes for ONE EXTRA ROLE's pair on a multi-role run:
+ * `{apps: {worker_roles, roles: {<key>: {label, learn, deliver}}}}`, applied
+ * with `merge: 'deep'` so the primary's `apps.learn` / `apps.deliver` and the
+ * other roles' entries are untouched. `worker_roles` is the WHOLE ordered list
+ * (primary first) — it is an array, which `deep` replaces wholesale, so every
+ * write carries all of it.
+ *
+ * Same componentized rules as {@link buildCommcareProducts}.
+ */
+export function buildRoleCommcareProducts(
+  role: { key: string; label: string },
+  workerRoles: string[],
+  input: CommcareProductsInput,
+): { apps: { worker_roles: string[]; roles: Record<string, { label: string; learn?: CommcareAppEntry; deliver?: CommcareAppEntry }> } } {
+  if (workerRoles.length < 2) {
+    throw new CommcareProductsError('a role pair belongs to a multi-role run — worker_roles must list at least two roles');
+  }
+  if (workerRoles[0] === role.key) {
+    throw new CommcareProductsError(
+      `'${role.key}' is the primary role — write its apps with buildCommcareProducts (apps.learn / apps.deliver)`,
+    );
+  }
+  if (!workerRoles.includes(role.key)) {
+    throw new CommcareProductsError(`'${role.key}' is not in worker_roles (${workerRoles.join(', ')})`);
+  }
+  const { apps } = buildCommcareProducts(input);
+  return { apps: { worker_roles: [...workerRoles], roles: { [role.key]: { label: role.label, ...apps } } } };
+}

@@ -484,6 +484,117 @@
                   },
                   "domain": {
                     "type": "string"
+                  },
+                  "worker_roles": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "pattern": "^[a-z][a-z0-9_]*$"
+                    },
+                    "minItems": 2
+                  },
+                  "roles": {
+                    "type": "object",
+                    "additionalProperties": {
+                      "type": "object",
+                      "properties": {
+                        "label": {
+                          "type": "string"
+                        },
+                        "learn": {
+                          "type": "object",
+                          "properties": {
+                            "name": {
+                              "type": "string"
+                            },
+                            "nova_app_id": {
+                              "type": "string",
+                              "minLength": 1
+                            },
+                            "nova_url": {
+                              "type": "string",
+                              "format": "uri"
+                            },
+                            "hq_app_id": {
+                              "type": "string",
+                              "minLength": 1
+                            },
+                            "hq_url": {
+                              "type": "string",
+                              "format": "uri"
+                            },
+                            "domain": {
+                              "type": "string"
+                            },
+                            "build_status": {
+                              "type": "string",
+                              "enum": [
+                                "success",
+                                "errored",
+                                "pending"
+                              ]
+                            },
+                            "components_built": {
+                              "type": "array",
+                              "items": {
+                                "type": "string",
+                                "minLength": 1
+                              },
+                              "minItems": 1
+                            }
+                          },
+                          "additionalProperties": true
+                        },
+                        "deliver": {
+                          "type": "object",
+                          "properties": {
+                            "name": {
+                              "type": "string"
+                            },
+                            "nova_app_id": {
+                              "type": "string",
+                              "minLength": 1
+                            },
+                            "nova_url": {
+                              "type": "string",
+                              "format": "uri"
+                            },
+                            "hq_app_id": {
+                              "type": "string",
+                              "minLength": 1
+                            },
+                            "hq_url": {
+                              "type": "string",
+                              "format": "uri"
+                            },
+                            "domain": {
+                              "type": "string"
+                            },
+                            "build_status": {
+                              "type": "string",
+                              "enum": [
+                                "success",
+                                "errored",
+                                "pending"
+                              ]
+                            },
+                            "components_built": {
+                              "type": "array",
+                              "items": {
+                                "type": "string",
+                                "minLength": 1
+                              },
+                              "minItems": 1
+                            }
+                          },
+                          "additionalProperties": true
+                        }
+                      },
+                      "additionalProperties": true
+                    },
+                    "propertyNames": {
+                      "pattern": "^[a-z][a-z0-9_]*$"
+                    }
                   }
                 },
                 "additionalProperties": true
@@ -573,6 +684,10 @@
                       "end_date": {
                         "type": "string"
                       },
+                      "tile_token": {
+                        "type": "string",
+                        "minLength": 1
+                      },
                       "verification": {
                         "type": "object",
                         "properties": {
@@ -638,6 +753,114 @@
                       }
                     },
                     "additionalProperties": true
+                  },
+                  "primary_role": {
+                    "type": "string",
+                    "pattern": "^[a-z][a-z0-9_]*$"
+                  },
+                  "role_opportunities": {
+                    "type": "object",
+                    "additionalProperties": {
+                      "type": "object",
+                      "properties": {
+                        "label": {
+                          "type": "string"
+                        },
+                        "opportunity": {
+                          "type": "object",
+                          "properties": {
+                            "id": {
+                              "type": "string"
+                            },
+                            "name": {
+                              "type": "string"
+                            },
+                            "url": {
+                              "type": "string",
+                              "format": "uri"
+                            },
+                            "start_date": {
+                              "type": "string"
+                            },
+                            "end_date": {
+                              "type": "string"
+                            },
+                            "tile_token": {
+                              "type": "string",
+                              "minLength": 1
+                            },
+                            "verification": {
+                              "type": "object",
+                              "properties": {
+                                "form_field_rules": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "object",
+                                    "properties": {
+                                      "name": {
+                                        "type": "string"
+                                      },
+                                      "question_path": {
+                                        "type": "string"
+                                      },
+                                      "question_value": {
+                                        "type": "string"
+                                      },
+                                      "deliver_unit_id": {
+                                        "type": [
+                                          "string",
+                                          "number"
+                                        ]
+                                      }
+                                    },
+                                    "additionalProperties": true
+                                  }
+                                },
+                                "form_field_rules_saved": {
+                                  "type": "number"
+                                }
+                              },
+                              "additionalProperties": true
+                            }
+                          },
+                          "additionalProperties": true
+                        },
+                        "ace_test_user": {
+                          "type": "object",
+                          "properties": {
+                            "phone": {
+                              "type": "string"
+                            },
+                            "invite_row_present": {
+                              "type": "boolean"
+                            },
+                            "connect_user_id": {
+                              "type": [
+                                "string",
+                                "null"
+                              ]
+                            },
+                            "status": {
+                              "type": "string"
+                            },
+                            "checked_at": {
+                              "type": "string"
+                            },
+                            "per_run": {
+                              "type": "boolean"
+                            },
+                            "registered_at": {
+                              "type": "string"
+                            }
+                          },
+                          "additionalProperties": true
+                        }
+                      },
+                      "additionalProperties": true
+                    },
+                    "propertyNames": {
+                      "pattern": "^[a-z][a-z0-9_]*$"
+                    }
                   },
                   "build_memo": {
                     "type": "object",

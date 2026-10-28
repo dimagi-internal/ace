@@ -132,6 +132,19 @@ On exit 3:
    `done`, so no DDD loop is dispatched; the boundary fence steps over it; the run
    README marks Phase 7's rows `skipped`.
 
+## Multi-role runs: the cascade models the primary role
+
+When `phases.commcare-setup.products.apps.worker_roles` is present the run built
+an app pair and an opportunity per worker role (`skills/_worker-roles.md`). The
+cascade below is keyed on ONE released Deliver app's form paths, and it uses the
+primary role's (`products.apps.deliver`, `products.connect.opportunity`). The
+other roles' visits are not generated. Say so — never leave a role out
+silently: name each extra role under a **Not modeled** heading in
+`7-synthetic/synthetic-data-and-workflows_summary.md` and in the phase block's
+`status_note` (`"cascade models <Primary> only; <Role> (Deliver app <hq_app_id>,
+opportunity <url>) not modeled"`), and do not let the narrative claim the
+dashboards show that role's work.
+
 ## Workflow (every archetype except focus-group, at cascade scale)
 
 ### Step 0: Phase folder setup (FIRST)

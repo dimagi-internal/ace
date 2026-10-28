@@ -68,6 +68,13 @@ export interface OppResumeInput {
   listing: { complete?: unknown; total_count?: unknown } | null;
   /** `connect_list_opportunities(...).opportunities`, or null if the read failed. */
   rows: OppResumeRow[] | null;
+  /**
+   * Multi-role runs (`lib/worker-roles.ts`): the exact names of this run's
+   * OTHER roles' opportunities. They legitimately carry the same run id under a
+   * different name, so they are not a `RUN_ID_COLLISION` — without this, the
+   * second role's create would halt on the first role's opportunity.
+   */
+  siblingNames?: string[];
 }
 
 export interface OppResumeAdopted {
@@ -155,7 +162,10 @@ export function planOpportunityCreate(input: OppResumeInput): OppResumePlan {
   }
 
   const exact = rows.filter((r) => str(r.name) === expected);
-  const collisions = rows.filter((r) => str(r.name) !== expected && (str(r.name) ?? '').includes(input.runId));
+  const siblings = new Set((input.siblingNames ?? []).map((n) => n.trim()).filter((n) => n !== '' && n !== expected));
+  const collisions = rows.filter(
+    (r) => str(r.name) !== expected && !siblings.has(str(r.name) ?? '') && (str(r.name) ?? '').includes(input.runId),
+  );
 
   if (exact.length > 1) {
     return {

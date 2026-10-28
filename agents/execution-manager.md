@@ -150,6 +150,16 @@ Invoke the `llo-onboarding` skill.
 - Halt with a clear "run /ace:step solicitation-review first" message
   if `selected_llo.org_slug` is null.
 
+- **Multi-role runs** (`phases.commcare-setup.products.apps.worker_roles`
+  present — `skills/_worker-roles.md`): `llo-onboarding` gives the partner the
+  PRIMARY role's opportunity, from `apps.learn` / `apps.deliver`. A partner
+  that runs more than one role needs one opportunity per role, for the same
+  reason the build did (ace#3036): run `connect-partner-opp-create` once more
+  per extra role with `source_apps` = that role's pair from
+  `products.apps.roles.<key>` and the PDD's payment units for that role, and
+  record each in the phase summary under the role. This is not automated yet —
+  the summary lists every role, with its partner opportunity or `not created`.
+
 ### Step 2: LLO User Acceptance Testing
 Invoke the `llo-uat` skill.
 - Input: deployment summary, training materials, opportunity config, LLO contacts

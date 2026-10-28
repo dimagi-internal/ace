@@ -210,7 +210,8 @@ So make one addressed check:
 - **The run already records app ids** (`phases.commcare-setup.products.apps.{learn,deliver}.nova_app_id`
   in `run_state.yaml` — the normal case on a resume) → call
   `list_apps({limit: 20, sort: "updated_desc"})` and assert **both ids appear
-  in the result**.
+  in the result** (on a multi-role run, every recorded
+  `apps.roles.<key>.{learn,deliver}.nova_app_id` too — Step 0.95).
 - **No app ids recorded yet** (a fresh run that has built nothing) → there is
   nothing to compare against; `get_hq_connection` returning `configured: true`
   is the whole assertion, and Step 1's first build establishes the ids.
@@ -510,6 +511,69 @@ brief text (a throttled write did not apply — re-read the affected entity,
 resend with the same `request_id`, never back-to-back) is owned by ace#3300
 item 7. ACE's own scripts back off from `NOVA_RATE_LIMIT_MIN_BACKOFF_MS` in
 `lib/nova-rpc.ts`.
+
+### Step 0.95: Worker roles — one pair, or one pair per role (EVERY entry, incl. resume)
+
+Read the PDD's § Program Parameters `worker_roles`, `opportunity_structure`
+and `learn_module_visibility`, and decide with `planWorkerRoles`
+(`lib/worker-roles.ts`; table in [`skills/_worker-roles.md`](../skills/_worker-roles.md)).
+Download the PDD to a local file and run:
+
+```bash
+node "$ACE_ROOT/node_modules/tsx/dist/cli.mjs" "$ACE_ROOT/scripts/worker-roles.ts" --pdd <local pdd.md>
+```
+
+It reads the parameters exactly as `idea-to-pdd-qa § platform_constraints`
+does, and prints the plan (`multi_role`, `roles`, `primary`, `extra`,
+`reason`, and a `warning` when the PDD implies more roles than `worker_roles`
+names — surface that warning in the summary; only listed roles are built).
+
+Put its `reason` line in the phase summary either way — a reviewer must be able
+to see which roles Phase 3 read.
+
+- **`multi_role: false`** — the rest of this file runs once, exactly as it
+  always has. Nothing below in this step applies.
+- **`multi_role: true`** — Connect counts every Learn module toward every
+  worker's completion (ace#3036), so each role gets its OWN Learn app, Deliver
+  app and (in Phase 4) opportunity. Then:
+  1. **Write `products.apps.worker_roles` NOW**, before any build: the role
+     keys, primary first (`[coach, enumerator]`), via `update_yaml_file`
+     `merge: 'deep'` on `phases.commcare-setup.products.apps`. It is an array,
+     so always write the whole list. This is what makes the boundary fence
+     demand a released pair for every extra role — a phase that never wrote it
+     would pass with the extra roles silently unbuilt.
+  2. **Restore the precondition "every declared role has a released pair" —
+     never re-classify what you find.** Build the released map from each
+     `app-release_summary.md` (`3-commcare/` for the primary,
+     `3-commcare/roles/<key>/` per extra role; `apps.<app>.released_at` +
+     the HQ app id, ace#1636), then call `planRoleBuilds(plan, <this phase's
+     products>, released)`. Its `todo[]` names, per role, how far each app
+     got: `build` → run the whole skill chain from Step 1 for that app;
+     `deploy` → from Step 2; `release` → from Step 2.65; `ready` → nothing.
+     **Resume after a primary-only Phase 3** (the primary pair built and
+     released before the PDD gained a second role): the primary comes back
+     `ready` and only the new role is in `todo[]` — build just that role.
+     Never rebuild a `ready` pair: its HQ ids may already be wired into a
+     Connect opportunity (Step 2 § HQ-id stability).
+  3. **Run Steps 1 → 2.8 once per role in `todo[]`, primary first.** The
+     primary role runs them exactly as a single-role run does. Each extra
+     role runs the SAME skills (`pdd-to-learn-app`, `pdd-to-deliver-app`,
+     the lint gate, `app-connect-coverage`, the evals, `app-media-coverage`,
+     `app-review`, `app-deploy`, `app-test-cases`, `app-hq-settings`,
+     `app-release` + `app-release-eval`, `app-release-qa`) with a
+     `worker_role: {key, label}` block in each dispatch. That block scopes the
+     build to the role's part of the PDD, names the apps
+     `<display name> — <Role> Learn` / `Deliver`, routes every artifact to
+     `3-commcare/roles/<key>/`, and makes `app-deploy` write
+     `products.apps.roles.<key>` (`buildRoleCommcareProducts`) instead of
+     `apps.learn` / `apps.deliver` — contract: `skills/_worker-roles.md`.
+     A role whose Deliver app finds cases across another role's areas (an
+     enumerator who visits every coach's participants) is built with
+     location-based case sharing per the PDD — `skills/app-case-sharing`.
+  4. Each role's step statuses go under `steps.<skill>@<key>` (e.g.
+     `steps.pdd-to-deliver-app@enumerator`) so the primary's step rows stay
+     as they are. The Nova-account lease (Step 0.9) covers every role's
+     build; release it once, at phase exit.
 
 ### Step 1: PDD to Apps (sequential)
 
@@ -1132,6 +1196,16 @@ build — minting a duplicate pair. `verify_phase_products` validates an in-flig
 phase for shape only (`mode: fragment`), so the incremental write passes the
 fence. Full rationale: `agents/orchestrator-reference.md § Write an EXTERNAL
 identifier in the step that mints it`.
+
+**Multi-role run (Step 0.95):** the summary carries one section per role
+(its apps, HQ ids, release state and verdicts, pointing into
+`3-commcare/roles/<key>/` for the extra roles), the `planWorkerRoles` reason
+line, and — for every role `planRoleBuilds` still lists in `todo[]` — why it is
+short. A role short of a released pair means the phase is NOT `done`, and
+not `partial` either: once `worker_roles` is written, `apps.roles.<key>.*.hq_app_id`
+is a required handoff key, and `verify_phase_products` runs its strict check
+on `partial` too. Write `blocked` naming the unbuilt role — Phase 4 cannot
+create that role's opportunity without its released apps.
 
 Write phase summary to `ACE/<opp-name>/runs/<run-id>/3-commcare/commcare-setup_summary.md`,
 then write the `phases.commcare-setup` block per `agents/orchestrator-reference.md

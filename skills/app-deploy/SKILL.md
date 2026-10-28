@@ -43,6 +43,14 @@ in place, so the id normally holds. Three things are still shared or one-way. Ea
 - **An upload only changes the HQ draft.** Workers see nothing until `app-release` builds and
   releases it.
 
+**Worker role (multi-role runs):** when the dispatch carries `worker_role: {key, label}`,
+upload that role's pair (its summaries are under `3-commcare/roles/<key>/`), write
+`app-deploy_summary.md` there too, and in Step 6 write
+`buildRoleCommcareProducts(role, worker_roles, …)` (`lib/commcare-products.ts`) —
+`products.apps.roles.<key>` plus the whole `apps.worker_roles` list — instead of
+`apps.learn` / `apps.deliver`, with the same `merge: 'deep'`. The primary role's
+pair is written exactly as below. Contract: [`skills/_worker-roles.md`](../_worker-roles.md).
+
 ## Products
 
 - `3-commcare/app-deploy_summary.md` — HQ app IDs + URLs for both apps (run-bound; a standalone re-upload records into the program context doc instead)
@@ -585,6 +593,7 @@ When `--dry-run` is active:
 
 | Date | Change | Author |
 |------|--------|--------|
+| 2026-10-28 | Multi-role runs: a `worker_role` dispatch writes `products.apps.roles.<key>` (+ `apps.worker_roles`) via `buildRoleCommcareProducts`; the primary pair stays at `apps.learn` / `apps.deliver`. `skills/_worker-roles.md`. | ACE |
 | 2026-04-17 | Emit gate brief at `ACE/<opp-name>/runs/<run-id>/3-commcare/app-deploy_gate-brief.md` covering build status, Connectify flags, and workaround-path warnings for the Phase 3→4 gate | ACE team (PM scout, internal-admin lens) |
 | 2026-04-27 | Switch from manual HQ-UI upload to `/nova:upload_to_hq` via the Nova plugin. Inputs are now `nova_app_id` values read from the app summaries. New pre-flight check compares Nova's bound HQ project space against `ACE_HQ_DOMAIN`. Gate brief drops the workaround-path WARN and adds a domain-mismatch BLOCKER. | ACE team |
 | 2026-04-29 | Carve out app release into the new `app-release` skill (Step 2.5 of Phase 3). This skill now ends at "draft uploaded" — release is a separate, permission-sensitive step. Reason: Connect's `Sync Deliver Units` only enumerates units from released builds, so unreleased apps silently break Phase 4's payment-unit config. (0.10.1) | ACE team |

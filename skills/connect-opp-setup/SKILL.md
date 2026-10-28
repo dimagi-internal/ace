@@ -8,6 +8,8 @@ disable-model-invocation: false
 
 # Connect Opportunity Setup
 
+**Worker role:** when the dispatch carries a `worker_role:` block, this run makes that ONE role's opportunity — § Multi-role runs; contract [`skills/_worker-roles.md`](../_worker-roles.md).
+
 **Run workspace:** when the dispatch carries a `run_workspace:` block, its values replace the `.env` ones this skill names — `ACE_HQ_DOMAIN` → `run_workspace.hq_domain`, `${ACE_HQ_API_KEY}` → `run_workspace.hq_api_key` (minted here, per run, for a partner space), the preflight `connect_orgs` → `run_workspace.connect_orgs` — and a partner workspace never falls back to `.env`. Contract: [`skills/_run-workspace.md`](../_run-workspace.md).
 
 Create and fully configure a Connect managed opportunity on the program
@@ -31,6 +33,7 @@ acts in`).
 | `hq_server`, `hq_domain`, `learn_app_id`, `deliver_app_id` | the released apps the opportunity wires to | explicit arg; default: `3-commcare/app-deploy_summary.md` |
 | `component_pdds` (componentized only) | the component PDDs, read for their verification rules and payment terms. Step 8a's rule rows need every rule in the PDD set, and on a componentized programme they live in the component PDDs (e.g. a Targeting PDD's duplicates rule), not the overview; Step 6's payment-unit set comes from each component's payment terms (§ Archetypes › Componentized programmes, ace#2163) | explicit arg; default: run_state `…idea-to-design.products.components[].pdd_file_id` + `.program_level[].file_id` |
 | `deliver_app_summary` | Step 8a's rule rows: the CCZ-side enforcement a rule relies on when Connect cannot carry it | explicit arg; default: `3-commcare/pdd-to-deliver-app_summary.md` |
+| `worker_role` (multi-role runs only) | `{key, label}` of the role this opportunity is for; `primary: true` for the first role. Changes the name, the apps, the payment units and where the result is written — § Multi-role runs | explicit arg from the connect-setup dispatch (`agents/connect-setup.md § Step 2b`); absent = a single-role run, unchanged |
 
 Creating an opportunity is a build step: the full Process below runs inside
 `/ace:run` Phase 4. Its configuration steps also run on an opportunity that
@@ -51,7 +54,7 @@ alone makes the artifact land outside `4-connect` and fail
 
 - `4-connect/connect-opp-setup.md` (written with `parentFolderId = phaseFolderId`) — opp UUID, verification flags, payment units, ACE test-user invite URL, connect_int_id (ConnectProd integer id, from the create response)
 - `decisions.yaml` rows (`phase: 4-connect`, `skill: connect-opp-setup`) — one rule row per PDD verification rule, plus `[ACE]` latitude and `[FIXED]` ambiguity rows (Step 8a, § Decisions Log). The decisions log is the run's review artifact; these rows are the only record of where each rule is enforced
-- `run_state.yaml.phases.connect-setup.products.connect` — single atomic block with `program` (copied from `opp.yaml.connect.program` for run self-containment), `opportunity`, `ace_test_user` sub-keys. Read by `synthetic-data-generate` (`opportunity.connect_int_id`), Phase 6 mobile recipes, and other skills within the same run. Per-run only — no other run reads it.
+- `run_state.yaml.phases.connect-setup.products.connect` — single atomic block with `program` (copied from `opp.yaml.connect.program` for run self-containment), `opportunity`, `ace_test_user` sub-keys. Read by `synthetic-data-generate` (`opportunity.connect_int_id`), Phase 6 mobile recipes, and other skills within the same run. Per-run only — no other run reads it. On a multi-role run the primary role's opportunity stays here and each other role's is written to `products.connect.role_opportunities.<key>` (same inner shape; § Multi-role runs).
 
 ## Operations on an existing opportunity
 
@@ -71,6 +74,31 @@ Outside a run, write the outcome where the caller says: the program
 context doc's Decisions for a program project, or the run folder when one
 is bound. `comms-log/observations.md` and `auto_surfaced` mean the
 caller's record.
+
+## Multi-role runs
+
+When the dispatch carries `worker_role: {key, label}` (Phase 3 recorded
+`products.apps.worker_roles`; contract [`skills/_worker-roles.md`](../_worker-roles.md),
+helpers `lib/worker-roles.ts`), this skill makes ONE role's opportunity. The
+Process below runs unchanged except for these substitutions:
+
+| Step | Single-role | For `worker_role` |
+|---|---|---|
+| 1 (inputs) | `3-commcare/app-deploy_summary.md`, `pdd-to-deliver-app_summary.md` | the primary's at `3-commcare/`; an extra role's at `3-commcare/roles/<key>/`, HQ ids from `products.apps.roles.<key>` |
+| 3 (orgs, program application) | resolve + invite/accept | same orgs; the application is per (program, holding org), so for an extra role 3a's call returns the already-applied skip — record nothing new |
+| 4 `name` | `"<run_id> · <PDD display name>"` | `roleOpportunityName(run_id, role, display)` = `"<run_id> · <Role> · <PDD display name>"` — for the primary role too. The run id still leads (`INVALID_OPP_NAME_PREFIX`) |
+| 4 `learn_app` / `deliver_app` | the run's one pair | THIS role's released pair. Never another role's Deliver release — one `DeliverUnit` per (holding org, released Deliver app) (ace#573) |
+| 4.0 resume check | `recorded` = `products.connect.opportunity` | `recorded` = the role's own block (`products.connect.opportunity` for the primary, `products.connect.role_opportunities.<key>.opportunity` otherwise); pass `siblingNames = siblingOpportunityNames(run_id, plan, display, role)` to `planOpportunityCreate` so the other roles' opportunities are not a `RUN_ID_COLLISION` |
+| 4 record-the-id write | `products.connect.opportunity: {id, name, url}` | the role's block, same moment (ace#2412), plus `tile_token: roleTileToken(run_id, role)` = `"<run_id> · <Role>"` |
+| 5 verification flags | the PDD's Layer A rules | the rules whose question lives in THIS role's Deliver app (read paths from its released CCZ); a rule on another role's form is that role's |
+| 6 payment units + `total_budget` | the PDD's payment plan | the PDD's payment units for the work THIS role's Deliver app records (its `connect_list_deliver_units`), at the PDD's rate for that role. Budget: the PDD's figure for that role when it gives one; otherwise size it from this role's units, caps and head-count as Step 4 does, and record an `[ACE]` latitude row naming the split |
+| 7 test-user invite + read-back | one invite | an invite per opportunity — every role's opportunity gets the test user, with its own read-back |
+| 8 / 8a | `4-connect/connect-opp-setup.md`, rows | an extra role's summary at `4-connect/roles/<key>/connect-opp-setup.md`; decision rows carry the role label in the question |
+| 10 products write | `products.connect` | primary: `products.connect` as usual plus `primary_role: <key>` and `opportunity.tile_token`; extra role: `products.connect.role_opportunities.<key>: {label, opportunity, ace_test_user, verification, payment_units, postcondition}` — same inner shape, `merge: 'deep'`, same `validateAs`. Never rewrite another role's block |
+| 11 post-condition | `products.connect.postcondition` | the role's own block's `postcondition` |
+
+`connect_int_id` (Step 9) is captured per opportunity. The program
+(`products.connect.program`) and the org keys are written once, by the primary.
 
 ## Terminology
 
@@ -324,7 +352,9 @@ ace#3232). Identifiers (case properties, slugs, ids, config keys) keep their spe
    ACE's own abandoned Phase 4 runs). So, before creating:
 
    1. Read `phases.connect-setup.products.connect.opportunity` from this
-      run's `run_state.yaml` (null on a first dispatch).
+      run's `run_state.yaml` (null on a first dispatch). A `worker_role`
+      dispatch reads its own role's block instead and passes `siblingNames`
+      (§ Multi-role runs).
    2. `connect_list_opportunities({organization_slug: <pm_org>, name:
       <run_id>, hydrate: true})` — the PM org lists NM-held opportunities too;
       `name` is a substring match, so the run id finds every row of this run.
@@ -2039,6 +2069,7 @@ decisions_append_rows({
 
 | Date | Change | Author |
 |------|--------|--------|
+| 2026-10-28 | **Multi-role runs: one opportunity per worker role.** New § Multi-role runs and the `worker_role` input: with it, the skill makes ONE role's opportunity on the shared program, wired to that role's own released apps, named `"<run_id> · <Role> · <display>"` with a `tile_token` for Phase 6, its own flags, payment units and test-user invite, written to `products.connect.role_opportunities.<key>` (primary stays at `products.connect`). Step 4.0 takes `siblingNames` so a sibling role's opportunity is not a run-id collision. Connect counts every Learn module toward every worker (ace#3036), so role-specific training needs separate opportunities. *Enforced:* `test/lib/worker-roles.test.ts`. | ACE (smallholder-seasonal/20261028-1636) |
 | 2026-10-19 | **`connect_list_opportunities` sends `filtered=1` (ace#3211).** Connect's opportunity list now applies default filters (status=Active, is_test=No) unless the request carries `filtered=1`; every ACE opportunity is `is_test`, so the listing came back `complete: true, total_count: 0` on orgs holding opportunities, blinding the Step 4 504 recovery, the `OPPORTUNITY_ALREADY_EXISTS` guard and Step 4a's Σ. Every page of the walk now carries it. *Enforced:* `test/mcp/connect/unit/list-opportunities-filtered.test.ts`. | ACE (#3211) |
 | 2026-10-18 | `## Inputs` are parameters with resolvers. New § Operations on an existing opportunity names Step 5 (verification flags), Step 6 (payment units) and Step 4's passing-score read-back and repair as the one written source for those mechanics, runnable on an existing `opportunity_id`; `connect-opp-modify` points here instead of restating them. New § Existing objects. The stale Phase 8 `selected_llo` input row is gone (Phase 4 runs before Phase 8; the holding org comes from `connect_orgs`). | ACE (#3148 batch 3) |
 | 2026-10-03 | **Build memo retired — decisions.yaml is the review artifact (schema v6).** Step 8 no longer ends `connect-opp-setup.md` with a memo section; new Step 8a records one rule row per PDD verification rule (`Where is the PDD verification rule '<rule>' enforced?`, with `plain`, `check_at`, and `scope` / `enforcement` set or computed by `classifyRule`), plus latitude and ambiguity rows, and a rule Connect refused is a rule row with `enforcement: gap` that `decisions_enrich` turns into a review ask; `products.connect.build_memo` is no longer written, and the Phase 4 boundary fails a written summary with zero rows under `skill: connect-opp-setup`. Contract: docs/decisions-contract.md. | ACE team |

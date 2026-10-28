@@ -24,7 +24,7 @@ built apps are usable end-to-end. Deep, per-journey UX grading lives in
 | `app_output_keys` | the output key each app's previews index names (§ Step 4.9, `resolveAppOutputKey`) | explicit arg; default: run_state `phases.commcare-setup.products` (the `apps` block, sole writer `app-deploy`) |
 | `organization_slug` | the org for EVERY Connect call in this skill. On a PM→NM run the opportunity is HELD by the NM org, but the PM org's URL serves every surface this skill reads (invite read-back, dashboard, learn/deliver progress); live matrix in `playbook/integrations/connect-api.md § PM→NM org-URL matrix`. `runConnectOrgs()` (`lib/connect-orgs.ts`) is the rule | explicit arg; default: run_state `phases.connect-setup.products.connect.pm_org_slug` (legacy: `organization_slug`) |
 | `opportunity_id`, `opportunity_name` | the opportunity under test; `${OPP_NAME}` (verbatim, logging/screenshot context only) | explicit arg; default: run_state `phases.connect-setup.products.connect.opportunity.{id, name}` |
-| `opp_run_id` | `${OPP_RUN_ID}`, the deterministic tile matcher (§ OPP_RUN_ID) | explicit arg; default: top-level `run_state.yaml.run_id`. Outside a run, pass the token that uniquely identifies the opportunity's tile |
+| `opp_run_id` | `${OPP_RUN_ID}`, the deterministic tile matcher (§ OPP_RUN_ID) | explicit arg; default: `phases.connect-setup.products.connect.opportunity.tile_token` when present (a multi-role run, where every role's tile carries the run id — `skills/_worker-roles.md`), else top-level `run_state.yaml.run_id`. Outside a run, pass the token that uniquely identifies the opportunity's tile |
 | `out_folder_id` | where previews, forensics and the summary go | explicit arg; default: the run's `3-commcare/previews/` and `6-qa-and-training/` folders |
 | test user | the pool test worker the device signs in as (`test_worker` in the `mobile_ensure_avd_running` result; PHONE/PIN auto-injected into recipes). It may differ from `${ACE_E2E_PHONE}`, the only phone `connect-opp-setup` Step 7 invites, so Step 3a invites the signed-in worker when needed (ace#3228) | the session's test worker (see the `connect-login.yaml` notes below) |
 
@@ -672,6 +672,17 @@ the `.*` wrappers substring-match the run-id within the longer tile
 label). Normally you pass `${OPP_RUN_ID}` **verbatim** from
 `run_state.yaml.run_id`. This is what makes finding this run's opp among the
 test user's accumulated invites deterministic.
+
+**Multi-role runs pass the opportunity's `tile_token` instead**
+(`products.connect.opportunity.tile_token`, `"<run_id> · <Role>"` —
+`lib/worker-roles.ts`). There the test user is invited to one opportunity per
+worker role, every one named `"<run_id> · <Role> · <display>"`, so `.*<run_id>.*`
+matches all of their tiles; the token adds the role, which follows the run id on
+the tile's first line. Record it as `opp_run_id_matcher`. Residual: the token's
+` · ` (U+00B7) inside a Maestro `text:` regex has not yet been observed on a
+device — the name has always carried it, the matcher has not; a miss shows up as
+the claim recipe's tile-not-found, and the fix is the run id alone with the
+other roles' opportunities not yet invited.
 
 **But "unique per run" is an assumption about NAMES, not about run-ids, and it
 can be false.** The anchor is a regex SUBSTRING match, so it matches EVERY

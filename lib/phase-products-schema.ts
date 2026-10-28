@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { isPhaseMode, type PhaseMode } from './artifact-manifest.js';
+import { ROLE_KEY_RE, extraRoleKeys } from './worker-roles.js';
 
 /**
  * Single source of truth for the `phases.<phase>.products.*` typed handoff
@@ -173,6 +174,28 @@ const AppEntry = z
   })
   .passthrough();
 
+// ─── Multi-role runs (one Learn + Deliver pair and one opportunity per role) ─
+//
+// ADDITIVE by design: `apps.{learn,deliver}` and `connect.opportunity` keep
+// holding the PRIMARY role (the PDD's first `worker_roles` entry) so the ~37
+// readers of those single objects — ace-web's summary included — are unchanged.
+// The other roles sit beside them under a role key. A single-role run writes
+// none of these keys. Rationale + helpers: `lib/worker-roles.ts`; the skills'
+// contract: `skills/_worker-roles.md`.
+
+/** A role key (`coach`, `independent_enumerator`) — `lib/worker-roles.ts` `roleKey`. */
+const RoleKey = z.string().regex(ROLE_KEY_RE, 'role key must be lowercase snake_case (lib/worker-roles.ts roleKey)');
+
+/** One extra role's Learn + Deliver pair: `apps.roles.<key>`. Same `AppEntry` shape as the primary pair. */
+const RoleApps = z
+  .object({
+    /** The role as the PDD names it (`Enumerator`). */
+    label: z.string().optional(),
+    learn: AppEntry.optional(),
+    deliver: AppEntry.optional(),
+  })
+  .passthrough();
+
 const CommcareProducts = z
   .object({
     apps: z
@@ -180,11 +203,167 @@ const CommcareProducts = z
         learn: AppEntry.optional(),
         deliver: AppEntry.optional(),
         domain: z.string().optional(),
+        /**
+         * Multi-role runs only: every declared role's key, PDD order. The
+         * FIRST is the primary role — the one `learn` / `deliver` above hold.
+         * Its presence is what makes the boundary fence require a released
+         * pair under `roles.<key>` for every other entry.
+         */
+        worker_roles: z.array(RoleKey).min(2).optional(),
+        /** Multi-role runs only: each NON-primary role's pair, keyed by role. */
+        roles: z.record(RoleKey, RoleApps).optional(),
+      })
+      .passthrough()
+      .superRefine((apps, ctx) => {
+        const wr = apps.worker_roles;
+        if (!wr || !apps.roles) return;
+        for (const key of Object.keys(apps.roles)) {
+          if (key === wr[0]) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              path: ['roles', key],
+              message: `'${key}' is the primary role (worker_roles[0]) — its apps live at apps.learn / apps.deliver, not under roles`,
+            });
+          } else if (!wr.includes(key)) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              path: ['roles', key],
+              message: `'${key}' is not in apps.worker_roles (${wr.join(', ')})`,
+            });
+          }
+        }
+      })
+      .optional(),
+  })
+  .strict();
+
+const ConnectOpportunity = z
+  .object({
+    id: z.string().optional(),
+    name: z.string().optional(),
+    url: z.string().url().optional(),
+    start_date: z.string().optional(),
+    end_date: z.string().optional(),
+    /**
+     * Multi-role runs only: the Phase 6 tile matcher for THIS opportunity
+     * (`"<run_id> · <Role>"`, `lib/worker-roles.ts` `roleTileToken`). The test
+     * user is invited to every role's opportunity, so the plain run-id matcher
+     * would match them all. Phase 6 passes this as `OPP_RUN_ID` when present.
+     */
+    tile_token: z.string().min(1).optional(),
+    /**
+     * Per-opportunity verification config as ACTUALLY PERSISTED by
+     * `connect_set_verification_flags` (ace#2296).
+     *
+     * This block had no shape here at all, so `validateAs` was
+     * structurally blind to it — `opportunity` is `.passthrough()`, and
+     * the whole `verification` sub-tree rode through unvalidated. That
+     * matters because `form_field_rules[].question_value` is the Phase 4
+     * PAYABILITY PREDICATE: it is what Connect compares a submitted
+     * form value against to decide whether a follow-up visit is paid.
+     *
+     * `question_value` is typed as a STRING because Connect's own
+     * contract types it that way (`mcp/connect-server.ts`:
+     * `question_value: z.string()`), so a boolean or a number reaching
+     * this key means an upstream reader coerced it — the shape a YAML
+     * 1.1 read-modify-write of an unquoted `yes` produces. The
+     * raw-text quoting detector
+     * (`lib/yaml-ambiguous-scalars.ts`) cannot catch that case: a
+     * boolean `true` is unambiguous to both dialects, it is just the
+     * wrong type. The two checks are complementary.
+     *
+     * Kept `.passthrough()` at both levels: this schema gates a Drive
+     * WRITE, so newly rejecting a rule that records one extra key would
+     * stall Phase 4. Only the payment-critical field is pinned.
+     */
+    verification: z
+      .object({
+        form_field_rules: z
+          .array(
+            z
+              .object({
+                name: z.string().optional(),
+                question_path: z.string().optional(),
+                question_value: z.string().optional(),
+                deliver_unit_id: z.union([z.string(), z.number()]).optional(),
+              })
+              .passthrough(),
+          )
+          .optional(),
+        form_field_rules_saved: z.number().optional(),
       })
       .passthrough()
       .optional(),
   })
-  .strict();
+  .passthrough();
+
+/**
+ * Result of READING BACK the ACE test-user invite via
+ * `connect_list_flw_invites` — NOT the `connect_send_flw_invite`
+ * response (dimagi-internal/ace#1184).
+ *
+ * `invite_users/` returns HTTP 202 with `invited_count` echoing the
+ * submitted phone list, and writes the `UserInvite` row asynchronously
+ * via `add_connect_users.delay(...)`. The send response therefore
+ * cannot witness the write, so `{status: 'queued'}` is not evidence.
+ * `invite_row_present` is the boolean the read-back actually produced
+ * (`match !== null`), and it is a REQUIRED handoff key — see
+ * REQUIRED_PRODUCT_KEYS below — so a phase that skipped the read-back
+ * cannot reach a terminal status.
+ *
+ * `false` is a legal, contract-satisfying value: it records a verified
+ * absent row. Acting on it is `connect-opp-setup` Step 7's job (that is
+ * a `[BLOCKER]`; the phase must land `error`/`partial`, never `done`).
+ */
+const AceTestUser = z
+  .object({
+    phone: z.string().optional(),
+    /** `match !== null` from connect_list_flw_invites. */
+    invite_row_present: z.boolean().optional(),
+    /**
+     * ConnectID user id, which populates **on CLAIM** — not on invite.
+     *
+     * Null on a pending row is the NORMAL pre-claim state, NOT the
+     * ace#824 signature (dimagi-internal/ace#1663). On this read path
+     * the id is not a view of the `OpportunityAccess.user` FK:
+     * `parseWorkersTable` (`lib/connect-flw-invites.ts`) splits it out
+     * of the **Name cell**, which Connect renders as a bare `-` until
+     * the worker claims the opportunity — so it is null on every
+     * pending row regardless of the underlying link. Phase 4 invites
+     * and Phase 6 claims, so treating null as a fault would fire on
+     * every healthy run.
+     *
+     * The #824 discriminator at Phase 4 is `invite_row_present`
+     * (a MISSING row), not this field.
+     */
+    connect_user_id: z.string().nullable().optional(),
+    /** `accepted` | `pending` | `unknown`. `pending` is healthy pre-claim. */
+    status: z.string().optional(),
+    checked_at: z.string().optional(),
+    /**
+     * TRUE when this run minted a RUN-SCOPED demo phone rather than
+     * using the fixed `ACE_E2E_PHONE` (dimagi-internal/ace#1289, gated
+     * on `ACE_PER_RUN_TEST_USER`).
+     *
+     * This field is the CONTRACT DISCRIMINATOR: it is what flips the
+     * required-key set below, so the inversion is run-scoped and
+     * declared by the run itself rather than read from ambient env
+     * inside a pure module. While the switch is off nothing ever
+     * writes it, so the required set is byte-identical to pre-#1289.
+     *
+     * Why the inversion is needed at all: with a per-run phone the
+     * ConnectID user does not exist at Phase 4, and connect-id creates
+     * the invite -> OpportunityAccess link only at invite time and only
+     * for an existing user (`opportunity/tasks.py`). So an absent or
+     * unlinked row at Phase 4 is EXPECTED, not the ace#824 silent
+     * failure — the real gate moves to post-registration (Phase 6,
+     * after the re-invite), where `connect_user_id !== null` must hold.
+     */
+    per_run: z.boolean().optional(),
+    /** ISO timestamp of the on-device registration walk (per-run path only). */
+    registered_at: z.string().optional(),
+  })
+  .passthrough();
 
 const ConnectProducts = z
   .object({
@@ -230,126 +409,31 @@ const ConnectProducts = z
           })
           .passthrough()
           .optional(),
-        opportunity: z
-          .object({
-            id: z.string().optional(),
-            name: z.string().optional(),
-            url: z.string().url().optional(),
-            start_date: z.string().optional(),
-            end_date: z.string().optional(),
-            /**
-             * Per-opportunity verification config as ACTUALLY PERSISTED by
-             * `connect_set_verification_flags` (ace#2296).
-             *
-             * This block had no shape here at all, so `validateAs` was
-             * structurally blind to it — `opportunity` is `.passthrough()`, and
-             * the whole `verification` sub-tree rode through unvalidated. That
-             * matters because `form_field_rules[].question_value` is the Phase 4
-             * PAYABILITY PREDICATE: it is what Connect compares a submitted
-             * form value against to decide whether a follow-up visit is paid.
-             *
-             * `question_value` is typed as a STRING because Connect's own
-             * contract types it that way (`mcp/connect-server.ts`:
-             * `question_value: z.string()`), so a boolean or a number reaching
-             * this key means an upstream reader coerced it — the shape a YAML
-             * 1.1 read-modify-write of an unquoted `yes` produces. The
-             * raw-text quoting detector
-             * (`lib/yaml-ambiguous-scalars.ts`) cannot catch that case: a
-             * boolean `true` is unambiguous to both dialects, it is just the
-             * wrong type. The two checks are complementary.
-             *
-             * Kept `.passthrough()` at both levels: this schema gates a Drive
-             * WRITE, so newly rejecting a rule that records one extra key would
-             * stall Phase 4. Only the payment-critical field is pinned.
-             */
-            verification: z
-              .object({
-                form_field_rules: z
-                  .array(
-                    z
-                      .object({
-                        name: z.string().optional(),
-                        question_path: z.string().optional(),
-                        question_value: z.string().optional(),
-                        deliver_unit_id: z.union([z.string(), z.number()]).optional(),
-                      })
-                      .passthrough(),
-                  )
-                  .optional(),
-                form_field_rules_saved: z.number().optional(),
-              })
-              .passthrough()
-              .optional(),
-          })
-          .passthrough()
-          .optional(),
+        opportunity: ConnectOpportunity.optional(),
+        ace_test_user: AceTestUser.optional(),
         /**
-         * Result of READING BACK the ACE test-user invite via
-         * `connect_list_flw_invites` — NOT the `connect_send_flw_invite`
-         * response (dimagi-internal/ace#1184).
-         *
-         * `invite_users/` returns HTTP 202 with `invited_count` echoing the
-         * submitted phone list, and writes the `UserInvite` row asynchronously
-         * via `add_connect_users.delay(...)`. The send response therefore
-         * cannot witness the write, so `{status: 'queued'}` is not evidence.
-         * `invite_row_present` is the boolean the read-back actually produced
-         * (`match !== null`), and it is a REQUIRED handoff key — see
-         * REQUIRED_PRODUCT_KEYS below — so a phase that skipped the read-back
-         * cannot reach a terminal status.
-         *
-         * `false` is a legal, contract-satisfying value: it records a verified
-         * absent row. Acting on it is `connect-opp-setup` Step 7's job (that is
-         * a `[BLOCKER]`; the phase must land `error`/`partial`, never `done`).
+         * Multi-role runs only: the role the top-level `opportunity` /
+         * `ace_test_user` belong to (= Phase 3's `apps.worker_roles[0]`).
          */
-        ace_test_user: z
-          .object({
-            phone: z.string().optional(),
-            /** `match !== null` from connect_list_flw_invites. */
-            invite_row_present: z.boolean().optional(),
-            /**
-             * ConnectID user id, which populates **on CLAIM** — not on invite.
-             *
-             * Null on a pending row is the NORMAL pre-claim state, NOT the
-             * ace#824 signature (dimagi-internal/ace#1663). On this read path
-             * the id is not a view of the `OpportunityAccess.user` FK:
-             * `parseWorkersTable` (`lib/connect-flw-invites.ts`) splits it out
-             * of the **Name cell**, which Connect renders as a bare `-` until
-             * the worker claims the opportunity — so it is null on every
-             * pending row regardless of the underlying link. Phase 4 invites
-             * and Phase 6 claims, so treating null as a fault would fire on
-             * every healthy run.
-             *
-             * The #824 discriminator at Phase 4 is `invite_row_present`
-             * (a MISSING row), not this field.
-             */
-            connect_user_id: z.string().nullable().optional(),
-            /** `accepted` | `pending` | `unknown`. `pending` is healthy pre-claim. */
-            status: z.string().optional(),
-            checked_at: z.string().optional(),
-            /**
-             * TRUE when this run minted a RUN-SCOPED demo phone rather than
-             * using the fixed `ACE_E2E_PHONE` (dimagi-internal/ace#1289, gated
-             * on `ACE_PER_RUN_TEST_USER`).
-             *
-             * This field is the CONTRACT DISCRIMINATOR: it is what flips the
-             * required-key set below, so the inversion is run-scoped and
-             * declared by the run itself rather than read from ambient env
-             * inside a pure module. While the switch is off nothing ever
-             * writes it, so the required set is byte-identical to pre-#1289.
-             *
-             * Why the inversion is needed at all: with a per-run phone the
-             * ConnectID user does not exist at Phase 4, and connect-id creates
-             * the invite -> OpportunityAccess link only at invite time and only
-             * for an existing user (`opportunity/tasks.py`). So an absent or
-             * unlinked row at Phase 4 is EXPECTED, not the ace#824 silent
-             * failure — the real gate moves to post-registration (Phase 6,
-             * after the re-invite), where `connect_user_id !== null` must hold.
-             */
-            per_run: z.boolean().optional(),
-            /** ISO timestamp of the on-device registration walk (per-run path only). */
-            registered_at: z.string().optional(),
-          })
-          .passthrough()
+        primary_role: RoleKey.optional(),
+        /**
+         * Multi-role runs only: each NON-primary role's opportunity, on the
+         * SAME program and orgs as the primary, wired to that role's own
+         * released Learn + Deliver apps (`commcare-setup` `apps.roles.<key>`).
+         * Inner shape = the primary block's: `opportunity`, `ace_test_user`,
+         * plus `verification` / `payment_units` / `postcondition` (passthrough).
+         */
+        role_opportunities: z
+          .record(
+            RoleKey,
+            z
+              .object({
+                label: z.string().optional(),
+                opportunity: ConnectOpportunity.optional(),
+                ace_test_user: AceTestUser.optional(),
+              })
+              .passthrough(),
+          )
           .optional(),
         /**
          * LEGACY — the per-run build memo pointer, written by runs between
@@ -1254,11 +1338,43 @@ export function requiredProductKeys(phase: string, mode?: string, products?: unk
     const override = REQUIRED_PRODUCT_KEYS_BY_MODE[mode][phase as PhaseName];
     if (override) return override;
   }
+  const roleKeys = products !== undefined ? roleRequiredProductKeys(phase, products) : [];
   if (products !== undefined && declaresPerRunTestUser(products)) {
     const perRun = PER_RUN_TEST_USER_REQUIRED_KEYS[phase as PhaseName];
-    if (perRun) return perRun;
+    if (perRun) return [...perRun, ...roleKeys];
   }
-  return REQUIRED_PRODUCT_KEYS[phase as PhaseName] ?? [];
+  return [...(REQUIRED_PRODUCT_KEYS[phase as PhaseName] ?? []), ...roleKeys];
+}
+
+/**
+ * The per-role required keys a MULTI-ROLE run adds to its own phase
+ * (`lib/worker-roles.ts`). Each extra role owes what the primary owes:
+ *
+ * - `commcare-setup` — `apps.worker_roles` declares the roles, so every entry
+ *   after the first needs `apps.roles.<key>.{learn,deliver}.hq_app_id`.
+ * - `connect-setup` — every `connect.role_opportunities.<key>` that exists
+ *   needs `opportunity.url` and the test-user read-back
+ *   (`ace_test_user.invite_row_present`, ace#1184). That a role Phase 3 built
+ *   has an entry at all is a CROSS-phase fact, checked by
+ *   {@link classifyPhaseProducts}.
+ *
+ * A single-role run declares neither key, so this returns [] and the required
+ * set is byte-identical to before.
+ */
+export function roleRequiredProductKeys(phase: string, products: unknown): string[] {
+  if (phase === 'commcare-setup') {
+    return extraRoleKeys(products).flatMap((k) => [`apps.roles.${k}.learn.hq_app_id`, `apps.roles.${k}.deliver.hq_app_id`]);
+  }
+  if (phase === 'connect-setup') {
+    const ro = (products as any)?.connect?.role_opportunities;
+    if (!ro || typeof ro !== 'object' || Array.isArray(ro)) return [];
+    return Object.keys(ro).flatMap(connectRoleKeys);
+  }
+  return [];
+}
+
+function connectRoleKeys(k: string): string[] {
+  return [`connect.role_opportunities.${k}.opportunity.url`, `connect.role_opportunities.${k}.ace_test_user.invite_row_present`];
 }
 
 export interface ProductsValidationIssue {
@@ -1323,10 +1439,14 @@ export function validatePhaseProductsComplete(
   products: unknown,
   mode?: string,
   completedAt?: string,
+  /** Keys another phase's products make required here (multi-role: {@link classifyPhaseProducts}). */
+  extraRequired: string[] = [],
 ): ProductsValidationResult {
   const shape = validatePhaseProductsFragment(phase, products);
   if (!shape.valid || shape.skipped) return shape;
-  const required = requiredProductKeys(phase, mode, products).filter((k) => boundAt(phase, k, completedAt));
+  const required = [...new Set([...requiredProductKeys(phase, mode, products), ...extraRequired])].filter((k) =>
+    boundAt(phase, k, completedAt),
+  );
   const issues: ProductsValidationIssue[] = [];
   for (const dotted of required) {
     if (resolveDotPath(products, dotted) === undefined) {
@@ -1407,8 +1527,15 @@ export function classifyPhaseProducts(
   const isTerminal = status === 'done' || status === 'complete' || status === 'partial';
   const completedAt: string | undefined =
     typeof phaseBlock.completed_at === 'string' ? phaseBlock.completed_at : undefined;
+  // Multi-role (lib/worker-roles.ts): every extra role Phase 3 built must have
+  // its own opportunity by the end of Phase 4 — a Phase 4 that created only the
+  // primary's would otherwise pass, silently dropping a role.
+  const extraRequired =
+    phase === 'connect-setup'
+      ? extraRoleKeys((parsed as any)?.phases?.['commcare-setup']?.products).flatMap(connectRoleKeys)
+      : [];
   const r = isTerminal
-    ? validatePhaseProductsComplete(phase, products, mode, completedAt)
+    ? validatePhaseProductsComplete(phase, products, mode, completedAt, extraRequired)
     : validatePhaseProductsFragment(phase, products);
   return {
     phase,

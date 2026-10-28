@@ -8,6 +8,8 @@ disable-model-invocation: false
 
 # App review (Phase 3 Step 1.8)
 
+**Worker role (multi-role runs):** when the dispatch carries a `worker_role: {key, label}` block, scope this run to that role's apps and its part of the PDD, and read and write every `3-commcare/` (or `4-connect/`) file at the same name under `3-commcare/roles/<key>/` (`4-connect/roles/<key>/`). No block = a single-role run, unchanged. Contract: [`skills/_worker-roles.md`](../_worker-roles.md).
+
 The `pdd-to-*-app-eval` skills ask **"was the brief built?"** This step asks the question
 none of them asks: **"is the result a good CommCare app?"** It judges the app the way a field
 worker meets it and the way an app builder would read it, then routes every defect to the

@@ -49,7 +49,7 @@ import { google } from '../lib/google-shim.js';
 import { loadPluginEnv } from '../lib/load-plugin-env.js';
 import { resolvePluginDataDir } from '../lib/plugin-data-dir.js';
 import { checkDriveWrite, googleDriveLookup, readBinding } from '../lib/drive-tenancy-guard.js';
-import { generateRunReadme, lloHandoverFromRunState, phaseStatusFromRunState } from '../lib/run-readme.js';
+import { generateRunReadme, lloHandoverFromRunState, phaseStatusFromRunState, workerRolesFromRunState } from '../lib/run-readme.js';
 import { APP_RELEASE_SUMMARY } from '../lib/app-release-record.js';
 import { hasHqKey, resolveHqKeyRef, saveHqKey } from '../lib/hq-api-key-store.js';
 import { resolveEnvSubstitution, ENV_ALLOW } from '../lib/atom-payload-resolver.js';
@@ -1006,7 +1006,7 @@ function deepMergeInto(base: Record<string, any>, patch: Record<string, any>): v
 
 async function stageReadme(ctx: Ctx): Promise<StageRecord> {
   const rs = await readTargetRunState();
-  const md = generateRunReadme(RUN, phaseStatusFromRunState(rs), { lloHandover: lloHandoverFromRunState(rs) });
+  const md = generateRunReadme(RUN, phaseStatusFromRunState(rs), { lloHandover: lloHandoverFromRunState(rs), workerRoles: workerRolesFromRunState(rs) });
   await guardDrive('render_run_readme', { runFolderFileId: ctx.tgt!.run });
   const existing = await child(ctx.tgt!.run, 'README.md', false);
   if (existing) {

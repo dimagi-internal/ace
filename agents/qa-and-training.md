@@ -477,6 +477,34 @@ In this mode:
 Everything below (the pre-flight checklist, Step 1 detail) applies unchanged;
 only Step 2 is short-circuited.
 
+## Multi-role runs
+
+When `phases.commcare-setup.products.apps.worker_roles` is present the run built
+a Learn + Deliver pair and an opportunity PER ROLE (`skills/_worker-roles.md`).
+This phase handles them as follows — and says so, rather than skipping a role
+silently:
+
+- **The device walk covers the PRIMARY role only.** `app-screenshot-capture`
+  walks `products.connect.opportunity` (the primary role) with its
+  `tile_token` as `OPP_RUN_ID` — the test user is invited to every role's
+  opportunity, and the plain run-id matcher would match all of their tiles. The
+  pre-flight post-condition check above reads the primary's `postcondition`;
+  an extra role's `phase6_blockers` are reported in the summary, not walked.
+- **Each extra role is reported as NOT device-walked.** Add one entry per extra
+  role to `phases.qa-and-training.residuals[]` (`what: "<Role> apps and
+  opportunity were not walked on a device in Phase 6"`, `where_to_apply:
+  "app-screenshot-capture with OPP_RUN_ID=<role tile_token> and the role's
+  3-commcare/roles/<key>/app-test-cases.yaml"`, `verifiable_by: "a role
+  screenshot manifest under 6-qa-and-training/roles/<key>/"`, plus a `plain`
+  line), and name it in the summary. The phase verdict carries it
+  (`proceed-with-warn`), never `pass` with the role unmentioned.
+- **Training materials cover every role.** Pass each extra role's
+  `3-commcare/roles/<key>/pdd-to-{learn,deliver}-app_summary.md` to the five
+  Step 2a skills alongside the primary's; the FLW guide, quick reference and
+  FAQ carry one section per role, and the LLO guide explains that each role
+  claims its own opportunity. An extra role's sections have no screenshots and
+  say so in one line.
+
 ## Workflow
 
 ### Step 0: Prewarm the device, then set up the phase folder (do this FIRST)

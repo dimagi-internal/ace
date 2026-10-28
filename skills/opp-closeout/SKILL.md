@@ -16,7 +16,7 @@ named by its program context doc.
 
 | Parameter | Used for | Resolver |
 |---|---|---|
-| `opportunity_id` | the opportunity whose invoices are pulled | explicit arg; default: `runs/<run-id>/4-connect/connect-opp-setup.md`; Phase 9's partner opportunity is `phases.solicitation-management.products.selected_llo.opportunity_id` |
+| `opportunity_id` | the opportunity whose invoices are pulled | explicit arg; default: `runs/<run-id>/4-connect/connect-opp-setup.md`; Phase 9's partner opportunity is `phases.solicitation-management.products.selected_llo.opportunity_id`. A multi-role run (`skills/_worker-roles.md`) has one opportunity per worker role — close out EACH: the primary's above, plus every `phases.connect-setup.products.connect.role_opportunities.<key>.opportunity.id` and any per-role partner opportunity the Phase 9 summary lists |
 | `organization_slug` | org URL the invoice pages are read at | explicit arg; default: the run's holding org (`runConnectOrgs()`); else the program context doc |
 | `llo_name`, `llo_org_slug` | who is paid (Jira summary, banking reference) | explicit arg; default: run_state `selected_llo`; else the program context doc |
 | `run_id` | run-bound mode: closeout record path + decisions rows | optional; absent = live-program mode |
