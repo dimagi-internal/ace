@@ -620,6 +620,32 @@ then write into it (per-phase `<N>-<phase>/` subfolders, recipe
 subfolders): the create and the write that consumes its id cannot
 share a message.
 
+**Step 5a — Tell an email requester where to watch (fresh runs only).**
+If `run_state.yaml.triggered_by.surface` is `email`, the person who asked
+hears nothing for hours unless you reply now (owner, 2026-10-28). Send ONE
+reply on `triggered_by.thread_id`, before Phase 1:
+
+1. Find this session's canopy page:
+   `mcp__plugin_canopy_canopy-web__canopy_sessions_get_session` (load it with
+   its own `ToolSearch select:` on this branch only; it is not in Step 2's
+   literal because most runs never need it) with `session_id` =
+   `$CLAUDE_CODE_SESSION_ID` (canopy resolves a runner session key). Its `id`
+   and `workspace` give
+   `canopySessionUrl(workspace, id)`. Not found → leave the canopy link out;
+   never build one from a guess.
+2. `startNotice` (`lib/triggering-thread.ts`) with the run's
+   `ace_web_summary_url` (§ Resolution, `runSummaryUrl`) and that session URL
+   gives the body. `null` means nothing to send (not email, or already sent).
+3. Send it with `bin/ace-email --reply-all --thread-id <thread_id>`, under the
+   same authority as the run's close-out reply on that thread (the dispatch
+   brief's reply instruction). Without that authority, write it into
+   `run-closeout_comms-log.md` as a pending outbound instead.
+4. Stamp `triggered_by.start_notice_sent_at` (`merge: 'deep'`) so a resumed
+   run does not send it again, and log the send in the comms-log.
+
+This is the only mid-run email. Phase progress is NOT emailed; the two links
+show it live.
+
 **Step 6 — Dispatch Phase 1.** Single `Agent(idea-to-design)` call with
 the inline-artifact prompt structure (see "Pass artifacts inline at
 phase handoff" below).
@@ -1486,8 +1512,9 @@ in `inputs/` (the manifest), not to pick one canonical PDD file.
      - **A HALTED run still drafts.** Silence is the failure mode, not bad
        news — "Phase 8 is waiting on LLO selection" serves the counterpart far
        better than days of nothing.
-     - **Nothing mid-run.** A progress ping is noise, and noise is how a real
-       notice gets ignored.
+     - **Nothing mid-run** beyond the one start notice (§ Step 5a), which
+       gives links to watch, not a status. A progress ping is noise, and noise
+       is how a real notice gets ignored.
 
      Measured cost of not doing this: thread `19f86579142e6ba5`, 2026-07-29 —
      *"Just checking if ACE is still working on this?"*, sent while the run had

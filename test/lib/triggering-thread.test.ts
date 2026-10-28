@@ -33,6 +33,8 @@ import { describe, it, expect } from 'vitest';
 import {
   parseTriggeredBy,
   pendingCloseoutNotice,
+  startNotice,
+  canopySessionUrl,
 } from '../../lib/triggering-thread.js';
 
 const EMAIL_TRIGGER = {
@@ -142,5 +144,58 @@ describe('run_state validation of triggered_by (#1057)', () => {
     });
     expect(r.valid).toBe(false);
     expect(r.errors.some((e) => e.path === 'triggered_by')).toBe(true);
+  });
+});
+
+describe('startNotice — where to watch an email-triggered run', () => {
+  const base = {
+    triggeredBy: EMAIL_TRIGGER as any,
+    runId: '20261028-1636',
+    opportunity: 'smallholder-seasonal',
+    summaryUrl:
+      'https://labs.connect.dimagi.com/ace/opps/dimagi-team/smallholder-seasonal/runs/20261028-1636/summary',
+  };
+
+  it('replies on the triggering thread with the ace-web run page and the canopy session', () => {
+    const n = startNotice({
+      ...base,
+      sessionUrl: canopySessionUrl('connect', '472904d0-630d-420e-a8d7-f258b1972b2f'),
+    });
+    expect(n).not.toBeNull();
+    expect(n!.threadId).toBe('19f86579142e6ba5');
+    expect(n!.to).toBe('sfeintuch@dimagi.com');
+    expect(n!.body).toContain(base.summaryUrl);
+    expect(n!.body).toContain(
+      'https://canopy.dimagi.com/w/connect/chat/472904d0-630d-420e-a8d7-f258b1972b2f',
+    );
+  });
+
+  it('leads with the ace-web page, the canopy link after it', () => {
+    const n = startNotice({ ...base, sessionUrl: canopySessionUrl('connect', 's') })!;
+    expect(n.body.indexOf(base.summaryUrl)).toBeLessThan(n.body.indexOf('canopy.dimagi.com'));
+  });
+
+  it('omits the canopy line rather than guessing a session link', () => {
+    const n = startNotice(base)!;
+    expect(n.body).toContain(base.summaryUrl);
+    expect(n.body).not.toMatch(/canopy/i);
+  });
+
+  it('sends nothing for a run not asked for by email', () => {
+    expect(startNotice({ ...base, triggeredBy: undefined })).toBeNull();
+    expect(startNotice({ ...base, triggeredBy: { surface: 'board' } as any })).toBeNull();
+  });
+
+  it('sends once — a resumed run that already sent it stays quiet', () => {
+    expect(
+      startNotice({
+        ...base,
+        triggeredBy: { ...EMAIL_TRIGGER, start_notice_sent_at: '2026-10-28T16:40:00Z' } as any,
+      }),
+    ).toBeNull();
+  });
+
+  it('never says Connect\'s retired long name', () => {
+    expect(startNotice(base)!.body).not.toMatch(/CommCare Connect/);
   });
 });
