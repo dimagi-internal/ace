@@ -217,7 +217,9 @@ against `date: 2026-09-14 12:26`; message 0 was Neal's, on 21 July, and the 14 S
        the run's ace-web page"*. Dispatch reports
        LAUNCHED (unverified) — confirm the turn was queued with `canopy agent turns --slug ace`
        before marking the thread read. **Send no handoff ack** ("a run session was started"): the
-       run session's own reply, with the run page, is the answer. (Origin: ace#2961 — turn d45e2ac0
+       run session replies on the thread itself as soon as its run page exists,
+       with the ace-web page and its canopy session to watch
+       (`ace-orchestrator.md § Step 5a`), and again when the run finishes. (Origin: ace#2961 — turn d45e2ac0
        had to reverse-engineer this from an earlier ACE email.)
      - **Program work** *(act tier only; the thread routed to a program project)*: a question
        about a live program, or a change to something already live (an app, the opportunity's

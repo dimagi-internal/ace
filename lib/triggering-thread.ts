@@ -44,6 +44,8 @@ export interface TriggeredBy {
   thread_id?: string;
   requester?: string;
   requested_at?: string;
+  /** Set once the start notice (`startNotice`) has gone out, so a resumed run does not send it twice. */
+  start_notice_sent_at?: string;
 }
 
 const SURFACES: TriggerSurface[] = ['email', 'board', 'manual'];
@@ -76,7 +78,7 @@ export function parseTriggeredBy(raw: unknown): TriggeredByParse {
         'comms-log and inbox-triage match on, and without it the close-out reply has nowhere to go',
     );
   }
-  for (const k of ['thread_id', 'requester', 'requested_at']) {
+  for (const k of ['thread_id', 'requester', 'requested_at', 'start_notice_sent_at']) {
     if (t[k] !== undefined && typeof t[k] !== 'string') issues.push(`triggered_by.${k} must be a string`);
   }
   return issues.length
@@ -139,4 +141,65 @@ export function pendingCloseoutNotice(input: CloseoutInput): PendingCloseoutNoti
     subjectHint: `${input.opportunity} — run ${input.runId} ${outcome}`,
     body: lines.join('\n'),
   };
+}
+
+export const CANOPY_BASE_URL = 'https://canopy.dimagi.com';
+
+/**
+ * The canopy page where a person watches a session live. Workspace-addressed,
+ * like every canopy link ACE sends (`bin/canopy_url_scope.py`). Both values come
+ * from canopy's own record of the session (`canopy_sessions_get_session`), never
+ * a guess: a wrong link sends the requester to someone else's chat or a 404.
+ */
+export function canopySessionUrl(workspace: string, sessionId: string): string {
+  return `${CANOPY_BASE_URL}/w/${workspace}/chat/${sessionId}`;
+}
+
+export interface StartNoticeInput {
+  triggeredBy?: TriggeredBy;
+  runId: string;
+  opportunity: string;
+  /** `run_state.yaml` `ace_web_summary_url`. */
+  summaryUrl: string;
+  /** From `canopySessionUrl`. Omitted when canopy has no record of this session. */
+  sessionUrl?: string;
+}
+
+export interface StartNotice {
+  threadId: string;
+  to?: string;
+  body: string;
+}
+
+/**
+ * The one reply an email-triggered run sends when it STARTS: where to watch it.
+ *
+ * A run takes hours, and until this the requester heard nothing between their
+ * ask and the close-out. Owner, 2026-10-28: *"if it's an e-mail channel that is
+ * triggering a long run, we respond with the url on ace-web and canopy session
+ * if people want to watch along."* Sophie's smallholder-seasonal/20261028-1636
+ * was the case: asked by email at 16:31, Phase 3 still building hours later,
+ * and the thread silent the whole time.
+ *
+ * This is not a progress ping. It goes once, at start, and it carries links a
+ * person can open, not a status claim that goes stale. The close-out reply
+ * (`pendingCloseoutNotice`) is still the answer to what they asked for.
+ *
+ * Returns null when nobody asked by email, or when the notice already went
+ * (`start_notice_sent_at`, so a resumed run stays quiet).
+ */
+export function startNotice(input: StartNoticeInput): StartNotice | null {
+  const t = input.triggeredBy;
+  if (t?.surface !== 'email' || !t.thread_id) return null;
+  if (t.start_notice_sent_at) return null;
+
+  const lines = [
+    `I've started building ${input.opportunity} (run ${input.runId}). A full build takes a few hours, and I'll reply on this thread when it finishes or needs a decision from you.`,
+    '',
+    `To follow along, the run's page shows each part as it's built: ${input.summaryUrl}`,
+  ];
+  if (input.sessionUrl) {
+    lines.push('', `You can also watch me work, step by step, in Canopy: ${input.sessionUrl}`);
+  }
+  return { threadId: t.thread_id, to: t.requester, body: lines.join('\n') };
 }

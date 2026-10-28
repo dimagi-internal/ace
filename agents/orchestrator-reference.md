@@ -762,8 +762,11 @@ report.
 - **A HALTED run still drafts.** Silence is the failure mode, not bad news —
   "Phase 8 is waiting on LLO selection" serves the counterpart far better than
   two days of nothing.
-- **Nothing is drafted mid-run.** A progress ping is noise, and noise is how a
-  real notice gets ignored.
+- **Nothing is drafted mid-run** except the one start notice
+  (`startNotice`, `ace-orchestrator.md § Step 5a`): at run start an
+  email-triggered run replies with its ace-web page and canopy session so the
+  requester can watch. A progress ping is noise, and noise is how a real notice
+  gets ignored.
 
 "Remember to email the requester" is exactly the class of instruction that
 fails under load — a Phase-8 halt at 13:55 and a Phase-7 completion at 15:45
