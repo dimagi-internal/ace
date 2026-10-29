@@ -642,6 +642,15 @@ code-level phrase that stays as written.
      - `nova-authoring-rules` — always (Learn + Deliver). One paragraph of
        the nine refusals and lookups that recur across Nova builds (ace#3300);
        insert it verbatim, do not restate its clauses here.
+     - `flat-root-menus` — always (Deliver). Put EVERY form's module at the
+       root menu, each with its own case list (root tile → pick the record →
+       the form). Do NOT nest form modules under a parent module that has a
+       case list: a phone opens that parent's list at once and never shows its
+       child menus, so every nested form is unreachable (ace#3340, CommCare
+       2.64.0 — commcare-core `CommCareSession.getNeededData` asks for the
+       entry's datum before offering a command). An overview list is a childless
+       root module. Enforced at release by `app-release-qa`
+       (`menu-children-shadowed`, `lib/suite-menu-reachability.ts`).
      - `no-starter-module` — always (Learn + Deliver). Apps created before
        2026-09-27 were seeded with a placeholder module (top-level menu
        "Survey" → form "Survey" → one text field `question_1` labelled

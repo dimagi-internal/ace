@@ -1960,6 +1960,18 @@ defects.
   was clean. If it is real, record the orphan languages and their
   `app.display.name` as a Phase 3 residual and check them against the PDD's
   declared working language. Do not hand-edit the zip.
+- `menu-children-shadowed` — a menu of the released Deliver/Learn CCZ has child
+  menus (`<menu root="mN">`) AND a view-only case-list command of its own, so a
+  phone opens the list at once and the child form menus are never shown
+  (dimagi-internal/ace#3340: 11 of 14 coach forms unreachable on CommCare
+  2.64.0). Cause, from commcare-core `CommCareSession.getNeededData`: the
+  session asks for the entry's datum before it offers a command, and child
+  menus are not entries of the parent. Check the unzipped `suite.xml` with
+  **`checkSuiteMenuReachability` from `lib/suite-menu-reachability.ts`**
+  (pure, `test/lib/suite-menu-reachability.test.ts`); `severity: 'blocker'` is
+  a `[BLOCKER]` — fix in Nova (one root module per form menu, its own case
+  list; overview lists as childless root tiles), never by editing the zip.
+  `commcare_validate_ccz play` cannot see it.
 - `ccz-min-version-gate` — the released CCZ's `profile.ccpr` declares a
   minimum CommCare (`requiredMajor.requiredMinor.requiredMinimal`) ABOVE the
   APK Phase 6 will run, so CommCare shows a version-gate screen instead of

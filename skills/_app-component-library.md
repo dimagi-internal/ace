@@ -144,6 +144,7 @@ authored from the PDD per run):
 | [`entity-state-taxonomy`](#entity-state-taxonomy) | Learn + Deliver | The followed entity carries STATES the app must name — always for `archetype: longitudinal-visits`, and for any archetype whose PDD declares a phase / stage / status vocabulary the worker sees | `pdd-to-deliver-app-eval § entity_state_fidelity` (hard-gate); `pdd-to-deliver-app § Step 4l` (mechanical, `lib/entity-state-taxonomy.ts`) |
 | [`partner-option-register`](#partner-option-register) | Deliver | The PDD sources a field's options from a NAMED PARTNER REGISTER the partner already maintains (activity register, commodity list, cadre list, facility roster) | `pdd-to-deliver-app-eval § option_register_fidelity` (hard-gate); `pdd-to-deliver-app § Step 4f` register halt (mechanical, `lib/option-register.ts`) |
 | [`no-starter-module`](#no-starter-module) | Learn + Deliver | Always | `app-release-qa § Step 4` starter-module check (mechanical, `lib/starter-module.ts`) |
+| [`flat-root-menus`](#flat-root-menus) | Deliver | Always | `app-release-qa` `menu-children-shadowed` (mechanical, `lib/suite-menu-reachability.ts`; ace#3340) |
 | [`nova-authoring-rules`](#nova-authoring-rules) | Learn + Deliver | Always | `test/skills/nova-authoring-rules-brief.test.ts` pins the brief text; effect measured by invalid_input rejections and `get_authoring_guide` lookups per build (ace#3300) |
 
 ---
@@ -2360,6 +2361,31 @@ is briefed from the same declared taxonomy, so Learn/Deliver agreement is
 transitive — two builds that each match the PDD cannot contradict each other.
 
 ---
+
+### flat-root-menus
+
+- **App:** Deliver
+- **Trigger:** always.
+- **Enforced by:** `app-release-qa` — `menu-children-shadowed`
+  (`checkSuiteMenuReachability`, `lib/suite-menu-reachability.ts`,
+  `test/lib/suite-menu-reachability.test.ts`).
+
+**Brief paragraph.** *Put every form's module at the root menu, each with its
+own case list (root tile, pick the record, the form opens). Never nest form
+modules under a parent module that has a case list, and never make a module a
+"grouping menu" only to hold a read-only list. A list the coach should be able
+to look at is its own root module with no children and no forms.*
+
+**Why.** `smallholder-seasonal/20261029-1243` built 5 parent modules, each a
+view-only case list with 2-4 child form modules. On a phone (CommCare 2.64.0)
+tapping a parent opened the list at once; the child menus never appeared and
+11 of 14 coach forms (9 of 11 paid units) could not be opened. Cause, from
+commcare-core `CommCareSession.getNeededData`: the entry of the tapped menu
+needs a datum and `getDataNeededByAllEntries` answers with the datum screen
+before the session offers any command; child menus (`root="mN"`) are not
+entries of their parent. The fix was a flat root, same form uuids and xmlns, so
+Connect's deliver units were unchanged. Nova itself refuses a grouping module
+with no form and no list, which is what pushed the builder into the shape.
 
 ### no-starter-module
 
