@@ -13,8 +13,27 @@
  * asks the user to pick a command. Child menus (root="m0") are not entries of
  * m0, so they are never offered. The fixed v72 build had flat roots only.
  */
+import { readFileSync } from 'node:fs';
 import { describe, it, expect } from 'vitest';
 import { checkSuiteMenuReachability } from '../../lib/suite-menu-reachability.js';
+
+const fixture = (name: string) =>
+  readFileSync(new URL(`../fixtures/suite-menu-reachability/${name}`, import.meta.url), 'utf8');
+
+describe('checkSuiteMenuReachability — real released suite.xml', () => {
+  it('flags the shipped v51 coach Deliver suite: 5 shadowed menus, 11 unreachable forms', () => {
+    const r = checkSuiteMenuReachability(fixture('coach-deliver-v51-broken.suite.xml'));
+    expect(r.severity).toBe('blocker');
+    expect(r.findings.map((f) => f.menu)).toEqual(['m0', 'm5', 'm8', 'm11', 'm15']);
+    expect(r.unreachableForms).toHaveLength(11);
+  });
+
+  it('passes the repaired v72 suite, which was walked on a device', () => {
+    const r = checkSuiteMenuReachability(fixture('coach-deliver-v72-fixed.suite.xml'));
+    expect(r.severity).toBe('ok');
+    expect(r.findings).toEqual([]);
+  });
+});
 
 const wrap = (menus: string, entries = '') =>
   `<suite>${entries}${menus}</suite>`;
