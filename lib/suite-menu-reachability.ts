@@ -43,7 +43,8 @@ export interface ShadowedMenu {
 
 export interface SuiteMenuReachability {
   severity: 'ok' | 'blocker' | 'warn';
-  shadowed: ShadowedMenu[];
+  /** one finding per shadowed menu */
+  findings: ShadowedMenu[];
   /** form-entry command ids that sit only inside a shadowed menu's children */
   unreachableForms: string[];
   message: string;
@@ -75,7 +76,7 @@ export function checkSuiteMenuReachability(suiteXml: string): SuiteMenuReachabil
   }
 
   if (menus.length === 0) {
-    return { severity: 'warn', shadowed: [], unreachableForms: [], message: 'suite.xml has no readable <menu> elements; reachability not checked' };
+    return { severity: 'warn', findings: [], unreachableForms: [], message: 'suite.xml has no readable <menu> elements; reachability not checked' };
   }
 
   const shadowed: ShadowedMenu[] = [];
@@ -95,11 +96,11 @@ export function checkSuiteMenuReachability(suiteXml: string): SuiteMenuReachabil
   }
 
   if (shadowed.length === 0) {
-    return { severity: 'ok', shadowed, unreachableForms, message: 'every menu with child menus offers them (no view-only list entry in front of them)' };
+    return { severity: 'ok', findings: shadowed, unreachableForms, message: 'every menu with child menus offers them (no view-only list entry in front of them)' };
   }
   return {
     severity: 'blocker',
-    shadowed,
+    findings: shadowed,
     unreachableForms,
     message:
       `${shadowed.length} menu(s) open a view-only case list instead of their child menus, so ` +

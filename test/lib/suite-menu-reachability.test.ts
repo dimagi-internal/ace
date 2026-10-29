@@ -35,7 +35,7 @@ describe('checkSuiteMenuReachability', () => {
     );
     const r = checkSuiteMenuReachability(suite);
     expect(r.severity).toBe('blocker');
-    expect(r.shadowed).toEqual([{ menu: 'm0', viewOnlyCommands: ['m0-case-list'], children: ['m1'] }]);
+    expect(r.findings).toEqual([{ menu: 'm0', viewOnlyCommands: ['m0-case-list'], children: ['m1'] }]);
     expect(r.unreachableForms).toEqual(['m1-f0']);
   });
 
@@ -48,7 +48,7 @@ describe('checkSuiteMenuReachability', () => {
     );
     const r = checkSuiteMenuReachability(suite);
     expect(r.severity).toBe('ok');
-    expect(r.shadowed).toEqual([]);
+    expect(r.findings).toEqual([]);
     expect(r.unreachableForms).toEqual([]);
   });
 
