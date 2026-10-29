@@ -1174,10 +1174,29 @@ arrived, there is no future fence call to catch it — honor it right
 now: stop before dispatching the next phase, report per the shape
 below, and write the directive `status: fired` in the same patch.
 
-**Wire it into the Phase boundary fence.** Once the existing
-classify/verify/products/validate branch resolves to "proceed" (§ Phase
-boundary fence), check `operator_stop_after_phase` before the step that
-dispatches `Agent(<next-phase>)` runs.
+**Wire it into EVERY next-phase dispatch — it is a precondition, not a
+branch clause** (dimagi-internal/ace#3330). The check is an unconditional
+precondition of dispatching ANY `Agent(<next-phase>)`: the STOP GATE (Step 0 of advancing)
+stop gate in § Phase boundary fence, the resume path (§ Resolve the run-id
+→ Resume mode → *Run shape on resume*), and any other place this
+orchestrator is about to start the next phase. It used to live only inside
+the all-OK branch of Turn N+2, and that is how it was skipped: on
+`smallholder-seasonal/20261028-1636` the fence took the `products.ok=false`
+repair branch, patched the value, re-ran ONLY `verify_phase_products`, got
+`ok: true`, and dispatched `Agent(connect-setup)` past a pending stop on
+`commcare-setup` — Phases 4 and 5 ran and a create-time-only Connect
+opportunity was minted. **A repair branch that re-runs a subset of the
+checks must still pass through the stop gate** before it advances; no
+branch dispatches the next phase directly.
+
+**The fence atoms put it in front of you.** `classify_phase_writeback` and
+`verify_phase_products` already load `run_state.yaml`, so whenever the
+block exists they return `operator_stop: {phase, status, fires_now, note}`
+(`lib/operator-stop.ts`). `fires_now: true` means pending AND naming the
+phase that call checked — do not dispatch the next phase while any fence
+result in front of you says so. That field is a backstop, not the gate:
+the gate is still the fresh re-read below, because the directive can land
+after those atoms ran.
 
 **RE-READ `run_state.yaml` from Drive for this check — never the copy you
 were already holding** (dimagi-internal/ace#2848). The directive is very
@@ -1448,7 +1467,12 @@ in `inputs/` (the manifest), not to pick one canonical PDD file.
      execution order is *derived from `run_state.yaml.phases.*.status`*, not
      from any flag or the markdown phase list:
 
-     - `pending` → run it (in ordinal order).
+     - `pending` → run it (in ordinal order) — but only after the STOP
+       GATE (§ Phase boundary fence, Step 0 of advancing): re-read
+       `run_state.yaml` and, if `operator_stop_after_phase` is `status:
+       pending` and names a phase that is already `done`, fire it now
+       (patch `status: fired`, report, do not dispatch). A resume is a
+       next-phase dispatch like any other (ace#3330).
      - `skipped` → step over it; never dispatch, never pause, never fence.
      - `done` / `complete` (incl. `verdict: seeded`) → already satisfied; skip.
      - `error` / `blocked` → halt and surface (do not auto-advance past).
@@ -2269,19 +2293,16 @@ Turn N+2:  Branch on classify_phase_writeback AND verify_phase_artifacts
                false (the block is absent outside commcare/connect)
                AND verify.platform_behaviour.ok is not false (absent
                outside design)
-                 → RE-READ run_state.yaml from Drive, then check
-                   operator_stop_after_phase (§ Ad-hoc stop-after-phase
-                   instructions). The re-read is required, not an
-                   optimisation: the directive is usually written DURING
-                   the phase, by something other than this orchestrator,
-                   so a copy read earlier cannot hold it (ace#2848).
-                   If `status: pending` AND `phase` equals the phase that
-                   just completed, patch it to `status: fired`,
-                   do NOT dispatch Agent(<next-phase>), and report the
-                   stop instead — this is the one case Turn N+3 does
-                   not fire.
-                   Otherwise (absent, or naming a different phase)
-                   → proceed to Turn N+3 unchanged
+                 → advance through the STOP GATE, never straight to the
+                   dispatch. The gate must RE-READ run_state.yaml from
+                   Drive and check operator_stop_after_phase (§ Ad-hoc
+                   stop-after-phase instructions); if `status: pending`
+                   AND `phase` equals the phase that just completed,
+                   patch it to `status: fired`, do NOT dispatch
+                   Agent(<next-phase>), and report the stop. Every repair
+                   branch below that comes back clean advances through the
+                   SAME gate — a repair that re-ran only one check is not
+                   exempt (ace#3330). The gate is Step 0 of Turn N+3.
              - verify.decisions.ok=false (build phase: a producer's build
                memo lists latitudes / ambiguities / rules and its skill
                wrote ZERO decision rows; failures[] names producer + path)
@@ -2365,7 +2386,31 @@ Turn N+2:  Branch on classify_phase_writeback AND verify_phase_artifacts
            summary when a claims file exists ("claims: 2/5 met, 1 not met").
            An UNMET claim is narrated and the run continues.
 
-Turn N+3:  Self-heal sweep (§ below) — one BACKGROUND fix-and-ship
+Turn N+3:  STOP GATE (Step 0 of advancing — the UNCONDITIONAL
+           precondition of Agent(<next-phase>), ace#3330). Every path that
+           is about to advance runs it: the all-OK branch, and EVERY repair
+           branch above (decisions / platform_behaviour / run_state /
+           verify / products / classify retries) once its re-run comes back
+           clean — even when that re-run was a SUBSET of the four checks.
+           It is not a clause of any branch, so no branch can route past it.
+             a. RE-READ run_state.yaml from Drive (drive_read_file — never
+                the copy you were holding: the directive is usually written
+                DURING the phase, out-of-band, by something other than this
+                orchestrator; ace#2848).
+             b. Also honour any `operator_stop.fires_now: true` already in
+                front of you from classify_phase_writeback /
+                verify_phase_products (they return it whenever the block
+                exists — lib/operator-stop.ts).
+             c. operator_stop_after_phase `status: pending` AND `phase` ==
+                the phase that just completed → patch it to
+                `status: fired`, do NOT dispatch Agent(<next-phase>), and
+                report the stop — this is the one case Step 1 does not
+                fire.
+                Otherwise (absent, fired, or naming a different phase)
+                → Step 1 unchanged.
+
+           Step 1 (only after the STOP GATE passed):
+           Self-heal sweep (§ below) — one BACKGROUND fix-and-ship
            dispatch per self-healable issue this phase filed. Never
            blocks; the run does not wait on it.
            Agent(<next-phase>) with inline-artifact prompt, in the SAME

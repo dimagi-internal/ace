@@ -162,7 +162,12 @@ const AppEntry = z
     hq_app_id: z.string().min(1).optional(),
     hq_url: z.string().url().optional(),
     domain: z.string().optional(),
-    build_status: z.enum(['success', 'errored', 'pending']).optional(),
+    // `released` is ADDITIVE (ace#3330): it is the value a Phase 3 agent
+    // naturally writes once app-release has run, and rejecting it sent
+    // smallholder-seasonal/20261028-1636 down a fence repair branch. It means
+    // what `success` means plus "released"; ace-web reads this enum from the
+    // generated JSON Schema, so only ever ADD values here, never rename.
+    build_status: z.enum(['success', 'released', 'errored', 'pending']).optional(),
     // Componentized Phase 3 (ace#2157; operator decision 2026-10-16): the
     // Phase-1 component ids THIS app built content for, recorded per app
     // because Learn and Deliver build different sets. The one name for the

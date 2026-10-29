@@ -25,7 +25,7 @@ import { compareComponentIds } from './component-set';
 import type { LearnModulePlan } from './learn-module-plan';
 import { novaAppUrl } from './nova-url';
 
-export type BuildStatus = 'success' | 'errored' | 'pending';
+export type BuildStatus = 'success' | 'released' | 'errored' | 'pending';
 
 /** What one app's build + upload produced. */
 export interface AppBuildFacts {
