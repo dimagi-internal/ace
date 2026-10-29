@@ -132,4 +132,44 @@ describe('ad-hoc stop-after-phase instructions (dimagi-internal/ace agent-review
     expect(REF).toMatch(/2848/);
     expect(REF).toMatch(/out-of-band/);
   });
+
+  /**
+   * ace#3330 — the stop check was a clause of ONE Turn N+2 branch (all-OK).
+   * smallholder-seasonal/20261028-1636 took the products.ok=false repair
+   * branch, re-ran only verify_phase_products, and dispatched the next phase
+   * past a pending stop. The gate must sit on the dispatch, not on a branch.
+   */
+  it('the stop gate is an unconditional precondition of Agent(<next-phase>), repair branches included', () => {
+    const gateStart = ORCH.indexOf('STOP GATE (Step 0 of advancing');
+    const turn3 = ORCH.indexOf('Step 1 (only after the STOP GATE passed):');
+    expect(gateStart, 'fence lost its STOP GATE block').toBeGreaterThan(-1);
+    expect(turn3, 'Turn N+3 must be gated on the STOP GATE').toBeGreaterThan(gateStart);
+    const gate = ORCH.slice(gateStart, turn3);
+    expect(gate).toMatch(/UNCONDITIONAL/);
+    expect(gate).toMatch(/EVERY repair\s+branch/);
+    expect(gate).toMatch(/SUBSET of the four checks/);
+    expect(gate).toMatch(/RE-READ run_state\.yaml from Drive/);
+    expect(gate).toMatch(/status:\s+fired/);
+    expect(gate).toMatch(/do NOT dispatch Agent\(<next-phase>\)/);
+    expect(gate).toMatch(/fires_now/);
+  });
+
+  it('the ad-hoc section says a repair branch re-running a subset of checks must still pass through it', () => {
+    const start = ORCH.indexOf('### Ad-hoc stop-after-phase instructions');
+    const end = ORCH.indexOf('### Why default mode looks like this');
+    const section = ORCH.slice(start, end);
+    expect(section).toMatch(/precondition, not a\s+branch clause/);
+    expect(section).toMatch(/repair branch that re-runs a subset of the\s+checks must still pass through the stop gate/);
+    expect(section).toMatch(/3330/);
+    expect(section).toMatch(/operator_stop: \{phase, status, fires_now, note\}/);
+  });
+
+  it('the resume path runs the same gate before dispatching the next pending phase', () => {
+    const start = ORCH.indexOf('**Run shape on resume');
+    expect(start).toBeGreaterThan(-1);
+    const block = ORCH.slice(start, start + 1500);
+    expect(block).toMatch(/STOP\s+GATE/);
+    expect(block).toMatch(/operator_stop_after_phase/);
+  });
 });
+

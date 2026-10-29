@@ -20,7 +20,8 @@ import { isNovaAppUrl, novaAppUrl } from './nova-url.js';
  * ```
  */
 
-const BUILD_STATUS = z.enum(['success', 'errored', 'pending']);
+// `released` is additive (ace#3330) — kept in step with lib/phase-products-schema.ts.
+const BUILD_STATUS = z.enum(['success', 'released', 'errored', 'pending']);
 
 const AppEntrySchema = z.object({
   name: z.string().min(1),

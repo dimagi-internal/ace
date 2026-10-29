@@ -423,6 +423,7 @@
                         "type": "string",
                         "enum": [
                           "success",
+                          "released",
                           "errored",
                           "pending"
                         ]
@@ -467,6 +468,7 @@
                         "type": "string",
                         "enum": [
                           "success",
+                          "released",
                           "errored",
                           "pending"
                         ]
@@ -530,6 +532,7 @@
                               "type": "string",
                               "enum": [
                                 "success",
+                                "released",
                                 "errored",
                                 "pending"
                               ]
@@ -574,6 +577,7 @@
                               "type": "string",
                               "enum": [
                                 "success",
+                                "released",
                                 "errored",
                                 "pending"
                               ]

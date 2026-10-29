@@ -71,6 +71,7 @@ import {
   type PhaseStatus,
 } from '../lib/run-readme.js';
 import { validatePhaseProductsFragment, classifyPhaseProducts } from '../lib/phase-products-schema.js';
+import { withOperatorStop } from '../lib/operator-stop.js';
 import { classifyRunClaims } from '../lib/run-claims.js';
 import { classifyCaptionBacking, extractDeckSpecCitations } from '../lib/caption-backing.js';
 import { findBoldSpans, boldSpanRequests } from '../lib/docs-bold-spans.js';
@@ -4739,7 +4740,7 @@ server.tool(
 
 server.tool(
   'classify_phase_writeback',
-  "Single-line answer to 'did `<phaseName>` write its run_state.yaml block correctly?' Reads run_state.yaml from Drive, parses it, and returns `{status: 'ok' | 'missing' | 'in_progress' | 'error' | 'malformed', phase: <name>}`. The orchestrator's silent-dispatch retry should treat 'missing', 'in_progress', and 'malformed' as retry triggers (agent claimed success but didn't write properly); 'error' is a real phase failure that halts. Cheaper than `validate_run_state` for the common case of 'I just need to know if this phase shipped' — returns one classification, not a full issue list. Implementation: `lib/run-state-validator.ts::classifyPhaseWriteBack`.",
+  "Single-line answer to 'did `<phaseName>` write its run_state.yaml block correctly?' Reads run_state.yaml from Drive, parses it, and returns `{status: 'ok' | 'missing' | 'in_progress' | 'error' | 'malformed', phase: <name>, operator_stop?}`. The orchestrator's silent-dispatch retry should treat 'missing', 'in_progress', and 'malformed' as retry triggers (agent claimed success but didn't write properly); 'error' is a real phase failure that halts. Cheaper than `validate_run_state` for the common case of 'I just need to know if this phase shipped' — returns one classification, not a full issue list. **When run_state.yaml carries an `operator_stop_after_phase` block, the result ALSO returns `operator_stop: {phase, status, fires_now, note}`** — `fires_now` is true iff the stop is `pending` AND names the phase checked here; while it is true do NOT dispatch the next phase on ANY fence branch, repair branches included (ace#3330). Absent block → no key. Implementation: `lib/run-state-validator.ts::classifyPhaseWriteBack` + `lib/operator-stop.ts::operatorStopFor`.",
   {
     fileId: z.string().describe('The Google Drive fileId of run_state.yaml.'),
     phaseName: z
@@ -4752,7 +4753,7 @@ server.tool(
       const text = read.content ?? '';
       const parsed = text.trim() ? YAML.parse(text) : null;
       const status = classifyPhaseWriteBack(parsed, phaseName);
-      return result({ phase: phaseName, status });
+      return result({ phase: phaseName, status, ...withOperatorStop(parsed, phaseName) });
     } catch (e: any) {
       return error(e.message);
     }
@@ -4761,7 +4762,7 @@ server.tool(
 
 server.tool(
   'verify_phase_products',
-  "Boundary-fence check that a phase's `phases.<phase>.products` block matches the typed-handoff contract the ace-web summary page reads (`lib/phase-products-schema.ts`). Reads run_state.yaml from Drive, parses it, and returns `{phase, status, ok, mode, issues}`. `mode` is `complete` when the phase is `done`/`complete` (validates shape AND that every required handoff key is present — e.g. `connect.opportunity.url`, `qa-and-training`'s `training.docs.onboarding_email`), `fragment` when the phase is still in-flight (shape-only, so incremental writes pass), or `skipped` when the phase has no products contract. `ok:false` on a `done` phase means a handoff the summary renders is missing or malformed — the orchestrator should treat it like a `verify_phase_artifacts` miss (heal the producing skill / re-dispatch) before advancing. This is the run_state-level companion to `verify_phase_artifacts` (which checks Drive files); run BOTH in the phase boundary fence. Implementation: `lib/phase-products-schema.ts::classifyPhaseProducts`.",
+  "Boundary-fence check that a phase's `phases.<phase>.products` block matches the typed-handoff contract the ace-web summary page reads (`lib/phase-products-schema.ts`). Reads run_state.yaml from Drive, parses it, and returns `{phase, status, ok, mode, issues, operator_stop?}`. `mode` is `complete` when the phase is `done`/`complete` (validates shape AND that every required handoff key is present — e.g. `connect.opportunity.url`, `qa-and-training`'s `training.docs.onboarding_email`), `fragment` when the phase is still in-flight (shape-only, so incremental writes pass), or `skipped` when the phase has no products contract. `ok:false` on a `done` phase means a handoff the summary renders is missing or malformed — the orchestrator should treat it like a `verify_phase_artifacts` miss (heal the producing skill / re-dispatch) before advancing. This is the run_state-level companion to `verify_phase_artifacts` (which checks Drive files); run BOTH in the phase boundary fence. **When run_state.yaml carries an `operator_stop_after_phase` block, the result ALSO returns `operator_stop: {phase, status, fires_now, note}`** — `fires_now` is true iff the stop is `pending` AND names the phase checked here; while it is true do NOT dispatch the next phase on ANY fence branch, repair branches included (ace#3330). Absent block → no key. Implementation: `lib/phase-products-schema.ts::classifyPhaseProducts` + `lib/operator-stop.ts::operatorStopFor`.",
   {
     fileId: z.string().describe('The Google Drive fileId of run_state.yaml.'),
     phase: z
@@ -4773,7 +4774,7 @@ server.tool(
       const read = await handleReadFile({ fileId }, drive);
       const text = read.content ?? '';
       const parsed = text.trim() ? YAML.parse(text) : null;
-      return result(classifyPhaseProducts(parsed, phase));
+      return result({ ...classifyPhaseProducts(parsed, phase), ...withOperatorStop(parsed, phase) });
     } catch (e: any) {
       return error(e.message);
     }
