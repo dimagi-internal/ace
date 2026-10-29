@@ -48,13 +48,14 @@
  *   # interpolate that var in the shell, it expands to EMPTY there (ace#1147).
  *   npx tsx scripts/check-stencil-token-drift.ts --repair
  *
- *   [--key <gws-sa-key.json>] [--json]
+ *   [--json]
  */
 
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as os from 'node:os';
 import { google } from '../lib/google-shim.js';
+import { AceGoogleAuth } from '../lib/ace-google-auth.js';
 import { STENCILS, STENCIL_PLACEHOLDERS, type StencilKey } from '../lib/training-deck-spec.js';
 import { STENCIL_TEXT_BUILDERS } from '../lib/training-deck-stencil-geometry.js';
 import {
@@ -125,24 +126,6 @@ export function parseArgs(argv: string[], env: NodeJS.ProcessEnv = process.env):
   return { deck, key: args.key, repair, json };
 }
 
-function resolveKeyFile(cliKey: string | undefined): string {
-  if (cliKey) {
-    if (!fs.existsSync(cliKey)) throw new Error(`--key file not found: ${cliKey}`);
-    return cliKey;
-  }
-  if (process.env.GOOGLE_APPLICATION_CREDENTIALS) return process.env.GOOGLE_APPLICATION_CREDENTIALS;
-  const dataDir = resolvePluginDataDir(import.meta.url);
-  if (dataDir) {
-    const derived = path.join(dataDir, 'gws-sa-key.json');
-    if (fs.existsSync(derived)) return derived;
-  }
-  const conventional = path.join(os.homedir(), '.claude', 'plugins', 'data', 'ace-ace', 'gws-sa-key.json');
-  if (fs.existsSync(conventional)) return conventional;
-  throw new Error(
-    'Cannot resolve the GWS service-account key: no --key given, no plugin data dir ' +
-      `resolvable, and ${conventional} does not exist. Pass --key <path-to-gws-sa-key.json>.`,
-  );
-}
 
 // ---------------------------------------------------------------------------
 // Slides round-trip
@@ -235,15 +218,8 @@ export function repairRequests(
 
 async function main(): Promise<void> {
   const cli = parseArgs(process.argv.slice(2));
-  const keyFile = resolveKeyFile(cli.key);
 
-  const auth = new google.auth.GoogleAuth({
-    keyFile,
-    scopes: [
-      'https://www.googleapis.com/auth/drive',
-      'https://www.googleapis.com/auth/presentations',
-    ],
-  });
+  const auth = new AceGoogleAuth();
   const slides = google.slides({ version: 'v1', auth });
   const stencilPageIds = new Set<string>(Object.values(STENCILS));
 

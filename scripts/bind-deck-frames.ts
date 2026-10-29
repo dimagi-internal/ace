@@ -38,6 +38,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import yaml from 'js-yaml';
 import { google } from '../lib/google-shim.js';
+import { AceGoogleAuth } from '../lib/ace-google-auth.js';
 import { resolvePluginDataDir } from '../lib/plugin-data-dir.js';
 import { loadPluginEnv } from '../lib/load-plugin-env.js';
 import { lintDeckFormatting, parseTrainingSpec, type TrainingDeckSpec } from '../lib/training-deck-spec.js';
@@ -61,18 +62,6 @@ const arg = (name: string): string | undefined => {
   return i >= 0 ? argv[i + 1] : undefined;
 };
 
-function keyFile(): string {
-  const cli = arg('key');
-  if (cli && fs.existsSync(cli)) return cli;
-  const env = process.env.GOOGLE_APPLICATION_CREDENTIALS;
-  if (env && fs.existsSync(env)) return env;
-  const data = resolvePluginDataDir(import.meta.url);
-  const p = data ? path.join(data, 'gws-sa-key.json') : '';
-  if (p && fs.existsSync(p)) return p;
-  const conventional = path.join(os.homedir(), '.claude', 'plugins', 'data', 'ace-ace', 'gws-sa-key.json');
-  if (fs.existsSync(conventional)) return conventional;
-  throw new Error('no Drive service-account key (gws-sa-key.json) — run /ace:setup or pass --key');
-}
 
 async function main(): Promise<number> {
   const specPath = arg('spec');
@@ -84,10 +73,7 @@ async function main(): Promise<number> {
     return 2;
   }
 
-  const auth = new google.auth.GoogleAuth({
-    keyFile: keyFile(),
-    scopes: ['https://www.googleapis.com/auth/drive.readonly'],
-  });
+  const auth = new AceGoogleAuth();
   const drive = google.drive({ version: 'v3', auth });
 
   const children = async (folderId: string) => {

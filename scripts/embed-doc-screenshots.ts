@@ -30,6 +30,7 @@ import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import dotenv from 'dotenv';
 import { google } from '../lib/google-shim.js';
+import { AceGoogleAuth } from '../lib/ace-google-auth.js';
 import { resolvePluginDataDir } from '../lib/plugin-data-dir.js';
 import {
   buildEmbedRequests,
@@ -53,20 +54,6 @@ loadPluginEnv(import.meta.url);
 
 const PROJECT_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const FOLDER_MIME = 'application/vnd.google-apps.folder';
-
-function resolveKeyPath(): string | null {
-  const envPath = process.env.GOOGLE_APPLICATION_CREDENTIALS;
-  if (envPath && fs.existsSync(envPath)) return envPath;
-  const dataDir = resolvePluginDataDir(import.meta.url);
-  if (dataDir) {
-    const k = path.join(dataDir, 'gws-sa-key.json');
-    if (fs.existsSync(k)) return k;
-  }
-  const homeKey = path.join(process.env.HOME || '', '.claude/plugins/data/ace-ace/gws-sa-key.json');
-  if (fs.existsSync(homeKey)) return homeKey;
-  const legacy = path.join(PROJECT_ROOT, '.gws-sa-key.json');
-  return fs.existsSync(legacy) ? legacy : null;
-}
 
 function loadEnv() {
   const dataDir = resolvePluginDataDir(import.meta.url);
@@ -195,15 +182,10 @@ async function anonymousImageCount(docId: string): Promise<number | null> {
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   loadEnv();
-  const keyFile = resolveKeyPath();
-  if (!keyFile) throw new Error('No Google service-account key found. Run /ace:setup.');
-  const auth = new google.auth.GoogleAuth({
-    keyFile,
-    scopes: [
-      'https://www.googleapis.com/auth/drive',
-      'https://www.googleapis.com/auth/documents',
-    ],
-  });
+  // ace@'s canopy-minted Google token, the same identity ace-gdrive writes the doc as
+  // (lib/ace-google-auth.ts). The service-account key this script used to read no
+  // longer exists on any machine (ace#3310).
+  const auth = new AceGoogleAuth();
   const drive = google.drive({ version: 'v3', auth }) as any;
   const docs = google.docs({ version: 'v1', auth }) as any;
 
