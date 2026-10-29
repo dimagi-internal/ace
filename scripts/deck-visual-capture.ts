@@ -16,6 +16,7 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { google } from '../lib/google-shim.js';
+import { AceGoogleAuth } from '../lib/ace-google-auth.js';
 import { resolvePluginDataDir } from '../lib/plugin-data-dir.js';
 import { checkRenderedDeck, slidesToJudge, type PresentationJson } from '../lib/deck-visual-checks.js';
 import { loadPluginEnv } from '../lib/load-plugin-env.js';
@@ -35,21 +36,10 @@ if (!deck || !out) {
   process.exit(2);
 }
 
-function keyFile(): string {
-  const env = process.env.GOOGLE_APPLICATION_CREDENTIALS;
-  if (env && fs.existsSync(env)) return env;
-  const data = resolvePluginDataDir(import.meta.url);
-  const p = data ? path.join(data, 'gws-sa-key.json') : '';
-  if (p && fs.existsSync(p)) return p;
-  throw new Error('no Drive service-account key (gws-sa-key.json) — run /ace:setup');
-}
 
 async function main(): Promise<void> {
   fs.mkdirSync(out as string, { recursive: true });
-  const auth = new google.auth.GoogleAuth({
-    keyFile: keyFile(),
-    scopes: ['https://www.googleapis.com/auth/presentations.readonly', 'https://www.googleapis.com/auth/drive.readonly'],
-  });
+  const auth = new AceGoogleAuth();
   const slides = google.slides({ version: 'v1', auth });
   const pres = (await slides.presentations.get({ presentationId: deck as string })).data as PresentationJson;
   const reports = checkRenderedDeck(pres);

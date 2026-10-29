@@ -27,7 +27,6 @@
  *     --deck <presentationId> \
  *     --spec <new-spec.yaml path> \
  *     --old-spec <spec.yaml path that produced the CURRENT slides> \
- *     [--key <gws-sa-key.json path>]
  *
  * The --old-spec is load-bearing: it tells the script which layout each
  * live slide carries (for representative-stencil selection) and how many
@@ -40,6 +39,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as os from 'node:os';
 import { google } from '../lib/google-shim.js';
+import { AceGoogleAuth } from '../lib/ace-google-auth.js';
 import {
   parseTrainingSpec,
   resolveManifest,
@@ -87,25 +87,6 @@ function parseArgs(argv: string[]): CliArgs {
   return { deck: args.deck, spec: args.spec, oldSpec: args['old-spec'], key: args.key };
 }
 
-function resolveKeyFile(cliKey: string | undefined): string {
-  if (cliKey) {
-    if (!fs.existsSync(cliKey)) throw new Error(`--key file not found: ${cliKey}`);
-    return cliKey;
-  }
-  const dataDir = resolvePluginDataDir(import.meta.url);
-  if (dataDir) {
-    const derived = path.join(dataDir, 'gws-sa-key.json');
-    if (fs.existsSync(derived)) return derived;
-  }
-  // Dev-checkout fallback (resolvePluginDataDir returns null outside the
-  // installed plugin cache): the conventional installed data dir.
-  const conventional = path.join(os.homedir(), '.claude', 'plugins', 'data', 'ace-ace', 'gws-sa-key.json');
-  if (fs.existsSync(conventional)) return conventional;
-  throw new Error(
-    'Cannot resolve the GWS service-account key: no --key given, no plugin data dir ' +
-      `resolvable, and ${conventional} does not exist. Pass --key <path-to-gws-sa-key.json>.`,
-  );
-}
 
 // ---------------------------------------------------------------------------
 // Deck digestion helpers
@@ -212,12 +193,8 @@ export function pickSlideIdPrefix(liveIds: string[]): string {
 
 async function main() {
   const cli = parseArgs(process.argv.slice(2));
-  const keyFile = resolveKeyFile(cli.key);
 
-  const auth = new google.auth.GoogleAuth({
-    keyFile,
-    scopes: ['https://www.googleapis.com/auth/drive', 'https://www.googleapis.com/auth/presentations'],
-  });
+  const auth = new AceGoogleAuth();
   const drive = google.drive({ version: 'v3', auth });
   const slides = google.slides({ version: 'v1', auth });
 
