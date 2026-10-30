@@ -3115,6 +3115,7 @@ describe('every fixed-name capturing palette is discriminated or single-invocati
     // ace#3348: standalone Chrome journeys, each run once per field-page leg.
     'labs-field-page-count.yaml': 'one count per field-page journey (clearState Chrome)',
     'labs-field-page-offline.yaml': 'the offline leg, once per journey',
+    'labs-field-page-photo.yaml': 'one photo count per journey (the camera app round trip)',
     'labs-field-page-reconnect.yaml': 'the reconnect leg, once per journey',
   };
 

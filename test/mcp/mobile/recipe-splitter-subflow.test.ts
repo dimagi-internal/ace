@@ -256,6 +256,7 @@ describe('recipe-splitter — every static palette is split-visible (ace#1570 pr
     // ace#3348: standalone Chrome journeys, never composed via runFlow.
     'labs-field-page-count.yaml': { trailing: '03-entry-sent' },
     'labs-field-page-offline.yaml': { trailing: '02-held-on-phone' },
+    'labs-field-page-photo.yaml': { trailing: '02-sent-with-photo' },
     'labs-field-page-reconnect.yaml': { trailing: '01-sent-after-signal' },
     'learn-launch.yaml': { trailing: 'learn-launch-suite-root' },
     'learn-suite-reentry-from-module.yaml': {
