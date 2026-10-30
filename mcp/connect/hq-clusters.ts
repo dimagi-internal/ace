@@ -58,7 +58,7 @@ export class HqClusterNotConfiguredError extends Error {
       `No CommCare HQ cluster configured for server="${server}". ` +
         `Configured servers: [${known.join(', ') || '(none)'}]. ` +
         `Add ACE_HQ_${server.toUpperCase()}_{BASE_URL,USERNAME,API_KEY} to the plugin .env ` +
-        `(1Password: item "ACE - CommCareHQ ${server.toUpperCase()}"), or pass a configured server.`,
+        `(set in ACE's Canopy vault), or pass a configured server.`,
     );
     this.name = 'HqClusterNotConfiguredError';
   }

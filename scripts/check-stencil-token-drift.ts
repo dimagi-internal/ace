@@ -35,7 +35,7 @@
  * exactly what `scripts/bootstrap-training-deck-template.ts` step 4 does per
  * page, so the repaired page is equivalent to a fresh mint's — but the
  * presentationId does not change, so `ACE_TRAINING_DECK_TEMPLATE_ID` needs no
- * rotation in 1Password and no `/ace:setup --force-env` + restart. Chrome (the
+ * rotation in the vault and no `/ace:setup --force-env` + restart. Chrome (the
  * accent bar, right rule and corner mark) is not text-bearing and is left
  * untouched.
  *

@@ -28,7 +28,6 @@ export function aceEnvFiles(): string[] {
 
 /**
  * A key's value from ACE's .env files (first file that sets it), or null.
- * An unresolved 1Password reference (`op://…`) counts as unset.
  */
 export function aceEnvValue(key: string): string | null {
   const prefix = `${key}=`;
@@ -38,7 +37,7 @@ export function aceEnvValue(key: string): string | null {
         const t = line.trim();
         if (t.startsWith(prefix)) {
           const v = t.slice(prefix.length).trim().replace(/^["']|["']$/g, '');
-          if (v && !v.startsWith('op://')) return v;
+          if (v) return v;
         }
       }
     } catch {

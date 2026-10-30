@@ -20,7 +20,7 @@
  *
  * The check runs lazily on the FIRST tool call, so server startup never blocks
  * on it. An allow is cached for the life of the process (one process per
- * session); a refusal is not, so fixing access (`op signin`) takes effect on
+ * session); a refusal is not, so fixing access takes effect on
  * the next call without restarting. A tool call that fails drops the cached
  * allow, so the next call re-checks — the "re-check on failure" rule.
  *
@@ -56,7 +56,7 @@ export interface CredResult {
 /** Runs `canopy <args>`. Injectable so tests never touch the real CLI. */
 export type CredRunner = (args: string[]) => Promise<CredResult>;
 
-/** Long enough for a 1Password desktop-app unlock prompt; still a real bound. */
+/** Long enough for a slow `canopy cred` round trip; still a real bound. */
 const CHECK_TIMEOUT_MS = 120_000;
 
 export const defaultCredRunner: CredRunner = (args) =>

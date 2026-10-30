@@ -168,10 +168,10 @@ describe('HttpError uses the 5xx summarizer', () => {
  * log in to Connect.
  *
  * ACE authenticates as a service identity through a headless OAuth-via-CCHQ
- * flow, so every auth failure is self-remediable: re-inject the credential from
- * 1Password and retry. `/ace:connect-login` opens a HEADED browser for a person
+ * flow, so every auth failure is self-remediable: re-fill the credential from
+ * the Canopy vault and retry. `/ace:connect-login` opens a HEADED browser for a person
  * to sign in, and it used to sit in the message as a co-equal first-line option
- * ("Verify ... in 1Password, or run /ace:connect-login"). A co-equal option is
+ * ("Verify ... in the vault, or run /ace:connect-login"). A co-equal option is
  * one a reader picks, and the ask landed on Jonathan:
  *
  *   "wait now I'm lost, there is never a rason you should need me to login to

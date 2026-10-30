@@ -152,8 +152,8 @@ describe('gog_auth probes the success shape, not an error denylist (#1338)', () 
   });
 
   it('reads the gog identity from config/agent.json, never from .env', () => {
-    // The mismatch this used to assert on is now unrepresentable: `.env.tpl`
-    // no longer declares the identity keys, so there is one source, not two.
+    // The mismatch this used to assert on is now unrepresentable: the vault
+    // no longer carries the identity keys, so there is one source, not two.
     // What must hold is that every probe reads THAT one.
     expect(src()).toMatch(/agent_json_field\(\)/);
     expect(src()).toMatch(/GMAIL_ACCT="\$\(agent_json_field email\)"/);

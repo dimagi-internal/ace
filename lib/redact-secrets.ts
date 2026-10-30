@@ -75,12 +75,6 @@ const RULES: Rule[] = [
     re: new RegExp(`((?:sessionid[a-z_]*|csrftoken|csrfmiddlewaretoken)\\s*=\\s*)${VAL}`, 'gi'),
     replace: (_m, pre: string) => `${pre}${REDACTED}`,
   },
-  // 1Password secret references (reveal vault structure).
-  {
-    name: 'op-ref',
-    re: /op:\/\/[^\s"'\\,}{]+/g,
-    replace: () => '[REDACTED-OP-REF]',
-  },
   // AWS access key ids.
   {
     name: 'aws-akid',

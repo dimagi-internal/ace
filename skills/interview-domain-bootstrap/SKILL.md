@@ -131,7 +131,7 @@ commcare_create_connection({
 })
 ```
 
-Credentials come from `domain.yaml` (encrypted with op:// references — never inline).
+Credentials come from `domain.yaml` (never inline).
 
 #### 4c. Data forwarding (form forwarder)
 

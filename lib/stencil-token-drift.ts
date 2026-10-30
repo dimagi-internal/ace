@@ -192,7 +192,7 @@ export function formatStencilTokenDrift(report: StencilTokenDriftReport): string
     '',
     '  The live template and the builder have drifted. Reconcile the TEMPLATE to',
     '  lib/training-deck-stencil-geometry.ts — this rebuilds the drifted stencil',
-    '  pages in place, so the template id does not change and no 1Password /',
+    '  pages in place, so the template id does not change and no vault /',
     '  .env rotation is needed:',
     '',
     '    npx tsx scripts/check-stencil-token-drift.ts --repair',

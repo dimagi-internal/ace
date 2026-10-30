@@ -13,11 +13,10 @@
  * on the operator's machine. There is deliberately no flag to turn headless off;
  * `test/lib/nova-hq-refresh.test.ts` fails CI if one appears.
  *
- * Credentials: Google username + password are read at runtime with `op read`
- * from the `Ace - gmail` item (fields username, password) in the vault of the ACE
- * instance this install is bound to — AGENT_VAULT, else `canopy agent env --plugin
- * ace --print` (canopy#899; no vault name lives in this repo) — never from `.env`,
- * never logged, never echoed into the JSON. The persistent profile at
+ * Credentials: the Google username is ACE's `google_account` (config/agent.json);
+ * the password is `ACE_GOOGLE_PASSWORD`, delivered to the environment from ACE's
+ * Canopy vault. Never logged, never echoed into the JSON; when it is not set the
+ * script stops with a typed `credentials-unavailable`. The persistent profile at
  * `~/.ace/nova-google-profile` (outside the repo) reuses the session, so most
  * runs never reach the Google form at all.
  *
@@ -43,10 +42,10 @@
  *       browser) · 3 still missing after refresh.
  */
 
-import { execFileSync } from 'node:child_process';
-import { mkdirSync } from 'node:fs';
+import { mkdirSync, readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { loadPluginEnv } from '../lib/load-plugin-env.js';
 import { novaRpc, unwrapToolResult } from '../lib/nova-rpc.js';
 import {
@@ -61,33 +60,15 @@ import {
 
 loadPluginEnv(import.meta.url);
 
-const LOGIN_ITEM = 'Ace - gmail';
-
-/** The 1Password vault of the ACE instance this install is bound to. `op read` does not
- *  expand `${AGENT_VAULT}` in a reference (only `op run` does), so resolve it:
- *  the session's AGENT_VAULT, else canopy-web's record via canopy. Throws when neither
- *  names one — never a guessed vault. */
-function instanceVault(): string {
-  const fromEnv = (process.env.AGENT_VAULT ?? '').trim();
-  if (fromEnv) return fromEnv;
-  const out = execFileSync('canopy', ['agent', 'env', '--plugin', 'ace', '--print'], {
-    encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], timeout: 60_000,
-  });
-  const vault = String((JSON.parse(out) as { vault?: unknown }).vault ?? '').trim();
-  if (!vault) throw new Error('canopy-web records no vault for the ACE instance');
-  return vault;
+/** ACE's Google login: the account is declared in config/agent.json, the password
+ *  arrives from the Canopy vault as ACE_GOOGLE_PASSWORD. */
+function googleLogin(): { user: string; pass: string } {
+  const cfgPath = join(dirname(fileURLToPath(import.meta.url)), '..', 'config', 'agent.json');
+  const cfg = JSON.parse(readFileSync(cfgPath, 'utf8')) as { google_account?: string };
+  return { user: (cfg.google_account ?? '').trim(), pass: (process.env.ACE_GOOGLE_PASSWORD ?? '').trim() };
 }
 
-function loginRef(vault: string, field: 'username' | 'password'): string {
-  return `op://${vault}/${LOGIN_ITEM}/${field}`;
-}
 const PROFILE_DIR = join(homedir(), '.ace', 'nova-google-profile');
-
-function opRead(ref: string): string {
-  // execFile, not a shell: the reference contains spaces, and nothing here may
-  // ever be interpolated into a command line that could be logged.
-  return execFileSync('op', ['read', ref], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], timeout: 60_000 }).trim();
-}
 
 async function readDomains(): Promise<string[]> {
   const result = await novaRpc('tools/call', { name: 'get_hq_connection', arguments: {} });
@@ -100,20 +81,14 @@ function excerpt(text: string): string {
 
 /** The browser step: sign in if needed, press Refresh, read the card. */
 async function browserRefresh(): Promise<BrowserRefreshResult> {
-  let user: string;
-  let pass: string;
-  try {
-    const vault = instanceVault();
-    user = opRead(loginRef(vault, 'username'));
-    pass = opRead(loginRef(vault, 'password'));
-  } catch {
+  const { user, pass } = googleLogin();
+  if (!user || !pass) {
     return {
       ok: false,
       stopped_reason: 'credentials-unavailable',
-      detail: `op read failed for the "${LOGIN_ITEM}" item in ACE's instance vault (is 1Password signed in, and has /ace:setup bound this install?)`,
+      detail: "ACE_GOOGLE_PASSWORD is not in the environment - add it to ACE's Canopy vault, then /ace:setup --force-env",
     };
   }
-  if (!user || !pass) return { ok: false, stopped_reason: 'credentials-unavailable', detail: 'op read returned empty' };
 
   const { chromium } = await import('playwright');
   mkdirSync(PROFILE_DIR, { recursive: true });

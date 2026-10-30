@@ -5,7 +5,7 @@
  *
  * ACE's config surfaces can disagree about a key — its Canopy vault on
  * canopy-web (authoritative for WHICH keys exist and their values; it replaced
- * the 1Password vault + `.env.tpl` pair, which were two surfaces of their own)
+ * the older vault + template pair, which were two surfaces of their own)
  * and the installed `${CLAUDE_PLUGIN_DATA}/.env` (what this machine actually
  * has). `bin/ace-doctor` already detects the drift (`env_drift`). What it did
  * NOT constrain was how the finding is PRESENTED.

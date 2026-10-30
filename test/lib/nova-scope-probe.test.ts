@@ -133,7 +133,7 @@ describe('classifyNovaScopeProbe (ace#174)', () => {
     const v = classifyNovaScopeProbe({ keyConfigured: false, httpStatus: null, body: '' });
     expect(v.status).toBe('skip');
     expect(v.reason).toBe('no-key-configured');
-    expect(v.remediation).toMatch(/1Password item "ACE - Nova"/);
+    expect(v.remediation).toMatch(/NOVA_API_KEY in ACE's Canopy vault/);
   });
 
   it('carries the scope caveat on EVERY verdict, pass included', () => {

@@ -1,7 +1,7 @@
 // The gog identity has exactly one source of truth: `config/agent.json`.
 //
-// It used to have two. The retired `.env.tpl` injected ACE_GMAIL_ACCOUNT /
-// ACE_GMAIL_CLIENT from the 1Password Agent-Ace item, duplicating `email` / `gog_client` that
+// It used to have two. The old env fill injected ACE_GMAIL_ACCOUNT /
+// ACE_GMAIL_CLIENT from the vault, duplicating `email` / `gog_client` that
 // agent.json already states — and the copies drifted. The vault held
 // `gmail_client=ace` against agent.json's `canopy`; no `credentials-ace.json`
 // is ever provisioned, so anything reading the env var failed with "OAuth

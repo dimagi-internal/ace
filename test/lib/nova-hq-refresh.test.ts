@@ -108,17 +108,11 @@ describe('scripts/nova-refresh-hq-domains.ts contract (owner directive 2026-10-0
     expect(src).not.toMatch(/--headed|--no-headless|HEADLESS\s*=|process\.env\.[A-Z_]*HEAD/);
   });
 
-  it('reads Google credentials from 1Password at runtime, never from .env', () => {
-    expect(src).toContain("const LOGIN_ITEM = 'Ace - gmail';");
-    expect(src).toMatch(/opRead\(loginRef\(vault, 'username'\)\)/);
-    expect(src).toMatch(/opRead\(loginRef\(vault, 'password'\)\)/);
-  });
-
-  it('reads them from the bound instance\'s vault, never a hardcoded one (canopy#899)', () => {
-    expect(src).toContain('process.env.AGENT_VAULT');
-    expect(src).toContain("['agent', 'env', '--plugin', 'ace', '--print']");
-    expect(src).not.toMatch(/op:\/\/Agent-/);
-    expect(src).not.toMatch(/process\.env\.[A-Z_]*(GOOGLE|GMAIL)[A-Z_]*/);
+  it('reads the Google password from the environment (Canopy vault), never a CLI', () => {
+    expect(src).toContain('process.env.ACE_GOOGLE_PASSWORD');
+    expect(src).toContain('google_account');
+    expect(src).not.toMatch(/execFileSync|child_process/);
+    expect(src).not.toMatch(/process\.env\.[A-Z_]*GMAIL[A-Z_]*/);
   });
 
   it('never prints the password', () => {

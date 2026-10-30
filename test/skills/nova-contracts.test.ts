@@ -7,7 +7,7 @@
  * Nova-UI / HQ-UI handoff.
  *
  * Originally this file also contained 15 regex-on-prose tests against
- * SKILL.md and .env.tpl files (e.g. `expect(body).toMatch(/\/nova:autobuild/)`).
+ * SKILL.md files (e.g. `expect(body).toMatch(/\/nova:autobuild/)`).
  * Those were dropped 2026-05-09 after a /canopy:test-audit pass:
  *   - Brittle to meaning-preserving rewords (renaming "invokes" to "calls"
  *     would break the test without changing skill behavior)

@@ -66,7 +66,7 @@ Run them from this directory.
   ```
 - **ACE's canopy-web PAT** for the lease calls in step 4: `CANOPY_WEB_PAT` in
   ACE's `.env` (`~/.claude/plugins/data/ace-ace/.env`, written by `/ace:setup`
-  from ACE's 1Password vault). `lib/ace-canopy-pat.ts` and `bin/ace-canopy-web`
+  from ACE's Canopy vault). `lib/ace-canopy-pat.ts` and `bin/ace-canopy-web`
   read it from there and nowhere else. Never lease with a human's personal
   canopy token: the lease would be theirs. Publishing (step 2) and the grant
   (step 3) are admin acts, done with the admin's own login.

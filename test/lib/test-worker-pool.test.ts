@@ -94,9 +94,8 @@ describe('legacyTestWorker (rollout fallback only)', () => {
     });
   });
 
-  it('null when unset or an unresolved op:// ref', () => {
+  it('null when unset', () => {
     expect(legacyTestWorker({})).toBeNull();
-    expect(legacyTestWorker({ ...legacyEnv(), ACE_E2E_PHONE: 'op://v/connect-test-user/phone' })).toBeNull();
   });
 
   it('names a missing field without echoing secrets', () => {

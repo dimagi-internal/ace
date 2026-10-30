@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { writeTokenToEnv } from '../../scripts/ace-web-pat-mint.js';
 
 const ENV_KEY = 'ACE_WEB_PAT_TOKEN';
-const MARKER_HEADER = '# --- ACE local-only secrets (preserved across op inject) ---';
+const MARKER_HEADER = '# --- ACE local-only secrets (preserved across vault fills) ---';
 
 let dir: string;
 let envPath: string;
@@ -89,7 +89,7 @@ describe('writeTokenToEnv', () => {
       'OCS_TEAM_SLUG=connect-ace',
       '',
       MARKER_HEADER,
-      '# Set by operator, NOT 1Password-backed.',
+      '# Set by operator, NOT vault-backed.',
       `${ENV_KEY}=initial`,
       'OTHER_LOCAL=keep-me',
       '',

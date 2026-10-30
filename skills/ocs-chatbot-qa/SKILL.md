@@ -607,7 +607,7 @@ Skills — No Fake Background Tasks`). Concrete budget:
         2026-06-09 incident lost a session to that misread). Repair:
         re-key the provider at
         `/a/<team>/service_providers/llm/<pk>/` (key source of truth:
-        1P `ACE - Anthropic API Key (OCS connect-ace)`), then re-run
+        ACE's Canopy vault), then re-run
         this skill — no chatbot config change needed.
 
         **When there is NO trace pointer, the instruction above

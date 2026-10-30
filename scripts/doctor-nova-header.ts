@@ -75,7 +75,7 @@ function readConfiguredKey(): string {
       const m = line.match(/^\s*(?:export\s+)?NOVA_API_KEY=(.*)$/);
       if (!m) continue;
       const value = m[1].trim().replace(/^['"]|['"]$/g, '');
-      if (!value || value.startsWith('op://')) continue;
+      if (!value) continue;
       return value;
     }
   }

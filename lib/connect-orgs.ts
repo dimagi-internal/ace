@@ -97,8 +97,6 @@ function read(env: Record<string, string | undefined>, key: string): string | nu
   if (raw === undefined) return null;
   const v = raw.trim().replace(/^['"]|['"]$/g, '');
   if (v === '') return null;
-  // An unresolved 1Password reference is "not configured", not a slug.
-  if (v.startsWith('op://')) return null;
   if (!SLUG.test(v)) {
     throw new ConnectOrgConfigError(
       key,

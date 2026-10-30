@@ -54,8 +54,7 @@ function readEnvValue(name: string): string {
       const m = line.match(new RegExp(`^\\s*(?:export\\s+)?${name}=(.*)$`));
       if (!m) continue;
       const value = m[1].trim().replace(/^['"]|['"]$/g, '');
-      // `op://…` means the template was never injected on this machine.
-      if (!value || value.startsWith('op://')) continue;
+      if (!value) continue;
       return value;
     }
   }

@@ -12,7 +12,7 @@
  * env-var-dependent `headersHelper`. Its own comment states the stakes:
  *
  *   > a stale one is worse than none: nova binds an old PAT while `.env`,
- *   > `~/.ace` and 1Password all agree with each other and report green.
+ *   > `~/.ace` and the Canopy vault all agree with each other and report green.
  *
  * The same thing then happened to `connect_labs`, where no equivalent check
  * existed. Measured on the `bednet-2-visit` preflight halt, 2026-09-07
@@ -35,7 +35,7 @@
  * ## Why a static header is the dangerous form
  *
  * It does not follow a rotation. Every other path ACE has — the plugin's
- * `headersHelper` (`scripts/labs-auth-headers.mjs`), `~/.ace/env.sh`, 1Password
+ * `headersHelper` (`scripts/labs-auth-headers.mjs`), `~/.ace/env.sh`, the Canopy vault
  * — re-reads its source, so rotating and re-running `/ace:setup --force-env`
  * fixes them all at once. A literal header in `~/.claude.json` is a copy taken
  * at one moment in time, and Claude Code binds it at connection time for the
@@ -317,7 +317,7 @@ export function classifyAllStaticHeaderDrift(input: {
       reason:
         `${drifted.length} user-scope MCP entr${drifted.length === 1 ? 'y pins' : 'ies pin'} a ` +
         `STALE static Authorization header: ${detail}. Those servers will authenticate with a ` +
-        'rotated credential — every .env / 1Password check reads green because none of them is ' +
+        'rotated credential — every .env / vault check reads green because none of them is ' +
         'what the connection is using.',
     };
   }

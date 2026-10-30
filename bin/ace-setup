@@ -32,7 +32,7 @@
 # Env overrides:
 #   AGENT_ENV_FILE      a .env canopy already filled from this instance's vault
 #                       (`canopy agent prepare --runner` sets it). Used instead of
-#                       filling when it carries no unresolved op:// ref.
+#                       filling.
 #   ACE_PLUGIN_REGISTRY       override ~/.claude/plugins/installed_plugins.json
 #
 # Exit status: 0 on success, 1 on any FAIL the user must fix.
@@ -82,17 +82,16 @@ mark_fail() { EXIT_CODE=1; }
 #
 # ORDERING (ace#2091). This script writes the INSTALLED plugin's data dir —
 # $DATA_DIR/.env, which every MCP subprocess reads once at startup — so the
-# root it resolves MUST be the installed plugin. (It used to render that root's
-# .env.tpl; the env now comes from ACE's Canopy vault, but $DATA_DIR still
+# root it resolves MUST be the installed plugin. (The env comes from ACE's Canopy vault, but $DATA_DIR still
 # follows the root.)
 #
 # Until this change the walk preferred a `$PWD` ancestor over everything but
 # `CLAUDE_PLUGIN_ROOT`. Every ACE worktree on the machine is a valid match,
 # including ones parked on months-old branches, so `--force-env` run from a
-# worktree silently rewrote the machine's `.env` from THAT branch's template.
+# worktree silently rewrote the machine's `.env` from THAT branch's declarations.
 # Measured 2026-09-06 15:05:30 on the ACE workstation: plugin_root resolved to
 # a worktree at 0.13.1173, and the installed `.env` came out with the CommCare
-# APK pin one release BEHIND what the installed `.env.tpl` declared — reverting
+# APK pin one release BEHIND what the installed plugin declared — reverting
 # PR #2038 machine-wide, invisibly. `/ace:doctor`'s env_freshness probe
 # compares MTIME, not CONTENT, so a stale-content .env passes it clean.
 # (No literal version is written here on purpose: a pin-shaped literal in a
@@ -279,7 +278,7 @@ EOF_KEYS
 append_local_secrets() {
   [ "${LOCAL_SECRET_COUNT:-0}" -gt 0 ] || return 0
   {
-    printf '\n# --- ACE local-only secrets (preserved across op inject) ---\n'
+    printf '\n# --- ACE local-only secrets (preserved across vault fills) ---\n'
     printf '# Set by operator, NOT in ACE'"'"'s Canopy vault. Keys here must NOT be vault keys;\n'
     printf '# bin/ace-setup auto-preserves them on re-fill. Edit values directly in this file.\n'
     printf '%s' "$LOCAL_SECRETS"
@@ -316,16 +315,14 @@ env_rewritten_notice() {
 # PERSON's canopy-web token a runner does not have — so on a runner every
 # setup run died at "instance: not signed in to canopy-web" and nothing after
 # it (deps, ~/.ace/env.sh, the user-scope nova entry, the ace-web token) ran.
-# A supplied file is used only when it is non-empty with no unresolved op://
-# ref. Otherwise it is ignored, loudly, and setup fills from the vault.
+# A supplied file is used only when it is readable and non-empty. Otherwise it
+# is ignored, loudly, and setup fills from the vault.
 SUPPLIED_ENV=""
 if [ -n "${AGENT_ENV_FILE:-}" ] && [ "$SKIP_ENV" != "1" ]; then
   if [ ! -r "$AGENT_ENV_FILE" ]; then
     warn "env: AGENT_ENV_FILE=$AGENT_ENV_FILE is not readable — ignoring it"
   elif [ -z "$(env_keys "$AGENT_ENV_FILE")" ]; then
     warn "env: AGENT_ENV_FILE=$AGENT_ENV_FILE carries no KEY= lines — ignoring it"
-  elif grep -qE '=op://' "$AGENT_ENV_FILE" 2>/dev/null; then
-    warn "env: AGENT_ENV_FILE=$AGENT_ENV_FILE has unresolved op:// refs — ignoring it"
   else
     SUPPLIED_ENV="$AGENT_ENV_FILE"
     echo "INFO env: using the .env canopy already filled: $SUPPLIED_ENV (AGENT_ENV_FILE)"
@@ -400,7 +397,7 @@ fi
 # only when this run needs it.
 if [ -z "$CANOPY_ERR" ]; then
   pass "instance: $BOUND_AGENT (Canopy vault, from canopy agent env)"
-elif [ "$NEED_FILL" = "1" ] && { [ "$FORCE_ENV" = "1" ] || [ ! -f "$ENV_OUT" ] || grep -qE '=op://' "$ENV_OUT" 2>/dev/null; }; then
+elif [ "$NEED_FILL" = "1" ] && { [ "$FORCE_ENV" = "1" ] || [ ! -f "$ENV_OUT" ]; }; then
   fail "instance: $CANOPY_ERR" "$CANOPY_FIX"
   exit 1
 else
@@ -511,7 +508,7 @@ if [ -f "$ENV_OUT" ]; then
 else
   NOVA_KEY=""
 fi
-if [ -z "$NOVA_KEY" ] || [ "${NOVA_KEY#op://}" != "$NOVA_KEY" ]; then
+if [ -z "$NOVA_KEY" ]; then
   warn "nova_env: NOVA_API_KEY not resolved in $ENV_OUT" \
        "mint a key at https://commcare.app/settings as the ACE Gmail identity, store it as NOVA_API_KEY in ACE's Canopy vault, then re-run /ace:setup --force-env."
 else

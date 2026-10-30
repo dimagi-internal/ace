@@ -83,7 +83,7 @@ describe('writing never breaks the bootstrap that just succeeded', () => {
  *
  * `markerProvesFor` returned `true` whenever the caller passed no map, and all
  * three call sites passed `process.env.ACE_SELECTOR_MAP` — a variable set
- * nowhere in the repo, absent from `.env.tpl`, and absent from the installed
+ * nowhere in the repo, and absent from the installed
  * `.env`. Measured on this host before the fix:
  *
  *     marker read          : {"marked_at":"2026-09-01T14:00:21.449Z"}

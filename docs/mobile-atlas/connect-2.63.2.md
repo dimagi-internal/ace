@@ -2,7 +2,7 @@
 
 **APK:** `org.commcare.dalvik` v 2.63.2 (Connect-enabled CommCare client) — the value of `DEFAULT_APK_VERSION` in `mcp/mobile/client.ts:217`.
 **Device:** `ACE_Pixel_API_34` (Pixel 6 profile, API 34, 1080x2400) for the case-list leg; `ACE_Probe_API_34` (same profile, dedicated probe AVD) for the score-gate leg — see § Provenance and coverage for which surface came from which.
-**Test user:** ACE Test (ConnectID `${ACE_E2E_PHONE}` — resolves to whatever 1Password `AI-Agents/connect-test-user/phone` currently holds).
+**Test user:** ACE Test (ConnectID `${ACE_E2E_PHONE}` — resolves to whatever the pool test worker's phone was).
 **Walk-through date:** 2026-08-14 (four ui-dumps under `docs/mobile-atlas/evidence/`, commits `9bd240c3`, `a0acb6e3`, `d529fd77`, `7a9aa71f`).
 **Plus the 2026-08-01 case-list leg** — live-captured on `ACE_Pixel_API_34` with `versionName=2.63.2` device-confirmed, opp `de796bc9-3df7-42dd-be6f-4ebab68b7f42` (`spark-facilitator/20260731-0656`), commit `5e5d398a` / ace#1138 Gap 2. No ui-dump XML from that leg is checked into `evidence/`; its record is the commit message plus the selector rows it added.
 

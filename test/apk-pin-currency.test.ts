@@ -5,8 +5,7 @@
  *
  * The state that shipped a green preflight (spark-facilitator/20260731-0656):
  *
- *   .env.tpl (repo, since retired)   2.63.2
- *   client.ts DEFAULT_APK_VERSION    2.63.2
+ *  *   client.ts DEFAULT_APK_VERSION    2.63.2
  *   newest map on disk               connect-2.63.2.yaml
  *   installed .env on that machine   2.63.0     <- /ace:update never touches it
  *   CommCare on the AVD              2.63.0

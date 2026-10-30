@@ -328,7 +328,7 @@ export class LeaseBackend {
       throw new MobileError(
         'LEASE_NOT_CONFIGURED',
         "the lease mobile backend needs ACE's canopy-web PAT (CANOPY_WEB_PAT in ACE's .env)",
-        'Run /ace:setup --force-env (CANOPY_WEB_PAT comes from the canopy-pat item in the ACE instance\'s 1Password vault), ' +
+        'Run /ace:setup --force-env (CANOPY_WEB_PAT comes from ACE\'s Canopy vault), ' +
           'or use the local AVD with /ace:mobile-backend local.',
       );
     }

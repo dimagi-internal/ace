@@ -8,7 +8,7 @@
  * | widget_url_resolves            | 0.25   | the handoff's OCS URL is the public link `/c/<token>/` (legacy `/start/` ≤ 6 — OCS is removing it, #4209; the retired `/chatbots/embed/` ≤ 3), `public_id` + `embed_key` present, and an anonymous probe answers 200 with neither "not published" banner (a 503 maintenance page is PLATFORM, never a deduction — ace#1812) |
  * | connect_opp_binding            | 0.20   | the handoff names the opportunity run_state records; a different opportunity id = −4, none = ≤ 4 |
  * | operator_instructions_clarity  | 0.30   | three elements present (share-the-link, verify-the-bot incl. the `public_id` as the RUN check — ace#2488, what embed_key is for once CCC-301 ships), −2 each missing; a phantom Connect paste-in instruction is an auto-fail ≤ 3 (ace#1811). The ONLY judgment left: the skill may deduct up to 2 more for readability, with a reason |
- * | credential_hygiene             | 0.25   | no cross-opportunity credential in the doc (named env keys with a value, auth headers, PEM, 1Password refs, AWS keys, or any configured secret VALUE verbatim). `link_token`, `team_slug`, `public_id`, `embed_key` are public-by-construction and never a finding (ace#1680) |
+ * | credential_hygiene             | 0.25   | no cross-opportunity credential in the doc (named env keys with a value, auth headers, PEM, AWS keys, or any configured secret VALUE verbatim). `link_token`, `team_slug`, `public_id`, `embed_key` are public-by-construction and never a finding (ace#1680) |
  */
 import type { AutoSurfaced, CheckRecord, Verdict } from './verdict-schema.js';
 import { SECRET_ENV_KEYS } from './redact-secrets.js';
@@ -38,7 +38,6 @@ const LEAK_PATTERNS: Array<{ name: string; re: RegExp }> = [
   { name: 'named-secret-env-key', re: new RegExp(`\\b(?:${CREDENTIAL_KEYS.join('|')})\\b"?\\s*[:=]\\s*"?${VAL}`) },
   { name: 'authorization-header', re: new RegExp(`\\b(?:Bearer|ApiKey|Basic|Token)\\s+${VAL}`) },
   { name: 'pem-private-key', re: /-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----/ },
-  { name: 'op-ref', re: /op:\/\/[^\s"'\\,}{]+/ },
   { name: 'aws-akid', re: /\bAKIA[0-9A-Z]{16}\b/ },
 ];
 

@@ -21,7 +21,7 @@
  * NO fallback to the shared `ACE_E2E_PIN` / `ACE_E2E_BACKUP_CODE` for a pool
  * slot: a missing key fails TEST_WORKER_NO_CREDENTIALS naming the slot, the
  * keys, and the command that stores them (`scripts/test-worker-set.ts`). The
- * old `ACE_E2E_WORKERS` env / 1Password `connect-test-workers` path is gone.
+ * old `ACE_E2E_WORKERS` env path is gone.
  *
  * The legacy `ACE_E2E_*` worker survives for ONE purpose: the rollout
  * fallback, when the pool capability is not live and a single session runs
@@ -185,11 +185,11 @@ export function workerFromSlotData(slot: string, data: SlotData | null | undefin
 /**
  * The legacy single worker from `ACE_E2E_*` — used ONLY by the rollout
  * fallback (pool capability not live), never for a pool slot. Null when this
- * machine has no such worker (unset, or an unresolved `op://` ref).
+ * machine has no such worker (unset).
  */
 export function legacyTestWorker(env: NodeJS.ProcessEnv = process.env): TestWorker | null {
   const phone = (env.ACE_E2E_PHONE ?? '').trim();
-  if (!phone || phone.startsWith('op://')) return null;
+  if (!phone) return null;
   const w: TestWorker = {
     slot: LEGACY_SLOT,
     phone,

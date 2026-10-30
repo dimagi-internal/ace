@@ -5,7 +5,7 @@
 uses that one Connect worker. Anything a probe does to it (invite, claim,
 complete Learn) is a permanent edit to global state — `/ace:sweep connect`
 does **not** clear `OpportunityAccess`, so the damage accumulates until the
-phone is rotated in 1Password.
+phone is rotated in ACE's Canopy vault.
 
 This is not theoretical. `scripts/probe-flw-invite.ts` (deleted 2026-07-25)
 hardcoded three opportunity ids and invited the demo phone to all of them.

@@ -133,7 +133,7 @@ absent from Nova's list, which otherwise matched it exactly.
 its own Google login and must never pop a window on the operator's machine):
 `scripts/nova-refresh-hq-domains.ts --domain <space>` reads `get_hq_connection`,
 and only if the space is missing signs in to `https://commcare.app` as ace@
-(Google username/password via `op read` of the `Ace - gmail` item in the instance's vault at runtime,
+(Google account from `config/agent.json`, password from `ACE_GOOGLE_PASSWORD` in ACE's Canopy vault,
 persistent profile `~/.ace/nova-google-profile`), presses Refresh, and re-reads.
 Exit 0 = listed; 3 = still missing (the HQ key's user is not a member — a
 refresh cannot fix that); 2 = stopped on a named Google challenge (`google-2fa`,
@@ -370,11 +370,11 @@ ACE's contract:
 
 1. `.env` declares `ACE_HQ_DOMAIN` (the HQ project space every upload
    targets) and `ACE_HQ_BASE_URL` (defaults to
-   `https://www.commcarehq.org`). The committed template leaves
-   `ACE_HQ_DOMAIN` unset — operators set it locally per deployment.
+   `https://www.commcarehq.org`). ACE's Canopy vault sets
+   `ACE_HQ_DOMAIN` per deployment.
 2. The HQ API key is generated under the ACE Gmail identity at
-   `<ACE_HQ_BASE_URL>/account/api_keys/` and stored in 1Password
-   (operator's vault choice; not pinned by the codebase). The key only
+   `<ACE_HQ_BASE_URL>/account/api_keys/` and stored as `ACE_HQ_API_KEY` in
+   ACE's Canopy vault. The key only
    needs to *reach* `ACE_HQ_DOMAIN` — it may be scoped to several
    spaces.
 3. The operator pastes that HQ key into Nova's settings page once.
@@ -443,8 +443,8 @@ check (the HQ role behind Nova's stored HQ API key, on `ACE_HQ_DOMAIN`).
   `<ACE_HQ_BASE_URL>/account/api_keys/`.
 
 Rotating the HQ key follows the same shape: regenerate at
-`<ACE_HQ_BASE_URL>/account/api_keys/`, update its 1Password item in
-place, then re-paste into Nova settings.
+`<ACE_HQ_BASE_URL>/account/api_keys/`, update `ACE_HQ_API_KEY` in
+ACE's Canopy vault, then re-paste into Nova settings.
 
 ## Authentication summary
 

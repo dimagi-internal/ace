@@ -10,14 +10,14 @@ export class ConnectError extends Error {
  * The ORDER in which a human is asked for help on a Connect auth failure.
  *
  * ACE authenticates to Connect as a service identity (`ACE_HQ_USERNAME` /
- * `ACE_HQ_PASSWORD`, the ACE instance's 1Password vault) through a HEADLESS
+ * `ACE_HQ_PASSWORD`, from ACE's Canopy vault) through a HEADLESS
  * OAuth-via-CCHQ flow. Every ingredient for self-remediation is therefore
  * already on the machine, and the agent can run it unattended.
  *
  * `/ace:connect-login` is the opposite: it opens a HEADED Playwright browser
  * so a PERSON can sign in. It is a real last resort for an account that
  * genuinely requires interactive auth — but it was previously offered as a
- * co-equal first-line option ("Verify ... in 1Password, or run
+ * co-equal first-line option ("Verify ... in the vault, or run
  * /ace:connect-login"), and a co-equal option is one a reader picks. The ask
  * then lands on a human for a failure the agent could have fixed itself.
  *
@@ -39,8 +39,8 @@ export const REMEDIATION_ORDER =
   'local-only keys), then fully restart Claude Code so the MCP subprocess picks ' +
   'up the new .env; (2) retry the call, which re-runs the headless ' +
   'OAuth-via-CCHQ login. Only if that still fails, escalate — and escalate to ' +
-  'get the CREDENTIAL fixed (wrong/rotated/locked account in the ACE ' +
-  'instance\'s 1Password vault). Do NOT ask a human to log in to Connect on ACE\'s behalf: ACE ' +
+  'get the CREDENTIAL fixed (wrong/rotated/locked account in ' +
+  'ACE\'s Canopy vault). Do NOT ask a human to log in to Connect on ACE\'s behalf: ACE ' +
   'authenticates as a service identity and the headless flow needs no person. ' +
   '`/ace:connect-login` opens a browser for a human to sign in and is the last ' +
   'resort for an account that truly requires interactive SSO/MFA — not a ' +

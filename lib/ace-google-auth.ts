@@ -6,7 +6,7 @@
  *     canopy cred google-token --agent ace
  *       → ~/.canopy/google-token/ace.json  { access_token, expires_at (epoch s), account }
  *
- * This replaces the 1Password-era service-account key (`gws-sa-key.json`):
+ * This replaces the old service-account key (`gws-sa-key.json`):
  * ACE's Canopy vault never held it, so Drive failed on any box without the old
  * file (cloud-ec2-2, turn 599fad3b: "Method doesn't allow unregistered
  * callers"; ace#3310). There is NO service-account fallback.
