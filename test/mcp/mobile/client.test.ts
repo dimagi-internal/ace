@@ -2069,7 +2069,7 @@ describe('restoreDeviceUserState: bootstrapConfig-absent error names specific mi
   it('enumerates the specific missing env var names when tier-1 fails and env is partial', async () => {
     // Set 6 of 7 so the failure surfaces a single name. The previous
     // "bootstrapConfig:absent" message gave an operator no signal about
-    // which env var was missing — required a manual diff against .env.tpl.
+    // which env var was missing — required a manual diff against the vault.
     process.env.ACE_CONNECT_APK_VERSION = '2.62.0';
     process.env.ACE_E2E_PHONE = TEST_PHONE;
     process.env.ACE_E2E_PHONE_LOCAL = TEST_PHONE_LOCAL;
@@ -2225,7 +2225,7 @@ describe('MobileClient.restoreDeviceUserState — lease branch', () => {
     // Even on cloud, the heal needs the test-user credentials —
     // without them we have nothing to register. The error must
     // enumerate the specific missing vars so the operator doesn't
-    // have to diff against .env.tpl.
+    // have to diff against the vault.
     process.env.ACE_CONNECT_APK_VERSION = '2.62.0';
     process.env.ACE_E2E_PHONE = TEST_PHONE;
     process.env.ACE_E2E_PHONE_LOCAL = TEST_PHONE_LOCAL;
@@ -2792,7 +2792,7 @@ describe('getConfiguredApkVersion: env-var with default', () => {
   // Asserted against DEFAULT_APK_VERSION rather than a literal: this pair
   // hardcoded '2.63.2' and went red on the 2.64.0 bump while testing nothing
   // the bump got wrong. `test/apk-pin-currency.test.ts` is what pins the
-  // constant's VALUE against .env.tpl and the newest map; this only has to
+  // constant's VALUE against the newest map; this only has to
   // pin that the getter falls back to it (ace#1997).
   it('returns DEFAULT_APK_VERSION when env var is unset', () => {
     delete process.env.ACE_CONNECT_APK_VERSION;

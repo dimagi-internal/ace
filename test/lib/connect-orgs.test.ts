@@ -28,8 +28,8 @@ describe('resolveConnectOrgs', () => {
     });
   });
 
-  it('treats empty, whitespace, quoted-empty and unresolved 1Password refs as unset', () => {
-    for (const v of ['', '   ', '""', "''", 'op://Agent-Ace/x/y']) {
+  it('treats empty, whitespace and quoted-empty values as unset', () => {
+    for (const v of ['', '   ', '""', "''"]) {
       const o = resolveConnectOrgs({ ACE_CONNECT_PM_ORG: v, ACE_CONNECT_NM_ORG: v, ACE_CONNECT_LLO_ORG: v });
       expect(o.source).toEqual({ pm_org: 'legacy-default', nm_org: 'unset', llo_org: 'unset' });
     }

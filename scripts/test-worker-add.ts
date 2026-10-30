@@ -53,7 +53,7 @@ async function main(): Promise<void> {
   const avoid = argv.includes('--avoid') && avoidArg ? avoidArg.split(',').map((s) => s.trim()).filter(Boolean) : [];
   const manifest = parseYaml(fs.readFileSync(MANIFEST, 'utf8')) as { slots?: string[] };
   const manifestSlots = manifest.slots ?? [];
-  const legacyPhone = (process.env.ACE_E2E_PHONE ?? '').startsWith('op://') ? null : process.env.ACE_E2E_PHONE || null;
+  const legacyPhone = process.env.ACE_E2E_PHONE || null;
   let rows: SlotRow[] = [];
   let listNote: string | null = null;
   try {

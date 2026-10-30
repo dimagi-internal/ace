@@ -600,7 +600,7 @@ auto_surfaced:
 - **`personal-id-name` doesn't render** (recipe completes but no
   `personal-id-name.png` captured). The active `${ACE_E2E_PHONE}` was
   on a snapshot-reload path that skipped the Name screen. Rotate to a
-  fresh demo phone in 1P (`AI-Agents/connect-test-user/phone`) OR
+  fresh pool test worker (`skills/test-worker-pool`) OR
   commit a fixture.
 - **`claim-opp` / `learn-install` recipe times out OR hits
   "application invalid".** Forked OPP_NAME points at a stale build.

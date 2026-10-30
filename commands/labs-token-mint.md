@@ -33,10 +33,8 @@ in your local `.env`.
 - Write access to **ACE's Canopy vault** on canopy-web (agent `ace`,
   Settings → Credentials) — the one place ACE's env secrets are declared.
   `LABS_MCP_TOKEN` is a name stored there; `/ace:setup` writes `.env`
-  straight from it (`canopy agent env --plugin ace`). 1Password is no
-  longer read for it: a value written to a 1Password item (the old
-  `ACE - Connect Labs` item, in any vault) looks like it succeeded and
-  leaves `.env` stale. See `CLAUDE.md § Auth model`.
+  straight from it (`canopy agent env --plugin ace`). A value stored anywhere
+  else looks like it succeeded and leaves `.env` stale. See `CLAUDE.md § Auth model`.
 - Network access to `labs.connect.dimagi.com` and
   `www.commcarehq.org`.
 
@@ -195,7 +193,7 @@ creating the token` and creates nothing: re-tick it, or mint with scope
     conclude the token UI is gone.
 - **`HTTP 401` / `invalid_token` after storing** — in order of
   likelihood: (1) the new value is not in ACE's Canopy vault (e.g. it
-  went to a 1Password item, which nothing reads now) or `.env` was not
+  was stored somewhere nothing reads) or `.env` was not
   rewritten afterwards — re-run `/ace:setup --force-env`; (2) you have a
   hand-added user-scope `connect_labs` MCP entry with a hardcoded
   header (see § above); (3) you haven't fully restarted Claude Code, so

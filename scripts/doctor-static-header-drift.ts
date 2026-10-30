@@ -83,8 +83,7 @@ function readConfiguredKey(name: string): string {
       const m = line.match(re);
       if (!m) continue;
       const value = m[1].trim().replace(/^['"]|['"]$/g, '');
-      // An unresolved 1Password reference is not a credential.
-      if (!value || value.startsWith('op://')) continue;
+      if (!value) continue;
       return value;
     }
   }

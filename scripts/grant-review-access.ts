@@ -127,7 +127,7 @@ import { parseOcsTeamPage, ocsMembersTablePath, checkedCheckboxValues, type OcsT
 loadPluginEnv(import.meta.url);
 
 // ── env ────────────────────────────────────────────────────────────────────
-// Values live in the installed plugin-data .env (1Password-backed). Load them
+// Values live in the installed plugin-data .env (filled from ACE's Canopy vault). Load them
 // the same way the probe scripts do rather than hardcoding anything.
 function loadEnv(): void {
   const candidates = [

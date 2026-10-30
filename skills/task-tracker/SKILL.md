@@ -37,8 +37,8 @@ user-invocable: false
   in this skill down with it. Its usual failure is provisioning, not the server: it exits at
   startup with `FATAL: GWS_IDENTITY_MODE is not set` when the agent's session env has no Google
   identity, which surfaces to Claude Code as an opaque `CONNECTION_CLOSED`. The remedy is
-  `canopy provision` (or a `GWS_IDENTITY_MODE` / `GWS_SA_KEY_PATH` env block in
-  `~/.claude/settings.json`) on the affected machine — a canopy-side fix, not an ACE one. Observed
+  a `GWS_IDENTITY_MODE` / `GWS_SA_KEY_PATH` env block in
+  `~/.claude/settings.json` on the affected machine — a canopy-side fix, not an ACE one. Observed
   2026-09-02 on this workstation; raised as dimagi-internal/canopy#586.
 - Per-opportunity pipeline state stays in Drive (`ACE/<opp>/runs/<run-id>/run_state.yaml` +
   comms-logs) — the board tracks counterpart-facing iterative threads/projects, not run state.

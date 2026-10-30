@@ -62,7 +62,7 @@ export class RestBackend {
       const envName = `OCS_API_TOKEN_${team_slug.replace(/[^A-Za-z0-9]/g, '_').toUpperCase()}`;
       throw new Error(
         `No OCS API token configured for team_slug=${team_slug}. ` +
-          `Add ${envName}=<token> to .env (point at the matching 1Password item) ` +
+          `Add ${envName}=<token> to ACE's Canopy vault, run /ace:setup --force-env, ` +
           `then restart the MCP server.`,
       );
     }

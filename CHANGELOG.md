@@ -5,6 +5,16 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.13.2180 — 2026-10-30
+
+**1Password is gone from ACE.** The fleet moved fully to the Canopy vault, so every 1Password path and
+reference is removed. Live code: `scripts/nova-refresh-hq-domains.ts` no longer shells out to `op read`; it
+takes the Google account from `config/agent.json` and the password from `ACE_GOOGLE_PASSWORD` (set it in ACE's
+Canopy vault; absent, it stops with `credentials-unavailable`). `bin/ace-setup`, `bin/ace-doctor` and the
+`lib/`, `mcp/` and `scripts/` env readers no longer special-case unresolved `op://` values, `redact-secrets`
+and the widget-handoff leak scan drop the op-ref pattern, and remediation text names the Canopy vault. Docs,
+skills and tests are rewritten to match; dated history is untouched.
+
 ## 0.13.2157 — 2026-10-26
 
 **ACE no longer ships a `runtime.yaml`; capabilities publish from their `capability.yaml`.**

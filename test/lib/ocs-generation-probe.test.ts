@@ -103,19 +103,18 @@ describe('remediationFor', () => {
     });
     expect(out).toContain('https://chatbots.dimagi.com/a/connect-ace/service_providers/llm/377/');
     expect(out).not.toContain('/378/');
-    expect(out).toMatch(/1Password/);
-    expect(out).toMatch(/instance's 1Password vault/);
+    expect(out).toMatch(/ACE's Canopy vault/);
     expect(out).toContain('862138');
   });
 
-  it('names the 1Password item for a revoked key too', () => {
+  it('names the Canopy vault for a revoked key too', () => {
     const out = remediationFor('provider_auth', {
       baseUrl: 'https://chatbots.dimagi.com',
       teamSlug: 'connect-ace',
       providerId: 377,
     });
     expect(out).toContain('service_providers/llm/377/');
-    expect(out).toMatch(/instance's 1Password vault/);
+    expect(out).toMatch(/ACE's Canopy vault/);
   });
 
   it('degrades to a placeholder path rather than a wrong one when the id is unknown', () => {

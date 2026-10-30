@@ -175,7 +175,7 @@ const SLUG = /^[A-Za-z0-9][A-Za-z0-9_-]*$/;
 function clean(v: string | null | undefined): string | null {
   if (typeof v !== 'string') return null;
   const t = v.trim().replace(/^['"]|['"]$/g, '');
-  if (t === '' || t.startsWith('op://')) return null;
+  if (t === '') return null;
   return t;
 }
 

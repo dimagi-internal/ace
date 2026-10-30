@@ -166,8 +166,8 @@ export function classifyNovaScopeProbe(args: {
       reason: 'no-key-configured',
       summary: 'skipped — NOVA_API_KEY not set',
       remediation:
-        'mint at https://commcare.app/settings as the ACE Gmail identity, save to 1Password item ' +
-        '"ACE - Nova" / field `api_key`, then /ace:setup --force-env',
+        'mint at https://commcare.app/settings as the ACE Gmail identity, store it as NOVA_API_KEY in ' +
+        'ACE\'s Canopy vault, then /ace:setup --force-env',
     };
   }
 
@@ -212,8 +212,8 @@ export function classifyNovaScopeProbe(args: {
       reason: 'auth-failed',
       summary: `bearer rejected (HTTP ${httpStatus}) — NOVA_API_KEY invalid or revoked`,
       remediation:
-        'rotate at https://commcare.app/settings, update 1Password item "ACE - Nova" / field ' +
-        '`api_key`, then /ace:setup --force-env. nova_auth above reports the same fact',
+        'rotate at https://commcare.app/settings, update NOVA_API_KEY in ' +
+        'ACE\'s Canopy vault, then /ace:setup --force-env. nova_auth above reports the same fact',
     };
   }
 
@@ -242,7 +242,7 @@ export function classifyNovaScopeProbe(args: {
           `"$ACE_ROOT/scripts/nova-refresh-hq-domains.ts" --domain ${expectedDomain} (exit 2 = stopped on a ` +
           `Google challenge → press Refresh on the CommCare HQ card at https://commcare.app/settings as the ACE identity). ` +
           `If "${expectedDomain}" is still missing after that, add the HQ key's user to it on CommCare HQ, or correct ` +
-          `ACE_HQ_DOMAIN (visible: ${domains.join(', ')}) in 1Password and re-run /ace:setup --force-env`,
+          `ACE_HQ_DOMAIN (visible: ${domains.join(', ')}) in ACE's Canopy vault and re-run /ace:setup --force-env`,
       };
     }
     return {

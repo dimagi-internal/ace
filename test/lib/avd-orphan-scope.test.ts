@@ -270,7 +270,7 @@ describe('the deleted inference stays deleted', () => {
 //
 // The fixture at the top of this file already models exactly that host: the
 // LIVE PEER is on console port 5554, which is the port the rescue probes by
-// default (`ACE_MOBILE_EMULATOR_PORT` is unset in `.env.tpl`, so
+// default (`ACE_MOBILE_EMULATOR_PORT` is unset by default, so
 // `mcp/mobile/backends/avd.ts` falls back to the literal 5554). So the peer is
 // not an unlucky edge case — it is the first session on any host.
 // ═══════════════════════════════════════════════════════════════════════════

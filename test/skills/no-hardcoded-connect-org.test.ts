@@ -98,7 +98,7 @@ function isChangeLogRow(lines: string[], i: number): boolean {
 // configuration exactly like the legacy default above — and for the winner org
 // (`ACE_CONNECT_LLO_ORG`, the optional `ace_winner` step) it would award a
 // call, bind a seeded response and run a procurement in one instance's org.
-// Listed here since the retired `.env.tpl` that documented them is gone. Scoped
+// Listed here since no env template documents them. Scoped
 // to the prose surfaces an agent acts from; playbook/lib/mcp carry recorded
 // measurements in these orgs and stay under the legacy-slug rail only.
 const INSTANCE_SCAN_DIRS = ['skills', 'agents', 'commands', 'templates'];

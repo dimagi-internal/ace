@@ -31,7 +31,7 @@
  *      registers, the URL never leaves the authorize page, the 15s
  *      `waitForURL` expires, and it is classified `oauth-consent`, a stage name
  *      that reads like rejected credentials and sends the operator at
- *      1Password. Every Connect + CCHQ auto-relogin failed this way, which
+ *      the vault. Every Connect + CCHQ auto-relogin failed this way, which
  *      halts Phase 3 and Phase 4 of any `/ace:run`.
  *
  * The driver fix shipped in f423ce12 (2026-08-28). It had no test, so nothing

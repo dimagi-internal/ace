@@ -77,7 +77,7 @@ export type NovaHeaderReason =
    * This is the failure mode the override itself introduces: it is static, so
    * it does not follow a rotation, and it wins over everything else. Nova then
    * authenticates as a stale credential while every ACE key check reports
-   * green, because `.env`, `~/.ace/env.sh` and 1Password all agree with each
+   * green, because `.env`, `~/.ace/env.sh` and the Canopy vault all agree with each
    * other and none of them is what the connection is using.
    */
   | 'static-header-stale'
@@ -208,7 +208,7 @@ export function classifyNovaHeaderReadiness(input: NovaHeaderInput): NovaHeaderV
     // Drift check BEFORE declaring victory. A static header does not follow a
     // key rotation, and it outranks every other credential path — so a stale
     // one is worse than none: nova binds an old PAT while `.env`, `~/.ace` and
-    // 1Password all agree with each other and report green.
+    // the Canopy vault all agree with each other and report green.
     if (input.staticHeaderMatchesConfiguredKey === false) {
       return {
         status: 'fail',

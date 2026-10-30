@@ -295,16 +295,12 @@ if [ "$PREFLIGHT" = "1" ]; then
     ENV_FILE="$ROOT/.env"
   fi
 
-  # Local copy of get_env — mirrors the runtime-readiness helper. Strips
-  # quotes, treats unresolved 1Password refs as missing.
+  # Local copy of get_env — mirrors the runtime-readiness helper. Strips quotes.
   pf_get_env() {
     [ -z "$ENV_FILE" ] && return
     local raw
     raw="$(grep -E "^[[:space:]]*$1=" "$ENV_FILE" 2>/dev/null | tail -1 | sed -E "s/^[[:space:]]*$1=//; s/^['\"]//; s/['\"]$//")"
-    case "$raw" in
-      op://*) return ;;
-      *) printf '%s' "$raw" ;;
-    esac
+    printf '%s' "$raw"
   }
 
   # Presence-only — never echo the actual value. Returns "present" or "missing".
@@ -1343,16 +1339,13 @@ else
   warn "env_file: no .env found (checked $DATA_DIR/.env and $ROOT/.env; CLAUDE_PLUGIN_DATA=${CLAUDE_PLUGIN_DATA:-unset})" "run /ace:setup (or: bash \"$ROOT/bin/ace-setup\") to fill .env from ACE's Canopy vault"
 fi
 
-# get_env KEY — prints the value of KEY from $ENV_FILE, or empty if absent/unresolved.
-# Strips surrounding quotes and treats unresolved 1Password refs (op://...) as empty.
+# get_env KEY — prints the value of KEY from $ENV_FILE, or empty if absent.
+# Strips surrounding quotes.
 get_env() {
   [ -z "$ENV_FILE" ] && return
   local raw
   raw="$(grep -E "^[[:space:]]*$1=" "$ENV_FILE" 2>/dev/null | tail -1 | sed -E "s/^[[:space:]]*$1=//; s/^['\"]//; s/['\"]$//")"
-  case "$raw" in
-    op://*) return ;;  # unresolved 1Password reference — treat as missing
-    *) printf '%s' "$raw" ;;
-  esac
+  printf '%s' "$raw"
 }
 
 # Single reader for config/agent.json — the authoritative source for the gog
@@ -1369,7 +1362,7 @@ if [ -n "$ENV_FILE" ]; then
   OCS_TEAM="$(get_env OCS_TEAM_SLUG)"
   OCS_GTID="$(get_env OCS_GOLDEN_TEMPLATE_ID)"
   # Identity comes from config/agent.json ONLY (ace#1147/#1338). It used to be
-  # read from .env, where 1Password injected `gmail_client=ace` against
+  # read from .env, where the old vault fill injected `gmail_client=ace` against
   # agent.json's `canopy` — two probes in the same run printed different
   # clients, both PASS. The vault carries neither key.
   GMAIL_ACCT="$(agent_json_field email)"
@@ -1934,8 +1927,7 @@ if [ -n "$ENV_FILE" ]; then
 
   # ── Nova (CommCare app builder MCP) ──────────────────────────────────
   # Presence check only — live HTTP probe runs in [Auth liveness] below.
-  # Drift detection: if NOVA_API_KEY is missing or unresolved (still
-  # `op://...`), bin/ace-setup's user-scope MCP override will be skipped
+  # Drift detection: if NOVA_API_KEY is missing, bin/ace-setup's user-scope MCP override will be skipped
   # and /nova:* falls back to OAuth — broken under concurrent worktrees.
   NOVA_KEY_VAL="$(get_env NOVA_API_KEY)"
   if [ -z "$NOVA_KEY_VAL" ]; then
@@ -2375,7 +2367,7 @@ fi
 #
 # Both must be set up ONCE per HQ project space; ACE has no MCP atom
 # to do this (the flag flip requires a Dimagi super-user; the OAuth
-# client credentials live in 1Password "Connect Delivery / Tech").
+# client credentials are the "Connect Delivery / Tech" OAuth client).
 # This probe surfaces missing setup so the operator can fix it BEFORE
 # burning a /ace:run on a non-Connect-enabled project space.
 #
@@ -2459,7 +2451,7 @@ if [ -n "$HQ_DOMAIN" ] && [ -f "$CONNECT_SESS" ]; then
 
     SETUP_DOC="GDrive 18Y1UQJW1aIwcgSt-Mt1Vze5pdQPAPs0I"
     REMED_FLAG="ask a Dimagi super-user to flip the COMMCARE_CONNECT feature flag ON for '$HQ_DOMAIN' (Settings → Feature Flags and Privileges → 'Enable CommCare Connect features...')"
-    REMED_CONN="Settings → Project Settings → Connection Settings (Integration) → Add new connection → URL https://connect.dimagi.com/api/receiver/ → OAuth 2.0 Client Credentials Grant → Client ID/Secret from 1Password 'Connect Delivery / Tech' → Token URL https://connect.dimagi.com/o/token/ → Pass Credentials in header → Test Connection must return 200 'Connection successful'"
+    REMED_CONN="Settings → Project Settings → Connection Settings (Integration) → Add new connection → URL https://connect.dimagi.com/api/receiver/ → OAuth 2.0 Client Credentials Grant → Client ID/Secret of the 'Connect Delivery / Tech' OAuth client → Token URL https://connect.dimagi.com/o/token/ → Pass Credentials in header → Test Connection must return 200 'Connection successful'"
     REMED_RULE="Settings → Project Settings → Data Forwarding → **'Forward Forms'** section → 'Add a service to forward to' → select the connection from step (2) → name e.g. 'Forward Forms to Connect' → HTTP Request Method POST → **Payload Format JSON** → **Include 'app_id' URL query parameter ✅** → leave Users to exclude + XMLNSes blank → Start Forwarding."
     REMEDIATION_ALL="enable the feature flag + configure the OAuth connection + add the data-forwarding rule per the 'Run Your First Connect Opportunity' doc ($SETUP_DOC). Concretely: (1) $REMED_FLAG. (2) $REMED_CONN. (3) $REMED_RULE."
 
@@ -2759,7 +2751,7 @@ for _k in ACE_GMAIL_ACCOUNT ACE_GMAIL_CLIENT; do
   fi
 done
 if [ -n "$GMAIL_ENV_RESIDUAL" ]; then
-  warn "gmail_identity_residual:$GMAIL_ENV_RESIDUAL still present in .env — retired keys, no longer read by anything (config/agent.json is the single source of truth)" "harmless but misleading; clear with /ace:setup --force-env (bin/ace-setup drops retired keys), and delete the gmail_account/gmail_client fields from the ACE item in the instance's 1Password vault"
+  warn "gmail_identity_residual:$GMAIL_ENV_RESIDUAL still present in .env — retired keys, no longer read by anything (config/agent.json is the single source of truth)" "harmless but misleading; clear with /ace:setup --force-env (bin/ace-setup drops retired keys), and delete the gmail_account/gmail_client keys from ACE's Canopy vault"
 elif [ -n "$GMAIL_CLIENT_VAL" ]; then
   pass "gmail_identity_residual: no retired identity keys in .env; client=$GMAIL_CLIENT_VAL (resolved by canopy email client from config/agent.json)"
 fi

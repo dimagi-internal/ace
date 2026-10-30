@@ -199,7 +199,7 @@ async function commcareClient(server?: string): Promise<CommCareBackend> {
       `No CommCare HQ backend configured for server="${key}". ` +
         `Configured servers: [${[...commcareRegistry.keys()].join(', ')}]. ` +
         `Add ACE_HQ_${key.toUpperCase()}_{BASE_URL,USERNAME,API_KEY} to the plugin .env ` +
-        `(1Password item "ACE - CommCareHQ ${key.toUpperCase()}").`,
+        `(set in ACE's Canopy vault).`,
     );
   }
   return backend;

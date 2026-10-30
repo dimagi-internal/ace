@@ -1492,7 +1492,7 @@ export class MobileClient {
       throw new MobileError(
         'NO_BOOTSTRAP_CONFIG',
         'runLocalBootstrap called without bootstrapConfig — env vars (ACE_E2E_* / ACE_CONNECT_APK_VERSION) are missing',
-        'Run /ace:setup --force-env to re-inject .env from 1Password.',
+        "Run /ace:setup --force-env to re-fill .env from ACE's Canopy vault.",
       );
     }
     const { apkVersion } = this.bootstrapConfig;

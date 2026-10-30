@@ -19,7 +19,7 @@ export class OcsLoginFailedError extends OcsError {
   constructor(public username: string) {
     super(
       `OCS auto-login failed for ${username}. ` +
-        'Verify OCS_USERNAME / OCS_PASSWORD in 1Password, or run /ace:ocs-login if the account requires SSO/MFA.',
+        "Verify OCS_USERNAME / OCS_PASSWORD in ACE's Canopy vault, or run /ace:ocs-login if the account requires SSO/MFA.",
     );
   }
 }

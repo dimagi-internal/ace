@@ -84,7 +84,9 @@ if (retiredBase && retiredBase !== ACE_WEB_BASE_URL) {
 }
 const TIMEOUT_MS = 5 * 60 * 1000;
 const ENV_KEY = 'ACE_WEB_PAT_TOKEN';
-const MARKER_HEADER = '# --- ACE local-only secrets (preserved across op inject) ---';
+// Detect by prefix: files written before the vault move carry an older suffix.
+const MARKER_PREFIX = '# --- ACE local-only secrets';
+const MARKER_HEADER = '# --- ACE local-only secrets (preserved across vault fills) ---';
 
 function defaultLabel(): string {
   const date = new Date().toISOString().slice(0, 10);
@@ -187,7 +189,7 @@ export async function writeTokenToEnv(envPath: string, key: string, value: strin
   }
 
   const newLine = `${key}=${value}`;
-  const markerIdx = content.indexOf(MARKER_HEADER);
+  const markerIdx = content.indexOf(MARKER_PREFIX);
   const keyRe = new RegExp(`^[ \\t]*${key}=.*$`, 'm');
 
   if (markerIdx === -1) {

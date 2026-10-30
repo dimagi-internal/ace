@@ -394,7 +394,7 @@ async function main(): Promise<void> {
   console.log('\nTemplate created:');
   console.log(`  ${webViewLink}`);
   console.log(`  presentationId=${presentationId}`);
-  console.log('\nUpdate 1Password "ACE - Drive Templates" → training_deck_template_id:');
+  console.log('\nSet ACE_TRAINING_DECK_TEMPLATE_ID in ACE\'s Canopy vault, then /ace:setup --force-env:');
   console.log(`  ${presentationId}`);
 }
 

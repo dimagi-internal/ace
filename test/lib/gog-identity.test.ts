@@ -94,7 +94,7 @@ describe('resolveGogIdentity', () => {
     expect(id.client).toBe('canopy');
   });
 
-  // ace#1147: a machine whose 1Password vault still hands out ACE_GMAIL_CLIENT=ace.
+  // ace#1147: a machine whose vault still hands out ACE_GMAIL_CLIENT=ace.
   // No credentials-ace.json is ever provisioned, so honouring the env var makes
   // every gog call fail with an un-runnable remedy.
   it('never consults the env — not for the account, not for the client', () => {

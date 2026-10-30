@@ -259,7 +259,7 @@ server.tool(
       ),
     // Explicit credential fields: an identity outside the pool, used UNLOCKED
     // (e.g. the add-worker walk registering a new number before it is stored
-    // in 1Password). Missing fields fall back to ACE_E2E_*; caller args win
+    // as a pool slot). Missing fields fall back to ACE_E2E_*; caller args win
     // when present, and a blank pass never blanks a working credential.
     phone: z.string().optional().describe('Explicit identity (unlocked). Must keep the +7426 demo prefix.'),
     phoneLocal: z.string().optional(),

@@ -76,7 +76,7 @@ export function legacyEnv(env: NodeJS.ProcessEnv = process.env, read: (k: string
   const out: NodeJS.ProcessEnv = { ...env };
   for (const k of LEGACY_KEYS) {
     const v = (out[k] ?? '').trim();
-    if (!v || v.startsWith('op://')) {
+    if (!v) {
       const r = read(k);
       if (r) out[k] = r;
     }
@@ -117,7 +117,7 @@ export function parseSetArgs(argv: string[], env: NodeJS.ProcessEnv = process.en
   if (fromLegacy) {
     const put = (k: string, v: string | undefined, into: Record<string, string>) => {
       const t = (v ?? '').trim();
-      if (t && !t.startsWith('op://')) into[k] = t;
+      if (t) into[k] = t;
     };
     put('phone', env.ACE_E2E_PHONE, pub);
     put('phoneLocal', env.ACE_E2E_PHONE_LOCAL, pub);

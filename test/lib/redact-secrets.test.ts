@@ -40,7 +40,6 @@ describe('redactSecrets', () => {
     ['ApiKey user:key', 'Authorization: ApiKey ace@dimagi-ai.com:deadbeefdeadbeef', 'deadbeefdeadbeef'],
     ['session cookie', 'Cookie: sessionid_ace=abc123def456; path=/', 'abc123def456'],
     ['csrftoken', 'csrftoken=9f8e7d6c5b4a; other=1', '9f8e7d6c5b4a'],
-    ['op ref', 'OCS_API_TOKEN=op://Agent-Ace/item/credential', 'op://Agent-Ace/item/credential'],
     ['aws key', 'aws_key: AKIAIOSFODNN7EXAMPLE done', 'AKIAIOSFODNN7EXAMPLE'],
     ['generic password', 'DB_PASSWORD=p@ssw0rd!', 'p@ssw0rd!'],
     ['pat token', 'ACE_WEB_PAT_TOKEN=pat_live_1234567890', 'pat_live_1234567890'],

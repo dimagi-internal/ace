@@ -153,7 +153,7 @@ TSX="node $ACE_ROOT/node_modules/tsx/dist/cli.mjs"
      Someone else owns that number. Re-plan with `--avoid <that number>`.
    - Confirm the device reaches the Connect home with `mobile_capture_ui_dump`.
 4. **Store it on canopy-web.** No owner approval needed; nothing is written to
-   1Password. As ACE:
+   the Canopy vault. As ACE:
 
    ```bash
    $TSX "$ACE_ROOT/scripts/test-worker-set.ts" --slot <slot> --phone <phone> \
@@ -214,7 +214,7 @@ granted.
 
 - **Auto:** checking workers out and releasing them is routine and needs no
   approval. Adding a worker, storing its slot data and publishing the manifest
-  run without stopping (no 1Password write is involved). Retiring a worker that
+  run without stopping. Retiring a worker that
   someone holds is never done: wait for the holder.
 - **Review:** the same, and the plan from step 1 is shown before any device walk.
 
@@ -223,5 +223,5 @@ granted.
 | Date | Change | Author |
 |------|--------|--------|
 | 2026-10-15 | Initial version: named pool + exclusive checkout via canopy-web `test-worker`, add/retire procedure (ace#2955) | ACE team |
-| 2026-10-15 | Credentials move to canopy-web per-slot data delivered with the lease; `test-worker-set.ts`; the env/1Password pool path is dropped; manifest declares worker-1..4 (ace#2955) | ACE team |
+| 2026-10-15 | Credentials move to canopy-web per-slot data delivered with the lease; `test-worker-set.ts`; the env pool path is dropped; manifest declares worker-1..4 (ace#2955) | ACE team |
 | 2026-10-16 | Pool extended to 10 workers (worker-5..10 = +74260000105..110) on the owner's request | ACE team |

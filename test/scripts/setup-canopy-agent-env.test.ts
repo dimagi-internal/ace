@@ -6,14 +6,12 @@
  * declaration of ACE's env names (canopy agent-runtime.md § One declaration).
  *
  * So bin/ace-setup must (1) fill `$DATA_DIR/.env` through that command with
- * NO `--template` and no raw `op inject`, (2) name no 1Password vault in code
- * (the SA key's vault is only ever an override), and (3) stop with canopy's
+ * NO `--template`, (2) name no vault in code, and (3) stop with canopy's
  * own message when canopy cannot resolve an instance and the fill is needed —
  * before npm install.
  *
  * CLASSIFICATION: unit-test truth. Structural pins over the script, plus one
- * run of the real script against stub `canopy` / `op` binaries; no network,
- * no 1Password session.
+ * run of the real script against stub `canopy` binaries; no network.
  */
 import { describe, expect, it } from 'vitest';
 import { spawnSync } from 'node:child_process';
@@ -24,7 +22,7 @@ import { dirname, join } from 'node:path';
 const REPO_ROOT = join(__dirname, '..', '..');
 const SETUP = join(REPO_ROOT, 'bin', 'ace-setup');
 const setup = readFileSync(SETUP, 'utf8');
-// Executable lines only — comments may describe op inject freely.
+// Executable lines only.
 const code = setup
   .split('\n')
   .filter((l) => !/^\s*#/.test(l))
@@ -35,16 +33,10 @@ describe('bin/ace-setup fills .env through canopy agent env', () => {
     expect(code).toMatch(/canopy agent env --plugin ace --out "\$FILL_DIR\/\.env" --agent "\$BOUND_AGENT"/);
     expect(code).toMatch(/ENV_OUT="\$DATA_DIR\/\.env"/);
     expect(code).not.toMatch(/--template/);
-    expect(code).not.toMatch(/\.env\.tpl/);
   });
 
-  it('runs no raw `op inject` of its own', () => {
-    // No `op inject` in command position: a line start, `$(`, `;`, `&&` or `|`.
-    expect(code).not.toMatch(/(^|\$\(|;|&&|\|)\s*op inject\b/m);
-    // The only remaining mentions are prose inside printf/echo strings.
-    for (const line of code.split('\n').filter((l) => /\bop inject\b/.test(l))) {
-      expect(line).toMatch(/^\s*(printf|echo)\b/);
-    }
+  it('shells out to no secret-store CLI of its own', () => {
+    expect(code).not.toMatch(/(^|\$\(|;|&&|\|)\s*op\s+(inject|read|item|document|whoami)\b/m);
   });
 
   it('resolves the instance with --print before the fill', () => {
@@ -54,7 +46,7 @@ describe('bin/ace-setup fills .env through canopy agent env', () => {
     expect(fillAt).toBeGreaterThan(printAt);
   });
 
-  it('reads no 1Password: no op CLI check, no vault, no SA-key fetch (ace#3310)', () => {
+  it('reads no secret-store CLI: no op CLI check, no vault, no SA-key fetch (ace#3310)', () => {
     expect(code).not.toMatch(/\bOP_VAULT\b|ACE_OP_VAULT|AGENT_VAULT|GWS_DOC_NAME|op document get|gws-sa-key/);
     expect(code).not.toMatch(/Agent-Ace/);
   });

@@ -1,6 +1,6 @@
 /**
  * scripts/ace-web-bot-token-mint.ts — ACE's own ace-web token, minted
- * headlessly as ace@dimagi-ai.com and provisioned from 1Password.
+ * headlessly as ace@dimagi-ai.com and provisioned from the Canopy vault.
  *
  * Live-validated 2026-09-28: the full chain (hqOAuthLogin → ace-web "Sign in
  * with Connect" → Connect consent → /auth/cli/authorize/ → loopback) minted a

@@ -99,7 +99,7 @@ round.
 Drive, and this is not an opportunity, so there is no run folder to resolve. ACE's Drive root
 is `ACE_DRIVE_ROOT_FOLDER_ID`, a value in ACE's Canopy vault on canopy-web that `/ace:setup`
 writes into the installed `.env`. It is a folder id rather than a secret, but there is no
-longer a committed copy to `Read` (`.env.tpl` is gone). Do not spend calls on `printenv`: a
+longer a committed copy to `Read`. Do not spend calls on `printenv`: a
 caller turn does not carry it in the environment, and the real `.env` is outside this
 session's readable paths. If this session cannot read it, ask the operator for the folder id
 rather than guessing one.

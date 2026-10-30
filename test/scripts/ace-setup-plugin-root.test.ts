@@ -2,15 +2,15 @@
  * `bin/ace-setup` plugin-root resolution (ace#2091).
  *
  * The script's most consequential side effect is
- * `op inject -i $ROOT/.env.tpl -o $CLAUDE_PLUGIN_DATA/.env` — it writes the
+ * filling `$CLAUDE_PLUGIN_DATA/.env` from ACE's Canopy vault — it writes the
  * INSTALLED plugin's machine-wide runtime config, which every MCP subprocess
  * reads once at startup. Until 0.13.1283 the resolution walked UP FROM `$PWD`
  * before falling back to the script's own directory, so a `--force-env` run
- * from an ACE worktree rendered THAT branch's `.env.tpl`.
+ * from an ACE worktree filled it for THAT branch's root.
  *
  * Measured on the ACE workstation 2026-09-06 15:05:30: plugin_root resolved to
  * a worktree at 0.13.1173, and the installed `.env` came out with
- * `ACE_CONNECT_APK_VERSION=2.63.2` while the installed `.env.tpl` said
+ * `ACE_CONNECT_APK_VERSION=2.63.2` while the installed plugin said
  * `2.64.0` — silently reverting PR #2038 for the whole machine. Nothing
  * surfaced it: `/ace:doctor`'s `env_freshness` probe compares the `.env` MTIME
  * against MCP start times, so a stale-CONTENT `.env` that is newer than every
@@ -18,7 +18,7 @@
  *
  * CLASSIFICATION: unit-test truth. This is path resolution over a fixture
  * filesystem plus a fixture registry — nothing is sent to or matched against a
- * device, and no network or 1Password session is involved. `--print-root`
+ * device, and no network or vault session is involved. `--print-root`
  * exists so the ordering is drivable without the rest of the installer.
  */
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -40,7 +40,6 @@ function makeAceRoot(at: string, version: string): string {
     JSON.stringify({ name: 'ace', version }, null, 2),
   );
   writeFileSync(join(at, 'VERSION'), `${version}\n`);
-  writeFileSync(join(at, '.env.tpl'), `ACE_MARKER=${version}\n`);
   return at;
 }
 
@@ -185,10 +184,10 @@ describe('bin/ace-setup --print-root', () => {
     expect(out.plugin_root).not.toBe(worktree);
   });
 
-  it('--print-root has no side effects: it writes no .env and needs no `op`', () => {
+  it('--print-root has no side effects: it writes no .env and needs no canopy', () => {
     // The whole point of the flag is that the ordering is testable without a
-    // 1Password session. If this ever starts shelling out to `op`, CI on a
-    // machine with no 1Password CLI would go red here first.
+    // vault session. If this ever starts shelling out to `canopy`, CI on a
+    // machine without it would go red here first.
     const installed = makeAceRoot(join(dir, 'cache', 'ace', 'ace', '0.13.1282'), '0.13.1282');
     const dataDir = join(dir, 'plugin-data');
     mkdirSync(dataDir, { recursive: true });

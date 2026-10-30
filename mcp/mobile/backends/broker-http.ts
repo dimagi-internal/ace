@@ -132,7 +132,7 @@ export function leaseHttpError(
       return new MobileError(
         'LEASE_AUTH',
         `canopy-web rejected ACE's PAT on ${where}${said ? `: ${said}` : ''}`,
-        "Re-mint ACE's canopy-web PAT (canopy-pat in the ACE instance's 1Password vault) and run /ace:setup --force-env.",
+        "Re-mint ACE's canopy-web PAT (CANOPY_WEB_PAT in ACE's Canopy vault) and run /ace:setup --force-env.",
       );
     case 403:
       // canopy-web answers 403 for two different things: no CapabilityGrant

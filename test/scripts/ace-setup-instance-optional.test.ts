@@ -1,8 +1,7 @@
 /**
  * bin/ace-setup must not stop at an instance canopy cannot resolve when this
  * run does not need one. ACE's env comes from its Canopy vault
- * (`canopy agent env --plugin ace`, no template); there is no 1Password step and
- * no service-account key any more (Google is ace@'s canopy token, ace#3310).
+ * (`canopy agent env --plugin ace`, no template); there is no service-account key any more (Google is ace@'s canopy token, ace#3310).
  *
  * The incident (cloud-ec2-2, 2026-10-18): `canopy agent prepare --runner` runs
  * `bin/ace-setup --skip-doctor`, but `canopy agent env --print` takes a PERSON's
@@ -123,16 +122,6 @@ describe('on a runner (canopy prepare: no person token, AGENT_ENV_FILE)', () => 
     expect(status).toBe(0);
     expect(out).toMatch(/PASS env: .* already matches .* \(filled by canopy\)/);
     expect(out).not.toMatch(/RESTART REQUIRED/);
-  });
-
-  it('ignores an unresolved supplied env and still needs canopy to fill', () => {
-    const supplied = join(dir, 'supplied.env');
-    writeFileSync(supplied, 'NOVA_API_KEY=op://Agent-Stub/ACE - Nova/api_key\n');
-    const { status, out } = run([], { AGENT_ENV_FILE: supplied });
-    expect(out).toMatch(/WARN env: AGENT_ENV_FILE=.* has unresolved op:\/\/ refs/);
-    expect(status).toBe(1);
-    expect(out).toMatch(/FAIL instance: canopy could not resolve/);
-    expect(out).not.toMatch(/running npm install/);
   });
 });
 

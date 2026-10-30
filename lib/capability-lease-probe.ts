@@ -70,7 +70,7 @@ export function classifyCapabilityLease(r: {
       status: 'warn',
       ...none,
       summary: "no CANOPY_WEB_PAT in ACE's .env — the lease mobile backend cannot authenticate",
-      remediation: 'run /ace:setup --force-env (CANOPY_WEB_PAT comes from the canopy-pat item in the ACE instance\'s 1Password vault)',
+      remediation: 'run /ace:setup --force-env (CANOPY_WEB_PAT comes from ACE\'s Canopy vault)',
     };
   }
   if (r.networkError) {
@@ -89,7 +89,7 @@ export function classifyCapabilityLease(r: {
         status: 'warn',
         ...none,
         summary: `HTTP 401 — canopy-web rejected ACE's PAT`,
-        remediation: "re-mint ACE's canopy-web PAT (canopy-pat in the ACE instance's 1Password vault), then /ace:setup --force-env",
+        remediation: "re-mint ACE's canopy-web PAT (store it as CANOPY_WEB_PAT in ACE's Canopy vault), then /ace:setup --force-env",
       };
     case 403:
       return {

@@ -330,7 +330,7 @@ async function archiveChatbot(
     // NOT in the local .env — /ace:setup --force-env regenerates .env from the
     // vault, so any hand-edit there will silently revert on the next fill.
     // Print the vault-edit + re-fill steps instead of "paste into .env".
-    // (See 2026-04-20 learning: "1Password vault values are hypotheses too".)
+    // (See 2026-04-20 learning: "vault values are hypotheses too".)
     console.log('\n' + '─'.repeat(50));
     console.log('Golden template bootstrapped successfully.');
     console.log(`  experiment_id: ${cloned.experiment_id}`);

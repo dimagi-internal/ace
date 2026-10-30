@@ -109,8 +109,6 @@ function loadEnv(): void {
       const key = m[1];
       if (process.env[key] !== undefined && process.env[key] !== '') continue;
       const value = m[2].trim().replace(/^['"]|['"]$/g, '');
-      // Unresolved 1Password refs are "missing", not a literal value.
-      if (value.startsWith('op://')) continue;
       process.env[key] = value;
     }
   }
