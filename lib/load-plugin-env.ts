@@ -140,3 +140,25 @@ export function announce(info: LoadedPluginEnv, stream: NodeJS.WritableStream = 
     : `no .env at ${info.path} (${origin}) — 0 key(s) read`;
   stream.write(`[ace-env] ${body}\n`);
 }
+
+/**
+ * Load the env file canopy hands a turn, when there is one: `CANOPY_AGENT_ENV_FILE`
+ * (a cloud runner's per-turn tmpfs file, used when secrets stay off disk, so there
+ * is no `<plugin-data>/.env` at all) or `AGENT_ENV_FILE`. Existing `process.env`
+ * values win, as in `loadPluginEnv`. Returns the path read, or null.
+ *
+ * Why: ace turn 478487fe on cloud-ec2-live (2026-10-30, canopy-web investigation 18)
+ * had an empty OCS_API_TOKEN in the ace-ocs MCP process although the vault held it;
+ * the server only ever read `<plugin-data>/.env`. The turn file is the copy canopy
+ * writes for readers that cannot see the turn's environment.
+ */
+export function loadTurnEnvFile(env: NodeJS.ProcessEnv = process.env): string | null {
+  const file = (env.CANOPY_AGENT_ENV_FILE || env.AGENT_ENV_FILE || '').trim();
+  if (!file) return null;
+  const result = dotenvConfig({ path: file, quiet: true, processEnv: env as Record<string, string> });
+  const loaded = result.error === undefined;
+  process.stderr.write(
+    `[ace-env] ${loaded ? `read ${Object.keys(result.parsed ?? {}).length} key(s) from` : 'no env file at'} ${file} (turn env)\n`,
+  );
+  return loaded ? file : null;
+}

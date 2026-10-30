@@ -5,6 +5,15 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.13.2181 — 2026-10-30
+
+**ace-ocs no longer sends an empty OCS token.** On cloud-ec2-live (turn 478487fe, canopy-web investigation 18)
+`OCS_API_TOKEN` was empty in the ace-ocs MCP process although ACE's vault held it, so `ocs_list_chatbots` sent
+`Bearer ` and OCS's 401 "Authentication credentials were not provided." got the turn aborted as a refused credential.
+The REST backend now throws `OcsTokenMissingError` (naming the env files it read) before any request, and the
+server also reads canopy's per-turn env file (`CANOPY_AGENT_ENV_FILE` / `AGENT_ENV_FILE`) via `loadTurnEnvFile`,
+for a runner that keeps secrets off disk and so has no plugin-data `.env`.
+
 ## 0.13.2180 — 2026-10-30
 
 **1Password is gone from ACE.** The fleet moved fully to the Canopy vault, so every 1Password path and

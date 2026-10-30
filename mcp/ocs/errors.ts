@@ -201,6 +201,26 @@ export class CollectionIndexingTimeoutError extends OcsError {
   }
 }
 
+/**
+ * The REST backend has no token to send: `OCS_API_TOKEN` was empty in this
+ * MCP subprocess. Sending `Authorization: Bearer ` anyway got back OCS's
+ * `401 {"detail":"Authentication credentials were not provided."}`, which
+ * canopy's credential guard read as a refused credential and aborted the turn
+ * (ace turn 478487fe on cloud-ec2-live, 2026-10-30, canopy-web investigation
+ * 18) — while the vault held a good token. Name what is missing and where
+ * this process looked, so the next one says "not loaded", not "refused".
+ */
+export class OcsTokenMissingError extends OcsError {
+  constructor(public envName: string, public looked: string[]) {
+    super(
+      `${envName} is empty in the ace-ocs MCP process, so no OCS request was sent. ` +
+        `Looked in: ${looked.length ? looked.join(', ') : '(no env file)'} and the process env. ` +
+        `It is in ACE's Canopy vault: on a laptop run /ace:setup --force-env; ` +
+        `on a runner the turn env did not reach this server. Restart the MCP server after.`,
+    );
+  }
+}
+
 export class HttpError extends OcsError {
   constructor(public status: number, public path: string, public body: string) {
     super(`HTTP ${status} ${path}: ${body.slice(0, 200)}`);

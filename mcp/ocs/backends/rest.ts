@@ -1,5 +1,5 @@
 import { fetch } from 'undici';
-import { HttpError, StaleOcsSubprocessError } from '../errors.js';
+import { HttpError, OcsTokenMissingError, StaleOcsSubprocessError } from '../errors.js';
 import { isTransientNetworkError } from '../../../lib/transient-retry.js';
 import type { ChatbotInspect, Me } from '../types.js';
 
@@ -38,6 +38,8 @@ export interface RestBackendOptions {
    * circuit to `opts.token` rather than looking it up in the registry.
    */
   defaultTeamSlug?: string;
+  /** The env files the server loaded, named in OcsTokenMissingError. */
+  envSources?: string[];
   maxRetries?: number;        // default 3
   retryBackoffMs?: number;    // default 500
 }
@@ -71,6 +73,8 @@ export class RestBackend {
 
   async request(method: string, path: string, body?: unknown, tokenOverride?: string): Promise<unknown> {
     const token = tokenOverride ?? this.opts.token;
+    // Never send `Bearer ` with nothing after it (OcsTokenMissingError).
+    if (!token) throw new OcsTokenMissingError('OCS_API_TOKEN', this.opts.envSources ?? []);
     const maxRetries = this.opts.maxRetries ?? 3;
     const backoffMs = this.opts.retryBackoffMs ?? 500;
     const isIdempotent = method === 'GET';
