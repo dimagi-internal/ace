@@ -27,6 +27,7 @@ function hostOf(raw: string | undefined): string[] {
 }
 import * as path from 'node:path';
 import { resolvePluginDataDir, logPluginDataDirDiag } from '../lib/plugin-data-dir.js';
+import { loadTurnEnvFile } from '../lib/load-plugin-env.js';
 logPluginDataDirDiag('ace-ocs', import.meta.url);
 const __pluginDataDir = resolvePluginDataDir(import.meta.url);
 dotenvConfig({
@@ -40,6 +41,9 @@ dotenvConfig({
   // stderr; this makes dotenv obey the same rule.
   quiet: true,
 });
+// A runner turn with secrets off disk has no plugin-data .env: read the turn's own
+// env file too (ace turn 478487fe, 2026-10-30 — see loadTurnEnvFile).
+const __turnEnvFile = loadTurnEnvFile();
 
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { createIdentityGate, installIdentityGate, platformRefusalHint } from '../lib/agent-identity-gate.js';
@@ -84,6 +88,10 @@ const teamSlug = process.env.OCS_TEAM_SLUG ?? 'dimagi';
 const rest = new RestBackend({
   baseUrl,
   token: loadRestToken(),
+  envSources: [
+    __pluginDataDir ? path.join(__pluginDataDir, '.env') : path.join(process.cwd(), '.env'),
+    ...(__turnEnvFile ? [__turnEnvFile] : []),
+  ],
   defaultTeamSlug: loadDefaultTeamSlug(),
   tokensByTeam: loadTokensByTeam(),
 });
