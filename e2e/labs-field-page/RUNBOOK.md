@@ -1,7 +1,28 @@
 # Labs supply field page on the ACE emulator (ace#3348, no-PIN mode)
 
-Status: PARTIAL. Preconditions and labs-side seed verified; the on-device legs were NOT run by this turn
-(emulator lease failed readiness twice). Nothing here has been run end to end by this code.
+Status: **the field page was exercised from a phone-side browser on 2026-10-30 (verified in labs below); this runbook
+as a script has NOT been run end to end.** The turn that wrote it could not reach the device (emulator lease failed
+readiness twice), and the earlier session that did reach it left no script and no screenshots.
+
+## What labs shows from the earlier run (2026-10-30 12:16-12:46 UTC) — read back by Hal, not asserted by ACE
+Programme 10175, supply point 504 "ACE Test 3 (field page e2e)", update link **105** (no `require_verification`,
+no `send_via_bot` = the no-PIN mode; created 12:16:58, last used 12:46:07, revoked 12:46:45, `submission_count` 5):
+
+| count id | batch | qty | what it exercises |
+|---|---|---|---|
+| 3740 | E2E-B7 | 12 | online entry |
+| 3741 | E2E-B8 | 7 | online entry |
+| 3742 | E2E-OFF2 | 4 | entered offline, sent later |
+| 3743 | E2E-OFF3 | 3 | entered offline, sent later |
+| 3744 | E2E-PH1 | 2 | with a photo: document 107, `image/jpeg`, 15,798 bytes (shrunk on the phone), `stock_count_id` 3744 |
+
+All five: `physical_count`, `source=partner_reported`, `connect_username` `9396ba0f84bf47b63d85`, one org (376).
+Link 106 (`send_via_bot` attempt) sent nothing (`sent_at` null, no error recorded).
+
+**Still unproven:** that `9396ba0f84bf47b63d85` is worker-3's PersonalID username (not read from the app profile);
+that it was the emulator's Chrome rather than another browser; and the live-camera scan. No screenshots survive. The
+laptop session that did it ("c-note-this-brief-was-first-queued-0814", spawned 12:11 UTC on jj-mbp-cdp) may still hold
+them (`/tmp/ace-screenshots/fieldpage/`).
 
 ## Run order
 1. Precondition: `curl -s https://labs.connect.dimagi.com/supply/u/x/field/data.json` body says "This link is not valid"
