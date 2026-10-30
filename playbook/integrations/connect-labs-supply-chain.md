@@ -321,6 +321,8 @@ expiring, revocable URL.
 - **The raw token is in that response only.** `supply_chain_update_link_list` never shows it.
 - `supply_chain_update_link_revoke` is immediate and cannot be re-enabled; what was recorded
   through the link stays.
+- The link's `field_url` is the worker-facing stock-count page. To drive it on the emulator as
+  a test worker, see [`labs-field-page-e2e.md`](labs-field-page-e2e.md).
 
 Evidence files: `supply_chain_document_attach`, either `content_base64` (12 MB cap) or
 `external_url`, never both.

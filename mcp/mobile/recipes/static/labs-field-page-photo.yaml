@@ -1,0 +1,135 @@
+appId: com.android.chrome
+---
+# labs-field-page-photo.yaml — field page: save a count WITH a photo taken on
+# the phone's camera (ace#3348). Labs is the verdict: the count, plus a
+# `photo` document linked to it (supply_chain_document_list(stock_count_id)).
+# Runbook: playbook/integrations/labs-field-page-e2e.md.
+#
+# Pre-state: labs-field-page-count.yaml has run on this device (Chrome is past
+# its first-run screens) and the device has signal.
+#
+# The page's photo input is `capture="environment"`, so a tap opens the camera
+# app (com.android.camera2) directly — no chooser. Observed 2026-10-30 on
+# ACE_Pixel_API_34: Shutter (id shutter_button), then a review screen whose
+# Done is id done_button; back in Chrome the page shrinks the photo and says
+# "Photo ready (<n> KB)".
+#
+# Required env vars: FIELD_URL, ORG_NAME, POINT_NAME, ITEM_NAME, QTY, BATCH (as
+# labs-field-page-count).
+#
+# Post-state: the entry is listed under "Sent from this phone".
+#
+# Reload from the URL bar: a fresh page load, so the accessibility tree is
+# current (see labs-field-page-offline.yaml on Chrome 113's stale tree).
+- tapOn:
+    id: "com.android.chrome:id/url_bar"
+- inputText: "${FIELD_URL}"
+- pressKey: Enter
+- extendedWaitUntil:
+    visible:
+      text: "Stock for ${ORG_NAME}"
+    timeout: 45000
+- assertNotVisible:
+    text: "Check it's you"
+
+- tapOn:
+    id: "point"
+- extendedWaitUntil:
+    visible:
+      text: "${POINT_NAME}"
+    timeout: 10000
+- tapOn:
+    text: "${POINT_NAME}"
+- tapOn:
+    id: "item"
+- extendedWaitUntil:
+    visible:
+      text: "${ITEM_NAME}"
+    timeout: 10000
+- tapOn:
+    text: "${ITEM_NAME}"
+
+- tapOn:
+    id: "qty"
+- inputText: "${QTY}"
+# Hide the keyboard before the next field, or the tap can land in qty
+# (labs-field-page-offline.yaml, the 5E21 entry).
+- hideKeyboard
+- tapOn:
+    id: "batch"
+- inputText: "${BATCH}"
+- hideKeyboard
+
+- scrollUntilVisible:
+    element:
+      id: "photo"
+    direction: DOWN
+- tapOn:
+    id: "photo"
+# Permission prompts the camera can raise on a fresh profile; absent once
+# granted, so each is guarded.
+- runFlow:
+    when:
+      visible:
+        text: "While using the app"
+    commands:
+      - tapOn:
+          text: "While using the app"
+- runFlow:
+    when:
+      visible:
+        text: "Allow"
+    commands:
+      - tapOn:
+          text: "Allow"
+- extendedWaitUntil:
+    visible:
+      id: "com.android.camera2:id/shutter_button"
+    timeout: 20000
+# The camera app's first run asks whether to remember photo locations.
+- runFlow:
+    when:
+      visible:
+        text: "NEXT"
+    commands:
+      - tapOn:
+          text: "NEXT"
+- runFlow:
+    when:
+      visible:
+        text: "No thanks"
+    commands:
+      - tapOn:
+          text: "No thanks"
+- waitForAnimationToEnd:
+    timeout: 2000
+- tapOn:
+    id: "com.android.camera2:id/shutter_button"
+- extendedWaitUntil:
+    visible:
+      id: "com.android.camera2:id/done_button"
+    timeout: 15000
+- tapOn:
+    id: "com.android.camera2:id/done_button"
+
+- extendedWaitUntil:
+    visible:
+      text: "Photo ready.*"
+    timeout: 20000
+- takeScreenshot: 01-photo-ready
+
+- scrollUntilVisible:
+    element:
+      text: "Save"
+    direction: DOWN
+- tapOn:
+    text: "Save"
+- extendedWaitUntil:
+    visible:
+      text: "Sent from this phone"
+    timeout: 45000
+- scrollUntilVisible:
+    element:
+      text: "${QTY} .* · ${ITEM_NAME} · .*"
+    direction: DOWN
+- takeScreenshot: 02-sent-with-photo

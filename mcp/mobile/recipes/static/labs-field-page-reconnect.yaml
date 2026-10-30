@@ -1,0 +1,93 @@
+appId: com.android.chrome
+---
+# labs-field-page-reconnect.yaml — field page, offline leg part 2 (ace#3348):
+# signal comes back and the held entry sends itself. Part 1 is
+# labs-field-page-offline.yaml. Labs is the authority on "exactly once":
+# read it back with supply_chain_stock_count_list afterwards (runbook:
+# playbook/integrations/labs-field-page-e2e.md).
+#
+# Pre-state: labs-field-page-offline.yaml has just run — Airplane mode ON, one
+# entry under "Waiting to send".
+#
+# Connectivity changes the way a person does it: the quick-settings shade's
+# Airplane mode tile (there is no airplane-mode step in the recipe allowlist).
+# Observed 2026-10-30 on ACE_Pixel_API_34 (Android 14): one swipe from the top
+# opens the notification shade, a second expands quick settings; the tile is
+# on page 1 of 3, and the shade reopens on the page it was left on — so page
+# back (swipe right) until the tile shows.
+#
+# Never assert the page's online/offline PILL by text. Chrome 113 does not
+# push that text change into its accessibility tree: on 2026-10-30 the screen
+# showed "offline" while Maestro read "online" for 90 s. Sections being shown
+# or hidden ("Waiting to send", "Sent from this phone") DO reach it, and so does
+# Chrome's own native "No internet connection" bar — wait on those, and keep
+# the pill as screenshot evidence.
+#
+# Required env vars: none.
+#
+# Post-state: Airplane mode OFF; the page resends the held entry by itself.
+- extendedWaitUntil:
+    visible:
+      text: "Waiting to send"
+    timeout: 15000
+
+- swipe:
+    start: "50%,1%"
+    end: "50%,60%"
+- swipe:
+    start: "50%,1%"
+    end: "50%,60%"
+- waitForAnimationToEnd:
+    timeout: 1500
+- runFlow:
+    when:
+      notVisible:
+        text: "Airplane mode, (On|Off)"
+    commands:
+      - swipe:
+          start: "20%,40%"
+          end: "85%,40%"
+      - swipe:
+          start: "20%,40%"
+          end: "85%,40%"
+# The tile's switch reads "Airplane mode, On|Off". Never match the bare label:
+# with Airplane mode on, the Internet tile reads "Internet, Airplane mode" too,
+# and a tap there opens the Internet dialog instead (observed 2026-10-30).
+- tapOn:
+    text: "Airplane mode, (On|Off)"
+- waitForAnimationToEnd:
+    timeout: 2000
+# Close the shade with Back, but ONLY while a shade tile is on screen: a stray
+# Back lands in Chrome and navigates away from the page. An upward swipe only
+# half-collapses it (observed 2026-10-30), hence up to two guarded Backs.
+- runFlow:
+    when:
+      visible:
+        text: "Do Not Disturb"
+    commands:
+      - pressKey: Back
+      - waitForAnimationToEnd:
+          timeout: 1500
+- runFlow:
+    when:
+      visible:
+        text: "Do Not Disturb"
+    commands:
+      - pressKey: Back
+      - waitForAnimationToEnd:
+          timeout: 1500
+
+- extendedWaitUntil:
+    notVisible:
+      text: "No internet connection"
+    timeout: 90000
+# NO page-content assertion after this point, by design. After a network
+# change Chrome 113 stops refreshing the web page's accessibility tree: on
+# 2026-10-30 the screen showed the entry under "Sent from this phone" (and labs
+# had it, count 3742) while Maestro still read "Waiting to send" for 90 s.
+# The screenshot below is the phone's evidence; the labs read-back
+# (supply_chain_stock_count_list: exactly one new count with this batch) is the
+# verdict. Give the page's resend a moment before the shot.
+- waitForAnimationToEnd:
+    timeout: 15000
+- takeScreenshot: 01-sent-after-signal
