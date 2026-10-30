@@ -1,0 +1,133 @@
+appId: com.android.chrome
+---
+# labs-field-page-offline.yaml — field page, offline leg part 1 (ace#3348):
+# lose signal with the page open, save a count, see it HELD on the phone.
+# Part 2 is labs-field-page-reconnect.yaml. Between the two, read labs and
+# confirm the count has NOT arrived (runbook:
+# playbook/integrations/labs-field-page-e2e.md).
+#
+# Pre-state: labs-field-page-count.yaml has run on this device, so Chrome has
+# the field page's service worker installed, and the device has signal. No
+# launchApp: the page is opened online, then the signal drops under it — the
+# test is that a page ALREADY OPEN keeps working with no signal.
+#
+# Connectivity changes the way a person does it: the quick-settings shade's
+# Airplane mode tile (there is no airplane-mode step in the recipe allowlist).
+# Observed 2026-10-30 on ACE_Pixel_API_34 (Android 14): one swipe from the top
+# opens the notification shade, a second expands quick settings; the tile is
+# on page 1 of 3, and the shade reopens on the page it was left on — so page
+# back (swipe right) until the tile shows.
+#
+# Never assert the page's online/offline PILL by text. Chrome 113 does not
+# push that text change into its accessibility tree: on 2026-10-30 the screen
+# showed "offline" while Maestro read "online" for 90 s. Sections being shown
+# or hidden ("Waiting to send", "Sent from this phone") DO reach it, and so does
+# Chrome's own native "No internet connection" bar — wait on those, and keep
+# the pill as screenshot evidence.
+#
+# Required env vars: FIELD_URL, ORG_NAME, ITEM_NAME, QTY, BATCH (as
+# labs-field-page-count).
+#
+# Post-state: Airplane mode ON, the entry listed under "Waiting to send".
+# Reload the page from the URL bar (no clearState: the service worker and
+# the IndexedDB queue survive, as on a phone). After any network change Chrome
+# 113 stops refreshing the page's accessibility tree for the rest of that page
+# load — observed 2026-10-30, a previous leg's sent entry still read as
+# "Waiting to send" — and a load rebuilds it.
+- tapOn:
+    id: "com.android.chrome:id/url_bar"
+- inputText: "${FIELD_URL}"
+- pressKey: Enter
+- extendedWaitUntil:
+    visible:
+      text: "Stock for ${ORG_NAME}"
+    timeout: 45000
+- assertNotVisible:
+    text: "Waiting to send"
+
+- swipe:
+    start: "50%,1%"
+    end: "50%,60%"
+- swipe:
+    start: "50%,1%"
+    end: "50%,60%"
+- waitForAnimationToEnd:
+    timeout: 1500
+- runFlow:
+    when:
+      notVisible:
+        text: "Airplane mode, (On|Off)"
+    commands:
+      - swipe:
+          start: "20%,40%"
+          end: "85%,40%"
+      - swipe:
+          start: "20%,40%"
+          end: "85%,40%"
+# The tile's switch reads "Airplane mode, On|Off". Never match the bare label:
+# with Airplane mode on, the Internet tile reads "Internet, Airplane mode" too,
+# and a tap there opens the Internet dialog instead (observed 2026-10-30).
+- tapOn:
+    text: "Airplane mode, (On|Off)"
+- waitForAnimationToEnd:
+    timeout: 2000
+# Close the shade with Back, but ONLY while a shade tile is on screen: a stray
+# Back lands in Chrome and navigates away from the page. An upward swipe only
+# half-collapses it (observed 2026-10-30), hence up to two guarded Backs.
+- runFlow:
+    when:
+      visible:
+        text: "Do Not Disturb"
+    commands:
+      - pressKey: Back
+      - waitForAnimationToEnd:
+          timeout: 1500
+- runFlow:
+    when:
+      visible:
+        text: "Do Not Disturb"
+    commands:
+      - pressKey: Back
+      - waitForAnimationToEnd:
+          timeout: 1500
+
+- extendedWaitUntil:
+    visible:
+      text: "No internet connection"
+    timeout: 60000
+# Give the page time to see the offline event before the save.
+- waitForAnimationToEnd:
+    timeout: 5000
+- takeScreenshot: 01-offline
+
+- scrollUntilVisible:
+    element:
+      id: "qty"
+    direction: UP
+- tapOn:
+    id: "qty"
+- inputText: "${QTY}"
+# Hide the keyboard before the next field: after the scroll above, the open
+# keyboard shifts the layout and a tap on "batch" landed in "qty" — so the
+# batch "E2E-OFF1" was typed into a number input, which kept "E21" and saved
+# 5E21 cartons (observed 2026-10-30).
+- hideKeyboard
+- tapOn:
+    id: "batch"
+- inputText: "${BATCH}"
+- hideKeyboard
+- scrollUntilVisible:
+    element:
+      text: "Save"
+    direction: DOWN
+- tapOn:
+    text: "Save"
+- extendedWaitUntil:
+    visible:
+      text: "Waiting to send"
+    timeout: 15000
+- scrollUntilVisible:
+    element:
+      text: "${QTY} .* · ${ITEM_NAME} · .*"
+    direction: DOWN
+- takeScreenshot: 02-held-on-phone

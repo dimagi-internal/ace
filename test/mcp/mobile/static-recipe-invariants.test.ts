@@ -3112,6 +3112,10 @@ describe('every fixed-name capturing palette is discriminated or single-invocati
     'connect-messaging-open.yaml': 'opens the messaging channel once per messaging journey',
     'connect-messaging-reply.yaml': 'one reply per messaging journey',
     'connect-messaging-await.yaml': 'one await per messaging journey',
+    // ace#3348: standalone Chrome journeys, each run once per field-page leg.
+    'labs-field-page-count.yaml': 'one count per field-page journey (clearState Chrome)',
+    'labs-field-page-offline.yaml': 'the offline leg, once per journey',
+    'labs-field-page-reconnect.yaml': 'the reconnect leg, once per journey',
   };
 
   const files = readdirSync(STATIC_DIR).filter((n) => n.endsWith('.yaml'));

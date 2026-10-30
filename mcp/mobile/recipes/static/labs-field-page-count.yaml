@@ -1,0 +1,129 @@
+appId: com.android.chrome
+---
+# labs-field-page-count.yaml — open a connect-labs supply FIELD PAGE in the
+# phone's own Chrome and save one stock count through it (ace#3348).
+#
+# Runbook (labs data, the link, device prep, the labs read-back):
+# playbook/integrations/labs-field-page-e2e.md.
+#
+# Pre-state: the device is signed in as a pool test worker
+# (mobile_ensure_avd_running) and Google Play services is ENABLED — the
+# registration flow leaves it disabled for face capture, and Chrome 113 on the
+# image refuses to start without it ("Chrome won't work unless you enable
+# Google Play services"). Re-enable with `adb shell pm enable
+# com.google.android.gms` (runbook step 4).
+#
+# Post-state: the entry is listed under "Sent from this phone" and the network
+# pill reads "online". Labs is the authority on whether it landed; read it back
+# with supply_chain_stock_count_list — this recipe proves only what the phone
+# shows.
+#
+# Required env vars:
+#   FIELD_URL  — the link's `field_url` from supply_chain_update_link_issue
+#                (shown once; never commit it).
+#   ORG_NAME   — the link's org_name, for the "Stock for <org>" header.
+#   POINT_NAME — the worker's user_held supply point name (pre-selected "Where").
+#   ITEM_NAME  — the item name (pre-selected "Product").
+#   QTY        — quantity to type, e.g. "12".
+#   BATCH      — batch to type, e.g. "E2E-B7".
+#
+# No-PIN mode: the link is issued WITHOUT require_verification, so the page
+# must open straight to the form. assertNotVisible "Check it's you" is the
+# check that it did.
+#
+# clearState wipes Chrome's profile, so every run meets the first-run screens
+# and starts with no service worker and an empty IndexedDB queue — the page's
+# offline store cannot carry an entry from a previous run into this one.
+- launchApp:
+    clearState: true
+- waitForAnimationToEnd:
+    timeout: 3000
+
+# Chrome first run (observed on 113.0.5672.136, cc-2.64.0 image, 2026-10-30).
+- runFlow:
+    when:
+      visible:
+        text: "Use without an account"
+    commands:
+      - tapOn:
+          text: "Use without an account"
+      - waitForAnimationToEnd:
+          timeout: 2000
+- runFlow:
+    when:
+      visible:
+        text: "No thanks"
+    commands:
+      - tapOn:
+          text: "No thanks"
+      - waitForAnimationToEnd:
+          timeout: 2000
+
+# There is no openLink in the allowlist, so type the URL as a person would.
+- tapOn:
+    text: "Search or type web address"
+- inputText: "${FIELD_URL}"
+- pressKey: Enter
+
+- extendedWaitUntil:
+    visible:
+      text: "Stock for ${ORG_NAME}"
+    timeout: 45000
+- assertNotVisible:
+    text: "Check it's you"
+- extendedWaitUntil:
+    visible:
+      text: "online"
+    timeout: 15000
+- takeScreenshot: 01-field-page-opened
+
+# Chrome exposes each element's HTML id as its resource id, and a <select> by
+# its LABEL ("Where"), never its chosen option (observed 2026-10-30) — so
+# "the list is populated" is proved by opening the picker and choosing the
+# option from it.
+- tapOn:
+    id: "point"
+- extendedWaitUntil:
+    visible:
+      text: "${POINT_NAME}"
+    timeout: 10000
+- tapOn:
+    text: "${POINT_NAME}"
+- tapOn:
+    id: "item"
+- extendedWaitUntil:
+    visible:
+      text: "${ITEM_NAME}"
+    timeout: 10000
+- tapOn:
+    text: "${ITEM_NAME}"
+
+- tapOn:
+    id: "qty"
+- inputText: "${QTY}"
+- tapOn:
+    id: "batch"
+- inputText: "${BATCH}"
+- hideKeyboard
+- takeScreenshot: 02-entry-typed
+
+- scrollUntilVisible:
+    element:
+      text: "Save"
+    direction: DOWN
+- tapOn:
+    text: "Save"
+
+- extendedWaitUntil:
+    visible:
+      text: "Sent from this phone"
+    timeout: 30000
+- assertVisible:
+    text: "online"
+# The sent line reads "<qty> <unit> · <item> · <point> · <date>" — the batch
+# is not shown on the phone (observed 2026-10-30); labs' read-back checks it.
+- scrollUntilVisible:
+    element:
+      text: "${QTY} .* · ${ITEM_NAME} · .*"
+    direction: DOWN
+- takeScreenshot: 03-entry-sent

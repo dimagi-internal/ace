@@ -21,6 +21,7 @@ upstream, load the live schema with `ToolSearch "select:mcp__connect_labs__<atom
 | Open Chat Studio (chatbots, knowledge) | [`integrations/ocs-integration.md`](integrations/ocs-integration.md) | `docs/atom-schemas.md` § ace-ocs (`ocs_*`) | `dimagi/open-chat-studio` |
 | Connect Labs (solicitations, synthetic data, workflows, registry, supply chain) | [`integrations/connect-labs.md`](integrations/connect-labs.md) | live `tools/list` (`mcp__connect_labs__*`) | `dimagi-internal/connect-labs` |
 | Connect Labs supply chain (runner, registry, tenders, contracts, logistics, finance, stock) | [`integrations/connect-labs-supply-chain.md`](integrations/connect-labs-supply-chain.md) | live `tools/list` (`mcp__connect_labs__supply_chain_*`) | `dimagi-internal/connect-labs` |
+| Labs field page on the emulator (update link → phone Chrome → labs read-back) | [`integrations/labs-field-page-e2e.md`](integrations/labs-field-page-e2e.md) | `mcp/mobile/recipes/static/labs-field-page-*.yaml` | `dimagi-internal/connect-labs` |
 | Mobile (emulator, Maestro recipes, test workers) | [`integrations/mobile-integration.md`](integrations/mobile-integration.md) | `docs/atom-schemas.md` § ace-mobile (`mobile_*`) | — |
 | Google Slides | [`integrations/slides-integration.md`](integrations/slides-integration.md) | `docs/atom-schemas.md` § ace-gdrive (`slides_*`) | — |
 | Google Forms (create, publish, responder access, responses) | [`integrations/google-forms.md`](integrations/google-forms.md) | `docs/atom-schemas.md` § ace-gdrive (`forms_*`, `get_google_form_definition`) | — |
