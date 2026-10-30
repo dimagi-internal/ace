@@ -1,0 +1,11 @@
+appId: com.android.chrome
+---
+# Open the quick-settings shade (two swipes down from the top) to find the connectivity tile.
+- swipe:
+    start: 50%, 1%
+    end: 50%, 50%
+- swipe:
+    start: 50%, 1%
+    end: 50%, 60%
+- waitForAnimationToEnd
+- takeScreenshot: shade

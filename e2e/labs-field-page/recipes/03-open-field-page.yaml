@@ -1,0 +1,47 @@
+appId: com.android.chrome
+---
+# Needs envVars FIELD_URL. Do NOT declare an `env:` default here: it overrides the dispatched value (typed "").
+# Open the update link's field page in Chrome by typing the URL (no openLink in the recipe allowlist).
+# The ACE emulator has no Google Play services: Chrome raises a blocking "Enable Google Play services"
+# dialog on launch; Back dismisses it (observed 2026-10-30), after which first-run screens appear.
+- launchApp
+- waitForAnimationToEnd
+- runFlow:
+    when:
+      visible: "Enable Google Play services"
+    commands:
+      - back
+- waitForAnimationToEnd
+- tapOn:
+    text: "Continue"
+    optional: true
+- waitForAnimationToEnd
+- tapOn:
+    text: "Use without an account"
+    optional: true
+- tapOn:
+    text: "No thanks"
+    optional: true
+- tapOn:
+    text: "No, thanks"
+    optional: true
+- tapOn:
+    text: "Got it"
+    optional: true
+- waitForAnimationToEnd
+# Always start from the new-tab page: the Home button (top-left of a loaded page) goes there. The
+# fake search box has no text/id Maestro can match, so tap it by position (44%,31% per the UI dump; Maestro needs integer percentages).
+- tapOn:
+    point: "6%,9%"
+    optional: true
+- waitForAnimationToEnd
+- takeScreenshot: chrome-ready
+- tapOn:
+    point: "44%,31%"
+- waitForAnimationToEnd
+- inputText: ${FIELD_URL}
+- pressKey: Enter
+- extendedWaitUntil:
+    visible: "Stock for.*"
+    timeout: 30000
+- takeScreenshot: field-page-open

@@ -1,0 +1,6 @@
+appId: org.commcare.dalvik
+---
+# Open the Connect menu and its navigation drawer / profile to find the PersonalID username.
+- tapOn: "GO TO CONNECT MENU"
+- waitForAnimationToEnd
+- takeScreenshot: connect-menu
