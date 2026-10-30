@@ -60,6 +60,21 @@ item's display **name** (e.g. "E2E co-pack"), not its sku: the picker lists name
    `mobile_release_test_workers({all: true})`. Labs records cannot be deleted; the programme is
    the isolation (`connect-labs-supply-chain.md` § What cannot be undone).
 
+## On the `lease` backend (observed 2026-10-30 by a separate turn, not re-run here)
+
+The runs above used the `local` backend. A turn on a leased emulator hit two failures:
+`LEASE_READINESS_FAILED: instance ... is gone before it was ready` twice, and a registration
+started while the environment baseline was still applying (`Failed to install apk ... Broken pipe`),
+which left the device on a PIN lock screen. Restore is `mobile_stop_avd` and a fresh lease, not
+adapting to the half-registered device.
+
+## How the username was established
+
+`connect_list_flw_invites` on ace-pm-org opp 2383, which worker-3 had claimed: its `connect_user_id`
+column reads `9396ba0f84bf47b63d85` for +74260000103. The same column's values for worker-1 and
+worker-2 match the local parts of their HQ usernames in connect-ace-prod, so it holds the ConnectID
+username. The app's profile screen does not show it.
+
 ## Gotchas (all observed 2026-10-30, Chrome 113.0.5672.136, ACE_Pixel_API_34)
 
 - **Stale accessibility tree.** After Airplane mode toggles, Maestro kept reading the page as it
