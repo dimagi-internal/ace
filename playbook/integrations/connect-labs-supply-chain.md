@@ -93,6 +93,14 @@ returns `{org_id, org_name, your_standing}`, and `org_id: null` means nobody has
   (the **pack** for a supplier receipt). Live, program 10605 item 220: the flow carries 1000
   tests into store 149, which holds 20 kits, at `base_per_pack: 50`. Convert before comparing
   (`onHandInFlowUnit`, `skills/supply-chain-operate-qa/checks.ts`).
+- **A new program's rate is extrapolated.** `resupply_plan` scaled 14 jerrycans released over about
+  9 days to 46.7 a month and recommended a 77 jerrycan reorder, though `amc_window_days` read 90
+  (program 10175, 2026-10-30; connect-labs#2790). Treat the figures as unreliable for the first weeks.
+- **A measured value can fail a commodity's specification.** A commodity's `spec_requirements`
+  (field, operator, value) plus an item's `spec_attributes` raise the `item_fails_specification`
+  check, naming each failing value (pH 10.4 against "above 11" and 1.52 mg/L against "at most
+  1.44" both listed; 2026-10-30). It holds one current value per item: no history, batch, supplier,
+  place or overdue-test check (connect-labs#2789). Interim: one item per supplier batch.
 - **No consumption, no rate.** Until something is dispensed, `resupply_plan` returns every rate
   figure (AMC, months of stock, reorder point, resupply quantity) as
   `{unconfirmed: ["nothing has been dispensed from here yet, so there is no consumption rate"]}`.
@@ -196,6 +204,10 @@ that decides is often not the one that buys".
   `shipment_record` for goods from a supplier). The sender's stock drops at dispatch, and the
   destination counts it only at receipt. Received short, the difference is written off as a loss
   naming the consignment.
+- **Partner-run supply has no contract.** `shipment_record` REFUSES a write with no `contract_id`
+  (`'contract_id' is a required property`, program 10175, 2026-10-30; connect-labs#2788), but
+  `receipt_record` accepts `commodity_slug` and no contract. Record partner deliveries as receipts
+  until the shipment request lands; in-transit stock and overdue checks are unavailable meanwhile.
 - Reads: `supply_chain_shipment_list`, `supply_chain_receipt_list`,
   `supply_chain_consignment_list`.
 
@@ -337,3 +349,4 @@ label every invented name and excerpt "simulated" (`syntheticName`, `buildSource
 | 2026-10-21 | Stock from visits: one synthetic programme, rule matching, worker lookup by opportunity, hourly beat with no MCP trigger, generate once, Dimagi runs labs-only programmes, Map placement (ace#3265) |
 | 2026-10-20 | Sourcing: `fx_rate_to_usd` on non-USD quotes and the DAP + freight-excluded refusal (ace#3262). Finance: `payable_now` is net of payments recorded; on advance terms over-billing shows as `recoverable`, not `over_invoiced` (ace#3260) |
 | 2026-10-18 | Runner declaration is self-serve per connect-labs #2605 (who may declare, LabsOrg frozen once it runs, members hold the programme); a live award to a non-cheapest quote with a stated reason (program 10605 award 95) is the procure control (optional-track PR7) |
+| 2026-10-30 | Chlorine sandbox findings: shipments need a contract, receipts do not; the specification check; new-program rate extrapolation (connect-labs#2788, #2789, #2790) |
