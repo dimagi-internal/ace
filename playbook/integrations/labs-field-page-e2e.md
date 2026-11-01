@@ -68,6 +68,33 @@ started while the environment baseline was still applying (`Failed to install ap
 which left the device on a PIN lock screen. Restore is `mobile_stop_avd` and a fresh lease, not
 adapting to the half-registered device.
 
+## Second leased-emulator turn (2026-10-30 evening / 2026-11-01), what it adds
+
+A turn on the `lease` backend got the page open and a count into labs (stock count 3745, link 107
+`submission_count` 1, link revoked), using Back instead of `adb`, so the steps above hold there too. What
+it found that the sections above do not say:
+
+- **Chrome without the `adb pm enable` step.** On a fresh lease Chrome opens a blocking "Enable Google Play
+  services" dialog; Back dismisses it and Chrome runs (no `adb` on the lease backend). Press Back only while
+  the dialog is visible (`runFlow: when: visible: "Enable Google Play services"`): a Back on a live page
+  leaves Chrome.
+- **Recipe traps that each cost a failed run.** A recipe-level `env:` default overrides the `envVars` you pass
+  (the empty default was typed into the address bar, and Enter then submitted a trending search). Maestro
+  rejects decimal percentages in `point:` ("8.8%"). Chrome's new-tab search box has no matchable id or text;
+  tap it by position.
+- **Connect screens are secure windows.** `takeScreenshot` returns a blank ~7 KB image on the Connect menu;
+  read them with `mobile_capture_ui_dump`. Manage Profile asks for the device PIN again (the OS prompt).
+- **Pool slots.** `mobile_checkout_test_workers(3)` hands out the lowest free slots, which can include
+  worker-1 and worker-2; release the ones you must not use straight away. Worker-3 was held by another
+  session on 2026-11-01 and the pool gave worker-4: the username lookup above has to be redone per slot.
+- **Username lookup that does not work.** Listing HQ users in `connect-ace-prod` (`commcare_list_users`)
+  resolves only workers that claimed an opportunity in that domain (worker-1, worker-2); worker-3 and
+  worker-4 are absent there. Use `connect_list_flw_invites` on an opportunity the worker claimed, as above.
+- **Platform outage.** Mid-run, every canopy-web call under `/api/capabilities/leases/...` returned 500
+  (`LEASE_HTTP_500`, including a plain `get_capability_lease`), and `mobile_stop_avd` could not release the
+  worker (`TEST_WORKER_RELEASE_FAILED`); the broker's 900 s idle release frees it. Nothing to retry from the
+  agent side.
+
 ## How the username was established
 
 `connect_list_flw_invites` on ace-pm-org opp 2383, which worker-3 had claimed: its `connect_user_id`
