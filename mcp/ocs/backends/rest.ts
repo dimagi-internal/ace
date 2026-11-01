@@ -344,11 +344,19 @@ export class RestBackend {
     experiment_id: string;
     identifier: string;
     platform: string;
-    prompt_text: string;
+    prompt_text?: string;
+    message_text?: string;
+    start_new_session?: boolean;
     session_data?: Record<string, unknown>;
     participant_data?: Record<string, unknown>;
   }) {
-    await this.request('POST', '/api/trigger_bot', args);
+    const { experiment_id, ...rest } = args;
+    // OCS names the field `experiment` (a 400 "experiment: This field is required" otherwise), and takes
+    // exactly one of prompt_text (LLM path) / message_text (sent verbatim).
+    if (!!rest.prompt_text === !!rest.message_text) {
+      throw new Error('ocs_trigger_bot_message needs exactly one of prompt_text or message_text');
+    }
+    await this.request('POST', '/api/trigger_bot', { experiment: experiment_id, ...rest });
   }
 
   async listSessions(args: {

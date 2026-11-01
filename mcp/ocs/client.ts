@@ -394,7 +394,9 @@ export interface OcsClient {
     experiment_id: string;
     identifier: string;
     platform: string;
-    prompt_text: string;
+    prompt_text?: string;
+    message_text?: string;
+    start_new_session?: boolean;
     session_data?: Record<string, unknown>;
     participant_data?: Record<string, unknown>;
   }): Promise<void>;

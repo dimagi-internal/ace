@@ -378,18 +378,32 @@ describe('RestBackend chatbot atoms', () => {
     ).rejects.toThrow(/OCS generation error — boom/);
   });
 
-  it('triggerBotMessage posts to /api/trigger_bot', async () => {
+  it('triggerBotMessage posts to /api/trigger_bot with OCS\'s field name `experiment`', async () => {
+    let body = '';
     mockAgent.get(BASE)
       .intercept({ path: '/api/trigger_bot', method: 'POST' })
-      .reply(200, '');
+      .reply(200, (opts) => { body = String(opts.body); return ''; });
 
     const b = new RestBackend({ baseUrl: BASE, token: 't' });
     await expect(b.triggerBotMessage({
       experiment_id: 'exp1',
       identifier: '+15550000000',
       platform: 'api',
-      prompt_text: 'hi there',
+      message_text: 'hi there',
+      start_new_session: true,
     })).resolves.toBeUndefined();
+    const sent = JSON.parse(body);
+    expect(sent.experiment).toBe('exp1');
+    expect(sent).not.toHaveProperty('experiment_id');
+    expect(sent.message_text).toBe('hi there');
+    expect(sent.start_new_session).toBe(true);
+  });
+
+  it('triggerBotMessage refuses both or neither of prompt_text / message_text', async () => {
+    const b = new RestBackend({ baseUrl: BASE, token: 't' });
+    const base = { experiment_id: 'exp1', identifier: 'x', platform: 'api' };
+    await expect(b.triggerBotMessage({ ...base })).rejects.toThrow(/exactly one of/);
+    await expect(b.triggerBotMessage({ ...base, prompt_text: 'a', message_text: 'b' })).rejects.toThrow(/exactly one of/);
   });
 
   it('downloadFile returns a Buffer', async () => {
