@@ -773,12 +773,14 @@ server.tool(
 
 server.tool(
   'ocs_trigger_bot_message',
-  'Trigger the bot to send a message to a participant on a given channel.',
+  'Trigger the bot to send a message to a participant on a given channel. Give exactly one of prompt_text (the bot writes the message) or message_text (sent verbatim, no LLM). HTTP 200 only means OCS accepted the request: for a commcare_connect participant OCS delivers asynchronously and records a failure as a "Message Delivery Failed" team notification, so a 200 does not prove the phone got it (ace#3348).',
   {
-    experiment_id: z.string(),
+    experiment_id: z.string().describe('Chatbot public_id (UUID); posted to OCS as `experiment`.'),
     identifier: z.string(),
     platform: z.string(),
-    prompt_text: z.string(),
+    prompt_text: z.string().optional(),
+    message_text: z.string().optional(),
+    start_new_session: z.boolean().optional(),
     session_data: z.record(z.string(), z.unknown()).optional(),
     participant_data: z.record(z.string(), z.unknown()).optional(),
   },
