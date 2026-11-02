@@ -39,6 +39,27 @@ appId: com.android.chrome
 - waitForAnimationToEnd:
     timeout: 3000
 
+# On a leased emulator (no adb to re-enable Google Play services) Chrome opens a blocking "Enable Google
+# Play services" dialog; Back dismisses it and Chrome carries on to its welcome screen (observed 2026-10-30,
+# ace#3348). Back ONLY while the dialog is up: on a live page it would leave Chrome.
+- runFlow:
+    when:
+      visible:
+        text: "Enable Google Play services"
+    commands:
+      - pressKey: Back
+      - waitForAnimationToEnd:
+          timeout: 2000
+- runFlow:
+    when:
+      visible:
+        text: "Continue"
+    commands:
+      - tapOn:
+          text: "Continue"
+      - waitForAnimationToEnd:
+          timeout: 2000
+
 # Chrome first run (observed on 113.0.5672.136, cc-2.64.0 image, 2026-10-30).
 - runFlow:
     when:
