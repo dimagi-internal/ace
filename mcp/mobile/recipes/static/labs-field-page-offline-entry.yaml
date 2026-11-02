@@ -1,0 +1,50 @@
+appId: com.android.chrome
+---
+# labs-field-page-offline-entry.yaml — offline leg for images with NO Airplane tile in the shade (the ACE
+# lease image). The same thing labs-field-page-offline.yaml proves, without its shade steps (ace#3348).
+#
+# Pre-state: labs-field-page-count.yaml has run (page open, service worker installed), then
+# labs-field-page-airplane-settings.yaml turned Airplane mode ON. This recipe returns to Chrome WITHOUT
+# clearState (the page is still open), saves a count, and sees it HELD under "Waiting to send".
+# Read labs next: the count must NOT be there. Then run labs-field-page-airplane-settings.yaml again (off)
+# and labs-field-page-reconnect-entry.yaml.
+#
+# Required env vars: QTY, BATCH, ITEM_NAME. (Never assert the online/offline pill text: Chrome 113 does not
+# refresh it in the accessibility tree; see labs-field-page-offline.yaml.)
+- launchApp:
+    clearState: false
+- waitForAnimationToEnd:
+    timeout: 3000
+- extendedWaitUntil:
+    visible:
+      text: "No internet connection"
+    timeout: 30000
+- takeScreenshot: 01-offline
+- scrollUntilVisible:
+    element:
+      id: "qty"
+    direction: UP
+- tapOn:
+    id: "qty"
+- inputText: "${QTY}"
+# Hide the keyboard before the next field, or the second tap lands in the first field (5E21 cartons, 2026-10-30).
+- hideKeyboard
+- tapOn:
+    id: "batch"
+- inputText: "${BATCH}"
+- hideKeyboard
+- scrollUntilVisible:
+    element:
+      text: "Save"
+    direction: DOWN
+- tapOn:
+    text: "Save"
+- extendedWaitUntil:
+    visible:
+      text: "Waiting to send"
+    timeout: 15000
+- scrollUntilVisible:
+    element:
+      text: "${QTY} .* · ${ITEM_NAME} · .*"
+    direction: DOWN
+- takeScreenshot: 02-held-on-phone

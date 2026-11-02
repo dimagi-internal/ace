@@ -60,40 +60,36 @@ item's display **name** (e.g. "E2E co-pack"), not its sku: the picker lists name
    `mobile_release_test_workers({all: true})`. Labs records cannot be deleted; the programme is
    the isolation (`connect-labs-supply-chain.md` § What cannot be undone).
 
-## On the `lease` backend (observed 2026-10-30 by a separate turn, not re-run here)
+## On the `lease` backend: all legs pass (2026-11-02)
 
-The runs above used the `local` backend. A turn on a leased emulator hit two failures:
-`LEASE_READINESS_FAILED: instance ... is gone before it was ready` twice, and a registration
-started while the environment baseline was still applying (`Failed to install apk ... Broken pipe`),
-which left the device on a PIN lock screen. Restore is `mobile_stop_avd` and a fresh lease, not
-adapting to the half-registered device.
+The 10-30 runs used the `local` backend. On a leased emulator (`mobile_ensure_avd_running`) the count, offline and
+photo legs were run end to end on 2026-11-02 as worker-3, link revoked afterwards, results read from labs:
 
-## Second leased-emulator turn (2026-10-30 evening / 2026-11-01), what it adds
+| Leg | Recipes (in this order) | Labs afterwards |
+|---|---|---|
+| count | `labs-field-page-count` | stock count 3768 (batch `LR1CNT`, qty 9), once |
+| offline | `labs-field-page-airplane-settings` (`AIRPLANE_LABEL: on`) → `labs-field-page-offline-entry` → read labs: **no `LR1OFF`** → `labs-field-page-airplane-settings` (`AIRPLANE_LABEL: off`) → `labs-field-page-reconnect-entry` | stock count 3769 (`LR1OFF`, qty 4), once, only after the signal returned |
+| photo | `labs-field-page-photo` | stock count 3770 (`LR1PHO`) + `photo` document 109 (`photo.jpg`, 15.6 KB) |
 
-A turn on the `lease` backend got the page open and a count into labs (stock count 3745, link 107
-`submission_count` 1, link revoked), using Back instead of `adb`, so the steps above hold there too. What
-it found that the sections above do not say:
+The link's `submission_count` read 3 at the end. What differs from the local backend, all of it observed:
 
-- **Chrome without the `adb pm enable` step.** On a fresh lease Chrome opens a blocking "Enable Google Play
-  services" dialog; Back dismisses it and Chrome runs (no `adb` on the lease backend). Press Back only while
-  the dialog is visible (`runFlow: when: visible: "Enable Google Play services"`): a Back on a live page
-  leaves Chrome.
-- **Recipe traps that each cost a failed run.** A recipe-level `env:` default overrides the `envVars` you pass
-  (the empty default was typed into the address bar, and Enter then submitted a trending search). Maestro
-  rejects decimal percentages in `point:` ("8.8%"). Chrome's new-tab search box has no matchable id or text;
-  tap it by position.
-- **Connect screens are secure windows.** `takeScreenshot` returns a blank ~7 KB image on the Connect menu;
-  read them with `mobile_capture_ui_dump`. Manage Profile asks for the device PIN again (the OS prompt).
-- **Pool slots.** `mobile_checkout_test_workers(3)` hands out the lowest free slots, which can include
-  worker-1 and worker-2; release the ones you must not use straight away. Worker-3 was held by another
-  session on 2026-11-01 and the pool gave worker-4: the username lookup above has to be redone per slot.
-- **Username lookup that does not work.** Listing HQ users in `connect-ace-prod` (`commcare_list_users`)
-  resolves only workers that claimed an opportunity in that domain (worker-1, worker-2); worker-3 and
-  worker-4 are absent there. Use `connect_list_flw_invites` on an opportunity the worker claimed, as above.
-- **Platform outage.** Mid-run, every canopy-web call under `/api/capabilities/leases/...` returned 500
-  (`LEASE_HTTP_500`, including a plain `get_capability_lease`), and `mobile_stop_avd` could not release the
-  worker (`TEST_WORKER_RELEASE_FAILED`); the broker's 900 s idle release frees it. Nothing to retry from the
-  agent side.
+- **No `adb`, so Chrome's "Enable Google Play services" dialog is dismissed with Back**, not `pm enable`. The count recipe
+  does it only while the dialog is visible, then taps Chrome's "Continue" welcome button; a Back on a live page leaves Chrome.
+- **The lease image's quick-settings shade has no Airplane tile** (Internet, Bluetooth, Flashlight, Do Not Disturb only), so
+  `labs-field-page-offline` / `-reconnect` cannot run there. `labs-field-page-airplane-settings` toggles it from
+  Settings → Network & internet instead (Settings then reads "Internet: Airplane mode is on"), and `-offline-entry` /
+  `-reconnect-entry` are the same flow without the shade steps. The page stays open in Chrome while Settings is in front,
+  which is the intended state: signal drops under an open page.
+- **A first `Assert "Stock for <org>"` can fail right after an Airplane toggle** (the stale-accessibility-tree gotcha below)
+  even though the dump shows the page; the same recipe passes on the next run.
+- **Sign-in race.** `mobile_register_test_user` called while the baseline is still applying fails with `Failed to install
+  apk ... Broken pipe` and leaves the device on a PIN lock screen; `mobile_ensure_avd_running` can fail the same way. Restore
+  is `mobile_stop_avd` and a fresh lease, not adapting. Seen on 10-30 and again 11-01, and a lease can also fail with
+  `LEASE_READINESS_FAILED: instance ... is gone before it was ready`. When canopy-web's lease API returned 500 on every
+  call (2026-11-01), nothing helped; the broker frees an idle lease after 900 s.
+- **Which worker you get.** `mobile_checkout_test_workers(n)` hands out the lowest free slots, so release the ones you do
+  not want (`mobile_release_test_workers`) before `mobile_ensure_avd_running`, which signs in as the lowest held. worker-3 is
+  the one with labs rows seeded (point 504); another slot needs its username from `connect_list_flw_invites` and a point.
 
 ## How the username was established
 

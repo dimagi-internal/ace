@@ -1,0 +1,18 @@
+appId: com.android.chrome
+---
+# labs-field-page-reconnect-entry.yaml — offline leg part 2 for images with no Airplane tile (ace#3348).
+# Pre-state: labs-field-page-offline-entry.yaml ran (entry under "Waiting to send"), then
+# labs-field-page-airplane-settings.yaml turned Airplane mode OFF. Return to Chrome (no clearState), wait for
+# its "No internet connection" bar to go and the page to send, screenshot. No page assertions, by design:
+# labs decides (exactly one new count with this batch).
+- launchApp:
+    clearState: false
+- waitForAnimationToEnd:
+    timeout: 3000
+- extendedWaitUntil:
+    notVisible:
+      text: "No internet connection"
+    timeout: 90000
+- waitForAnimationToEnd:
+    timeout: 15000
+- takeScreenshot: 01-sent-after-signal

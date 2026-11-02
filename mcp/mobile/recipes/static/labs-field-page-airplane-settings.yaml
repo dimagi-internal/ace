@@ -1,0 +1,27 @@
+appId: com.android.settings
+---
+# Toggle Airplane mode through the Settings app, for emulator images whose quick-settings shade has no
+# Airplane tile (the ACE lease image: tiles are Internet, Bluetooth, Flashlight, Do Not Disturb; observed
+# 2026-10-30 and 2026-11-02, ace#3348). Run it once to go offline and again to come back; it screenshots the
+# Airplane row before and after so a human can read the state. Run TWICE per journey, so every capture carries
+# ${AIRPLANE_LABEL} (envVar: "on" for the first run, "off" for the second; the name is not fixed, so no registry entry is needed).
+# Chrome keeps its page: return with
+# `launchApp` on com.android.chrome (no clearState).
+# Home first: it closes a quick-settings shade left open by an earlier recipe, which would cover Settings.
+- pressKey: Home
+- waitForAnimationToEnd:
+    timeout: 1500
+- launchApp:
+    clearState: false
+- waitForAnimationToEnd:
+    timeout: 3000
+- tapOn:
+    text: "Network & internet"
+- waitForAnimationToEnd:
+    timeout: 3000
+- takeScreenshot: 01-network-and-internet-${AIRPLANE_LABEL}
+- tapOn:
+    text: "Airplane mode"
+- waitForAnimationToEnd:
+    timeout: 4000
+- takeScreenshot: 02-after-toggle-${AIRPLANE_LABEL}
