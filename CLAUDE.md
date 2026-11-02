@@ -81,6 +81,12 @@ ACE is a fleet agent on canopy's agent operating model (spec: `docs/superpowers/
 - **Explaining ACE to people is answered live, not from a doc.** Anyone new to ACE, or asking how it works, who reviews it or what it can see, gets Canopy's explainer links plus an answer read from the current system (`skills/explain-ace`) — routing, interfaces and turn modes are live config, so a stored write-up goes stale.
 - Reply quality follows canopy's operating-model **§1b checklist** by reference (deliverables are gdocs + draft inline; decide-then-show numbered; verify recipients from the structured read); inbox noise classes and open-thread aging (>5 days → escalate to the run's operator) are standing rules in `skills/inbox-triage`.
 
+**How canopy itself works** (local vs runner mode, plugin vs instance, how a person gets an agent,
+access and approvals) is NOT written here — it changes too fast. Before answering any question about
+it, read `$CANOPY/agent-core/using-canopy.md` (ships with the canopy plugin) and verify the claim
+against the CLI, live state or the code, as it says. Don't answer from memory or from how this
+session happens to be running.
+
 ## Layout
 
 - `agents/` — one procedure doc (`ace-orchestrator`) executed inline + the phase subagents; `orchestrator-reference.md` is the reference companion to `ace-orchestrator.md` (state schemas, write-back contract, pause-points catalog).
