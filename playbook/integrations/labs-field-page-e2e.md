@@ -129,7 +129,13 @@ username. The app's profile screen does not show it.
   session holds the Markdown link message and its trace reads Success. On worker-3 the "Chlorine
   Coach" channel appeared, its menu read "Unsubscribe" (subscribed), and a message typed on the phone
   reached OCS, but no OCS→phone message showed: not the two links, and not the bot's ordinary reply
-  to that message, with Google Play services on or off. The failure is in OCS → PersonalID → app
-  delivery for this worker, not in labs or the field page. Until that is fixed, check the send with
-  `ocs_get_session` (the message is there) rather than the phone. The link sent is the link's `url`
+  to that message, with Google Play services on or off. **Diagnosed 2026-11-01/02 (ace#3362): the send
+  fails inside OCS, before the phone.** `POST /api/trigger_bot` answers 200 as soon as OCS accepts the
+  request; the delivery to PersonalID happens afterwards and its failure is recorded only as the team
+  notification "Message Delivery Failed for <bot>" (`An error occurred while delivering a message to
+  <username> via Commcare_Connect`). A direct send to worker-1 (an old participant whose channel
+  predates OCS #4715) fails the same way, so it is not new-participant channel creation, and not labs
+  or the field page. OCS does not say why; the status PersonalID returned is in OCS's logs. **Read the
+  failure, not the 200:** `scripts/ocs-delivery-failures.ts --participant <username> --since-minutes 5`
+  ~25 s after the send (exit 2 = failed). `ocs_get_session` showing the message proves nothing. The link sent is the link's `url`
   (`/supply/u/<token>/`), not `field_url`.
