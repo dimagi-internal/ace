@@ -12,12 +12,15 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { parseArgs } from 'node:util';
+import { loadPluginEnv } from '../lib/load-plugin-env.js';
 import {
   deliveryFailureEvents,
   failuresSince,
   parseDeliveryFailures,
   parseNotificationList,
 } from '../lib/ocs-delivery-failures.js';
+
+loadPluginEnv(import.meta.url);
 
 const { values } = parseArgs({
   options: {
