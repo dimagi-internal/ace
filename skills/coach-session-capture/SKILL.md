@@ -140,6 +140,17 @@ not use web footage in a demo.
    (Labs' token is bound to them), then `workflow_action_status(execution_id)` → the
    OCS `session_id`. `ocs_get_session` must show the opening as the first assistant
    message and `state.coach_briefing` set.
+   **Then check OCS actually delivered it, ~25 s after the send** (OCS answers the send before it
+   delivers to PersonalID, and records a failure only as a team notification; a clean `session_id` is
+   not delivery, ace#3362):
+
+   ```bash
+   node "$ACE_ROOT/node_modules/tsx/dist/cli.mjs" "$ACE_ROOT/scripts/ocs-delivery-failures.ts" \
+     --participant <ace_test_username> --since-minutes 5
+   ```
+
+   Exit 2 = OCS failed to deliver: stop, report it against ace#3362, and do not spend a device run
+   waiting for a message that was never sent. Exit 3 = the saved OCS login expired (`/ace:ocs-login`).
 4. **Open the thread.** `mobile_run_recipe(connect-messaging-open.yaml, envVars:
    {CHANNEL_NAME, PIN: ACE_E2E_PIN})`. The channel row exists only after step 3.
 5. **Each persona turn** (the same lines web mode plays — `turns.json` if you wrote
