@@ -29,9 +29,9 @@ export interface DeliveryFailure {
 const text = (html: string) =>
   html
     .replace(/<[^>]+>/g, ' ')
-    .replace(/&amp;/g, '&')
     .replace(/&#x27;|&#39;/g, "'")
     .replace(/&quot;/g, '"')
+    .replace(/&amp;/g, '&') // last: decoding it first would double-unescape "&amp;quot;"
     .replace(/\s+/g, ' ')
     .trim();
 
