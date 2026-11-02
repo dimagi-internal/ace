@@ -92,25 +92,24 @@ async function main() {
     (c) => c.mimeType === FOLDER_MIME,
   );
   const oppFolders: typeof candidateFolders = [];
+  const nonOppFolders: string[] = [];
   for (const c of candidateFolders) {
     if (await isOppFolder(c.id, drive)) {
       oppFolders.push(c);
     } else {
-      info(`drive_layout: skipping '${c.name}' (no inputs/ or opp.yaml — not an opp folder)`);
+      nonOppFolders.push(c.name);
     }
   }
 
   let totalDups = 0;
   let totalStrays = 0;
+  const strayByOpp: string[] = [];
   for (const opp of oppFolders) {
     // Stray opp-root entries
     const strays = await detectStrayOppRootFiles(opp.id, drive);
     if (strays.length > 0) {
       totalStrays += strays.length;
-      warn(
-        `drive_layout/${opp.name}: ${strays.length} stray opp-root entries (${strays.map((s) => s.name).join(', ')})`,
-        `expected only opp.yaml, inputs/, runs/, current/. Move strays into the appropriate run folder, or delete if obsolete.`,
-      );
+      strayByOpp.push(`${opp.name} (${strays.map((x) => x.name).join(', ')})`);
     }
 
     // Duplicate folders under each run
@@ -136,8 +135,15 @@ async function main() {
     }
   }
 
-  if (totalDups === 0 && totalStrays === 0) {
-    pass('drive_layout: no duplicate folders, no stray opp-root files across all opps');
+  // Stray opp-root entries are shared-Drive CONTENT, identical from every
+  // machine — not a fault in this machine's setup — so they are one INFO line
+  // (cleanup belongs to /ace:sweep), never a WARN per opp. Duplicate folders
+  // stay WARN: they mean parallel skill writes raced, which is a real defect.
+  if (totalStrays > 0) {
+    info(`drive_layout: ${totalStrays} stray opp-root entr${totalStrays === 1 ? 'y' : 'ies'} across ${strayByOpp.length} opp(s) — shared-Drive content, not this machine; tidy with /ace:sweep: ${strayByOpp.join('; ')}`);
+  }
+  if (totalDups === 0) {
+    pass(`drive_layout: ${oppFolders.length} opp folder(s) checked, no duplicate run folders${nonOppFolders.length ? ` (${nonOppFolders.length} non-opp folder(s) at the root ignored)` : ''}`);
   }
 }
 

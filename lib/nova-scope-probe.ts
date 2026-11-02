@@ -71,6 +71,7 @@ export type NovaScopeReason =
   | 'scope-missing'
   | 'auth-failed'
   | 'unreachable'
+  | 'rate-limited'
   | 'unexpected-response'
   | 'no-key-configured';
 
@@ -178,6 +179,16 @@ export function classifyNovaScopeProbe(args: {
       reason: 'unreachable',
       summary: 'could not reach https://mcp.commcare.app/mcp (network/DNS/timeout)',
       remediation: 'check VPN/proxy; the net_nova_mcp and nova_auth probes should also flag this',
+    };
+  }
+
+  if (httpStatus === 429) {
+    return {
+      ...base,
+      status: 'warn',
+      reason: 'rate-limited',
+      summary: 'Nova rate-limited the scope check (HTTP 429, still after retries) — scopes NOT verified',
+      remediation: 're-run /ace:doctor in a minute; if it persists, another session is hammering Nova with this key',
     };
   }
 
