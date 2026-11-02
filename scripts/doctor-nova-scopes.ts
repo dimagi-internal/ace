@@ -61,9 +61,27 @@ function readEnvValue(name: string): string {
   return process.env[name] ?? '';
 }
 
+/**
+ * A 429 is Nova asking us to slow down, not an answer about the key — and the
+ * doctor fires several Nova probes back to back, so it is usually our own
+ * burst. Retry with backoff (honouring Retry-After, capped) before letting the
+ * classifier call it inconclusive.
+ */
 async function callGetHqConnection(
   key: string,
 ): Promise<{ status: number | null; body: string }> {
+  let last: { status: number | null; body: string; retryAfter: number } = { status: null, body: '', retryAfter: 0 };
+  for (let attempt = 0; attempt < 3; attempt++) {
+    if (attempt > 0) await new Promise((r) => setTimeout(r, Math.min(last.retryAfter || 2000 * attempt, 6000)));
+    last = await callGetHqConnectionOnce(key);
+    if (last.status !== 429) break;
+  }
+  return { status: last.status, body: last.body };
+}
+
+async function callGetHqConnectionOnce(
+  key: string,
+): Promise<{ status: number | null; body: string; retryAfter: number }> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
   try {
@@ -84,9 +102,10 @@ async function callGetHqConnection(
       }),
       signal: controller.signal,
     });
-    return { status: res.status, body: await res.text() };
+    const ra = Number(res.headers.get('retry-after'));
+    return { status: res.status, body: await res.text(), retryAfter: Number.isFinite(ra) && ra > 0 ? ra * 1000 : 0 };
   } catch {
-    return { status: null, body: '' };
+    return { status: null, body: '', retryAfter: 0 };
   } finally {
     clearTimeout(timer);
   }

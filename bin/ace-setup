@@ -658,7 +658,7 @@ fi
 CCLI_JAR_PATH="$DATA_DIR/commcare-cli.jar"
 CCLI_VERSION_PATH="$DATA_DIR/commcare-cli.jar.version"
 if [ -f "$CCLI_JAR_PATH" ] && [ "$FORCE_INSTALL" = "0" ]; then
-  CCLI_SIZE="$(stat -f %z "$CCLI_JAR_PATH" 2>/dev/null || stat -c %s "$CCLI_JAR_PATH" 2>/dev/null || echo 0)"
+  CCLI_SIZE="$(ace_file_size "$CCLI_JAR_PATH")"
   CCLI_CACHED_VER="$(cat "$CCLI_VERSION_PATH" 2>/dev/null || echo unknown)"
   pass "commcare_cli: $CCLI_JAR_PATH present (${CCLI_SIZE} bytes, version=${CCLI_CACHED_VER}) — re-run with --force-install to refresh"
 elif ! command -v gh >/dev/null 2>&1; then
@@ -674,7 +674,7 @@ else
     # same as for stable releases. --clobber lets --force-install repair
     # corrupt caches.
     if gh release download "$CCLI_TAG" --repo dimagi/commcare-core --pattern 'commcare-cli.jar' --output "$CCLI_JAR_PATH" --clobber 2>&1 | tail -5; then
-      CCLI_SIZE="$(stat -f %z "$CCLI_JAR_PATH" 2>/dev/null || stat -c %s "$CCLI_JAR_PATH" 2>/dev/null || echo 0)"
+      CCLI_SIZE="$(ace_file_size "$CCLI_JAR_PATH")"
       if [ "$CCLI_SIZE" -lt 1000000 ]; then
         warn "commcare_cli: downloaded jar is suspiciously small (${CCLI_SIZE} bytes)" "expected ~10MB; check network or rerun /ace:setup --force-install"
         rm -f "$CCLI_JAR_PATH" "$CCLI_VERSION_PATH"

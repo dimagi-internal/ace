@@ -61,3 +61,13 @@ ace_data_dir() {
 ace_newest_cache_root() {
   ls -1d "$HOME"/.claude/plugins/cache/*/ace/*/ 2>/dev/null | sed 's:/$::' | sort -V | tail -1
 }
+
+# Portable file mtime (epoch seconds) / size (bytes); `0` when unreadable.
+# GNU `stat -c` FIRST, BSD `stat -f` second: on Linux `stat -f` is a valid
+# option (filesystem status), so `stat -f %m F || stat -c %Y F` never reaches
+# the fallback — it prints a multi-line filesystem report and exits 0, and
+# `$(( now - that ))` dies with a syntax error that aborts the whole enclosing
+# block. On macOS `stat -c` is an unknown option and fails, so the `-f` form
+# takes over. Never write `stat -f ... || stat -c ...` again.
+ace_file_mtime() { stat -c %Y "$1" 2>/dev/null || stat -f %m "$1" 2>/dev/null || echo 0; }
+ace_file_size()  { stat -c %s "$1" 2>/dev/null || stat -f %z "$1" 2>/dev/null || echo 0; }

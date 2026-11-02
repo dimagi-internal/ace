@@ -160,4 +160,11 @@ describe('classifyNovaScopeProbe (ace#174)', () => {
     });
     expect(`${v.summary} ${v.remediation}`).not.toMatch(/SUPERSECRET/);
   });
+
+  it('429 is an inconclusive rate limit, never "key invalid" or "unexpected response"', () => {
+    const v = classifyNovaScopeProbe({ keyConfigured: true, httpStatus: 429, body: 'Too Many Requests' });
+    expect(v.status).toBe('warn');
+    expect(v.reason).toBe('rate-limited');
+    expect(v.summary).toMatch(/NOT verified/);
+  });
 });

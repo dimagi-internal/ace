@@ -908,7 +908,11 @@ info() { printf 'INFO %s\n' "$1"; }
 # its own PASS/WARN lines via the same shape).
 DOCTOR_LOG="$(mktemp -t ace-doctor.XXXXXX 2>/dev/null || mktemp)"
 trap 'rm -f "$DOCTOR_LOG"' EXIT
-exec > >(tee "$DOCTOR_LOG")
+# stderr joins the log too: a bash error inside a check ("line N: syntax error")
+# is otherwise invisible to the summary, and it ABORTS the enclosing block — the
+# checks after it never run and their later consumers read empty variables
+# (the 2026-11-02 Linux `stat -f` incident: 3 false "key not set" WARNs).
+exec > >(tee "$DOCTOR_LOG") 2>&1
 
 # --- Version consistency ---
 VER_FILE="$(tr -d '[:space:]' < "$ROOT/VERSION" 2>/dev/null || echo missing)"
@@ -1333,7 +1337,7 @@ if [ -n "$ENV_FILE" ]; then
   if [ -n "${CLAUDE_PLUGIN_DATA:-}" ]; then
     pass "env_file: $ENV_FILE (CLAUDE_PLUGIN_DATA set to $CLAUDE_PLUGIN_DATA)"
   else
-    pass "env_file: $ENV_FILE (CLAUDE_PLUGIN_DATA unset; defaulted DATA_DIR to $DATA_DIR — agents that probe \${CLAUDE_PLUGIN_DATA}/.env directly will miss this path. Resolution order: \$CLAUDE_PLUGIN_DATA/.env → the installed ace@<marketplace> data dir (plugins/data/ace-<marketplace>) → \$ROOT/.env)"
+    pass "env_file: $ENV_FILE (resolved from the installed plugin's data dir; CLAUDE_PLUGIN_DATA is unset in this shell, as it normally is in a Bash tool call — read this path, not \${CLAUDE_PLUGIN_DATA}/.env)"
   fi
 else
   warn "env_file: no .env found (checked $DATA_DIR/.env and $ROOT/.env; CLAUDE_PLUGIN_DATA=${CLAUDE_PLUGIN_DATA:-unset})" "run /ace:setup (or: bash \"$ROOT/bin/ace-setup\") to fill .env from ACE's Canopy vault"
@@ -1692,21 +1696,35 @@ if [ -n "$ENV_FILE" ]; then
   fi
 
   # env_drift: ACE's env names are declared once, in its Canopy vault on
-  # canopy-web (canopy agent-runtime.md § One declaration). canopy keeps a
-  # vault-fed copy at ~/.ace/.env (`canopy cred env|sync`); a key there that the
-  # installed plugin .env lacks is a vault addition this machine has not picked
-  # up. Informational — WARN, not FAIL (learnings.md "Runtime-health checks
-  # should be WARN, not FAIL").
-  VAULT_ENV="$HOME/.ace/.env"
-  if [ -f "$VAULT_ENV" ] && [ "$VAULT_ENV" != "$ENV_FILE" ]; then
-    VAULT_KEYS="$(grep -E '^[[:space:]]*[A-Z_][A-Z0-9_]*=' "$VAULT_ENV" 2>/dev/null | sed -E 's/^[[:space:]]*([A-Z_][A-Z0-9_]*)=.*/\1/' | sort -u)"
-    ENV_KEYS="$(grep -E '^[[:space:]]*[A-Z_][A-Z0-9_]*=' "$ENV_FILE" 2>/dev/null | sed -E 's/^[[:space:]]*([A-Z_][A-Z0-9_]*)=.*/\1/' | sort -u)"
-    ENV_DIFF="$(comm -23 <(printf '%s\n' "$VAULT_KEYS") <(printf '%s\n' "$ENV_KEYS") | tr '\n' ' ' | sed 's/ *$//')"
-    if [ -n "$ENV_DIFF" ]; then
-      warn "env_drift: $ENV_FILE is missing keys ACE's Canopy vault holds: $ENV_DIFF" "run /ace:setup --force-env (= bash \"$ROOT/bin/ace-setup\" --force-env) — it re-fills from the vault AND preserves local-only secrets (ACE_WEB_PAT_TOKEN etc.), then restart Claude Code"
+  # canopy-web (canopy agent-runtime.md § One declaration), and the installed
+  # .env is a GENERATED copy of it. Resolve the vault in memory into a private
+  # temp dir (the same call /ace:setup makes — `canopy agent env --out`), then
+  # compare KEY NAMES and per-key values; only names are ever printed. Keys
+  # present here but not in the vault are the machine's local-only secrets
+  # (ACE_WEB_PAT_TOKEN etc.) and are expected. Informational — WARN, not FAIL.
+  # Also reports where .env came from and how old it is: on a cloud runner it
+  # is written by `canopy agent prepare --runner`, on a laptop by /ace:setup.
+  _ENV_AGE_D=$(( ( $(date +%s) - $(ace_file_mtime "$ENV_FILE") ) / 86400 ))
+  if command -v canopy >/dev/null 2>&1; then
+    _TO=""; command -v timeout >/dev/null 2>&1 && _TO="timeout 30"
+    _VDIR="$(mktemp -d 2>/dev/null)"
+    if [ -n "$_VDIR" ] && chmod 700 "$_VDIR" && ${_TO} canopy agent env --plugin ace --out "$_VDIR/.env" >/dev/null 2>&1 && [ -s "$_VDIR/.env" ]; then
+      _vkeys() { grep -E '^[[:space:]]*[A-Z_][A-Z0-9_]*=' "$1" 2>/dev/null | sed -E 's/^[[:space:]]*([A-Z_][A-Z0-9_]*)=.*/\1/' | sort -u; }
+      _VMISS="$(comm -23 <(_vkeys "$_VDIR/.env") <(_vkeys "$ENV_FILE") | tr '\n' ' ' | sed 's/ *$//')"
+      _VEXTRA="$(comm -13 <(_vkeys "$_VDIR/.env") <(_vkeys "$ENV_FILE") | tr '\n' ' ' | sed 's/ *$//')"
+      _VCHG="$(comm -23 <(grep -E '^[[:space:]]*[A-Z_][A-Z0-9_]*=' "$_VDIR/.env" | sort -u) <(grep -E '^[[:space:]]*[A-Z_][A-Z0-9_]*=' "$ENV_FILE" | sort -u) | sed -E 's/^[[:space:]]*([A-Z_][A-Z0-9_]*)=.*/\1/' | sort -u | grep -vxF -f <(printf '%s\n' $_VMISS) | tr '\n' ' ' | sed 's/ *$//')"
+      if [ -n "$_VMISS" ] || [ -n "$_VCHG" ]; then
+        warn "env_drift: $ENV_FILE (${_ENV_AGE_D}d old) differs from ACE's Canopy vault —${_VMISS:+ missing here: $_VMISS;}${_VCHG:+ value changed in vault: $_VCHG;} (MCP subprocesses hold the old values until restarted)" "run /ace:setup --force-env (on a cloud runner: re-run \`canopy agent prepare --runner\`), then restart Claude Code"
+      else
+        pass "env_drift: $ENV_FILE (${_ENV_AGE_D}d old) matches ACE's Canopy vault (every vault key and value present${_VEXTRA:+; local-only: $_VEXTRA})"
+      fi
     else
-      pass "env_drift: $ENV_FILE has every key ACE's Canopy vault holds"
+      info "env_drift: could not resolve ACE's Canopy vault from this machine (canopy agent env failed or timed out) — .env is ${_ENV_AGE_D}d old and was NOT compared"
     fi
+    [ -n "$_VDIR" ] && rm -rf "$_VDIR"
+    unset _VDIR _VMISS _VEXTRA _VCHG
+  else
+    info "env_drift: canopy CLI not on PATH — .env (${_ENV_AGE_D}d old) was NOT compared with the vault"
   fi
 
   # OCS Playwright session — keyed by team slug. The Playwright backend
@@ -1775,7 +1793,7 @@ if [ -n "$ENV_FILE" ]; then
   # by hq-oauth-login.ts when ACE_HQ_USERNAME/PASSWORD are set in .env.
   CONNECT_SESS="$HOME/.ace/connect-session.json"
   if [ -f "$CONNECT_SESS" ]; then
-    AGE_S="$(($(date +%s) - $(stat -f %m "$CONNECT_SESS" 2>/dev/null || stat -c %Y "$CONNECT_SESS" 2>/dev/null || echo 0)))"
+    AGE_S="$(($(date +%s) - $(ace_file_mtime "$CONNECT_SESS")))"
     AGE_H="$((AGE_S / 3600))"
     if [ "$AGE_H" -lt 24 ]; then
       pass "connect_session: $CONNECT_SESS (age ${AGE_H}h)"
@@ -2310,6 +2328,14 @@ if [ -n "$HQ_KEY_VAL" ] && [ -n "$HQ_DOMAIN" ] && [ -n "$HQ_USER" ]; then
   HQ_API_PROBE_CODE="$(probe_http curl_auth "Authorization: ApiKey $HQ_USER:$HQ_KEY_VAL" \
 -sS -o /dev/null -w '%{http_code}' --max-time 3 \
     "https://www.commcarehq.org/a/$HQ_DOMAIN/api/v0.5/user/?limit=1")"
+  # A timeout (000) is "the endpoint was slow", not an answer about the key —
+  # a cloud runner measured it tripping the 3s budget while every other CCHQ
+  # probe passed. One patient retry before calling it inconclusive.
+  if [ "$HQ_API_PROBE_CODE" = "000" ]; then
+    HQ_API_PROBE_CODE="$(probe_http curl_auth "Authorization: ApiKey $HQ_USER:$HQ_KEY_VAL" \
+-sS -o /dev/null -w '%{http_code}' --max-time 12 \
+    "https://www.commcarehq.org/a/$HQ_DOMAIN/api/v0.5/user/?limit=1")"
+  fi
   case "$HQ_API_PROBE_CODE" in
     2*)
       pass "hq_api_key_auth: ACE_HQ_API_KEY authed against $HQ_DOMAIN (GET /api/v0.5/user/ → HTTP $HQ_API_PROBE_CODE)"
@@ -2324,7 +2350,7 @@ if [ -n "$HQ_KEY_VAL" ] && [ -n "$HQ_DOMAIN" ] && [ -n "$HQ_USER" ]; then
       # network failure. Don't tell the operator their internet is down
       # when we just proved it isn't. Likely transient; recovery is to
       # re-run the doctor.
-      warn "hq_api_key_auth: GET /api/v0.5/user/ did not complete in 3s (CCHQ basic reachability OK per cchq_auth/net_commcarehq above)" "transient — re-run /ace:doctor; if persists, the CCHQ API endpoint may be degraded (status.commcare.org)"
+      warn "hq_api_key_auth: GET /api/v0.5/user/ did not complete in 3s or on a 12s retry (CCHQ basic reachability OK per cchq_auth/net_commcarehq above)" "transient — re-run /ace:doctor; if persists, the CCHQ API endpoint may be degraded (status.commcare.org)"
       ;;
     *)
       warn "hq_api_key_auth: GET /a/$HQ_DOMAIN/api/v0.5/user/ → HTTP $HQ_API_PROBE_CODE" "investigate; if persists, rotate the key per the recovery recipe above"
@@ -3019,6 +3045,14 @@ else
     # The key travels on the user-scope entry, which nova_header_readiness just
     # proved will send it, so this mark is expected and harmless (ace#2529).
     pass "nova_needs_auth_cache: plugin:nova:nova marked needs-auth — expected under nova plugin v2 (that bundled connection is OAuth-only); the user-scope nova entry carries the key (nova_header_readiness PASS)"
+  elif [ "$NOVA_CACHE_HAS_NOVA" = "1" ] && { [ "$NOVA_HDR_MISSING" = "1" ] || [ "${NOVA_HDR_RC:-0}" != "0" ] || [ -z "$NOVA_HDR_LINES" ]; }; then
+    # nova_header_readiness never produced a verdict (its probe crashed or
+    # printed nothing), so we do NOT know the key path is broken. This branch
+    # used to fall through to "clear the entry + FAIL", which MUTATED
+    # ~/.claude/mcp-needs-auth-cache.json on the strength of a probe that never
+    # ran (seen 2026-11-02 on a deps-less worktree). Unknown is not broken:
+    # report, never mutate.
+    warn "nova_needs_auth_cache: plugin:nova:nova is marked needs-auth but nova_header_readiness did not report, so whether the user-scope key path works is UNKNOWN — cache left untouched" "fix the nova_header_readiness probe failure above (usually \`npm ci\` in the plugin root), then re-run /ace:doctor"
   elif [ "$NOVA_CACHE_HAS_NOVA" = "1" ]; then
     # Hard fail when nova_auth has confirmed the upstream key works —
     # in that case the cache is anchored on stale auth state and Nova
@@ -3121,12 +3155,18 @@ elif [ -n "${ACE_PLUGIN_DATA_DIR:-}" ] && [ -f "$ACE_PLUGIN_DATA_DIR/commcare-cl
 elif [ -f "$(ace_data_dir "$ROOT")/commcare-cli.jar" ]; then
   COMMCARE_CLI_JAR_PATH="$(ace_data_dir "$ROOT")/commcare-cli.jar"
 fi
-if [ -z "$COMMCARE_CLI_JAR_PATH" ]; then
+if [ -z "$COMMCARE_CLI_JAR_PATH" ] && [ -z "$(cd "$ROOT" 2>/dev/null && node "$TSX_CLI" scripts/resolve-java-path.ts 2>/dev/null)" ]; then
+  # Neither the jar nor a JDK: the install-time gate (app-release-qa Step 4.5)
+  # cannot run on this machine at all, and /ace:setup alone would not change
+  # that (the jar needs Java to run). Real, tracked gap — ace#3168 — so name it
+  # once, precisely, instead of two generic "run setup"/"install JDK" hints.
+  warn "commcare_cli_jar: no commcare-cli.jar AND no Java runtime — app-release-qa Step 4.5 (install-time validate/play) cannot run here and will record cli_validate: unavailable (ace#3168)" "install a JDK 17+ on this machine (runner image: add it to provisioning), then /ace:setup to download the jar"
+elif [ -z "$COMMCARE_CLI_JAR_PATH" ]; then
   warn "commcare_cli_jar: not found at \$ACE_COMMCARE_CLI_JAR or \$CLAUDE_PLUGIN_DATA/commcare-cli.jar" "run /ace:setup — it auto-downloads the latest commcare-cli.jar from dimagi/commcare-core releases. Without this, Phase 3 app-release-smoke can't catch runtime-install defects (e.g. bednet-spot-check/20260525-1405 class)."
 elif [ ! -r "$COMMCARE_CLI_JAR_PATH" ]; then
   warn "commcare_cli_jar: $COMMCARE_CLI_JAR_PATH not readable" "fix file permissions or re-run /ace:setup --force-install"
 else
-  COMMCARE_CLI_JAR_SIZE="$(stat -f %z "$COMMCARE_CLI_JAR_PATH" 2>/dev/null || stat -c %s "$COMMCARE_CLI_JAR_PATH" 2>/dev/null || echo 0)"
+  COMMCARE_CLI_JAR_SIZE="$(ace_file_size "$COMMCARE_CLI_JAR_PATH")"
   COMMCARE_CLI_VERSION="$(cat "$COMMCARE_CLI_JAR_PATH.version" 2>/dev/null || echo unknown)"
   if [ "$COMMCARE_CLI_JAR_SIZE" -lt 1000000 ]; then
     warn "commcare_cli_jar: $COMMCARE_CLI_JAR_PATH suspiciously small ($COMMCARE_CLI_JAR_SIZE bytes; version=$COMMCARE_CLI_VERSION)" "re-run /ace:setup --force-install to redownload"
@@ -3222,6 +3262,12 @@ emit_line_probe common_screenshot_pool \
 # ACE_E2E_* env vars. The `fix:` hint always points there; for the rare
 # "ACE_E2E_PHONE not set" case, mobile-bootstrap also re-fills .env from
 # ACE's Canopy vault.
+# Which backend will a run here use? Local tooling (Maestro, adb, SDK, AVD,
+# Playwright cookies) is only a prerequisite for `local`; on `lease` the
+# machine that runs the emulator is leased per dispatch, so demanding them is a
+# false WARN on every cloud runner. Same rule as the MCP (scripts/resolve-mobile-backend.ts).
+MOBILE_DEFAULT_BACKEND="$(cd "$ROOT" 2>/dev/null && node "$TSX_CLI" scripts/resolve-mobile-backend.ts 2>/dev/null | tail -1)"
+[ "$MOBILE_DEFAULT_BACKEND" = "local" ] || [ "$MOBILE_DEFAULT_BACKEND" = "lease" ] || MOBILE_DEFAULT_BACKEND="local"
 MOBILE_ISSUES=()
 
 # Maestro present + executable
@@ -3286,7 +3332,15 @@ if [ ${#_MOBILE_MISSING_ENV[@]} -gt 0 ]; then
   MOBILE_ISSUES+=("env vars missing: $(IFS=,; echo "${_MOBILE_MISSING_ENV[*]}")")
 fi
 
-if [ ${#MOBILE_ISSUES[@]} -eq 0 ]; then
+if [ "$MOBILE_DEFAULT_BACKEND" = "lease" ]; then
+  # Phase 6 runs on a leased machine; capability_lease + test_worker_pool above
+  # are the real gates. Local tooling is optional (it makes the `local` backend available).
+  if [ ${#MOBILE_ISSUES[@]} -eq 0 ]; then
+    pass "mobile_infra: default backend is lease; local Maestro/adb/AVD tooling is also present (optional)"
+  else
+    pass "mobile_infra: default backend is lease — local Maestro/adb/AVD tooling not required (capability_lease above is the gate; absent locally: ${MOBILE_ISSUES[*]})"
+  fi
+elif [ ${#MOBILE_ISSUES[@]} -eq 0 ]; then
   pass "mobile_infra: maestro + adb + emulator + AVD '${_MOBILE_AVD_NAME}' present, cookies + ACE_E2E_* env all OK (Phase 6 cold-boots the AVD per dispatch; current booted state in [Mobile] below)"
 else
   # Build the joined string with `; ` separators. `IFS=…` with `${arr[*]}`
@@ -3510,6 +3564,9 @@ unset SELECTOR_MAP_DIR SELECTOR_RECIPES_DIR SELECTOR_APK_VERSION SELECTOR_APK_VE
 
 echo ""
 echo "[Mobile]"
+if [ "$MOBILE_DEFAULT_BACKEND" = "lease" ]; then
+  info "mobile_local: skipped — default backend is lease (no local AVD/Maestro/adb needed); set ACE_MOBILE_BACKEND=local to audit local tooling"
+else
 
 # Resolve the maestro launcher even when ~/.maestro/bin isn't on PATH.
 # Mirrors `resolveMaestroBinDir()` in mcp/mobile/backends/avd.ts: the official
@@ -3666,6 +3723,8 @@ for v in ACE_E2E_PHONE ACE_E2E_PIN ACE_E2E_BACKUP_CODE ACE_AVD_NAME; do
   fi
 done
 
+fi
+
 echo ""
 echo "[Drive layout]"
 if [ -f "$ROOT/scripts/doctor-drive-layout.ts" ]; then
@@ -3682,6 +3741,24 @@ echo ""
 # flushes all the [Drive layout] subprocess writes before we count.
 # 200ms is invisible to humans and well above tee's typical buffer
 # flush latency on macOS / Linux for a ~5 KB file.
+sleep 0.2
+
+# --- Self-check: did the doctor itself run cleanly? ---
+# A bash error inside a check, or a check that never emitted a verdict, must
+# surface as a FAIL — never as a quiet "HEALTHY" over a shortened report.
+_DOCTOR_INTERNAL="$(grep -E "ace-doctor: line [0-9]+:" "$DOCTOR_LOG" 2>/dev/null | head -3 | cut -c1-200)"
+if [ -n "$_DOCTOR_INTERNAL" ]; then
+  fail "doctor_internal_error: a doctor check crashed, so later checks may not have run (first: $(printf '%s' "$_DOCTOR_INTERNAL" | head -1))" "this is a bug in bin/ace-doctor, not in your setup — file it against the ACE repo with this output"
+fi
+if [ -n "$ENV_FILE" ]; then
+  _DOCTOR_MISSING_PROBES=""
+  for _probe in env_file ocs_env connect_env hq_domain connect_session connect_labs_env nova_env hq_api_key_env connect_auth cchq_auth nova_shell_env commcare_cli_jar mobile_infra; do
+    grep -qE "^(PASS|WARN|FAIL|INFO) ${_probe}[:/]" "$DOCTOR_LOG" 2>/dev/null || _DOCTOR_MISSING_PROBES="$_DOCTOR_MISSING_PROBES $_probe"
+  done
+  if [ -n "$_DOCTOR_MISSING_PROBES" ]; then
+    fail "doctor_coverage: expected checks never reported:$_DOCTOR_MISSING_PROBES" "a check was skipped or crashed — the report above is incomplete; file a bug against bin/ace-doctor"
+  fi
+fi
 sleep 0.2
 
 # Capture all counts AND listings BEFORE printing anything — once the
