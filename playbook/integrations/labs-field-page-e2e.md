@@ -68,7 +68,7 @@ photo legs were run end to end on 2026-11-02 as worker-3, link revoked afterward
 | Leg | Recipes (in this order) | Labs afterwards |
 |---|---|---|
 | count | `labs-field-page-count` | stock count 3768 (batch `LR1CNT`, qty 9), once |
-| offline | `labs-field-page-airplane-settings` (on) → `labs-field-page-offline-entry` → read labs: **no `LR1OFF`** → `labs-field-page-airplane-settings` (off) → `labs-field-page-reconnect-entry` | stock count 3769 (`LR1OFF`, qty 4), once, only after the signal returned |
+| offline | `labs-field-page-airplane-settings` (`AIRPLANE_LABEL: on`) → `labs-field-page-offline-entry` → read labs: **no `LR1OFF`** → `labs-field-page-airplane-settings` (`AIRPLANE_LABEL: off`) → `labs-field-page-reconnect-entry` | stock count 3769 (`LR1OFF`, qty 4), once, only after the signal returned |
 | photo | `labs-field-page-photo` | stock count 3770 (`LR1PHO`) + `photo` document 109 (`photo.jpg`, 15.6 KB) |
 
 The link's `submission_count` read 3 at the end. What differs from the local backend, all of it observed:
