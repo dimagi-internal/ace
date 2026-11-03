@@ -5,6 +5,19 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.13.2192 — 2026-11-03
+
+**A turn's posture is canopy's `turn_mode`, not a hard-coded review posture.** `commands/turn.md`, `skills/turn`,
+`inbox-triage`, `email-communicator`, `agent-turn-review`, `answer-caller` and `persona.md` no longer say every turn
+reply is presented for a human's yes. In `auto` ACE sends in-scope replies and does the work the tier permits; in
+`manual` (also with no envelope) it presents or parks as before. Rails hold in both modes (`bin/ace-email`, the sender's
+tier, act tier for shared state, unknown senders read-only; release, solicitation review, LLO invites/feedback/UAT,
+`share-run-access` and the directory write keep their own checkpoints). `inbox-triage` gains the Sophie-style flow (a
+member asks for a shared-state change at correspond/unlisted tier: reply, ask for what is needed, park only the
+implementation). CLAUDE.md, `inbox-triage` § Counterpart tiers and `skills/turn` move to canopy-web's permissions
+vocabulary (`profile`, `permissions`, `turn_mode`; the `granted_by` list is obsolete; trust `profile: full` over a
+resolver's `unlisted`). New doc test `test/docs/turn-mode-respects-envelope.test.ts`.
+
 ## 0.13.2181 — 2026-10-30
 
 **ace-ocs no longer sends an empty OCS token.** On cloud-ec2-live (turn 478487fe, canopy-web investigation 18)

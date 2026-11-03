@@ -59,6 +59,6 @@ rest: no one has agreed to, and there is no team queue behind this session.
    actually do: no commitment of future work by anyone, no "done" that didn't happen, no
    claim about another person's plans. Then record it with
    `canopy email review-receipt --repo . --body-file .ace-ask/body.md`, then
-   (manual mode: present the draft and wait for the human's yes):
+   (if the envelope's `turn_mode.mode` is `manual`, or absent, present the draft and wait for the human's yes first; in `auto` send it):
    `bin/ace-email --reply-all --thread-id <id> --subject-file .ace-ask/subject.txt --body-file .ace-ask/body.md`.
    Add `--no-run-page "<reason>"` only when the reply links no Drive artifact of a run.

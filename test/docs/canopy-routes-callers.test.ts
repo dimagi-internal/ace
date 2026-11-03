@@ -54,10 +54,31 @@ describe('canopy-web decides who may steer ACE', () => {
     const t = flat(doc.slice(doc.indexOf('## Counterpart tiers'), doc.indexOf('## Noise classification')));
     expect(t).toMatch(/canopy-web decides who may steer ACE/);
     expect(t).toContain('canopy caller tier --caller <path> --repo .');
-    expect(t).toMatch(/granted_by/);
+    // Vocabulary: canopy-web decides in permissions; the granted_by list is obsolete.
+    expect(t).toMatch(/\*\*permissions\*\*/);
+    expect(t).toContain('`write`');
+    expect(t).toMatch(/`profile`/);
+    expect(t).toMatch(/`turn_mode`/);
+    expect(t).toMatch(/Tier and turn mode are two independent axes/);
+    expect(t).toMatch(/trust the envelope/);
+    expect(t).not.toMatch(/full:<rule>/);
+    expect(t).not.toMatch(/granted_by` is/);
     expect(t).toMatch(/\*\*Never\*\* run-state mutations/);
     expect(t).toMatch(/correspond-tier sender is \*derived, not maintained\*/);
     expect(t).toMatch(/this_message_grade/);
+  });
+});
+
+describe('CLAUDE.md speaks the permissions vocabulary', () => {
+  it('names permissions, profile, turn_mode and retires granted_by', () => {
+    const c = flat(read('CLAUDE.md'));
+    const para = c.slice(c.indexOf("Who may steer ACE is canopy-web's decision"), c.indexOf('A member is only recognised'));
+    for (const w of ['`read`', '`write`', '`agent_edit`', '`admin`', '`own`', '`permissions`', '`profile`', '`turn_mode`'])
+      expect(para, w).toContain(w);
+    expect(para).toMatch(/owner > admin > editor > read_write > read_only/);
+    expect(para).toMatch(/granted_by` list[^.]*is obsolete/);
+    expect(para).not.toMatch(/`full:<rule>`\)\s*\*\*caller/);
+    expect(para).toMatch(/trust the envelope/);
   });
 });
 

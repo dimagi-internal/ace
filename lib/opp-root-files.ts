@@ -165,7 +165,7 @@ export const ACE_OWNED_OPP_ROOT: OppRootEntry[] = [
   {
     label: '*parked outbound draft*',
     kind: 'file',
-    owner: 'inbox-triage / email-communicator (review posture parks a reply)',
+    owner: 'inbox-triage / email-communicator (a manual-mode turn parks a reply)',
     why:
       'an outbound email ACE ITSELF drafted and parked awaiting sign-off. Migrated, ACE reads ' +
       'its own unsent prose back as curated Phase 1 source evidence — the no-inferred-backstory ' +

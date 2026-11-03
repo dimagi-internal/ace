@@ -17,7 +17,7 @@ Gmail access themselves.
 identity is hard-blocked by a deny rail in `config/gating.json`, enforced by canopy's session gating hook
 (`agent-core/gating_guard.py --session`; canopy#849) — `bin/ace-email` is the only way email leaves ACE, which also guarantees the
 comms-log threadId capture. The rail never prompts; *whether* a send is appropriate is governed by
-the calling context's procedure (a run's pause-point mode, a turn's review posture) — see
+the calling context's procedure (a run's pause-point mode, a turn's `turn_mode` from the caller envelope) — see
 `docs/superpowers/specs/2026-07-01-agent-operating-model-adoption.md § Gating`.
 
 **`bin/ace-email` and `bin/ace-mark-read` are thin shims over the shared canopy email engine**
@@ -65,9 +65,12 @@ interactive browser OAuth that a headless turn cannot run (jjackson/ace#1147).
      one per line — `bin/ace-email` builds a reflowing HTML body + plain-text alternative; put the
      sign-off on its own paragraph, blank-line-separated).
    - Use: `bin/ace-email --to <recipient(s), comma-separated> [--cc <address>] --subject <subject> --body-file <path>`
-   - Approval is procedural, per the calling context: in a turn or review-mode run, present the
-     composed email (to/cc/subject/body) and get the human's yes before invoking; in auto-mode runs,
-     the phase's pause-point governance applies. Use `--dry-run` to preview the rendered bodies.
+   - Approval is procedural, per the calling context: in a turn, follow the envelope's
+     `turn_mode.mode` (`skills/turn` § Turn mode): `auto` sends what the sender's tier allows,
+     `manual` (or no envelope) presents the composed email (to/cc/subject/body) and gets the human's
+     yes before invoking; in a review-mode run, present it first; in auto-mode runs, the phase's
+     pause-point governance applies. External-LLO, bulk and irreversible sends keep their own
+     checkpoint in every mode. Use `--dry-run` to preview the rendered bodies.
    - **Run-page check (ace#2378):** a body that links `docs.google.com` / `drive.google.com` and no
      `labs.connect.dimagi.com/ace/` page exits 3 before canopy is called, dry-run included. Lead with
      the run's `ace_web_summary_url`; when the recipient is not a reviewer of the run —

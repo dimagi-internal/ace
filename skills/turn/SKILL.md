@@ -26,6 +26,27 @@ improvements ship once (a canopy PR) instead of N backports.
 - Email shim: `bin/ace-email` · board: `/agents/ace`
 
 ## ACE-local notes (the ONLY hand-edited section — fleet-process changes go to canopy)
+- **Turn mode: the posture IS the envelope's `turn_mode.mode`** (`auto` | `manual`, with a `basis`).
+  canopy-web decides per turn whether a person must approve, and says so in the caller envelope
+  (`--caller <path>`; re-read mid-turn with the `who_is_asking` tool; `canopy caller tier --caller
+  <path> --repo .` also prints `manual`). Read it before the first thread and again before parking
+  anything. **No envelope, or `who_is_asking` fails: `manual`.**
+  - **`auto`** — act within your authority without waiting for a person: send the correspondence
+    replies that are in scope for the sender's tier (reply-all, keeping the cc'd owner) and do the
+    work that tier permits. Never end a turn with a question nobody can answer: if you are blocked,
+    say so in the reply and say what would unblock it. canopy chose `auto` because nobody is there to
+    say yes (no watched laptop free); parking a harmless reply "for approval" is silence to the
+    sender (2026-11, a verified connect-workspace editor asking ACE to share a doc got none).
+  - **`manual`** — present the draft or plan to the person in the conversation (or park it for the
+    next turn on the thread's task, `skills/inbox-triage` § parked drafts) and wait for their yes.
+  - **Both modes, not mode-dependent:** sends only through `bin/ace-email` (deny rail); nothing
+    outside the sender's tier (tier = what the sender may STEER; mode = whether a human must
+    approve: two independent axes); shared-state changes (connect-labs, Connect, HQ, Drive writes
+    beyond the thread, run mutations) still need an **act**-tier sender; unknown senders stay
+    read-only; irreversible, bulk or outside-org sends and every action a skill marks
+    approval-gated by design (solicitation-review's HITL checkpoint, `release`, LLO invites and
+    feedback/UAT sends, `share-run-access`, the directory write) keep their own explicit human
+    checkpoint whatever the mode.
 - **Entry points:** the turn is the counterpart-facing entry point, for run threads **and** for
   program-project work: questions about, and changes to, live programs ACE supports
   (`skills/partner-on-connect-program`). **`/ace:run` remains the entry point for new builds**;
@@ -122,8 +143,13 @@ improvements ship once (a canopy PR) instead of N backports.
   (drain ALL search pages), then per thread — tier the sender (**act** = canopy-web granted the whole of ACE, via `canopy caller tier`;
   **correspond** = derived from the routed run's state; neither = read-only), route to opp/run via
   the comms-log `thread_id` (or to a program project, inbox-triage § 2b step 4), one action,
-  approval-gated outbound. Per-sender isolation and tier
-  resolution live there.
+  outbound per the turn mode above (`auto`: send what the tier allows; `manual`: present, then
+  send). Per-sender isolation and tier resolution live there. **Tier: `act` = the asker holds
+  `write` on ACE** (whatever their role is called: a workspace editor line, a person line, a domain
+  line); `caller` = confined to one capability. If the envelope says `profile: full` (or
+  `permissions` contains `write`) but `canopy caller tier` prints `unlisted`, trust the envelope,
+  treat the sender as act tier, and note the resolver mismatch in the close-out (the resolver reads
+  the retired `granted_by` list until canopy's fix ships).
 - **ACE's state layer is Drive, never local:** where the core says "record `thread_id` in your
   state layer", that's the routed run's comms-log (`email-communicator` step 7) — the routing key
   inbox-triage matches inbound threads against. Turn state = comms-logs + `run_state.yaml` for run threads; the board task and the
@@ -217,7 +243,7 @@ improvements ship once (a canopy PR) instead of N backports.
   It scans ACE-authored SENT mail for `ace#N` citations, resolves each against `gh`, and reports
   the ones ACE asserted as live limitations that have since CLOSED — with the thread id, the
   recipients and the citing sentence. Report-only; the correction is a letter, so it goes through
-  `skills/inbox-triage` under the normal approval gate like any other outbound.
+  `skills/inbox-triage` under the turn mode like any other outbound.
 
   *Why it is a step and not a habit:* nobody ever re-reads a sent email, so a limitation asserted
   in one never expires by itself. A partner sequenced 11 days of her own work around ace#1549
@@ -227,9 +253,10 @@ improvements ship once (a canopy PR) instead of N backports.
   `message_id` + recipients + date and a one-line gist, never the body, so the citing sentence is
   not in Drive at all. Naming the issue number in the correction is what retires the finding.
 - **Close-out (core Step 4) ACE shape:** mark fully-handled threads read via
-  `bin/ace-mark-read <threadId> …` — NOT threads still awaiting a human decision. Summary covers:
+  `bin/ace-mark-read <threadId> …` — NOT threads still awaiting a human decision (`manual` mode, or
+  an intrinsic checkpoint). Summary covers:
   **Board** (drained / not configured) · **Inbox** (per thread: sender, tier, routed run, proposed
-  action, approved & done, parked; noise counts by class) · **Open threads by age** (all open
+  action, turn mode, sent / approved & done / parked; noise counts by class) · **Open threads by age** (all open
   correspond-tier threads, days-since-last-inbound; >5 days = explicit escalation to the run's
   operator, repeated every turn until resolved) · **Runs advanced** · **Blocked/awaiting** ·
   **Issues filed / skills changed** (this line is REQUIRED and carries the `skill-self-check`
