@@ -8,6 +8,8 @@ import { join } from 'node:path';
  * park a harmless "please share the doc" reply in an `auto` turn nobody was present for, and the
  * verified member got silence. The turn entry points must say the mode decides, default `manual`
  * without an envelope, and keep the mode-independent rails.
+ *
+ * ace#2389 (same incident class: a verified member of the connect workspace left unanswered).
  */
 
 const ROOT = join(__dirname, '..', '..');
