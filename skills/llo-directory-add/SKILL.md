@@ -238,7 +238,8 @@ so a note containing `"` or `\` reaches the sheet verbatim. Then it runs
 and run them through a shell.** That path broke on a quoted note and wrote
 nothing (ace#2956). If the plan changed between approval and `apply` (different
 target rows), show the operator the new plan before re-running. Inside a turn,
-review posture parks the plan (verbatim) on the thread's board task until the
+this gate is intrinsic (shared, hand-maintained state), so it holds in `auto` too: park
+the plan (verbatim) on the thread's board task until the
 operator approves (`skills/inbox-triage` § parked drafts).
 
 ### 5. Read back all three rows (before any claim)
@@ -255,10 +256,10 @@ formula, moved to that row. Nothing
 may say the rows exist until it passes. That includes the reply, the board card
 and the turn close-out. On a diff, report the diff. Don't re-write blind.
 
-### 6. Reply to the requester (approval-gated)
+### 6. Reply to the requester
 
 The reply is outbound, so it goes through `skills/agent-turn-review` and the
-send gate (`bin/ace-email`, never raw gog). It says:
+send path (`bin/ace-email`, never raw gog), per the turn mode (`skills/turn` § Turn mode). It says:
 
 - the three row numbers, the join date and where it came from, and what was
   left blank and why (including a missing submission date)

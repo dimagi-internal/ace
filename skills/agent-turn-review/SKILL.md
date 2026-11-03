@@ -235,8 +235,10 @@ Same pass, same draft. Not an appendix, not a follow-up.
   brief-fidelity counterpart for correspondence. (Supersedes the old `skills/self-review`.)
 - **Send path:** outbound email goes ONLY via `bin/ace-email` (a `config/gating.json` deny rail
   blocks raw `gog gmail send/reply` as ACE; `--dry-run` to preview). Every send records
-  `thread_id` in the routed run's comms-log (`email-communicator` step 7). Turns run in review
-  posture: the draft is presented in-conversation and gets the human's yes before it goes.
+  `thread_id` in the routed run's comms-log (`email-communicator` step 7). The turn mode
+  (`turn_mode.mode` in the caller envelope, `skills/turn` § Turn mode) decides what follows this
+  review: `manual` (or no envelope) presents the draft in-conversation for the human's yes; `auto`
+  sends it once this review passes, if it is in scope for the sender's tier.
 - **Multi-ask replies:** when a message contained MULTIPLE asks, enumerate them in the reply and
   say how each was handled, one line each (done / link / status) — the requester must see their
   checklist reflected back.
