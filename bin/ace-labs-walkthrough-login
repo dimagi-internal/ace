@@ -41,10 +41,9 @@ SELF_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 # Source ${CLAUDE_PLUGIN_DATA}/.env into the env (so ACE_HQ_* land here)
 ENV_FILE="${CLAUDE_PLUGIN_DATA:-$HOME/.claude/plugins/data/ace-ace}/.env"
 if [ -f "$ENV_FILE" ]; then
-  set -a
-  # shellcheck disable=SC1090
-  source "$ENV_FILE"
-  set +a
+  # Parsed as dotenv, never sourced: the file is KEY=value, not shell, and a value with a
+  # space or "!" aborts `source` under set -e before the login starts (ace#3372).
+  eval "$(python3 "$SELF_DIR/bin/_dotenv-export.py" "$ENV_FILE")"
 fi
 
 LABS_BASE_URL="${LABS_BASE_URL:-https://labs.connect.dimagi.com}"
