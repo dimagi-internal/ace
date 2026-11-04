@@ -119,6 +119,17 @@ username. The app's profile screen does not show it.
   `delivery: {sent: false, synthetic: true, reason: "Synthetic programme: nothing is sent."}`.
   Use ACE's own probe programme instead: **308** ("ACE-IT PM→NM probe", runner ace-pm-org) carries
   org 378, item 281 and worker-3's point 505 for this (slugs `fieldpage-bot-e2e-*`).
+- **Sending by chatbot works end to end (2026-11-04, ace#3348/#3362).** Programme 308, org 378, point 505, worker-3
+  (`9396ba0f84bf47b63d85`), `send_via_bot` = the Chlorine Coach: `delivery: {sent: true}`, no
+  `ocs-delivery-failures.ts` hit ~25 s later, and on the lease phone (CommCare 2.64.0) the Chlorine Coach thread showed
+  "Update fieldpage-bot-e2e-1118 … Tap the link" (read with `mobile_capture_ui_dump`; Connect screens are FLAG_SECURE).
+  Tapping the message opened Chrome (first run: Back dismisses the Play-services dialog, Continue, No thanks) on the
+  field-page landing, "This link was sent to 9396ba0f…; what you record is credited to them." A plain-text bot send
+  to worker-3 also arrived. Link revoked afterwards. The 10-30..11-04 failures were `POST
+  connectid.dimagi.com/messaging/create_message/` -> 403 `{"errors": "RICH_MESSAGING_DISABLED"}`: the OCS flag
+  `flag_commcare_connect_create_message` was on for the connect-ace team while PersonalID production had rich messaging
+  off, so every send (text too) failed. Workaround: the team was removed from the flag in OCS admin (staff only; the flag
+  has no team-facing UI). Coach pictures need the flag back on AND `RICH_MESSAGING_ENABLED=true` on PersonalID.
 - **Sending by chatbot, observed 2026-10-30: labs and OCS work; the phone never received it.**
   `supply_chain_update_link_issue` with `send_via_bot` = the Chlorine Coach's public id
   (`b681ae47-…`, which has a `commcare_connect` channel) returned `delivery: {sent: true}`; the OCS
