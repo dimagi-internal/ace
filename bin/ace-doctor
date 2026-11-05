@@ -2839,7 +2839,7 @@ if [ -f "$HOME/.canopy/runner.json" ]; then
       fi
     fi
     if [ -n "$_rse_shim_pw" ]; then
-      pass "runner_session_env: bin/ace-env supplies GOG_KEYRING_PASSWORD from the plugin-data .env, so a runner-spawned session can open the gog keyring — email works in /ace:turn and /ace:ask. Raw UNWRAPPED \`gog\`/\`canopy email\` calls still cannot: prefix them with bin/ace-env"
+      pass "runner_session_env: bin/ace-env supplies GOG_KEYRING_PASSWORD from the plugin-data .env, so a runner-spawned session can open the gog keyring — email works in /ace:turn and read-mode turns. Raw UNWRAPPED \`gog\`/\`canopy email\` calls still cannot: prefix them with bin/ace-env"
     elif [ ! -x "$_rse_shim" ]; then
       warn_turn "runner_session_env: GOG_KEYRING_PASSWORD is in the plugin-data .env but bin/ace-env is missing or not executable, so nothing carries it into a runner-spawned session. gog cannot open its file keyring without a TTY, so ACE can neither read nor send email there, and /ace:turn inbox triage fails with it" "chmod +x \"$ROOT/bin/ace-env\" (and reinstall the plugin if the file is absent: /ace:update)"
     else

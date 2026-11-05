@@ -42,7 +42,7 @@ Jonathan asked an interactive session for a fresh Spark run. It POSTed
 canopy turn `2727e227…` showed the asker as contact `ace@dimagi-ai.com`.
 No record anywhere said who wanted the run. (The same run also never executed:
 canopy-web resolved ACE's own login as an outside contact and confined the
-session to ask-only. That is fixed server-side. canopy-web now recognises an
+session to read mode. That is fixed server-side. canopy-web now recognises an
 agent's own login, and ace-web#845's `seeded-run` refuses up front with a 409
 `run_actor_unresolvable` (code at `extras.code`) instead of returning a 202 for a
 run that can't execute.)

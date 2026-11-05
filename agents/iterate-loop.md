@@ -308,7 +308,7 @@ effect. Treat a missing value as "never validated", not as "valid".
      [`skills/_ace-web-attribution.md`](../skills/_ace-web-attribution.md), because
      the token is ACE's own and would otherwise attribute the run to nobody.
      Error codes are at `extras.code`. **409 `run_actor_unresolvable`** means canopy
-     resolves the run's owner as a contact, so the run would be confined to ask-only
+     resolves the run's owner as a contact, so the run would be confined to read mode
      and never execute. **502 `run_actor_unverified`** means canopy was unreachable
      for that check. Either way nothing was forked: stop and report, don't retry
      blindly. **400 `requested_by_forbidden`** means a human token named someone else.

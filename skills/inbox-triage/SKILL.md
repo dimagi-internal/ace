@@ -27,13 +27,13 @@ routed by canopy-web (the control plane), which hands this session a caller enve
 (`--caller <path>`; re-read with the `who_is_asking` tool). canopy-web decides in
 **permissions** (`read`, `write`, `agent_edit`, `admin`, `own`); the roles owner > admin > editor >
 read_write > read_only are only named bundles of them. The envelope carries `role`, `permissions`,
-`profile` (`full` = the asker holds `write` on ACE; or `confined` to one capability) and
+`profile` (`full` = the asker holds `write` on ACE; or `confined` to read mode or a connected site) and
 `turn_mode` (`{mode: auto|manual, basis}`: whether a person must approve this turn, see
 `skills/turn` § Turn mode). Who holds `write` is held on canopy-web: ACE's access list and the `connect` workspace's members,
 never a file in this repo. To let a named person steer runs, an operator grants it there (a
 workspace editor line, a person line, a domain line). A grant written anywhere else does nothing:
 that is how the retired repo allowlist failed (Sophie Feintuch's 2026-09-11 grant sat in it,
-unread, while every mail from her was confined to `ask`).
+unread, while every mail from her was confined to read mode).
 
 **Tier and turn mode are two independent axes.** Tier is what the sender may STEER; the turn mode
 is whether a human must approve what ACE does. An `auto` turn never widens a tier, and a `manual`
@@ -53,8 +53,9 @@ turn never narrows one.
   the tier says `unlisted`, trust the envelope**: treat the sender as act tier and note the resolver
   mismatch in the close-out (the resolver still reads the retired `granted_by` list until canopy's
   fix ships).
-- `caller` → this session is CONFINED by canopy to one capability (you were started as
-  `/ace:ask`): follow `skills/answer-caller`, never the act-tier procedure.
+- `caller` → this is a read-mode session, CONFINED by canopy (you were started as
+  `/ace:answer-caller`, or `/ace:ask` from today's stored entry): follow `skills/answer-caller`,
+  never the act-tier procedure.
 - `unlisted` (and the envelope does not say `full`) → derive `correspond` from the routed run below. Correspond never mutates a run, so it
   does not need the verified bit — but carry `verified` into the draft's context, and say so when
   escalating an unverified correspondent.

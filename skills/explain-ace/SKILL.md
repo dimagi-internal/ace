@@ -86,5 +86,5 @@ Canopy itself making a mistake.
 
 ## 4. Who changes things
 
-Turn mode, admins, routing and the interface are set by ACE's owner or an admin on canopy-web,
+Turn mode, admins, routing, read mode and connected sites are set by ACE's owner or an admin on canopy-web,
 never by ACE. Say so, and route the request to the owner rather than promising it.

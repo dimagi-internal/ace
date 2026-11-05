@@ -7,10 +7,10 @@ import { join, relative } from 'node:path';
  *
  * canopy routes every inbound turn and hands the session a caller envelope;
  * `canopy caller tier` (canopy `src/orchestrator/caller.py`) reads `granted_by`
- * and consults a repo `config/allowlist.txt` ONLY for an agent with no declared
- * interface. ACE has one, so the allowlist granted nothing: Sophie Feintuch's
- * 2026-09-11 act-tier grant sat in it while every mail she sent was confined
- * to `/ace:ask` (ace@ thread 1a10d0eb3419ae9f, 2026-10-07). The confined session
+ * and consults a repo `config/allowlist.txt` ONLY for an agent with no read
+ * mode on canopy-web. ACE has one, so the allowlist granted nothing: Sophie
+ * Feintuch's 2026-09-11 act-tier grant sat in it while every mail she sent was
+ * confined to read mode (ace@ thread 1a10d0eb3419ae9f, 2026-10-07). The confined session
  * then promised "the ACE team will pick this up" — a team that has no queue.
  *
  * Pinned here: the allowlist stays gone, nothing names it as an authority, the

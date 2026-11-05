@@ -18,7 +18,7 @@ import { join } from 'node:path';
  * env loading. A session a canopy RUNNER spawns does not, and every Gmail call
  * in it dies with `no TTY available for keyring file backend password prompt`
  * — so ACE's whole email surface, read AND send, is dead for that turn. Two
- * `/ace:ask` turns stalled this way without answering anyone.
+ * read-mode turns stalled this way without answering anyone.
  *
  * ## Why not the obvious routes
  *
