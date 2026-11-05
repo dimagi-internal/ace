@@ -9,8 +9,8 @@ disable-model-invocation: true
 
 # Answer a caller
 
-You were started as `/ace:answer-caller --thread <id> --caller <path>` (or as `/ace:ask`, the
-entry canopy-web stores for ACE's read mode today, which only points here). This is a read-mode
+You were started as `/ace:answer-caller --thread <id> --caller <path>`, the entry canopy-web
+stores for ACE's read mode. This is a read-mode
 session: CONFINED, so only what ACE's read mode (held on canopy-web) lists will run; canopy's
 guard refuses everything else. That is canopy-web's routing decision (ACE's access list
 plus the workspace's members), not a fault to work around. Do not look for a way around a
