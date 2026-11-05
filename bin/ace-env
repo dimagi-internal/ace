@@ -20,7 +20,7 @@
 #   file backend password prompt; set GOG_KEYRING_PASSWORD
 #
 # so ACE's whole email surface — read AND send — is dead in every /ace:turn
-# and /ace:ask on a paired Mac.
+# and read-mode turn on a paired Mac.
 #
 # THE ROUTES THAT DO NOT WORK, so nobody re-derives them:
 #
