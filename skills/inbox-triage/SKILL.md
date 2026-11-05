@@ -54,8 +54,7 @@ turn never narrows one.
   mismatch in the close-out (the resolver still reads the retired `granted_by` list until canopy's
   fix ships).
 - `caller` → this is a read-mode session, CONFINED by canopy (you were started as
-  `/ace:answer-caller`, or `/ace:ask` from today's stored entry): follow `skills/answer-caller`,
-  never the act-tier procedure.
+  `/ace:answer-caller`): follow `skills/answer-caller`, never the act-tier procedure.
 - `unlisted` (and the envelope does not say `full`) → derive `correspond` from the routed run below. Correspond never mutates a run, so it
   does not need the verified bit — but carry `verified` into the draft's context, and say so when
   escalating an unverified correspondent.
