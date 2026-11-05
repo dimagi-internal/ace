@@ -37,7 +37,7 @@ Read only what the question needs, and say in the answer what you read and when.
 
 | Question | Read |
 |---|---|
-| Who may make ACE do what; what outsiders can do | `get_interface` (slug `ace`) and canopy-web `docs/architecture/access.md` (the decision table, agent roles) |
+| Who may make ACE do what; what outsiders can do | `get_agent` (slug `ace`: `read_mode`, `connected_sites`) and canopy-web `docs/architecture/access.md` (the decision table, agent roles) |
 | Does a person have to approve replies; who can | `get_agent` (`turn_mode`, `owner`, `workspace`) + access.md rows on turn mode |
 | Whose runner / which mode a person's or channel's work goes to | `list_agent_actor_routes`, `list_agent_runner_rules` (slug `ace`) |
 | How Slack works (threads, DMs, `--history`, Stop, status lines) | canopy-web `apps/slack/services.py`, `views.py`, `window.py`, `status.py` |
