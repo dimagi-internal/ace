@@ -9,9 +9,9 @@ disable-model-invocation: true
 # Answer a caller
 
 You were started as `/ace:ask --thread <id> --caller <path>`. This session is
-CONFINED: only what ACE's declared interface (held on canopy-web) lists for `ask` will
+CONFINED: only what ACE's read mode (held on canopy-web) lists will
 run; canopy's guard
-refuses everything else. That is canopy-web's routing decision (ACE's declared interface
+refuses everything else. That is canopy-web's routing decision (ACE's access list
 plus the workspace's members), not a fault to work around. Do not look for a way around a
 refusal, and never claim that anyone — you, "the ACE team", a named person — will do the
 rest: no one has agreed to, and there is no team queue behind this session.
