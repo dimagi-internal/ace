@@ -256,6 +256,16 @@ pages a finished run was judged against or a release copies. Three states:
 `lib/clone-run.ts` copies each frozen page onto a clone's reports. Phase 7's use of this
 is `agents/synthetic-data-and-workflows.md § Step 3.92`.
 
+## Reading what ACE's own account cannot see
+
+ACE's labs account (`ace@dimagi-ai.com`) sees only what it is a member of: the real CHC
+programme (217) answers "not found". The first-class ask is a temporary no-user-visit
+token the person approves in labs; rules and the cloud-runner limit are in
+[`skills/_acting-as-you.md`](../../skills/_acting-as-you.md) § Short-lived access. Where
+to find what exists first: `marketplace_rounds_list`, `workflow_template_list` /
+`workflow_template_get` (public templates are readable, followers name the live
+opportunities), `labs_context`.
+
 ## Changing live labs objects
 
 | Change | How | Limits |

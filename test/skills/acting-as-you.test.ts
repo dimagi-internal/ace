@@ -48,6 +48,19 @@ describe('acting as you ("as me")', () => {
     expect(RULE).toMatch(/Only labs can be "as me" today/);
   });
 
+  // 2026-11-05 (Niger SMC, P15): asked to read the live CHC programme definitions, ACE said it could
+  // not see them and offered a vault change or a new connection. Labs already had the first-class ask,
+  // a temporary token (connect-labs docs/MCP_SETUP.md); ACE never named it.
+  it('names the temporary-token ask, its no-user-visit default and its localhost limit', () => {
+    expect(RULE).toMatch(/## Short-lived access to what ACE's own account cannot reach/);
+    expect(RULE).toMatch(/--temporary --no-uservisit-data/);
+    expect(RULE).toMatch(/one hour, no renewal/);
+    expect(RULE).toMatch(/never a real visit row/);
+    expect(RULE).toMatch(/_validate_callback/);
+    expect(RULE).toMatch(/never write a sign-in script against `\/o\/register\/`/);
+    expect(RULE).toMatch(/Never ask for the token in chat/);
+  });
+
   it('tells people not to put their own token in LABS_MCP_TOKEN', () => {
     expect(RULE).toMatch(/Never put your own labs token into `LABS_MCP_TOKEN`/);
   });
