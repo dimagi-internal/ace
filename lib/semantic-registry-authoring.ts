@@ -203,7 +203,8 @@ export function checkRegistryAuthoring(reg: RegistryDocs, opts: AuthoringOptions
 
   const headlinePositions = new Map<number, string>();
   const categories = new Set<string>();
-  const pdd = opts.pddSections ? new Set(opts.pddSections) : null;
+  // An empty list is "no PDD": the CLI passes [] when --pdd is absent, and an empty Set is truthy, which skipped the app-anchored branch below.
+  const pdd = opts.pddSections?.length ? new Set(opts.pddSections) : null;
 
   for (const m of inds) {
     const meta = asObj(m.meta);
