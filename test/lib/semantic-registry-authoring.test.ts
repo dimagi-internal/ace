@@ -213,6 +213,11 @@ describe('a programme with no PDD and two real partners', () => {
     expect(r.findings.filter((f) => f.severity === 'fail').map((f) => f.check)).toEqual(['llo-map']);
   });
 
+  it('treats an empty PDD section list as no PDD, as the QA script passes when --pdd is absent', () => {
+    const r = checkRegistryAuthoring(CHLORINE, { ...opts, pddSections: [] });
+    expect(r.findings.filter((f) => f.severity === 'fail')).toEqual([]);
+  });
+
   it('does not let a PDD-less anchor through when a PDD exists', () => {
     const r = checkRegistryAuthoring(CHLORINE, { ...opts, pddSections: ['1', '2'] });
     expect(r.findings.some((f) => f.check === 'pdd-anchor' && f.severity === 'fail')).toBe(true);
