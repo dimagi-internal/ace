@@ -109,6 +109,8 @@ record others will read: cite the organisation's answers, never a person.
 
 **On a connect-labs page** (the caller envelope's `site` block names `connect-labs` — the Connect Labs agent panel, whoever asked, ACE's owner included): every labs read and write below goes through canopy's `site_tools` / `site_call`, as the person who sent — never the native `connect-labs` MCP, which is unauthenticated there. See [`skills/_labs-on-a-page.md`](../_labs-on-a-page.md).
 
+**On that page, step 12 is one proposal, not a loop of `create_review` calls.** Publish the two reports first (the publishing half of step 13, so you hold the internal report's url), then call `site_call` → `workflow_edit_propose` once with `tool: "marketplace_reviews_write"` and `arguments: {round_slug, reviews: [<every calibrated out-<n>.json entry as a create_review input>], summary_url: <internal report url>}`. Nothing is written until the person confirms the card, as them, so tell them what it will write and wait. The reviews are then their AI pass (replacing their own earlier AI pass on each response; other people's reviews stay), and the 30-writes-a-minute pacing below does not apply. If labs refuses the proposal for a quote, fix it as step 12 describes and propose again. Skip the separate `marketplace_round_summary_set` call: `summary_url` does it in the same confirm.
+
 
 1. **Resolve the round(s).**
    - From the canopy panel, read `current_page`. A `labs-marketplace://rounds/<slug>` page
@@ -776,6 +778,7 @@ platform is "Connect".
 
 | Date | Change | Author |
 |------|--------|--------|
+| 2026-11-06 | On a labs page the review is written by one confirmed proposal (`marketplace_reviews_write` through `workflow_edit_propose`), not by `create_review` calls: a page reaches labs only as the person, and only their click writes. Reports are published first so the proposal carries `summary_url` | ACE team |
 | 2026-10-19 | The internal report's first tab is an analyst Overview: the outcome and the case for each recommendation, with the program-wide questions the pool raised, and no scoring mechanics; how it was scored, versions, calibration and rubric health move to the second tab, Review details. The two tabs are now actually produced: `scripts/gdoc-tab.ts` (lib `markdown-docs-tab.ts`) writes the Overview tab, which `gdoc-writer` could not. Requested by Jonathan on the ULAB summary | ACE team |
 | 2026-10-19 | Human review: four ways, not three — labs' response page also offers **Add to it** (stance `adds`), verified against `templates/solicitations/round_response.html` (connect-labs `docs/marketplace-round-review.md`, #2615) | ACE team |
 | 2026-10-19 | Versions: a re-score on replaced criteria supersedes the earlier AI review (kept as history on the old version); when an earlier version exists, the reply and internal report quote labs' own comparison (`marketplace_round_scores(compare_with=…)`) and link the Scores page, never a hand-built diff | ACE team |

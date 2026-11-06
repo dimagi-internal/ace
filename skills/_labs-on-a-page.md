@@ -36,6 +36,26 @@ account (`ace@dimagi-ai.com`) can.
    `page_showVisit`, …) are **canopy's** tools, not labs': call them directly
    (`ToolSearch` loads one not yet in your list), never through `site_call`.
 
+## Writing to labs from a page: you propose, they confirm
+
+A write on a labs page is never yours to make: it is proposed through `site_call` →
+`workflow_edit_propose` and saved only when the person clicks Confirm on the card
+canopy shows them, as them. On a marketplace round page the proposals are:
+
+- `marketplace_reviews_write` — `{round_slug, reviews: [...], summary_url?}`: the
+  round's whole batch of AI reviews in one proposal (each review is a `create_review`
+  input: `response_id`, `criteria_scores`, `claims`, `outcome`, `flags`, `ask_next`,
+  `provenance`). Labs checks every review as the save would (quotes found in the
+  answer, its own flags and outcomes) and refuses the proposal, writing nothing, if
+  any fails — fix what it names and propose again. Never call `create_review` one by
+  one from a page: it is not in the page's permission.
+- `marketplace_round_criteria_set` — a round's criteria, same card.
+
+After proposing, say what it will do and stop: the person confirms in the chat. A
+proposal this page's permission does not cover comes back refused; say so — do not look
+for another way in. Reads on a round page (`reviews:read`): `marketplace_round_responses`,
+`list_reviews`, `get_review`, `marketplace_round_scores`.
+
 ## What you never do there
 
 - **Never call the native `connect-labs` MCP** (`mcp__plugin_ace_connect-labs__*`,
