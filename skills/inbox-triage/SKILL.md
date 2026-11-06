@@ -27,7 +27,7 @@ routed by canopy-web (the control plane), which hands this session a caller enve
 (`--caller <path>`; re-read with the `who_is_asking` tool). canopy-web decides in
 **permissions** (`read`, `write`, `agent_edit`, `admin`, `own`); the roles owner > admin > editor >
 read_write > read_only are only named bundles of them. The envelope carries `role`, `permissions`,
-`profile` (`full` = the asker holds `write` on ACE; or `confined` to read mode or a connected site) and
+`profile` (`full` = the asker holds `write` on ACE; or `confined` to read mode or a host site) and
 `turn_mode` (`{mode: auto|manual, basis}`: whether a person must approve this turn, see
 `skills/turn` § Turn mode). Who holds `write` is held on canopy-web: ACE's access list and the `connect` workspace's members,
 never a file in this repo. To let a named person steer runs, an operator grants it there (a
@@ -49,13 +49,12 @@ turn never narrows one.
 `--caller <path>`. `From:` is forgeable; `verified` is canopy's reading of our own receiver's verdict
 (DMARC-aligned, or DKIM-signed by the sender's own domain). So:
 
-- `act` → act tier. **If the envelope says `profile: full` (or `permissions` contains `write`) but
-  the tier says `unlisted`, trust the envelope**: treat the sender as act tier and note the resolver
-  mismatch in the close-out (the resolver still reads the retired `granted_by` list until canopy's
-  fix ships).
+- `act` → act tier. **Trust the tier**: `canopy caller tier` reads `permissions`, `profile` and
+  `access` itself, so never upgrade `unlisted` from the envelope. `access: refused` (whose `profile`
+  still says `full`, for older runners) is never act.
 - `caller` → this is a read-mode session, CONFINED by canopy (you were started as
   `/ace:answer-caller`): follow `skills/answer-caller`, never the act-tier procedure.
-- `unlisted` (and the envelope does not say `full`) → derive `correspond` from the routed run below. Correspond never mutates a run, so it
+- `unlisted` → derive `correspond` from the routed run below. Correspond never mutates a run, so it
   does not need the verified bit — but carry `verified` into the draft's context, and say so when
   escalating an unverified correspondent.
 - `blocked` → do not act, do not reply; name it in the close-out.

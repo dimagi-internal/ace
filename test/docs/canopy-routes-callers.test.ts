@@ -60,7 +60,9 @@ describe('canopy-web decides who may steer ACE', () => {
     expect(t).toMatch(/`profile`/);
     expect(t).toMatch(/`turn_mode`/);
     expect(t).toMatch(/Tier and turn mode are two independent axes/);
-    expect(t).toMatch(/trust the envelope/);
+    expect(t).toMatch(/Trust the tier/);
+    expect(t).toMatch(/`access: refused`[^.]*is never act/);
+    expect(t).not.toMatch(/trust the envelope/);
     expect(t).not.toMatch(/full:<rule>/);
     expect(t).not.toMatch(/granted_by` is/);
     expect(t).toMatch(/\*\*Never\*\* run-state mutations/);
@@ -78,7 +80,8 @@ describe('CLAUDE.md speaks the permissions vocabulary', () => {
     expect(para).toMatch(/owner > admin > editor > read_write > read_only/);
     expect(para).toMatch(/granted_by` list[^.]*is obsolete/);
     expect(para).not.toMatch(/`full:<rule>`\)\s*\*\*caller/);
-    expect(para).toMatch(/trust the envelope/);
+    expect(para).toMatch(/trust the tier/);
+    expect(para).not.toMatch(/trust the envelope/);
   });
 });
 
