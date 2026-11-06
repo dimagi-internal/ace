@@ -20,6 +20,7 @@ import { loadPluginEnv } from '../lib/load-plugin-env.js';
 import { LEGACY_SLOT, planTestWorkerAdd, type TestWorkerAddPlan } from '../lib/test-worker-pool.js';
 import { PUBLISH_CMD } from '../lib/test-worker-lease.js';
 import { listSlots, slotHttpConfig, type SlotRow } from '../lib/test-worker-slots.js';
+import { canopyTokenProblem } from '../lib/ace-canopy-pat.js';
 
 // Bash-reachable (skills/test-worker-pool): load ACE's .env before reading ACE_E2E_PHONE.
 loadPluginEnv(import.meta.url);
@@ -58,7 +59,7 @@ async function main(): Promise<void> {
   let listNote: string | null = null;
   try {
     const cfg = slotHttpConfig();
-    if (!cfg) listNote = "no canopy-web PAT (CANOPY_WEB_PAT in ACE's .env) — planned without canopy-web's slot list";
+    if (!cfg) listNote = `no canopy-web token for ace (${canopyTokenProblem()}) — planned without canopy-web's slot list`;
     else rows = await listSlots(cfg);
   } catch (e) {
     // Without the list, the next number is a guess about a namespace canopy-web

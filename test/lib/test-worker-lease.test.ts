@@ -275,7 +275,7 @@ describe('TestWorkerCheckout — rollout fallback (capability not live)', () => 
     expect(held[0].worker).toMatchObject({ phone: '+74260000101', pin: '1234', backupCode: 'LEGACYBACKUP0001' });
     expect(await co.slotDataReport()).toBeNull();
     expect(pool.calls).toEqual([]);
-    expect(warn.mock.calls[0][0]).toMatch(/no canopy-web PAT/);
+    expect(warn.mock.calls[0][0]).toMatch(/no canopy-web token for ace/);
   });
 
   it('a multi-worker checkout NEVER falls back to sharing', async () => {

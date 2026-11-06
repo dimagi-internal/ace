@@ -14,7 +14,7 @@ Resolution order in the MCP server (`mcp/mobile/backend-toggle.ts`): `process.en
 ## Args
 
 - `local` — route through this machine's AVD
-- `lease` — lease ACE's own ephemeral `android-emulator` machine from canopy-web's capability broker (one machine per session, terminated on release). Needs ACE's `CANOPY_WEB_PAT` and a capability grant — `/ace:doctor` reports both under `capability_lease`.
+- `lease` — lease ACE's own ephemeral `android-emulator` machine from canopy-web's capability broker (one machine per session, terminated on release). Needs a canopy-web token for ace (`canopy agent token --slug ace`) and a capability grant — `/ace:doctor` reports both under `capability_lease`.
 - `cloud` — DEPRECATED alias for `lease`. It named ace-web's shared `/api/mobile` emulator, retired 2026-10-14; it is accepted and written as `lease`. An old `cloud` session file or `ACE_MOBILE_BACKEND=cloud` also resolves to `lease`, with a one-line deprecation log from the MCP.
 - `status` (or no arg) — print the current effective backend + where the value came from
 
@@ -51,7 +51,7 @@ case "$ARG" in
     echo "  Session file: $FILE"
     if [ "$ARG" = "lease" ]; then
       echo ""
-      echo "Lease routing needs the CANOPY_WEB_PAT in ACE .env and a canopy-web grant for ace/android-emulator."
+      echo "Lease routing needs a canopy-web token for ace (canopy agent token --slug ace) and a canopy-web grant for ace/android-emulator."
       echo "Verify with: /ace:doctor  (capability_lease)"
     fi
     ;;

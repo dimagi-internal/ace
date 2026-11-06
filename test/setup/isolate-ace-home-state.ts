@@ -87,6 +87,14 @@ process.env.ACE_TEST_WORKER_LEDGER = path.join(workerTmpDir, 'test-worker-leases
 // own ACE_ENV_FILE (client-lease-routing.test.ts does).
 process.env.ACE_ENV_FILE = path.join(workerTmpDir, 'no-ace.env');
 
+// (6) The same hazard through canopy: lib/ace-canopy-pat.ts asks
+// `canopy agent token --slug ace` FIRST, and on a machine with canopy
+// installed that is a REAL token. Point the CLI lookup at a path that does
+// not exist, so the reader falls back to the (absent) ACE_ENV_FILE above. A
+// test that exercises canopy's answer writes its own fake CLI and points
+// ACE_CANOPY_BIN at it.
+process.env.ACE_CANOPY_BIN = path.join(workerTmpDir, 'no-canopy');
+
 afterAll(() => {
   try {
     fs.rmSync(workerTmpDir, { recursive: true, force: true });

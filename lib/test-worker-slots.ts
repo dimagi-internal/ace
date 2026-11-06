@@ -23,7 +23,7 @@
  * `redactSecrets` first — a validation error that echoes its input must not
  * put a PIN in a log or a tool result.
  */
-import { canopyApiBase, canopyToken } from './ace-canopy-pat.js';
+import { CANOPY_TOKEN_REMEDIATION, canopyApiBase, canopyToken, canopyTokenProblem } from './ace-canopy-pat.js';
 import {
   PUBLIC_KEYS,
   SECRET_KEYS,
@@ -52,14 +52,14 @@ export interface SlotRow {
 
 export interface SlotHttpOpts {
   baseUrl?: string;
-  /** omitted → ACE's .env CANOPY_WEB_PAT; null/'' → none. */
+  /** omitted → the token canopy issues for ace (lib/ace-canopy-pat.ts); null/'' → none. */
   token?: string | null;
   fetchImpl?: typeof fetch;
   requestTimeoutMs?: number;
   retry?: RetryOpts;
 }
 
-/** The broker config for slot calls, or null when there is no PAT. */
+/** The broker config for slot calls, or null when there is no token. */
 export function slotHttpConfig(opts: SlotHttpOpts = {}): BrokerHttpConfig | null {
   const token = opts.token === undefined ? canopyToken() : opts.token;
   if (!token) return null;
@@ -193,8 +193,8 @@ function requireCfg(cfg: BrokerHttpConfig | null): BrokerHttpConfig {
   if (!cfg) {
     throw new MobileError(
       'LEASE_NOT_CONFIGURED',
-      "no canopy-web PAT (CANOPY_WEB_PAT in ACE's .env)",
-      'Run /ace:setup --force-env (CANOPY_WEB_PAT comes from the canopy-pat item in the ACE instance vault).',
+      `no canopy-web token for ace${canopyTokenProblem() ? `: ${canopyTokenProblem()}` : ''}`,
+      CANOPY_TOKEN_REMEDIATION,
     );
   }
   return cfg;
@@ -282,7 +282,7 @@ export async function deleteSlotData(cfg: BrokerHttpConfig | null, slot: string)
  */
 export async function fetchSlotDataReport(cfg: BrokerHttpConfig | null, declared: string[] | null = null): Promise<SlotDataReport> {
   if (!cfg) {
-    return { ok: false, declared: declared ?? [], slots: [], summary: 'no canopy-web PAT, so slot data cannot be read', error: 'no PAT' };
+    return { ok: false, declared: declared ?? [], slots: [], summary: 'no canopy-web token for ace, so slot data cannot be read', error: 'no token' };
   }
   try {
     return classifySlotData(declared, await listSlots(cfg));

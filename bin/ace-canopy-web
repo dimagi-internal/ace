@@ -2,21 +2,21 @@
 """ACE's ONLY path for writing to canopy-web DDD — pins WHO writes and WHERE.
 
 Every canopy DDD write (`scripts.ddd.narrative post`, `snippets upload-video`,
-`video-engine/render_locally.py` uploads, `canopy:ddd-*` loops) resolves its
-identity as CANOPY_WEB_PAT → the cwd's agent `.env` → ~/.claude/canopy/workbench-token,
-and its workspace as arg → CANOPY_WEB_WORKSPACE → `.canopy/ddd/config.yaml` → the
-ORG DEFAULT. Run from a canopy checkout with neither pinned, an ACE write lands in
-the default workspace under whoever owns the workbench token. That is ace#2805: the
-chlorine demo narrative (meant for `connect`) was posted AS JONATHAN into `dimagi`,
-its 8 cut videos followed it there, and the session reported "connect" without ever
-reading it back.
+`video-engine/render_locally.py` uploads, `canopy:ddd-*` loops) takes its workspace
+as arg → CANOPY_WEB_WORKSPACE → `.canopy/ddd/config.yaml` → the ORG DEFAULT. With
+neither identity nor workspace pinned, an ACE write once landed in the default
+workspace under the machine owner's identity. That
+is ace#2805: the chlorine demo narrative (meant for `connect`) was posted AS JONATHAN
+into `dimagi`, its 8 cut videos followed it there, and the session reported "connect"
+without ever reading it back.
 
 This wrapper makes both explicit and checks them before anything is written:
 
   bin/ace-canopy-web --workspace <ws> -- <command...>
-      Exec <command> with CANOPY_WEB_PAT = ACE's own PAT (from ACE's .env, never the
-      workbench token), CANOPY_WEB_WORKSPACE=<ws>, CANOPY_AGENT=ace. Refuses unless
-      the PAT authenticates as ace@dimagi-ai.com AND ACE is editor/admin/owner of <ws>
+      Exec <command> with CANOPY_WEB_PAT = the token canopy issues for ace
+      (`canopy agent token --slug ace`; never an inherited CANOPY_WEB_PAT),
+      CANOPY_WEB_WORKSPACE=<ws>, CANOPY_AGENT=ace. Refuses unless the token
+      authenticates as ace@dimagi-ai.com AND ACE is editor/admin/owner of <ws>
       (an agent must not write into a workspace it cannot edit — Jonathan, 2026-10-08).
 
   bin/ace-canopy-web --workspace <ws> verify narrative <slug>
@@ -33,13 +33,20 @@ only workspace-addressed links may be copied into anything a person reads.
   bin/ace-canopy-web --workspace <ws> check
       Identity + role preflight only.
 
-Env overrides (tests / unusual hosts): ACE_ENV_FILE (path to ACE's .env),
-CANOPY_WEB_API_URL (default https://canopy.dimagi.com).
+Identity: canopy decides (canopy agent-core/agent-runtime.md § Session identity); this
+wrapper only asks it. Same three outcomes as lib/ace-canopy-pat.ts: exit 0 = the token;
+"No such command" (an older canopy) or no canopy CLI = PHASE-1 FALLBACK to the stored
+CANOPY_WEB_PAT in ACE's .env; any other non-zero = a FINAL refusal, surfaced, no fallback.
+
+Env overrides (tests / unusual hosts): ACE_CANOPY_BIN (the canopy CLI to ask),
+ACE_ENV_FILE (path to ACE's .env, phase-1 fallback only), CANOPY_WEB_API_URL
+(default https://canopy.dimagi.com).
 """
 from __future__ import annotations
 
 import json
 import os
+import shutil
 import subprocess
 import sys
 import threading
@@ -65,9 +72,46 @@ def env_files() -> list[Path]:
     return [home / ".claude/plugins/data/ace-ace/.env", home / ".ace/.env"]
 
 
+def canopy_exe() -> str | None:
+    if "ACE_CANOPY_BIN" in os.environ:
+        exe = os.environ["ACE_CANOPY_BIN"]
+        return exe if os.path.isfile(exe) else None
+    exe = shutil.which("canopy") or os.path.expanduser("~/.local/bin/canopy")
+    return exe if os.path.isfile(exe) else None
+
+
+def cli_token() -> str | None:
+    """canopy's token for ace; None when canopy can't answer (older canopy / no canopy).
+    Any other refusal is FINAL: die with canopy's reason, never fall back."""
+    exe = canopy_exe()
+    if not exe:
+        return None
+    try:
+        p = subprocess.run([exe, "agent", "token", "--slug", "ace"], stdin=subprocess.DEVNULL,
+                           capture_output=True, text=True, timeout=30)
+    except subprocess.TimeoutExpired:
+        die("canopy has no canopy-web identity for ace here: `canopy agent token` timed out after 30s")
+        return None
+    except OSError:
+        return None
+    if p.returncode == 0 and p.stdout.strip():
+        return p.stdout.strip()
+    if "No such command" in p.stderr:
+        return None
+    last = (p.stderr.strip().splitlines() or [f"exit {p.returncode}, no reason given"])[-1]
+    die(f"canopy has no canopy-web identity for ace here: {last} "
+        "(see canopy agent-core/agent-runtime.md § Session identity)")
+    return None
+
+
 def ace_pat() -> str:
-    # Deliberately NOT the inherited CANOPY_WEB_PAT and NEVER the workbench token:
-    # both can belong to a human. ACE's own .env is the only source.
+    """The token this wrapper acts with — canopy's answer, once per process."""
+    tok = cli_token()
+    if tok:
+        return tok
+    # PHASE-1 FALLBACK (an older canopy or no canopy CLI; remove with the stored PAT):
+    # the stored PAT in ACE's own .env. Deliberately NOT an inherited CANOPY_WEB_PAT and
+    # NEVER the workbench-token: both can belong to a human (ace#2805).
     for f in env_files():
         try:
             for line in f.read_text(encoding="utf-8").splitlines():
@@ -78,7 +122,9 @@ def ace_pat() -> str:
                         return val
         except OSError:
             continue
-    die("no CANOPY_WEB_PAT in ACE's .env (" + ", ".join(map(str, env_files())) + "). Run /ace:setup.")
+    die("canopy cannot issue a canopy-web token here (no canopy CLI, or one older than "
+        "`canopy agent token`) and ACE's .env has no stored CANOPY_WEB_PAT to fall back to ("
+        + ", ".join(map(str, env_files())) + ").")
     return ""
 
 
@@ -100,7 +146,8 @@ def preflight(ws: str, pat: str) -> str:
     status, me = api_get("/api/me/", pat)
     email = (me or {}).get("email", "") if isinstance(me, dict) else ""
     if status != 200 or email != ACE_IDENTITY:
-        die(f"the PAT in ACE's .env authenticates as {email or f'HTTP {status}'!r}, not {ACE_IDENTITY}.")
+        die(f"the canopy-web token for ace authenticates as {email or f'HTTP {status}'!r}, not {ACE_IDENTITY}; "
+            "refusing to write to canopy-web as anyone but ACE.")
     status, members = api_get(f"/api/workspaces/{ws}/members/", pat)
     # A bare list today; tolerate a {"result": [...]} envelope too.
     rows = members if isinstance(members, list) else (members or {}).get("result", []) if isinstance(members, dict) else []

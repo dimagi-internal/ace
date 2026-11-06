@@ -984,7 +984,8 @@ export class MobileClient {
       throw new MobileError(
         'LEASE_NOT_CONFIGURED',
         'lease backend selected but not configured',
-        "Run /ace:setup --force-env to inject ACE's CANOPY_WEB_PAT, or switch backend with /ace:mobile-backend local.",
+        'There is no canopy-web token for ace here (see `canopy agent token --slug ace | wc -c`, canopy agent-core/agent-runtime.md § Session identity), ' +
+          'or switch backend with /ace:mobile-backend local.',
       );
     }
     return this.lease;

@@ -23,7 +23,7 @@ Assembles the final prospect-facing partnership package — hero video, pitch de
 | Phase 1 profile | `ACE/partnerships/<slug>/prospect.yaml` | Prospect name and slug for package title and brand-safety header |
 | `partnership-research` | `ACE/partnerships/<slug>/research/deep-research.md` | Cited research for the appendix |
 | `partnership-research` | `ACE/partnerships/<slug>/research/connect-fit.md` | Connect-fit claims for the appendix |
-| Env | ACE's own PAT + an explicit workspace via `bin/ace-canopy-web --workspace <ws>` — never `~/.claude/canopy/workbench-token` (`playbook/integrations/canopy-web.md`, ace#2805) | canopy-web auth for `canopy:walkthrough-share` |
+| Env | canopy's token for ace (`canopy agent token --slug ace`) + an explicit workspace via `bin/ace-canopy-web --workspace <ws>` — never `~/.claude/canopy/workbench-token` (`playbook/integrations/canopy-web.md`, ace#2805) | canopy-web auth for `canopy:walkthrough-share` |
 
 ## Products
 

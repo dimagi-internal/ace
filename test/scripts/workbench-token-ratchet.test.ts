@@ -13,9 +13,10 @@ import * as path from 'node:path';
 const ROOT = path.resolve(__dirname, '..', '..');
 
 const ALLOWED: Record<string, string> = {
-  'bin/ace-canopy-web': 'the write wrapper — documents the hazard; reads ACE’s .env only',
+  'bin/ace-canopy-web': 'the write wrapper — documents the hazard; asks canopy, never the workbench token',
+  'lib/ace-canopy-pat.ts': 'the one reader — doc comment says canopy never issues the workbench token',
   'playbook/integrations/canopy-web.md': 'the rule doc explaining why the workbench token is never used',
-  'scripts/browser-sessions.ts': 'doc comment on canopyToken stating it never reads the workbench token',
+  'scripts/browser-sessions.ts': 'doc comment stating canopy auth never uses the workbench token',
   'skills/partnership-publish/SKILL.md': 'says “never ~/.claude/canopy/workbench-token”',
   'test/scripts/ace-canopy-web.test.ts': 'plants a hostile workbench token to prove the wrapper ignores it',
   'test/scripts/workbench-token-ratchet.test.ts': 'this ratchet',
@@ -46,6 +47,38 @@ describe('workbench-token ratchet (ace#2805)', () => {
 
   it('allowlist entries still exist (prune stale ones)', () => {
     for (const f of Object.keys(ALLOWED)) expect(fs.existsSync(path.join(ROOT, f)), f).toBe(true);
+  });
+});
+
+// Phase 2 of canopy-web's turn-scoped agent token retires the stored PAT. A script that reads
+// CANOPY_WEB_PAT itself breaks then, and inside a person's local turn it acts as the wrong
+// identity. Only the reader (and its Python twin) may touch it — as the marked phase-1 fallback.
+const PAT_READERS: Record<string, string> = {
+  'lib/ace-canopy-pat.ts': 'the one reader: canopy agent token, then the phase-1 stored-PAT fallback',
+  'bin/ace-canopy-web': 'the Python twin of the reader; also hands the token to the wrapped command',
+};
+
+describe('canopy-web token ratchet: every token comes from canopy via the reader', () => {
+  const files = execFileSync('git', ['grep', '-l', '-E', 'CANOPY_WEB_PAT|workbench-token'], { cwd: ROOT, encoding: 'utf8' })
+    .split('\n')
+    .filter(Boolean)
+    .filter((f) => !EXEMPT_PREFIXES.some((p) => f.startsWith(p)) && !f.startsWith('test/'))
+    .filter((f) => /\.(ts|js|mjs|py|sh)$/.test(f) || f.startsWith('bin/'));
+
+  it('no executable ACE code reads CANOPY_WEB_PAT outside the reader', () => {
+    // A read: process.env.CANOPY_WEB_PAT, aceEnvValue('CANOPY_WEB_PAT'), a "CANOPY_WEB_PAT=" line parse.
+    const READ = /process\.env\.CANOPY_WEB_PAT|process\.env\[['"]CANOPY_WEB_PAT['"]\]|aceEnvValue\(\s*['"]CANOPY_WEB_PAT['"]|['"]CANOPY_WEB_PAT=|environ(?:\.get)?\(?\[?['"]CANOPY_WEB_PAT/;
+    const offenders = files.filter((f) => !(f in PAT_READERS) && READ.test(fs.readFileSync(path.join(ROOT, f), 'utf8')));
+    expect(offenders, 'get the token from lib/ace-canopy-pat.ts (canopy agent token --slug ace), never CANOPY_WEB_PAT').toEqual([]);
+  });
+
+  it('the reader asks canopy first and keeps the stored PAT as the marked phase-1 fallback', () => {
+    for (const f of Object.keys(PAT_READERS)) {
+      const src = fs.readFileSync(path.join(ROOT, f), 'utf8');
+      expect(src, f).toMatch(/['"]agent['"],\s*['"]token['"],\s*['"]--slug['"]/);
+      expect(src, f).toMatch(/No such command/);
+      expect(src, f).toMatch(/PHASE-1 FALLBACK/);
+    }
   });
 });
 

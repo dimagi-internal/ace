@@ -251,11 +251,11 @@ export function preflightMobileBackend(args: {
       fatal: {
         code: 'LEASE_NOT_CONFIGURED',
         message:
-          `${why}, but ACE's canopy-web PAT (CANOPY_WEB_PAT in ACE's .env) is missing — ` +
+          `${why}, but there is no canopy-web token for ace here (canopy agent token --slug ace) — ` +
           'refusing to fall through to a local AVD boot',
         remediation:
-          'Run /ace:setup --force-env to inject CANOPY_WEB_PAT, or provision a local AVD with /ace:mobile-bootstrap, ' +
-          'or pin the local backend with /ace:mobile-backend local.',
+          'See why with `canopy agent token --slug ace | wc -c` (canopy agent-core/agent-runtime.md § Session identity), ' +
+          'or provision a local AVD with /ace:mobile-bootstrap, or pin the local backend with /ace:mobile-backend local.',
       },
     };
   }

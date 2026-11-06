@@ -79,7 +79,9 @@ function run(args: string[], envFileBody: string | null, extraEnv: Record<string
   fs.writeFileSync(path.join(home, '.claude', 'canopy', 'workbench-token'), 'human-pat');
   return new Promise((resolve) => {
     const child = spawn('python3', [BIN, ...args], {
-      env: { PATH: process.env.PATH ?? '', HOME: home, ACE_ENV_FILE: envFile, CANOPY_WEB_API_URL: base, CANOPY_WEB_PAT: 'human-pat', ...extraEnv },
+      // ACE_CANOPY_BIN defaults to a path that does not exist (no canopy CLI → the phase-1
+      // stored-PAT fallback); the canopy-identity tests below point it at a fake CLI.
+      env: { PATH: process.env.PATH ?? '', HOME: home, ACE_ENV_FILE: envFile, ACE_CANOPY_BIN: path.join(dir, 'no-canopy'), CANOPY_WEB_API_URL: base, CANOPY_WEB_PAT: 'human-pat', ...extraEnv },
     });
     let stdout = '';
     let stderr = '';
@@ -88,6 +90,39 @@ function run(args: string[], envFileBody: string | null, extraEnv: Record<string
     child.on('close', (status) => resolve({ status, stdout, stderr }));
   });
 }
+
+// A fake `canopy` CLI: answers `agent token --slug ace` the way the given shell body says.
+function fakeCanopy(body: string): string {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ace-cw-canopy-'));
+  const exe = path.join(dir, 'canopy');
+  fs.writeFileSync(exe, `#!/bin/sh\n[ "$1 $2 $3 $4" = "agent token --slug ace" ] || { echo "bad argv: $*" >&2; exit 9; }\n${body}\n`);
+  fs.chmodSync(exe, 0o755);
+  return exe;
+}
+
+describe('bin/ace-canopy-web asks canopy for its identity (canopy agent token)', () => {
+  it('acts with the token canopy issues, not the stored PAT or an inherited one', async () => {
+    const canopy = fakeCanopy('echo ace-pat');
+    const r = await run(['--workspace', 'connect', '--', 'sh', '-c', 'echo "$CANOPY_WEB_PAT"'], 'CANOPY_WEB_PAT=stale-stored-pat\n', { ACE_CANOPY_BIN: canopy });
+    expect(r.status, r.stderr).toBe(0);
+    expect(r.stdout.trim()).toBe('ace-pat');
+  });
+
+  it('falls back to the stored PAT ONLY when canopy is too old to know the command', async () => {
+    const canopy = fakeCanopy('echo "Error: No such command \'token\'." >&2; exit 2');
+    const r = await run(['--workspace', 'connect', '--', 'sh', '-c', 'echo "$CANOPY_WEB_PAT"'], 'CANOPY_WEB_PAT=ace-pat\n', { ACE_CANOPY_BIN: canopy });
+    expect(r.status, r.stderr).toBe(0);
+    expect(r.stdout.trim()).toBe('ace-pat');
+  });
+
+  it('a canopy refusal is FINAL: surfaced, and the stored PAT is NOT used', async () => {
+    const canopy = fakeCanopy('echo "refused: this session may not act as ace" >&2; exit 3');
+    const r = await run(['--workspace', 'connect', '--', 'sh', '-c', 'echo ran'], 'CANOPY_WEB_PAT=ace-pat\n', { ACE_CANOPY_BIN: canopy });
+    expect(r.status).toBe(2);
+    expect(r.stdout).not.toContain('ran');
+    expect(r.stderr).toMatch(/no canopy-web identity for ace here: refused: this session may not act as ace/);
+  });
+});
 
 describe('bin/ace-canopy-web (behaviour)', () => {
   it('execs the command with ACE\'s PAT, the workspace and CANOPY_AGENT=ace — not the inherited human PAT', async () => {
@@ -102,10 +137,10 @@ describe('bin/ace-canopy-web (behaviour)', () => {
     expect(r.stderr).toMatch(/usage/);
   });
 
-  it('refuses when ACE\'s .env has no PAT (never falls back to the workbench token)', async () => {
+  it('refuses when canopy cannot answer and ACE\'s .env has no PAT (never falls back to the workbench token)', async () => {
     const r = await run(['--workspace', 'connect', '--', 'true'], '');
     expect(r.status).toBe(2);
-    expect(r.stderr).toMatch(/no CANOPY_WEB_PAT in ACE's \.env/);
+    expect(r.stderr).toMatch(/no stored CANOPY_WEB_PAT to fall back to/);
   });
 
   it('refuses a PAT that is not ACE', async () => {

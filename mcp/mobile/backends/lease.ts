@@ -15,8 +15,8 @@
 // Every route and every CLI subcommand/flag lives in `lease-contract.ts`.
 // Download, retry and artifact-name containment live in `remote-io.ts`.
 //
-// Auth is ACE's own canopy-web PAT (`CANOPY_WEB_PAT` in ACE's .env —
-// lib/ace-canopy-pat.ts), with `turn_id` from `CANOPY_TURN_ID` when the cloud
+// Auth is the canopy-web token canopy issues for ace (`canopy agent token
+// --slug ace`, via lib/ace-canopy-pat.ts), with `turn_id` from `CANOPY_TURN_ID` when the cloud
 // runner exports it, so the broker releases the lease when the turn ends.
 //
 // Lease lifetime, and why there is no background heartbeat: the broker idles a
@@ -39,7 +39,7 @@
 import { createHash, randomBytes } from 'node:crypto';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
-import { canopyApiBase, canopyToken } from '../../../lib/ace-canopy-pat.js';
+import { CANOPY_TOKEN_REMEDIATION, canopyApiBase, canopyIdentity } from '../../../lib/ace-canopy-pat.js';
 import { LEASE_RESTORE_HINT, brokerRequest, curlDeleteSync } from './broker-http.js';
 // Re-exported: callers and tests import these from the lease backend.
 export { LEASE_RESTORE_HINT, leaseHttpError } from './broker-http.js';
@@ -323,13 +323,13 @@ export class LeaseBackend {
   private fastAnswers = 0;
 
   constructor(opts: LeaseBackendOpts = {}) {
-    const token = opts.token ?? canopyToken() ?? '';
+    const id = opts.token ? null : canopyIdentity();
+    const token = opts.token || id?.token || '';
     if (!token) {
       throw new MobileError(
         'LEASE_NOT_CONFIGURED',
-        "the lease mobile backend needs ACE's canopy-web PAT (CANOPY_WEB_PAT in ACE's .env)",
-        'Run /ace:setup --force-env (CANOPY_WEB_PAT comes from ACE\'s Canopy vault), ' +
-          'or use the local AVD with /ace:mobile-backend local.',
+        `the lease mobile backend needs a canopy-web token for ace${id && id.token === null ? `: ${id.reason}` : ''}`,
+        `${CANOPY_TOKEN_REMEDIATION} Or use the local AVD with /ace:mobile-backend local.`,
       );
     }
     this.token = token;

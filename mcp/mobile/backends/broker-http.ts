@@ -131,8 +131,8 @@ export function leaseHttpError(
     case 401:
       return new MobileError(
         'LEASE_AUTH',
-        `canopy-web rejected ACE's PAT on ${where}${said ? `: ${said}` : ''}`,
-        "Re-mint ACE's canopy-web PAT (CANOPY_WEB_PAT in ACE's Canopy vault) and run /ace:setup --force-env.",
+        `canopy-web rejected the token canopy issued for ace on ${where}${said ? `: ${said}` : ''}`,
+        'Check canopy\'s answer with `canopy agent token --slug ace | wc -c`; how a session gets its canopy-web identity is canopy agent-core/agent-runtime.md § Session identity.',
       );
     case 403:
       // canopy-web answers 403 for two different things: no CapabilityGrant
@@ -141,8 +141,8 @@ export function leaseHttpError(
       if (/editor role|own login/i.test(said)) {
         return new MobileError(
           'LEASE_FORBIDDEN',
-          `${where}: this PAT may not lease ${LEASE_AGENT}'s capabilities${said ? `: ${said}` : ''}`,
-          "Use ACE's own PAT (CANOPY_WEB_PAT in ACE's .env), or a member PAT with the editor role in ACE's workspace.",
+          `${where}: this canopy-web identity may not lease ${LEASE_AGENT}'s capabilities${said ? `: ${said}` : ''}`,
+          "The identity canopy issues for ace (`canopy agent token --slug ace`) must be ACE's own account, or a member with the editor role in ACE's workspace.",
         );
       }
       return new MobileError(

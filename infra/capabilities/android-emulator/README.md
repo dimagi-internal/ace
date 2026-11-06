@@ -64,15 +64,15 @@ Run them from this directory.
   ```bash
   pip install "canopy-runtime @ git+https://github.com/dimagi-internal/canopy-web@4d06b9a6e82368db8871076e75b00b9154b729de#subdirectory=packages/canopy_runtime"
   ```
-- **ACE's canopy-web PAT** for the lease calls in step 4: `CANOPY_WEB_PAT` in
-  ACE's `.env` (`~/.claude/plugins/data/ace-ace/.env`, written by `/ace:setup`
-  from ACE's Canopy vault). `lib/ace-canopy-pat.ts` and `bin/ace-canopy-web`
-  read it from there and nowhere else. Never lease with a human's personal
-  canopy token: the lease would be theirs. Publishing (step 2) and the grant
-  (step 3) are admin acts, done with the admin's own login.
+- **ACE's canopy-web token** for the lease calls in step 4: ask canopy for it,
+  the same way `lib/ace-canopy-pat.ts` and `bin/ace-canopy-web` do (which token
+  canopy issues is its decision — canopy `agent-core/agent-runtime.md`
+  § Session identity). Never lease with a human's personal canopy token: the
+  lease would be theirs. Publishing (step 2) and the grant (step 3) are admin
+  acts, done with the admin's own login.
 
   ```bash
-  export CANOPY_WEB_PAT="$(sed -n 's/^CANOPY_WEB_PAT=//p' ~/.claude/plugins/data/ace-ace/.env)"
+  export ACE_CANOPY_TOKEN="$(CANOPY_AGENT=ace canopy agent token --slug ace)"
   ```
 
 ### 1. Bake the image
@@ -152,7 +152,7 @@ curl -fsS -X PUT -H "Authorization: Bearer $ADMIN_CANOPY_TOKEN" -H 'content-type
   https://canopy.dimagi.com/api/capabilities/grants
 
 # As ACE, check it took:
-curl -fsS -H "Authorization: Bearer $CANOPY_WEB_PAT" \
+curl -fsS -H "Authorization: Bearer $ACE_CANOPY_TOKEN" \
   https://canopy.dimagi.com/api/agents/ace/capabilities | jq
 ```
 
@@ -162,7 +162,7 @@ curl -fsS -H "Authorization: Bearer $CANOPY_WEB_PAT" \
 
 ```bash
 API=https://canopy.dimagi.com/api/capabilities/leases
-AUTH="Authorization: Bearer $CANOPY_WEB_PAT"
+AUTH="Authorization: Bearer $ACE_CANOPY_TOKEN"
 
 LEASE=$(curl -fsS -X POST -H "$AUTH" -H 'content-type: application/json' \
   -d '{"agent":"ace","capability":"android-emulator","params":{"state":"cc-2.64.0"}}' \

@@ -64,7 +64,7 @@
 import { appendFileSync, mkdirSync, renameSync, statSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { canopyApiBase, canopyToken } from './ace-canopy-pat.js';
+import { canopyApiBase, canopyToken, canopyTokenProblem } from './ace-canopy-pat.js';
 import { LEGACY_SLOT, legacyTestWorker, maskSecretsDeep, workerFromSlotData, type TestWorker } from './test-worker-pool.js';
 import { fetchSlotDataReport, type SlotDataReport } from './test-worker-slots.js';
 import { canopyOpener, openSlotData, type SlotDataOpener } from './slot-data-open.js';
@@ -103,7 +103,7 @@ export interface TestWorkerStatus {
 
 export interface TestWorkerCheckoutOpts {
   baseUrl?: string;
-  /** ACE's canopy-web PAT; omitted → read from ACE's .env; null/'' → no PAT (fallback). */
+  /** ACE's canopy-web token; omitted → canopy's (lib/ace-canopy-pat.ts); null/'' → none (fallback). */
   token?: string | null;
   fetchImpl?: typeof fetch;
   /** The legacy ACE_E2E_* worker for the rollout fallback, and CANOPY_TURN_ID (default process.env). */
@@ -292,7 +292,8 @@ export class TestWorkerCheckout {
   private async ensureInner(count: number): Promise<HeldWorker[]> {
     if (this.modeValue === 'unlocked-fallback') return this.fallback(count, this.warning ?? 'the pool lock is not live');
     if (!this.http) {
-      return this.fallback(count, "this machine has no canopy-web PAT (CANOPY_WEB_PAT in ACE's .env), so the lock cannot be taken");
+      const why = canopyTokenProblem();
+      return this.fallback(count, `there is no canopy-web token for ace here${why ? ` (${why})` : ''}, so the lock cannot be taken`);
     }
     const need = count - this.held.length;
     const acquired: LeaseOut[] = [];
@@ -597,7 +598,7 @@ export class TestWorkerCheckout {
   }
 
   private call<T>(method: string, route: string, body?: unknown, opts: { retry?: boolean } = {}): Promise<T> {
-    if (!this.http) throw new MobileError('LEASE_NOT_CONFIGURED', 'no canopy-web PAT');
+    if (!this.http) throw new MobileError('LEASE_NOT_CONFIGURED', 'no canopy-web token for ace');
     return brokerRequest<T>(this.http, method, route, body, opts);
   }
 }

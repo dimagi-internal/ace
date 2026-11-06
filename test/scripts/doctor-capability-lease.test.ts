@@ -18,7 +18,7 @@ describe('classifyCapabilityLease', () => {
   });
 
   it.each([
-    ['no PAT', { hasToken: false }, /CANOPY_WEB_PAT/, /\/ace:setup --force-env/],
+    ['no token', { hasToken: false, tokenProblem: 'canopy has no canopy-web identity for ace here: refused' }, /no canopy-web token for ace.*refused/, /canopy agent token --slug ace/],
     ['unreachable', { networkError: 'ENOTFOUND', hasToken: true }, /cannot reach/, /CANOPY_WEB_API_URL/],
     ['401', { status: 401, hasToken: true }, /401/, /re-mint/],
     ['403', { status: 403, hasToken: true }, /403/, /member of ACE's canopy-web workspace/],

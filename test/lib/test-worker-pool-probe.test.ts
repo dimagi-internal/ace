@@ -53,8 +53,8 @@ describe('classifyTestWorkerPool', () => {
     expect(v.summary).toMatch(/2 slot\(s\).*1 checked out/);
   });
 
-  it('WARNs with no PAT', () => {
-    expect(classifyTestWorkerPool({ hasToken: false }).summary).toMatch(/no CANOPY_WEB_PAT.*UNLOCKED/);
+  it('WARNs with no token, naming canopy\'s reason', () => {
+    expect(classifyTestWorkerPool({ hasToken: false, tokenProblem: 'refused here' }).summary).toMatch(/no canopy-web token for ace \(refused here\).*UNLOCKED/);
   });
 });
 
