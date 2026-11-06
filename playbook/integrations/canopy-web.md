@@ -7,13 +7,12 @@ and **walkthrough shares** (`canopy:walkthrough-share`).
 
 ## The rule: every write goes through `bin/ace-canopy-web`
 
-canopy's CLI resolves **identity** as `CANOPY_WEB_PAT` → the cwd's agent `.env` →
-`~/.claude/canopy/workbench-token`, and **workspace** as arg → `CANOPY_WEB_WORKSPACE` →
-`<repo>/.canopy/ddd/config.yaml` → the org default. Run from a canopy checkout with neither pinned,
-an ACE write lands in the default workspace **under whoever owns the workbench token** — on the
-owner's laptop, Jonathan. That is ace#2805: the chlorine demo narrative, meant for `connect`, was
-posted as Jonathan into `dimagi`, its 8 cut videos followed, and the session reported "connect"
-without reading it back.
+canopy's DDD commands take **workspace** as arg → `CANOPY_WEB_WORKSPACE` →
+`<repo>/.canopy/ddd/config.yaml` → the org default. With neither identity nor workspace pinned, an
+ACE write once landed in the default workspace **as the machine owner** — on the owner's laptop,
+Jonathan. That is ace#2805: the chlorine demo narrative,
+meant for `connect`, was posted as Jonathan into `dimagi`, its 8 cut videos followed, and the
+session reported "connect" without reading it back.
 
 ```bash
 ACE_ROOT="${CLAUDE_PLUGIN_ROOT:-$(python3 -c "import json,os; d=json.load(open(os.path.expanduser('~/.claude/plugins/installed_plugins.json'))); print(d['plugins']['ace@ace'][0]['installPath'])")}"
@@ -25,8 +24,11 @@ WS="${WS:-$(python3 -c "import json,sys; print(json.load(open(sys.argv[1]))['ddd
 "$ACE_ROOT/bin/ace-canopy-web" --workspace "$WS" verify walkthrough <id>
 ```
 
-- **Identity** is ACE's own PAT from ACE's `.env` — never an inherited `CANOPY_WEB_PAT`, never the
-  workbench token — and the wrapper refuses unless it authenticates as `ace@dimagi-ai.com`.
+- **Identity** comes from canopy: the wrapper runs `canopy agent token --slug ace` and hands that
+  token to the command — never an inherited `CANOPY_WEB_PAT`, never the operator's workbench-token —
+  and refuses unless it authenticates as `ace@dimagi-ai.com`. Which token canopy issues (runner
+  turn, laptop session, local turn) is canopy's decision: canopy `agent-core/agent-runtime.md`
+  § Session identity. Do not restate it here, and do not read a token any other way.
 - **Workspace** is required and explicit: `config/canopy-web.json` `ddd_workspace`, overridden by
   `/ace:demo --workspace` or an opp's `opp.yaml` `canopy_web.workspace`. The wrapper refuses unless
   ACE is editor/admin/owner there — an agent never writes into a workspace it cannot edit.

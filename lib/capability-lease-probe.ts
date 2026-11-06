@@ -2,7 +2,7 @@
  * capability_lease probe logic (scripts/doctor-capability-lease.ts is the CLI) — can THIS machine lease ACE's
  * `android-emulator` from canopy-web, for the CommCare its selector map is for?
  *
- * Two read-only GETs, as ACE (its own canopy-web PAT, lib/ace-canopy-pat.ts):
+ * Two read-only GETs, as ACE (the token canopy issues for ace, lib/ace-canopy-pat.ts):
  *   1. the agent-capabilities route — declared? granted? the stack's Outputs
  *      present? live leases? and is `cc-<ACE_CONNECT_APK_VERSION>` in the
  *      manifest's state enum (the lease refuses LEASE_STATE_UNAVAILABLE
@@ -21,7 +21,7 @@
  *   --format=lines  PASS/WARN/INFO lines for bin/ace-doctor (default)
  *   --format=json   the verdict object
  */
-import { aceEnvValue, canopyApiBase, canopyToken } from './ace-canopy-pat.js';
+import { CANOPY_TOKEN_REMEDIATION, aceEnvValue, canopyApiBase, canopyIdentity } from './ace-canopy-pat.js';
 import {
   LEASE_AGENT,
   LEASE_CAPABILITY,
@@ -60,6 +60,8 @@ export function classifyCapabilityLease(r: {
   body?: unknown;
   networkError?: string;
   hasToken: boolean;
+  /** Why there is no token (lib/ace-canopy-pat.ts canopyTokenProblem), when hasToken is false. */
+  tokenProblem?: string;
   /** The selector-map version (ACE_CONNECT_APK_VERSION); its `cc-` state must be baked. */
   apkVersion?: string | null;
   longPoll?: boolean | null;
@@ -69,8 +71,8 @@ export function classifyCapabilityLease(r: {
     return {
       status: 'warn',
       ...none,
-      summary: "no CANOPY_WEB_PAT in ACE's .env — the lease mobile backend cannot authenticate",
-      remediation: 'run /ace:setup --force-env (CANOPY_WEB_PAT comes from ACE\'s Canopy vault)',
+      summary: `no canopy-web token for ace — the lease mobile backend cannot authenticate${r.tokenProblem ? ` (${r.tokenProblem})` : ''}`,
+      remediation: CANOPY_TOKEN_REMEDIATION,
     };
   }
   if (r.networkError) {
@@ -88,15 +90,15 @@ export function classifyCapabilityLease(r: {
       return {
         status: 'warn',
         ...none,
-        summary: `HTTP 401 — canopy-web rejected ACE's PAT`,
-        remediation: "re-mint ACE's canopy-web PAT (store it as CANOPY_WEB_PAT in ACE's Canopy vault), then /ace:setup --force-env",
+        summary: `HTTP 401 — canopy-web rejected the token canopy issued for ace`,
+        remediation: `re-mint the token: ${CANOPY_TOKEN_REMEDIATION}`,
       };
     case 403:
       return {
         status: 'warn',
         ...none,
-        summary: `HTTP 403 — ACE's PAT may not read agent "${LEASE_AGENT}"'s capabilities`,
-        remediation: `the PAT must be ACE's own account or a member of ACE's canopy-web workspace`,
+        summary: `HTTP 403 — this canopy-web identity may not read agent "${LEASE_AGENT}"'s capabilities`,
+        remediation: `the identity canopy issues (\`canopy agent token --slug ace\`) must be ACE's own account or a member of ACE's canopy-web workspace`,
       };
     case 404:
       return {
@@ -213,10 +215,11 @@ async function getJson(fetchImpl: typeof fetch, url: string, token: string): Pro
 }
 
 export async function probeCapabilityLease(fetchImpl: typeof fetch = fetch): Promise<LeaseProbeVerdict> {
-  const token = canopyToken();
+  const id = canopyIdentity();
   const base = canopyApiBase();
   const url = `${base}${routePath('agentCapabilities', { slug: LEASE_AGENT })}`;
-  if (!token) return classifyCapabilityLease({ url, hasToken: false });
+  if (id.token === null) return classifyCapabilityLease({ url, hasToken: false, tokenProblem: id.reason });
+  const token = id.token;
   const apkVersion = await configuredApkVersion();
   let main: { status: number; body: unknown };
   try {

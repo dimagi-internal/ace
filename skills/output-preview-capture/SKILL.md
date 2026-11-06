@@ -106,12 +106,12 @@ reads any mapping there with a `file_id` as an output.
    - **labs:** runs `bin/labs-walkthrough-login.ts` once, unconditionally, before
      the first labs gap — Phase 7 Step 3.0's restore — and uses
      `~/.ace/labs-session.json`. `/ace:labs-login` is the same script.
-   - **canopy:** ACE's own canopy PAT as a Bearer header — `CANOPY_WEB_PAT` from
-     ACE's `.env` only, the same source as `bin/ace-canopy-web`
-     (`playbook/integrations/canopy-web.md`). It never falls back to an inherited
-     `CANOPY_WEB_PAT` or the machine owner's workbench token: ACE reads canopy-web as
-     itself (ace#2805). A missing PAT fails loudly — run `/ace:setup`. A labs session
-     does NOT open canopy pages (they bounce to Google sign-in).
+   - **canopy:** the token canopy issues for ace (`canopy agent token --slug ace`,
+     via `lib/ace-canopy-pat.ts` — the same answer `bin/ace-canopy-web` acts with,
+     `playbook/integrations/canopy-web.md`) as a Bearer header. How canopy picks it:
+     canopy `agent-core/agent-runtime.md` § Session identity. No token fails loudly
+     with canopy's reason (ace#2805). A labs session does NOT open canopy pages (they
+     bounce to Google sign-in).
    - **ocs:** none — the chatbot's public chat page is anonymous.
      `/ace:ocs-login` is not needed for previews. So EVERY `auth: ocs` output —
      a `chatbot`, or a `link` such as `products.ocs_coach` — is photographed on its public

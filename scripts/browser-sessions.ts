@@ -7,10 +7,10 @@
  *                re-logs-in via ACE_HQ_USERNAME / ACE_HQ_PASSWORD.
  *   labs         bin/labs-walkthrough-login.ts, run once, unconditionally
  *                (Phase 7 Step 3.0's restore) → ~/.ace/labs-session.json.
- *   canopy       ACE's OWN canopy PAT as a Bearer header — CANOPY_WEB_PAT read from
- *                ACE's .env only (the same source bin/ace-canopy-web uses). Never an
- *                inherited CANOPY_WEB_PAT and never the machine owner's workbench
- *                token: both can belong to a human (ace#2805).
+ *   canopy       the canopy-web token canopy issues for ace (`canopy agent token
+ *                --slug ace`, lib/ace-canopy-pat.ts — the same reader bin/ace-canopy-web
+ *                twins) as a Bearer header. Never an inherited CANOPY_WEB_PAT and never
+ *                the machine owner's workbench-token: both can belong to a human (ace#2805).
  *   ocs, public  anonymous.
  *
  */
@@ -22,7 +22,7 @@ import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { PlaywrightSession } from '../mcp/connect/auth/playwright-session.js';
 import type { PreviewAuth } from '../lib/preview-capture.js';
-import { aceEnvFiles, canopyToken } from '../lib/ace-canopy-pat.js';
+import { canopyIdentity } from '../lib/ace-canopy-pat.js';
 import { loadPluginEnv } from '../lib/load-plugin-env.js';
 
 // Idempotent; a caller that already loaded it loses nothing (ace#1957).
@@ -79,9 +79,9 @@ export class Sessions {
       return this.browser.newContext({ viewport: VIEWPORT, storageState: path.join(os.homedir(), '.ace', 'labs-session.json') });
     }
     if (auth === 'canopy') {
-      const token = canopyToken();
-      if (!token) throw new Error(`no CANOPY_WEB_PAT in ACE's .env (${aceEnvFiles().join(', ')}) — run /ace:setup. ACE reads canopy-web as itself, never as the machine owner (ace#2805).`);
-      return this.browser.newContext({ viewport: VIEWPORT, extraHTTPHeaders: { Authorization: `Bearer ${token}` } });
+      const id = canopyIdentity();
+      if (id.token === null) throw new Error(`${id.reason} — see canopy agent-core/agent-runtime.md § Session identity. ACE never reads canopy-web as the machine owner (ace#2805).`);
+      return this.browser.newContext({ viewport: VIEWPORT, extraHTTPHeaders: { Authorization: `Bearer ${id.token}` } });
     }
     return this.browser.newContext({ viewport: auth === 'ocs' ? CHAT_VIEWPORT : VIEWPORT });
   }
@@ -104,7 +104,7 @@ export function restoreLabsSession(): void {
   log('labs session restored');
 }
 
-// ACE's own canopy PAT (ACE's .env only, ace#2805) now lives in lib/ace-canopy-pat.ts so the
-// mobile lease backend reads the same identity. Re-exported for existing callers.
+// ACE's canopy-web token (from canopy, ace#2805) lives in lib/ace-canopy-pat.ts so every
+// caller reads the same identity. Re-exported for existing callers.
 export { aceEnvFiles, canopyToken } from '../lib/ace-canopy-pat.js';
 

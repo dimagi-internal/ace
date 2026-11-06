@@ -13,7 +13,7 @@
  * list (public values + secret KEY names). It never acquires (an acquire would
  * lock a worker someone may need, and is the only call that returns secrets).
  */
-import { canopyToken } from './ace-canopy-pat.js';
+import { CANOPY_TOKEN_REMEDIATION, canopyToken, canopyTokenProblem } from './ace-canopy-pat.js';
 import { ISSUE, PUBLISH_CMD } from './test-worker-lease.js';
 import { fetchSlotDataReport, slotHttpConfig, type SlotDataReport } from './test-worker-slots.js';
 import {
@@ -37,6 +37,8 @@ const SET_FIX =
 /** Pure: the verdict from the capability read and the masked slot-data report. */
 export function classifyTestWorkerPool(r: {
   hasToken: boolean;
+  /** Why there is no token (canopyTokenProblem), when hasToken is false. */
+  tokenProblem?: string;
   status?: number;
   body?: unknown;
   networkError?: string;
@@ -46,8 +48,8 @@ export function classifyTestWorkerPool(r: {
   if (!r.hasToken) {
     return {
       status: 'warn',
-      summary: `no CANOPY_WEB_PAT in ACE's .env, so the pool lock cannot be taken — ${FALLBACK}`,
-      remediation: "run /ace:setup --force-env (CANOPY_WEB_PAT comes from the canopy-pat item in the ACE instance's vault)",
+      summary: `no canopy-web token for ace${r.tokenProblem ? ` (${r.tokenProblem})` : ''}, so the pool lock cannot be taken — ${FALLBACK}`,
+      remediation: CANOPY_TOKEN_REMEDIATION,
     };
   }
   if (r.networkError) {
@@ -99,7 +101,7 @@ export function classifyTestWorkerPool(r: {
 }
 
 export async function probeTestWorkerPool(fetchImpl: typeof fetch = fetch, token: string | null = canopyToken()): Promise<PoolProbeVerdict> {
-  if (!token) return classifyTestWorkerPool({ hasToken: false });
+  if (!token) return classifyTestWorkerPool({ hasToken: false, tokenProblem: canopyTokenProblem() || undefined });
   const cfg = slotHttpConfig({ token, fetchImpl, retry: { retries: 0 } })!;
   const url = `${cfg.baseUrl}${routePath('agentCapabilities', { slug: LEASE_AGENT })}`;
   let status: number;

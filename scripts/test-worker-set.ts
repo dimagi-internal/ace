@@ -29,8 +29,9 @@
  *               full-identity validation
  *   --dry-run   print the masked request; send nothing
  *
- * Writes with ACE's own canopy-web PAT (CANOPY_WEB_PAT in ACE's .env), which
- * canopy-web allows for the agent's own slots. Prints only canopy-web's MASKED
+ * Writes with the canopy-web token canopy issues for ace (`canopy agent token
+ * --slug ace`, lib/ace-canopy-pat.ts), which canopy-web allows for the agent's
+ * own slots. Prints only canopy-web's MASKED
  * answer: no secret value ever reaches stdout, stderr or an error message.
  */
 import { pathToFileURL } from 'node:url';
