@@ -2,7 +2,7 @@
 name: llo-directory-add
 description: >
   Add an org, its contact and join date to the Connect LLO Directory from a lead or EOI reply. Use
-  when a member asks ACE to add an org to the directory.
+  when a member asks ACE to add an org, or unasked when a labs EOI round has unresolved applicants.
 disable-model-invocation: false
 ---
 
@@ -27,10 +27,42 @@ all 19 joined on 2026-10-16 instead of their own 2–7 October submission dates.
 answered a round joins on the date of its own earliest submission to that
 round. Every org this skill adds gets that row, in the same approved write.
 
-This skill handles explicit requests from a member. Whether ACE maintains the
-network directory in general (bulk reconciliation of orgs nobody asked it to
-add) is an open product call, parked on #2152. Join dates for the orgs this
-skill adds are not part of that question: they are this skill's job.
+This skill handles explicit requests from a member, **and the new applicants
+of labs EOI/RFP rounds without being asked** (owner, 2026-11-06: *"add new
+applicants to the directory without being asked if you find them in new
+EOIs"*). See § Standing approval: new EOI applicants. Inbound leads (Contact
+Us / HubSpot) still need a member's request.
+
+## Standing approval: new EOI applicants
+
+Whenever ACE reads a labs marketplace round (a turn, a round review, any
+marketplace work) and finds **unresolved** applicants (connect-labs
+`marketplace_rounds_list` with `include_applicants`, `outcome: unresolved`),
+it resolves them in the same session without asking:
+
+- **New organisation**: run this skill for it, one org at a time, with the
+  write gate in § 4 already satisfied by the standing approval. Every other
+  rule still holds: the duplicate check, join date = its own submission,
+  nothing inferred, and the read-back before any claim. The contact row's
+  email is the address the submission came from (the form's "Email Address",
+  which is labs' match key), so the next import links the submission. The
+  notes end `Added by ACE under <owner>'s standing approval for new EOI
+  applicants, <YYYY-MM-DD>.`
+- **Already in the directory** (a duplicate hit, or the same contact email,
+  website or acronym): no new row. Append a verdict on the `EOI Response
+  Mapping` tab (connect-labs `RESPONSE_MAPPING_TAB`): the form's key as Round
+  Slug, the response row, the exact Organizations name, `link`, the evidence as
+  Why, and `ACE (standing approval)` as Decided by. Read it back.
+- **Plainly not an organisation**: a `not an LLO` verdict with the reason.
+- **Unclear** (a plan you can't make ready honestly, or a match you would be
+  guessing at): skip it and say so in the report. Never work around the
+  duplicate check.
+
+Then run the labs import (`marketplace_import --eoi` through connect-labs'
+`Run Labs management command` workflow) so the new orgs exist on labs, and
+confirm the round's unresolved count dropped. Tell the owner what was added,
+linked and skipped, with row numbers. A person's name in the org field is
+not a reason to skip: read the answers for the organisation's name.
 
 ## The layout is connect-labs', read live, never copied here
 
@@ -216,7 +248,9 @@ If `ready` is false, don't write. Report why.
 ### 4. Approval gate, then write
 
 The directory is shared, hand-maintained state, so the write is
-**approval-gated** like any shared-state change. Show the operator:
+**approval-gated** like any shared-state change, except for new EOI applicants,
+which the owner's standing approval covers (§ Standing approval: new EOI
+applicants: write, then report). Otherwise show the operator:
 
 - the three drafted rows, as header → value
 - the target row numbers on all three tabs
@@ -277,10 +311,12 @@ Mark the thread read only after the reply is sent (`bin/ace-mark-read`).
 - Never edit or delete an existing row. Corrections to someone else's row are
   the sheet owner's call; offer them.
 - Never fill a field from anything except the lead or the org's own site.
-- One org per run. Adding the applicants of one EOI round that a member asked
-  for is one run per org, each with its own submission date, never one date
-  for the whole round. Any other list of orgs is the bulk-maintenance question
-  (#2152). Ask.
+- One org per run. Adding the applicants of an EOI round is
+  one run per org, each with its own submission date, never one date for the whole round.
+  `apply` re-plans the target rows, so runs go one after another; Sheets'
+  per-minute read quota needs ~25s between orgs (a 429 before any write is
+  safe to retry). Any list of orgs that are not EOI applicants or a member's
+  request (a bulk clean-up of the directory) still needs the owner. Ask.
 - Never write an Organizations row without its dates row. `plan` and `apply`
   write all three rows or none.
 
