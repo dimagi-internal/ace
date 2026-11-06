@@ -1295,7 +1295,11 @@ export class LeaseBackend {
           const dumpP = this.uiDumpTimed()
             .then(async ({ dump, timing }) => {
               timings.push(timing);
-              if (dump.xml) await fs.writeFile(path.join(screenshotDir, `${name}.xml`), dump.xml, 'utf8');
+              if (!dump.xml) return;
+              // The chunk's download (running beside this) is what usually creates the dir;
+              // a dump that wins the race must not lose its XML to ENOENT.
+              await fs.mkdir(screenshotDir, { recursive: true });
+              await fs.writeFile(path.join(screenshotDir, `${name}.xml`), dump.xml, 'utf8');
             })
             .catch((e) => logInfo(`lease: ui-dump after chunk ${i + 1} (${name}) failed: ${(e as Error).message}`));
           pendingDownload = Promise.all([download, dumpP]).then(() => {});

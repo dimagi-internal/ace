@@ -143,16 +143,24 @@ describe('bin/ace-canopy-web (behaviour)', () => {
     expect(r.stderr).toMatch(/no stored CANOPY_WEB_PAT to fall back to/);
   });
 
-  it('refuses a PAT that is not ACE', async () => {
-    const r = await run(['--workspace', 'connect', 'check'], 'CANOPY_WEB_PAT=human-pat\n');
+  it('a local turn acts as the person canopy issues, where THEY can edit', async () => {
+    const canopy = fakeCanopy('echo human-pat');
+    const r = await run(['--workspace', 'other', 'check'], '', { ACE_CANOPY_BIN: canopy });
+    expect(r.status, r.stderr).toBe(0);
+    expect(JSON.parse(r.stdout)).toMatchObject({ identity: 'jjackson@dimagi.com', role: 'owner' });
+  });
+
+  it('refuses that person in a workspace they cannot edit', async () => {
+    const canopy = fakeCanopy('echo human-pat');
+    const r = await run(['--workspace', 'connect', '--', 'true'], '', { ACE_CANOPY_BIN: canopy });
     expect(r.status).toBe(2);
-    expect(r.stderr).toMatch(/not ace@dimagi-ai\.com/);
+    expect(r.stderr).toMatch(/jjackson@dimagi\.com is not an editor of workspace 'connect'/);
   });
 
   it('refuses a workspace ACE cannot edit', async () => {
     const r = await run(['--workspace', 'other', '--', 'true'], 'CANOPY_WEB_PAT=ace-pat\n');
     expect(r.status).toBe(2);
-    expect(r.stderr).toMatch(/not an editor of workspace 'other'/);
+    expect(r.stderr).toMatch(/ace@dimagi-ai\.com is not an editor of workspace 'other'/);
   });
 
   it('verify reads back SCOPED: 200 in the right workspace, non-zero elsewhere', async () => {
