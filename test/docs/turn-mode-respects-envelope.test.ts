@@ -40,7 +40,7 @@ describe('turn docs do not hard-code a review posture', () => {
     expect(t).toMatch(/tier = what the sender may STEER; mode = whether a human must approve/);
     expect(t).toMatch(/shared-state changes[^.]*need an \*\*act\*\*-tier sender/);
     expect(t).toMatch(/unknown senders stay read-only/);
-    expect(t).toMatch(/profile: full[^.]*unlisted[^.]*trust the envelope/);
+    expect(t).toMatch(/Trust the tier[^.]*never upgrade `unlisted` from the envelope/);
   });
 
   it('inbox-triage keeps the Sophie flow and the unknown-sender rule', () => {

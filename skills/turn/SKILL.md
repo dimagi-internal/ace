@@ -146,10 +146,9 @@ improvements ship once (a canopy PR) instead of N backports.
   outbound per the turn mode above (`auto`: send what the tier allows; `manual`: present, then
   send). Per-sender isolation and tier resolution live there. **Tier: `act` = the asker holds
   `write` on ACE** (whatever their role is called: a workspace editor line, a person line, a domain
-  line); `caller` = confined to read mode. If the envelope says `profile: full` (or
-  `permissions` contains `write`) but `canopy caller tier` prints `unlisted`, trust the envelope,
-  treat the sender as act tier, and note the resolver mismatch in the close-out (the resolver reads
-  the retired `granted_by` list until canopy's fix ships).
+  line); `caller` = confined to read mode. **Trust the tier**: `canopy caller tier` reads
+  `permissions`, `profile` and `access` itself, so never upgrade `unlisted` from the envelope. An
+  envelope with `access: refused` (whose `profile` still says `full`, for older runners) is never act.
 - **ACE's state layer is Drive, never local:** where the core says "record `thread_id` in your
   state layer", that's the routed run's comms-log (`email-communicator` step 7) — the routing key
   inbox-triage matches inbound threads against. Turn state = comms-logs + `run_state.yaml` for run threads; the board task and the
