@@ -130,7 +130,7 @@ export function resolveToken(callerPath, env = process.env) {
   return null;
 }
 
-/** The Connected site name canopy-web knows connect-labs by. */
+/** The host-site name canopy-web knows connect-labs by. */
 export const LABS_SITE = 'connect-labs';
 
 /**

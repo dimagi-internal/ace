@@ -27,7 +27,7 @@ routed by canopy-web (the control plane), which hands this session a caller enve
 (`--caller <path>`; re-read with the `who_is_asking` tool). canopy-web decides in
 **permissions** (`read`, `write`, `agent_edit`, `admin`, `own`); the roles owner > admin > editor >
 read_write > read_only are only named bundles of them. The envelope carries `role`, `permissions`,
-`profile` (`full` = the asker holds `write` on ACE; or `confined` to read mode or a connected site) and
+`profile` (`full` = the asker holds `write` on ACE; or `confined` to read mode or a host site) and
 `turn_mode` (`{mode: auto|manual, basis}`: whether a person must approve this turn, see
 `skills/turn` § Turn mode). Who holds `write` is held on canopy-web: ACE's access list and the `connect` workspace's members,
 never a file in this repo. To let a named person steer runs, an operator grants it there (a

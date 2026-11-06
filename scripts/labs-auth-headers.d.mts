@@ -25,7 +25,7 @@ export function resolveToken(
   env?: Record<string, string | undefined>,
 ): string | null;
 
-/** The Connected site name canopy-web knows connect-labs by. */
+/** The host-site name canopy-web knows connect-labs by. */
 export const LABS_SITE: string;
 
 /** True when this session is a canopy turn held on a connect-labs page
