@@ -15,9 +15,10 @@ This wrapper makes both explicit and checks them before anything is written:
   bin/ace-canopy-web --workspace <ws> -- <command...>
       Exec <command> with CANOPY_WEB_PAT = the token canopy issues for ace
       (`canopy agent token --slug ace`; never an inherited CANOPY_WEB_PAT),
-      CANOPY_WEB_WORKSPACE=<ws>, CANOPY_AGENT=ace. Refuses unless the token
-      authenticates as ace@dimagi-ai.com AND ACE is editor/admin/owner of <ws>
-      (an agent must not write into a workspace it cannot edit — Jonathan, 2026-10-08).
+      CANOPY_WEB_WORKSPACE=<ws>, CANOPY_AGENT=ace. Refuses unless whoever that token
+      authenticates as is editor/admin/owner of <ws> (an agent must not write into a
+      workspace it cannot edit — Jonathan, 2026-10-08). WHO it is is canopy's call: ace in
+      a runner turn, the person in their own local turn (Jonathan, 2026-11-06).
 
   bin/ace-canopy-web --workspace <ws> verify narrative <slug>
   bin/ace-canopy-web --workspace <ws> verify walkthrough <id>
@@ -54,7 +55,6 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
-ACE_IDENTITY = "ace@dimagi-ai.com"
 WRITE_ROLES = {"editor", "admin", "owner"}
 DEFAULT_API = "https://canopy.dimagi.com"
 SITE = "https://canopy.dimagi.com"  # human-facing links; always /w/<workspace>/…
@@ -142,20 +142,20 @@ def api_get(path: str, pat: str) -> tuple[int, object]:
         return 0, None
 
 
-def preflight(ws: str, pat: str) -> str:
+def preflight(ws: str, pat: str) -> tuple[str, str]:
+    """(identity, role). The identity is whoever canopy's token is — never re-decided here."""
     status, me = api_get("/api/me/", pat)
     email = (me or {}).get("email", "") if isinstance(me, dict) else ""
-    if status != 200 or email != ACE_IDENTITY:
-        die(f"the canopy-web token for ace authenticates as {email or f'HTTP {status}'!r}, not {ACE_IDENTITY}; "
-            "refusing to write to canopy-web as anyone but ACE.")
+    if status != 200 or not email:
+        die(f"the canopy-web token for ace does not authenticate (HTTP {status}); refusing to write.")
     status, members = api_get(f"/api/workspaces/{ws}/members/", pat)
     # A bare list today; tolerate a {"result": [...]} envelope too.
     rows = members if isinstance(members, list) else (members or {}).get("result", []) if isinstance(members, dict) else []
-    role = next((m.get("role") for m in rows if m.get("email") == ACE_IDENTITY), None)
+    role = next((m.get("role") for m in rows if m.get("email") == email), None)
     if status != 200 or role not in WRITE_ROLES:
-        die(f"ACE is not an editor of workspace {ws!r} (role: {role or 'none'}, HTTP {status}); "
-            "refusing to write there. Ask a workspace owner to add ace@dimagi-ai.com.")
-    return role
+        die(f"{email} is not an editor of workspace {ws!r} (role: {role or 'none'}, HTTP {status}); "
+            f"refusing to write there. Ask a workspace owner to add {email}.")
+    return email, role
 
 
 def main(argv: list[str]) -> None:
@@ -186,9 +186,9 @@ def main(argv: list[str]) -> None:
         print(json.dumps({"ok": True, "workspace": ws, kind: ident, "url": url}))
         return
 
-    role = preflight(ws, pat)
+    identity, role = preflight(ws, pat)
     if rest[:1] == ["check"]:
-        print(json.dumps({"ok": True, "identity": ACE_IDENTITY, "workspace": ws, "role": role}))
+        print(json.dumps({"ok": True, "identity": identity, "workspace": ws, "role": role}))
         return
     if rest[:1] == ["--"]:
         rest = rest[1:]

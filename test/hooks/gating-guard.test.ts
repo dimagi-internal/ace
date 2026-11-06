@@ -196,8 +196,12 @@ describe.skipIf(CANOPY_PLUGIN_DIR === null)('gating — in someone else\'s sessi
     expect(run('gog docs create "Notes"').exitCode).toBe(0);
   });
 
-  it('never blocks on malformed input', () => {
-    expect(raw('not json').status).toBe(0);
+  // canopy's guard FAILS CLOSED on a payload it cannot read: Claude Code reads any exit but 2
+  // as "allow", so fail-open let an unreadable call through unchecked (canopy gating_guard.py).
+  it('blocks malformed input with the reason (fail closed)', () => {
+    const r = raw('not json');
+    expect(r.status).toBe(2);
+    expect(r.stderr).toMatch(/BLOCKED \(fail closed\).*could not read the hook payload/);
   });
 });
 
@@ -290,9 +294,10 @@ function railSuites(runGuard: RunGuard, runRaw: RunRaw): void {
       expect(r.decision).toBeNull();
     });
 
-    it('never blocks on malformed hook input (fail-open by design)', () => {
+    it('blocks malformed hook input with the reason (fail closed, canopy gating_guard.py)', () => {
       const r = runRaw('not json');
-      expect(r.status).toBe(0);
+      expect(r.status).toBe(2);
+      expect(r.stderr).toMatch(/BLOCKED \(fail closed\).*could not read the hook payload/);
     });
 
     it('mentions gog raw-send in prose WITHOUT an ACE identity token passes', () => {
