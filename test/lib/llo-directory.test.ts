@@ -37,6 +37,7 @@ import {
   rowIsEmpty,
   rowRange,
   websiteHost,
+  websiteKey,
 } from '../../lib/llo-directory.js';
 
 const DIRECTORY_PY = `
@@ -266,6 +267,22 @@ describe('duplicates', () => {
       { row: 241, name: rows[1].name, reason: 'website' },
     ]);
     expect(websiteHost('HTTPS://WWW.Example.org/a?b')).toBe('example.org');
+  });
+
+  it('on a shared host the page is the org, not the host', () => {
+    const social = [
+      { row: 36, name: 'Some NGO', website: 'https://www.facebook.com/someNGO' },
+      { row: 54, name: 'Other NGO', website: 'facebook.com/profile.php?id=111' },
+    ];
+    expect(findDuplicates({ name: 'Third NGO', website: 'https://web.facebook.com/thirdngo/' }, social)).toEqual([]);
+    expect(findDuplicates({ name: 'Renamed NGO', website: 'https://facebook.com/SomeNGO?ref=x' }, social)).toEqual([
+      { row: 36, name: 'Some NGO', reason: 'website' },
+    ]);
+    expect(findDuplicates({ name: 'X', website: 'https://www.facebook.com/profile.php?id=222' }, social)).toEqual([]);
+    expect(websiteKey('https://www.linkedin.com/company/acme/about')).toBe('linkedin.com/company/acme');
+    expect(websiteKey('https://facebook.com/')).toBe('');
+    expect(websiteKey('https://www.facebook.com/share/g/1CZBVnP1Mt/')).toBe('facebook.com/share/g/1czbvnp1mt');
+    expect(websiteKey('https://www.facebook.com/share/1ABC/')).toBe('');
   });
 
   it('a new org is clean', () => {

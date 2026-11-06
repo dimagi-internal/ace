@@ -385,6 +385,34 @@ export function websiteHost(url: string): string {
     .split(/[/?#]/)[0];
 }
 
+/**
+ * Hosts many organisations share, where the page (not the host) is the org:
+ * two NGOs on facebook.com are not one org. On these the identity is the host
+ * plus the page's first path segment (or Facebook's `profile.php?id=`).
+ * A Facebook-only org was refused as a duplicate of two unrelated rows
+ * (chp-rfi-2026, 2026-11-06).
+ */
+const SHARED_HOSTS = new Set([
+  'facebook.com', 'm.facebook.com', 'web.facebook.com', 'fb.com', 'instagram.com', 'linkedin.com',
+  'twitter.com', 'x.com', 'youtube.com', 'tiktok.com', 'linktr.ee', 'sites.google.com', 'wa.me',
+]);
+
+/** What identifies an org's site: its host, or host + page on a shared host ('' when there is none). */
+export function websiteKey(url: string): string {
+  const host = websiteHost(url);
+  if (!SHARED_HOSTS.has(host)) return host;
+  const rest = (url || '').trim().toLowerCase().replace(/^[a-z]+:\/\//, '').replace(/^www\./, '').slice(host.length);
+  const id = rest.match(/[?&]id=(\d+)/);
+  if (id) return `${host}/id=${id[1]}`;
+  const parts = rest.split(/[?#]/)[0].split('/').filter(Boolean);
+  // linkedin.com/company/<x>, facebook.com/groups/<x>: the second segment is the page.
+  // facebook.com/share/g/<id>: a share link names its page in the third.
+  const depth =
+    parts[0] === 'share' ? 3 : ['company', 'in', 'groups', 'pages', 'people', 'school', 'channel', 'c', 'view'].includes(parts[0] ?? '') ? 2 : 1;
+  const page = parts.length >= depth ? parts.slice(0, depth).join('/') : '';
+  return page ? `${host}/${page}` : '';
+}
+
 export interface DuplicateHit {
   row: number;
   name: string;
@@ -394,19 +422,19 @@ export interface DuplicateHit {
 /**
  * Existing Organizations rows the candidate would duplicate. `folded-name` is
  * labs' own `near_duplicate_org` rule (quality.py `_fold`), so ACE and labs agree
- * on what a duplicate is; `website` is the same host on a differently-spelled name.
+ * on what a duplicate is; `website` is the same site (`websiteKey`) on a differently-spelled name.
  */
 export function findDuplicates(
   candidate: { name: string; website?: string },
   rows: { row: number; name: string; website?: string }[],
 ): DuplicateHit[] {
   const key = fold(candidate.name);
-  const host = websiteHost(candidate.website ?? '');
+  const site = websiteKey(candidate.website ?? '');
   const hits: DuplicateHit[] = [];
   for (const r of rows) {
     if (!r.name) continue;
     if (fold(r.name) === key) hits.push({ row: r.row, name: r.name, reason: 'folded-name' });
-    else if (host && websiteHost(r.website ?? '') === host) hits.push({ row: r.row, name: r.name, reason: 'website' });
+    else if (site && websiteKey(r.website ?? '') === site) hits.push({ row: r.row, name: r.name, reason: 'website' });
   }
   return hits;
 }
