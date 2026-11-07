@@ -51,8 +51,10 @@ proposal doc, if one is written, is shared only with Dimagi people (`@dimagi.com
   `marketplace_round_criteria_set`, and the new `rubric_version` reported back.
 
 The rubric is saved in the fields labs already stores (`marketplace_round_criteria_set`
-takes `{id, name, weight, scoring_guide, rationale}` per criterion and a free-text `basis`,
-which labs returns as `criteria_basis`). § The rubric shape says what goes in each.
+takes `{id, name, weight, scoring_guide, rationale}` per criterion, a free-text `basis`,
+which labs returns as `criteria_basis`, and `outcome_rules`, which labs keeps on the criteria
+version and shows under **Outcome rules** on the round's Review tab › Criteria).
+§ The rubric shape says what goes in each.
 
 ## Process
 
@@ -152,7 +154,8 @@ which labs returns as `criteria_basis`). § The rubric shape says what goes in e
      invites honest uncertainty, it may deserve a point more.
    - Try the anchors against three real answers (low, middle, high) and adjust until each
      lands where a reader would expect.
-   - Write the outcome rules into `basis` (§ The rubric shape): the score formula, the
+   - Write the outcome rules as `outcome_rules` (§ The rubric shape), never inside
+     `basis`: the score formula, the
      slots, the rule for each outcome and the overrides. Every outcome needs a rule,
      **Not recommended included**: say when an applicant is not recommended (e.g.
      "otherwise, or when <disqualifier>, Not recommended"), so no applicant is left
@@ -164,11 +167,13 @@ which labs returns as `criteria_basis`). § The rubric shape says what goes in e
      python3 "${CLAUDE_PLUGIN_ROOT}/skills/eoi-criteria-proposal/check_rubric.py" rubric.json
      ```
 
-     `rubric.json` is `{"criteria": [...], "basis": "..."}`, exactly what step 10 will send.
+     `rubric.json` is `{"criteria": [...], "basis": "...", "outcome_rules": "..."}`, exactly
+     what step 10 will send.
      It checks 5–8 criteria with snake_case ids, whole weights summing to 100, an anchor
      at each of 1/3/5/7/10 of at least five words that says what the answer contains, a
-     Silent rule, `Measures:` and `Separates:` (with a count) in each rationale, and an
-     `Outcome rules:` section in `basis` with every line in § The rubric shape, a
+     Silent rule, `Measures:` and `Separates:` (with a count) in each rationale, and
+     `outcome_rules` with every line in § The rubric shape (an older rubric's
+     `Outcome rules:` section at the end of `basis` still checks), a
      `Not recommended:` rule that says when it applies among them. It also prints a
      `warning:` for a scoring guide that mentions starting before a contract or award;
      fix it even though the check still passes.
@@ -180,8 +185,8 @@ which labs returns as `criteria_basis`). § The rubric shape says what goes in e
      every review scored on the old version (AI and human) was scored against criteria that
      no longer apply**; the AI reviews need re-running with `eoi-round-review`, and human
      reviewers should be told. Nothing is lost: labs keeps every version with the reviews
-     scored on it (`marketplace_round_versions` lists them), and the round's Scores page
-     compares any two. Deleting an old version is a separate, irreversible operator call
+     scored on it (`marketplace_round_versions` lists them), and the round's Review tab ›
+     AI Analysis compares any two. Deleting an old version is a separate, irreversible operator call
      (`marketplace_round_version_delete`), never part of this skill.
    - Ask whether to replace them. Without a clear yes, leave them as they are. If they
      look fine, say so and write nothing.
@@ -208,22 +213,27 @@ which labs returns as `criteria_basis`). § The rubric shape says what goes in e
      agent's message.
 
 10. **Save on approval.**
-    - Call `marketplace_round_criteria_set(slug, criteria, rubric_version, basis)` with
-      the approved set. For `rubric_version`, pass a short label for this set (e.g.
+    - Call `marketplace_round_criteria_set(slug, criteria, basis, outcome_rules)` with
+      the approved set. On a labs round page (the canopy panel) the call is proposed through
+      `workflow_edit_propose` and saved when the person clicks Confirm. For `rubric_version`, pass a short label for this set (e.g.
       `<slug>-v1`, or the next number after the round's current one); labs bumps it on
       replacement either way, so report back the version labs returns, not the one sent.
     - `basis` names who approved and when, the pool size the criteria were drawn from,
       what was dropped and why, and the form advice.
-    - Read the round back with `marketplace_round_responses(slug=…)` and confirm
-      `round.evaluation_criteria` matches and `round.rubric_version` is set. Save that
-      result to a file and run `check_rubric.py` on it (it reads the round shape too): the
-      saved rubric must still print `OK: rubric is explicit`. Only then report it saved.
+    - Read the round back with `marketplace_round_scores(slug=…)` and confirm
+      `evaluation_criteria` matches, `round.rubric_version` is set and `outcome_rules` came
+      back. Save that result to a file and run `check_rubric.py` on it (it reads that shape
+      too): the saved rubric must still print `OK: rubric is explicit`. Only then report it
+      saved.
     - Reply with the version, the criteria in one line each, and the next step: run
       `eoi-round-review` for the AI first pass; reviewers then score in labs at
-      https://labs.connect.dimagi.com/labs/marketplace/rounds/<slug>/. When this replaced
-      earlier criteria, also link the Scores page
-      (https://labs.connect.dimagi.com/labs/marketplace/rounds/<slug>/scores/), where the
-      re-scored version can be compared with the previous one once `eoi-round-review` has run.
+      https://labs.connect.dimagi.com/labs/marketplace/rounds/<slug>/, and the criteria are
+      on its Review tab
+      (https://labs.connect.dimagi.com/labs/marketplace/rounds/<slug>/review/criteria/). When
+      this replaced earlier criteria, also link AI Analysis
+      (https://labs.connect.dimagi.com/labs/marketplace/rounds/<slug>/review/ai-analysis/),
+      where the re-scored version is compared with the previous one once `eoi-round-review`
+      has run.
     - Run `agent-turn-review` before replying.
 
 ## The rubric shape
@@ -261,11 +271,10 @@ Measures: <what the criterion measures, in one sentence>
 Separates: <why it separates THIS pool: the spread in counts, and what in the call makes it matter>
 ```
 
-**`basis` (`criteria_basis`): how it was derived, then the outcome rules.** The derivation
-paragraph comes first (pool size, drops and why, who approved, form advice). Then:
+**`basis` (`criteria_basis`): how it was derived.** Pool size, drops and why, who approved,
+form advice. **`outcome_rules`: the outcome rules**, one line each:
 
 ```
-Outcome rules:
 Score: weighted score = sum(weight x criterion score) / 10, from 10 to 100; labs computes it.
 Slots: <each role or site and how many partners it takes, e.g. "4: Kano, a second Nigeria site, Ghana south, Ghana north, one partner each">
 Recommended: <e.g. the highest-scoring credible applicant for each slot, at most one per slot>
@@ -377,6 +386,7 @@ The proposal is prose a person reads. Follow `skills/_terminology.md`: the platf
 
 | Date | Change | Author |
 |------|--------|--------|
+| 2026-11-07 | Outcome rules are their own field: `marketplace_round_criteria_set(…, outcome_rules)`, kept on the criteria version and shown under Outcome rules on the Review tab › Criteria; `check_rubric.py` reads `outcome_rules` (and an older basis's `Outcome rules:` section); read-back via `marketplace_round_scores`; links point at the Review tab | ACE team |
 | 2026-10-19 | Criteria versions: replacing the criteria adds a version and labs keeps every earlier one with its reviews (`marketplace_round_versions`); the save reply links the round's Scores page for the version comparison; deleting a version is an operator call, never this skill | ACE team |
 | 2026-10-18 | A Recommended backup meets the Recommended bar (every condition the Recommended line sets) and differs only in rank or slot; `check_rubric.py` refuses a `Recommended backup:` line that does not say so. A round's backup rule had used a looser threshold, so an applicant with a criterion at 1 became a backup | ACE team |
 | 2026-10-18 | Outcome labels renamed in labs: `backup` is shown as Recommended backup (was Backup), `waitlist` as Waitlist (was Keep in view); keys unchanged, and `check_rubric.py` still accepts the earlier labels and the keys | ACE team |

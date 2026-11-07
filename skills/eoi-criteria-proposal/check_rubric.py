@@ -7,11 +7,13 @@ Usage:
 rubric.json   what eoi-criteria-proposal is about to pass to
               marketplace_round_criteria_set:
                 {"criteria": [{id, name, weight, scoring_guide, rationale}],
-                 "basis": "<criteria_basis text>"}
+                 "basis": "<how the criteria were derived>",
+                 "outcome_rules": "<the outcome rules>"}
               A round as labs returns it ({"evaluation_criteria": [...],
-              "criteria_basis": "..."}, or the whole marketplace_round_responses
-              result with a "round" key) also works, so a saved rubric can be
-              re-checked.
+              "criteria_basis": "...", "outcome_rules": "..."}: the
+              marketplace_round_scores result, or the whole
+              marketplace_round_responses result with a "round" key) also
+              works, so a saved rubric can be re-checked.
 
 The rubric lives only in fields labs already stores:
 
@@ -26,8 +28,8 @@ The rubric lives only in fields labs already stores:
 - each criterion's `rationale` holds two labelled lines:
       Measures: <what the criterion measures>
       Separates: <why it separates THIS pool, with counts>
-- `basis` (labs: `criteria_basis`) holds the outcome rules after a line
-  "Outcome rules:", with one line each for Score, Slots, Recommended,
+- `outcome_rules` (labs keeps it on the criteria version, apart from the
+  basis) holds the outcome rules, with one line each for Score, Slots, Recommended,
   Recommended backup, Waitlist, Not recommended and Overrides (the outcome
   labels people read; the earlier labels Backup and Keep in view, and the
   stored keys Pick, Backup, Waitlist and Pass, are accepted for the same lines).
@@ -125,7 +127,16 @@ def nearest_anchors(score):
     return [a for a in ANCHORS if abs(score - a) == best]
 
 
-def outcome_rules(basis):
+def outcome_rules(basis, rules=""):
+    """The outcome rules as {label: rule}: from their own field, else from an older basis.
+
+    Rubrics saved before labs kept the rules apart carry them at the end of the
+    basis after a line "Outcome rules:"; both are read.
+    """
+    own = str(rules or "").strip()
+    if own:
+        m = re.search(r"outcome rules\s*:", own, re.IGNORECASE)
+        return parse_labelled(own[m.end():] if m and m.start() == 0 else own)
     text = str(basis or "")
     m = re.search(r"outcome rules\s*:", text, re.IGNORECASE)
     if not m:
@@ -137,12 +148,12 @@ def load_rubric(raw):
     if isinstance(raw, dict) and isinstance(raw.get("round"), dict):
         raw = raw["round"]
     if isinstance(raw, list):
-        return raw, ""
+        return raw, "", ""
     if not isinstance(raw, dict):
-        return [], ""
+        return [], "", ""
     criteria = raw.get("criteria", raw.get("evaluation_criteria", []))
     basis = raw.get("basis", raw.get("criteria_basis", ""))
-    return criteria or [], basis or ""
+    return criteria or [], basis or "", raw.get("outcome_rules") or ""
 
 
 def check_anchor_text(where, text):
@@ -207,7 +218,7 @@ def warnings_for(criteria):
     return out
 
 
-def check(criteria, basis):
+def check(criteria, basis, rules_text=""):
     problems = []
     if not isinstance(criteria, list) or not criteria:
         return ["no criteria"]
@@ -224,9 +235,9 @@ def check(criteria, basis):
         if total != 100:
             problems.append(f"weights sum to {total:g}, not 100")
 
-    rules = outcome_rules(basis)
+    rules = outcome_rules(basis, rules_text)
     if rules is None:
-        problems.append("basis has no 'Outcome rules:' section")
+        problems.append("no outcome rules: send them as outcome_rules")
     else:
         for label, key, earlier in OUTCOME_LINES:
             names = [label, *earlier] + ([key] if key else [])
@@ -260,8 +271,8 @@ def main(argv):
     except (OSError, ValueError) as exc:
         print(f"cannot read rubric {argv[1]}: {exc}", file=sys.stderr)
         return 2
-    criteria, basis = load_rubric(raw)
-    problems = check(criteria, basis)
+    criteria, basis, rules_text = load_rubric(raw)
+    problems = check(criteria, basis, rules_text)
     for w in warnings_for(criteria):
         print(w)
     if problems:

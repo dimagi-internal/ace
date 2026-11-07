@@ -1,7 +1,7 @@
 // skills/eoi-criteria-proposal/check_rubric.py — refuses a proposed EOI rubric
 // that leaves any part implicit: anchors at 1/3/5/7/10 written as observable
 // evidence, a Silent rule, Measures/Separates in each rationale, and the outcome
-// rules in the basis, with a Recommended backup that meets the Recommended bar. Python (stdlib only) because the skill runs it with nothing
+// rules (their own field, or the basis of an older rubric), with a Recommended backup that meets the Recommended bar. Python (stdlib only) because the skill runs it with nothing
 // installed; vitest drives it.
 
 import { describe, it, expect } from 'vitest';
@@ -132,10 +132,22 @@ describe('eoi-criteria-proposal check_rubric.py', () => {
     expect(few.stdout).toMatch(/3 criteria; propose 5-8/);
   });
 
-  it('requires the outcome rules in the basis', () => {
+  it('reads outcome rules sent apart from the basis, as labs now keeps them', () => {
+    const [derivation, rules] = basis.split('\nOutcome rules:\n');
+    const apart = run({ ...goodRubric(), basis: derivation, outcome_rules: rules });
+    expect(apart.stdout.trim()).toBe('OK: rubric is explicit');
+    const headed = run({ ...goodRubric(), basis: derivation, outcome_rules: `Outcome rules:\n${rules}` });
+    expect(headed.status).toBe(0);
+    const saved = run({ evaluation_criteria: goodRubric().criteria, criteria_basis: derivation, outcome_rules: rules });
+    expect(saved.status).toBe(0);
+    const thin = run({ ...goodRubric(), basis: derivation, outcome_rules: rules.replace(/^Slots: .*$/m, '') });
+    expect(thin.stdout).toMatch(/outcome rules have no 'Slots:' line/);
+  });
+
+  it('requires the outcome rules', () => {
     const none = run({ ...goodRubric(), basis: 'Written after reading the pool.' });
     expect(none.status).toBe(1);
-    expect(none.stdout).toMatch(/basis has no 'Outcome rules:' section/);
+    expect(none.stdout).toMatch(/no outcome rules: send them as outcome_rules/);
     const partial = run({ ...goodRubric(), basis: basis.replace(/^Overrides: .*$/m, '').replace(/^Slots: .*$/m, '') });
     expect(partial.stdout).toMatch(/outcome rules have no 'Slots:' line/);
     expect(partial.stdout).toMatch(/outcome rules have no 'Overrides:' line/);
