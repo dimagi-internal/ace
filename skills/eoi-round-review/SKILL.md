@@ -143,10 +143,11 @@ record others will read: cite the organisation's answers, never a person.
    - If the criteria exist but the requester questions them, or they plainly do not fit
      the pool (a criterion every response would score the same), say so and offer
      `eoi-criteria-proposal` before scoring. Replacing them later invalidates this pass.
-   - Save the round to `criteria.json` and run
+   - Save `marketplace_round_scores(slug=…)` (it carries `evaluation_criteria` and the
+     version's `outcome_rules`) to `criteria.json` and run
      `python3 "${CLAUDE_PLUGIN_ROOT}/skills/eoi-criteria-proposal/check_rubric.py" criteria.json`.
      If it does not print `OK: rubric is explicit` (anchors at 1/3/5/7/10, a Silent rule,
-     outcome rules in `criteria_basis`), say which parts are missing and offer
+     outcome rules), say which parts are missing and offer
      `eoi-criteria-proposal`. Scoring on a rubric without anchors or outcome rules is
      possible, but each batch then reads the bands and settles the slate its own way; say
      so in the internal report's "How we scored".
@@ -295,8 +296,9 @@ record others will read: cite the organisation's answers, never a person.
    - **(c) Checks that each claim's text is supported by its cites**, not only that the
      quote exists. A claim that says more than its passage does is rewritten to what the
      passage shows, re-cited, or marked `synthesized` honestly.
-   - **(d) Settles outcomes across the pool by the rubric's outcome rules** in
-     `criteria_basis` (Slots, Recommended, Recommended backup, Waitlist, Not recommended,
+   - **(d) Settles outcomes across the pool by the rubric's outcome rules** (the
+     version's `outcome_rules`; an older round keeps them at the end of `criteria_basis`)
+     (Slots, Recommended, Recommended backup, Waitlist, Not recommended,
      Overrides); when the round has none, about one Recommended (`pick`) per slot and two
      Recommended backups (`backup`) per slot, then Waitlist (`waitlist`) for the credible rest and
      Not recommended (`pass`). A Recommended backup must clear the Recommended bar (every
@@ -394,7 +396,7 @@ record others will read: cite the organisation's answers, never a person.
        numbered (each review's own `ask_next` stays in labs).
      - **What the next call should ask differently**: short bullets.
      - **Next step**: one or two lines on reviewing in labs, with the round page and
-       Scores page links.
+       its Review tab (`…/rounds/<slug>/review/`) links.
      - Notable Not recommended applicants and the Waitlist go in the second tab, unless
        one is a strong applicant that only misses this round's scope; then name it in
        one line under the bottom line, so the team keeps it for later.
@@ -527,13 +529,35 @@ record others will read: cite the organisation's answers, never a person.
       on the new version, and labs keeps the earlier AI review as superseded history on the
       old version (`marketplace_round_versions` counts both).
     - **When an earlier version exists, report what the re-score changed from labs' own
-      figures**: `marketplace_round_scores(slug, compare_with=<previous version>)` returns
-      whose recommendation moved, the mean score shift, and each criterion's weight, mean
-      and shortlist gap in both versions. Put those moves in the reply and the internal
-      report, and link the round's Scores page
-      (`https://labs.connect.dimagi.com/labs/marketplace/rounds/<slug>/scores/`), which shows
-      the same comparison. Do not hand-build the diff from local batch files: the comparison
-      people open in labs is the one to quote.
+      figures**: `marketplace_round_scores(slug, compare_with=<previous version>,
+      reviews="ai")` returns whose recommendation moved, the mean score shift, and each
+      criterion's weight, mean and shortlist gap in both versions, from the AI's reviews
+      alone (as the Review tab's AI Analysis reads them). Put those moves in the reply and
+      the internal report, and link AI Analysis
+      (`https://labs.connect.dimagi.com/labs/marketplace/rounds/<slug>/review/ai-analysis/`),
+      which shows the same comparison. Do not hand-build the diff from local batch files:
+      the comparison people open in labs is the one to quote.
+    - **Write the AI Observations on the version just scored**, on the same approval as the
+      reviews: `marketplace_round_observations_set(slug, version=<rubric_version>,
+      observations, compared_with=<previous version, or omit for a first version>)`. They
+      appear first on the Review tab's AI Analysis, where people decide whether to revise
+      the criteria, so write them for that reader:
+      - 3 to 6 observations, one paragraph each, most consequential first. Each states what
+        the AI scores show, with the figure from labs (`marketplace_round_scores(…,
+        reviews="ai")`, the comparison above) or from rubric health (step 9), and ends with
+        the change to the criteria or outcome rules it suggests, or "keep" when the
+        finding is that something works.
+      - Draw them from: a criterion that did not separate the shortlist (shortlist lead near
+        zero, low AUC); scores that follow answer length (r ≥ 0.5); a criterion that
+        bunches on a few values; redundant pairs; recommendations that moved between
+        versions and the rule that moved them; an outcome rule that placed nobody or
+        everyone; a slot nobody credible covers.
+      - Labs' words only (Recommended, Recommended backup, Waitlist, Not recommended;
+        version N; shortlist lead); no organisation names beyond what the round's owners
+        already see in labs, no contact details, and nothing about how ACE ran.
+      - Writing again replaces them. On a labs page they are proposed through
+        `workflow_edit_propose` (tool `marketplace_round_observations_set`) and saved when
+        the person clicks Confirm. Read them back from `marketplace_round_versions`.
     - Read back with `list_reviews` for a sample of responses (and every Recommended one)
       and check the scores, the claims (with their cites), the outcome and `rubric_version` landed,
       and that labs filled the strengths, concerns and criteria notes from them. If any
@@ -726,9 +750,12 @@ response; every review is scored on the same criteria and `rubric_version`, so t
 be compared side by side. Re-running this skill replaces only ACE's AI review; human
 reviews stay. If the criteria are replaced, every review on the old version (AI and human)
 was scored against criteria that no longer apply, which is why `eoi-criteria-proposal`
-asks before replacing them. Labs keeps each version and the reviews on it, and the round's
-**Scores** page (`/labs/marketplace/rounds/<slug>/scores/`) has a version picker and a
-"what changed" comparison between versions.
+asks before replacing them. Labs keeps each version and the reviews on it. The round's
+**Review** tab (`/labs/marketplace/rounds/<slug>/review/`) has four steps: **Criteria** (each
+version's criteria, basis and Outcome rules), **AI Review** (the AI's scores, with a version
+picker), **AI Analysis** (the AI Observations, then "what changed" between versions and how
+each criterion scored) and **Human Review** (how many applicants people have checked, how
+they responded to the AI, and how often they landed on the AI's outcome).
 
 When telling the requester what happens next, name the four ways and the Start reviewing
 button in one or two lines; the reviewers are the audience.
@@ -741,7 +768,9 @@ button in one or two lines; the reviewers are the audience.
   `BAD_REQUEST` on a quote it cannot find or a flag not on the defined list; 30 writes per
   minute per user), `marketplace_round_summary_set` (links the internal report on the
   round; owner-org members only), `marketplace_round_scores` (`compare_with` for the
-  version-to-version moves) and `marketplace_round_versions` (read-only, owner only)
+  version-to-version moves, `reviews="ai"` for the AI's reviews alone; returns the version's
+  `outcome_rules` and `ai_observations`), `marketplace_round_versions` (read-only, owner
+  only) and `marketplace_round_observations_set` (the AI Observations on a version)
 - canopy-web: `current_page` (when started from the marketplace panel)
 - Google Drive: `drive_read_file`, `read_personal_drive_doc` (the announcement);
   publishing goes through `gdoc-writer`
@@ -778,6 +807,7 @@ platform is "Connect".
 
 | Date | Change | Author |
 |------|--------|--------|
+| 2026-11-07 | Labs' Review tab replaced the Scores page: links go to `…/review/ai-analysis/`, comparisons read the AI's reviews alone (`marketplace_round_scores(reviews="ai")`), outcome rules come from the version's `outcome_rules`, and step 12 writes the **AI Observations** on the version just scored (`marketplace_round_observations_set`), shown first on AI Analysis | ACE team |
 | 2026-11-06 | On a labs page the review is written by one confirmed proposal (`marketplace_reviews_write` through `workflow_edit_propose`), not by `create_review` calls: a page reaches labs only as the person, and only their click writes. Reports are published first so the proposal carries `summary_url` | ACE team |
 | 2026-10-19 | The internal report's first tab is an analyst Overview: the outcome and the case for each recommendation, with the program-wide questions the pool raised, and no scoring mechanics; how it was scored, versions, calibration and rubric health move to the second tab, Review details. The two tabs are now actually produced: `scripts/gdoc-tab.ts` (lib `markdown-docs-tab.ts`) writes the Overview tab, which `gdoc-writer` could not. Requested by Jonathan on the ULAB summary | ACE team |
 | 2026-10-19 | Human review: four ways, not three — labs' response page also offers **Add to it** (stance `adds`), verified against `templates/solicitations/round_response.html` (connect-labs `docs/marketplace-round-review.md`, #2615) | ACE team |
