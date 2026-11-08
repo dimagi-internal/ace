@@ -595,10 +595,15 @@ record others will read: cite the organisation's answers, never a person.
       ```
 
       The script prints the doc's tabs; confirm it lists `Overview` then `Review details`.
-      Re-running it replaces the Overview tab in place (same doc, same link). After any
-      `gdoc-writer --replace` of the doc, re-run it and check both tabs again. To revise
-      an existing summary, edit that doc in place this way rather than publishing a new
-      one, so the round's summary link keeps working.
+      Re-running it replaces the Overview tab in place (same doc, same link), which is
+      fine for an Overview-only change.
+    - **To revise a summary whose Review details changed, publish a new doc**, add its
+      Overview tab as above, move the round's link to it with
+      `marketplace_round_summary_set`, and put a one-paragraph pointer to the new doc in
+      the old one. Do not `gdoc-writer --replace` the old doc: the replace path turns every
+      table into literal pipe text (canopy #451), and on a two-tab doc it rewrites the
+      first tab (the Overview) with the Review details. Both happened on the ULAB v5 run
+      (ace#3397).
     - **Link the internal report on the round**: call
       `marketplace_round_summary_set(slug=<round slug>, url=<internal report url>)` for
       each round it covers. Labs shows the link on the round page, which only the round's
@@ -812,6 +817,7 @@ platform is "Connect".
 
 | Date | Change | Author |
 |------|--------|--------|
+| 2026-11-08 | Revising a summary whose Review details changed publishes a new doc and moves the round's link (`marketplace_round_summary_set`); `--replace` broke the ULAB summary's tables and tabs (ace#3397, canopy #451) | ACE team |
 | 2026-11-08 | Claims compare with the pool, never "this batch": `check_claims.py` refuses batch talk. In the ULAB v5 run nine such claims ("the only applicant in this batch with …") reached labs past calibration, several false of the pool | ACE team |
 | 2026-11-07 | Labs' Review tab replaced the Scores page: links go to `…/review/ai-analysis/`, comparisons read the AI's reviews alone (`marketplace_round_scores(reviews="ai")`), outcome rules come from the version's `outcome_rules`, and step 12 writes the **AI Observations** on the version just scored (`marketplace_round_observations_set`), shown first on AI Analysis | ACE team |
 | 2026-11-06 | On a labs page the review is written by one confirmed proposal (`marketplace_reviews_write` through `workflow_edit_propose`), not by `create_review` calls: a page reaches labs only as the person, and only their click writes. Reports are published first so the proposal carries `summary_url` | ACE team |
