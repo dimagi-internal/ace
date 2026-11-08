@@ -145,13 +145,18 @@ def outcome_rules(basis, rules=""):
 
 
 def load_rubric(raw):
+    # marketplace_round_responses nests the criteria in "round"; marketplace_round_scores
+    # has a "round" header (slug, title, version) and the criteria and rules beside it.
     if isinstance(raw, dict) and isinstance(raw.get("round"), dict):
-        raw = raw["round"]
+        inner = raw["round"]
+        if "evaluation_criteria" in inner or "criteria" in inner:
+            raw = {**raw, **inner}
     if isinstance(raw, list):
         return raw, "", ""
     if not isinstance(raw, dict):
         return [], "", ""
-    criteria = raw.get("criteria", raw.get("evaluation_criteria", []))
+    # evaluation_criteria first: in the scores shape "criteria" is per-criterion statistics.
+    criteria = raw.get("evaluation_criteria") or raw.get("criteria") or []
     basis = raw.get("basis", raw.get("criteria_basis", ""))
     return criteria or [], basis or "", raw.get("outcome_rules") or ""
 

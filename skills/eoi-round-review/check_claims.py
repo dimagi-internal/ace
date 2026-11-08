@@ -78,9 +78,12 @@ def load(path, what):
 
 def criteria_list(raw):
     if isinstance(raw, dict):
-        if isinstance(raw.get("round"), dict):
-            raw = raw["round"]
-        raw = raw.get("criteria", raw.get("evaluation_criteria", []))
+        # marketplace_round_responses nests the criteria in "round"; marketplace_round_scores
+        # has a "round" header beside them, and its "criteria" are per-criterion statistics.
+        inner = raw.get("round")
+        if isinstance(inner, dict) and ("evaluation_criteria" in inner or "criteria" in inner):
+            raw = {**raw, **inner}
+        raw = raw.get("evaluation_criteria") or raw.get("criteria") or []
     return [c for c in raw or [] if isinstance(c, dict) and c.get("id")]
 
 
