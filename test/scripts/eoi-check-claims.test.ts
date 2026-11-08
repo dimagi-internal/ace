@@ -84,6 +84,16 @@ describe('eoi-round-review check_claims.py', () => {
     expect(r.status).toBe(0);
   });
 
+  it('accepts the marketplace_round_scores shape: a round header, statistics in criteria', () => {
+    const r = run([goodReview()], {
+      round: { slug: 'invented-round', title: 'Invented round', rubric_version: 'v2', summary_url: '' },
+      evaluation_criteria: criteria,
+      criteria: criteria.map(({ id, name, weight }) => ({ id, name, weight, mean: 5, gap: 1 })),
+    });
+    expect(r.stdout.trim()).toBe('OK: every claim checks');
+    expect(r.status).toBe(0);
+  });
+
   it('finds a paraphrased quote and a quote cited to the wrong answer', () => {
     const rev = goodReview();
     rev.claims[0].cites = [{ question: 'q1', quote: 'works in two districts' }];
