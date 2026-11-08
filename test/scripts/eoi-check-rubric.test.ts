@@ -75,6 +75,21 @@ describe('eoi-criteria-proposal check_rubric.py', () => {
     expect(r.status).toBe(0);
   });
 
+  it('reads the marketplace_round_scores shape: a round header, the rubric beside it', () => {
+    const [, rules] = basis.split('\nOutcome rules:\n');
+    const g = goodRubric();
+    const r = run({
+      round: { slug: 'invented-round', title: 'Invented round', rubric_version: 'v5', summary_url: '' },
+      version: 'v5',
+      evaluation_criteria: g.criteria,
+      // labs puts each criterion's statistics here, with no rationale
+      criteria: g.criteria.map(({ id, name, weight, scoring_guide }) => ({ id, name, weight, scoring_guide, mean: 5, gap: 1 })),
+      outcome_rules: rules,
+    });
+    expect(r.stdout.trim()).toBe('OK: rubric is explicit');
+    expect(r.status).toBe(0);
+  });
+
   it('refuses the banded 1-3 / 4-6 / 7-8 / 9-10 guide with no anchors or silent rule', () => {
     const g = goodRubric();
     g.criteria[0].scoring_guide =
