@@ -254,6 +254,11 @@ record others will read: cite the organisation's answers, never a person.
      themselves. A statement confirmed by labs history or by a source counts as evidence,
      and the claim cites that source as well as the answer.
    - Do not reward a confident statement that has no evidence behind it.
+   - **Compare with the whole pool, never with the batch.** A batch is how the scoring is
+     split, and nobody in labs can see it: "the only applicant in this batch with a sampling
+     frame" is usually false of the pool. Say "one of the few in the pool" only when it is,
+     or make the claim without a comparison. `check_claims.py` refuses "this batch",
+     "batch 3" and the like.
    - Web-check only the candidates heading for the shortlist (Recommended or Recommended backup): registration, age,
      visible track record, and named partners. Cite every source as a `web` cite with its
      url.
@@ -807,6 +812,7 @@ platform is "Connect".
 
 | Date | Change | Author |
 |------|--------|--------|
+| 2026-11-08 | Claims compare with the pool, never "this batch": `check_claims.py` refuses batch talk. In the ULAB v5 run nine such claims ("the only applicant in this batch with …") reached labs past calibration, several false of the pool | ACE team |
 | 2026-11-07 | Labs' Review tab replaced the Scores page: links go to `…/review/ai-analysis/`, comparisons read the AI's reviews alone (`marketplace_round_scores(reviews="ai")`), outcome rules come from the version's `outcome_rules`, and step 12 writes the **AI Observations** on the version just scored (`marketplace_round_observations_set`), shown first on AI Analysis | ACE team |
 | 2026-11-06 | On a labs page the review is written by one confirmed proposal (`marketplace_reviews_write` through `workflow_edit_propose`), not by `create_review` calls: a page reaches labs only as the person, and only their click writes. Reports are published first so the proposal carries `summary_url` | ACE team |
 | 2026-10-19 | The internal report's first tab is an analyst Overview: the outcome and the case for each recommendation, with the program-wide questions the pool raised, and no scoring mechanics; how it was scored, versions, calibration and rubric health move to the second tab, Review details. The two tabs are now actually produced: `scripts/gdoc-tab.ts` (lib `markdown-docs-tab.ts`) writes the Overview tab, which `gdoc-writer` could not. Requested by Jonathan on the ULAB summary | ACE team |

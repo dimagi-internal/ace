@@ -241,6 +241,9 @@ def check_review(review, response, crit_ids, anchored=frozenset()):
             problems.append(f"{where}: about is {about!r}")
         if not (claim.get("text") or "").strip():
             problems.append(f"{where}: claim has no text")
+        elif _BATCH_TALK.search(claim["text"]):
+            problems.append(f"{where}: compares within the scoring batch ({_BATCH_TALK.search(claim['text']).group(0)!r}); "
+                            "people read this in labs, where there are no batches: compare with the whole pool or not at all")
         if claim.get("basis") not in BASES:
             problems.append(f"{where}: basis is {claim.get('basis')!r}, not quoted or synthesized")
         cites = claim.get("cites", [])
@@ -257,6 +260,12 @@ def check_review(review, response, crit_ids, anchored=frozenset()):
         problems.append(f"{rid}: no outcome claim")
     problems.extend(check_flags(rid, review.get("flags") or [], flag_claims))
     return problems
+
+
+# A batch is how ACE splits the scoring, not something a labs reader can see. "The only
+# applicant in this batch with a sampling frame" is false of the pool (ULAB v5, 2026-11-08:
+# nine such claims reached labs past calibration).
+_BATCH_TALK = re.compile(r"\b(?:this|the|my|our|each|that) batch(?:es)?\b|\bbatch \d+\b", re.I)
 
 
 def check(batch, out, crit_ids, anchored=frozenset()):
