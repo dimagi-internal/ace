@@ -94,6 +94,20 @@ describe('eoi-round-review check_claims.py', () => {
     expect(r.status).toBe(0);
   });
 
+  it('refuses a claim that compares within the scoring batch, which no labs reader can see', () => {
+    const rev = goodReview();
+    rev.claims[3].text = 'The only applicant in this batch with a sampling frame.';
+    rev.claims[4].text = 'Backup: ranks below two others in batch 3.';
+    const r = run([rev]);
+    expect(r.status).toBe(1);
+    expect(r.stdout).toMatch(/c4: compares within the scoring batch \('this batch'\)/);
+    expect(r.stdout).toMatch(/c5: compares within the scoring batch \('batch 3'\)/);
+    // the word alone, in an applicant's own sense, is fine
+    const ok = goodReview();
+    ok.claims[3].text = 'Plans to test the questionnaire on a first batch of 10 households.';
+    expect(run([ok]).status).toBe(0);
+  });
+
   it('finds a paraphrased quote and a quote cited to the wrong answer', () => {
     const rev = goodReview();
     rev.claims[0].cites = [{ question: 'q1', quote: 'works in two districts' }];
