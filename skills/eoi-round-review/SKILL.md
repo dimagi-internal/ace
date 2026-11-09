@@ -51,7 +51,7 @@ record others will read: cite the organisation's answers, never a person.
 | Source | Artifact | Used for |
 |---|---|---|
 | Requester or `current_page` | round slug(s), e.g. `ulab-scoping-2026` | which rounds to read |
-| connect-labs | `marketplace_rounds_list(slug=…)` | title, deadline, countries, questions, announcement link |
+| connect-labs | `marketplace_rounds_list(slug=…)` | title, deadline, countries, `priority_countries`, questions, announcement link |
 | Drive | the round's announcement doc (`announcement_url`) | what was asked: activities, priority areas, budget and rates, roles |
 | connect-labs | `marketplace_round_responses(slug=…)` | every submission's answers (each `{question_id, question, answer}`; claims cite `question_id`), its `response_id` and matched org; `round.evaluation_criteria` and `round.rubric_version` |
 | connect-labs | `list_reviews(response_id=…)` | reviews already on each response (an earlier AI pass, human reviews built on it) |
@@ -130,6 +130,13 @@ record others will read: cite the organisation's answers, never a person.
      lead"), and the timeline.
    - Every score and the recommendation are checked against these facts, not
      against what applicants say about the call.
+   - **Priority countries are the round's data, not only the announcement's prose.** Read
+     `priority_countries` from `marketplace_rounds_list` (also on `marketplace_round_scores`):
+     the countries the funders put first, in order. If it is empty and the announcement names
+     priority countries, propose them to the requester and, on their yes, write them with
+     `marketplace_round_priorities_set`: the round page lists them first and splits its arrivals
+     chart by them. Geography in the scoring, the slate and the pool-coverage section is read
+     against this list: a priority country with no applicant, or only a weak one, is a finding.
 
 3. **Require the round's criteria.**
    - Read `round.evaluation_criteria` and `round.rubric_version` from
