@@ -63,6 +63,19 @@ version and shows under **Outcome rules** on the round's Review tab › Criteria
 **On that page, saving the criteria is a proposal:** after the requester approves in the chat, call `site_call` → `workflow_edit_propose` with `tool: "marketplace_round_criteria_set"` and the same arguments, and the person confirms on the card. Do not call `marketplace_round_criteria_set` directly there.
 
 
+**Acting on AI Observations** (the Review tab's AI Analysis › **Discuss and act on these**, or a
+request to "discuss the observations"): this is a revision, held as a conversation.
+- Read the current version's observations with `marketplace_round_scores(slug, reviews="ai")`
+  (`ai_observations`), with the criteria, `outcome_rules` and figures they cite.
+- Go through them with the person, one at a time or as they choose. For each, say in one or two
+  sentences what the change would do (which applicants would move, from the same figures), and
+  ask what they want. "Keep" is an answer: not every observation needs a change.
+- Draft only the agreed changes, as the next version: criteria ids kept where a criterion
+  carries over, the basis saying which observations it acts on, `check_rubric.py` passing. Then
+  steps 9 and 10 as usual (on the page, the save is a `workflow_edit_propose` card).
+- Once it is saved, offer to run `eoi-round-review` on the new version. AI Analysis then compares
+  it with the one before, and the run writes that version's own AI Observations.
+
 1. **Resolve the round.**
    - From the canopy panel, read `current_page`. A `labs-marketplace://rounds/<slug>` page
      names the round, so don't ask for it.
@@ -386,6 +399,7 @@ The proposal is prose a person reads. Follow `skills/_terminology.md`: the platf
 
 | Date | Change | Author |
 |------|--------|--------|
+| 2026-11-08 | Acting on AI Observations: AI Analysis' **Discuss and act on these** opens this skill as a conversation that goes through the version's observations, drafts only the agreed changes as the next version, and offers a run on it | ACE team |
 | 2026-11-07 | Outcome rules are their own field: `marketplace_round_criteria_set(…, outcome_rules)`, kept on the criteria version and shown under Outcome rules on the Review tab › Criteria; `check_rubric.py` reads `outcome_rules` (and an older basis's `Outcome rules:` section); read-back via `marketplace_round_scores`; links point at the Review tab | ACE team |
 | 2026-10-19 | Criteria versions: replacing the criteria adds a version and labs keeps every earlier one with its reviews (`marketplace_round_versions`); the save reply links the round's Scores page for the version comparison; deleting a version is an operator call, never this skill | ACE team |
 | 2026-10-18 | A Recommended backup meets the Recommended bar (every condition the Recommended line sets) and differs only in rank or slot; `check_rubric.py` refuses a `Recommended backup:` line that does not say so. A round's backup rule had used a looser threshold, so an applicant with a criterion at 1 became a backup | ACE team |
