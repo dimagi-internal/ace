@@ -31,7 +31,7 @@ Every row except the optional Phase 1 PDD is an explicit argument or a live labs
 | Connect Labs MCP | `targeting_scenario` | cost basis and unit price |
 | Connect Labs MCP | `targeting_methodology` | source URLs, licences, cross-check verdicts |
 | Phase 1 (optional) | `1-design/idea-to-pdd.md` | the intervention and its pricing basis |
-| `cost-effectiveness` (optional) | `targeting_cost_effectiveness` per scenario | a **Cost-effectiveness** sheet: inputs as yellow cells, GiveWell's chain as formulas, the sensitivity grid, the uncounted benefits — so the funder can change the price live |
+| `cost-effectiveness` (optional) | `targeting_pmc_rank` per scenario | a **Cost-effectiveness** sheet: the ranking as values, with price and units of value per death as yellow input cells and the multiple as a formula (deaths averted x units per death / spend / benchmark), and the uncounted benefits, so the funder can change the price live |
 
 ## Products
 
