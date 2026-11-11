@@ -52,7 +52,7 @@ design (that is Phase 1).
 | `target-geographies` | The core loop: read prior research, establish the indicator's family and unit, select, read the honesty fields, cost it. |
 | `scan-data-sources` | Sweeps for sources that could answer an indicator, vets each on licence first, records the verdict as a durable note. |
 | `defend-a-figure` | Cross-checks against external ground truth, reports the method spread AND the criterion spread (`targeting_compare_criteria`), writes the three-paragraph defence. |
-| `cost-effectiveness` | What a round of spend buys: deaths averted, cost per death, the multiple of GiveWell's bar, in scenarios, with what is not counted. ORS per area (`targeting_cost_effectiveness`, with the break-even price); PMC per state and schedule (`targeting_pmc_rank`, on the lower of two death estimates). |
+| `cost-effectiveness` | What a round of spend buys: deaths averted, cost per death, the multiple of GiveWell's bar, in scenarios, with what is not counted. PMC per state and schedule (`targeting_pmc_rank`, on the lower of two death estimates, valued as the CHC model values a death). There is no ORS tool: ORS is part of the CHC model, and the delivered ranking (`/labs/cea/implementation/`) runs that model. |
 | `build-targeting-model` | The Google Doc and the formula-driven Excel model with a ranked geography table. |
 
 ## How it runs
@@ -119,3 +119,4 @@ something better has since been published.
 | 2026-09-07 | Corrected same-day: ADM2 works for 18/55 countries — the ceiling is geoBoundaries coverage, not the indicators (connect-labs #1535) | ACE team |
 | 2026-09-30 | When to use: country rankings, and why only u5mr has a clean national value (ace#2560) | ACE team |
 | 2026-10-01 | `cost-effectiveness` skill over `targeting_cost_effectiveness` (connect-labs#2138): GiveWell's ORS chain per area, three scenarios, break-even price | ACE team |
+| 2026-11-11 | `targeting_cost_effectiveness` removed (connect-labs#2995): the CHC model decides which components count; `cost-effectiveness` is PMC and a pointer to the CHC model | ACE team |
