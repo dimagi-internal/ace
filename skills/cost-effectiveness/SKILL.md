@@ -18,12 +18,13 @@ project_skill "connect/givewell" "cost-effectiveness"
 ```
 
 (`mcp__plugin_canopy_projects__project_skill`, from the canopy plugin.) It says where each answer
-comes from in Connect Labs' cost-effectiveness explorer (`/labs/cea/`): the **Models** tab or the agent tool
-`cea_model_run` for Connect's own programmes (CHC, MBW, KC) at any inputs, with sensitivity; the
-**Implementation** tab, or the agent tool `cea_opportunities` (full tokens only), for what delivered
+comes from in Connect Labs' cost-effectiveness explorer (`/labs/cea/`): **CEA models**, or the agent tool
+`cea_model_run`, for Connect's own programmes (CHC, MBW, KC) at any inputs, with sensitivity over the inputs you
+switch on; **Implementations**, or the agent tool `cea_opportunities` (full tokens only), for what delivered
 opportunities achieved: any selection by programme, partner, country or model, with its roll-up, and for one
-opportunity every step and a link that opens the Models tab at that opportunity's own place and price;
-`targeting_pmc_rank` and `targeting_pmc_run_model` for PMC. It fixes the inputs from the proposal, runs the scenarios, and says what
+opportunity every step and a link that opens CEA models at that opportunity's own place and price; **Market size**
+for what it would cost to reach everyone in chosen places and where a model says it is worth it;
+`targeting_pmc_rank` and `targeting_pmc_run_model` for PMC, a one-off linked from Market size. It fixes the inputs from the proposal, runs the scenarios, and says what
 is not counted. **There is no ORS tool**: `targeting_cost_effectiveness` was removed on 11 Nov 2026, and
 which components count for the Child Health Campaign is the CHC model's own vitamin A and deworming
 switches (`va_on`, `dw_on`). The same project holds GiveWell's own models and values (`cea`) and
