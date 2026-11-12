@@ -32,6 +32,7 @@ import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { loadPluginEnv } from '../lib/load-plugin-env.js';
 import { resolveGogIdentity } from '../lib/gog-identity.js';
 import {
   CONNECT_LABS_REPO,
@@ -293,6 +294,16 @@ export function main(argv: string[], deps: Deps = defaultDeps): number {
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(fs.realpathSync(process.argv[1])).href) {
+  // Load the plugin-data `.env` before the first `gog` call (ace#2844): it holds
+  // GOG_KEYRING_PASSWORD, which lives in no shell profile, and this script shells
+  // out to `gog sheets` directly. `skills/llo-directory-add` invokes it with a bare
+  // `node … llo-directory.ts`, so a runner-spawned session would otherwise fail with
+  // `Secret not found in keyring` on every read and write.
+  //
+  // Inside the CLI guard, not at module scope: the unit tests import this module and
+  // inject their own `exec`/`read`, and must not pick up real credentials or the
+  // loader's stderr banner.
+  loadPluginEnv(import.meta.url);
   try {
     process.exitCode = main(process.argv.slice(2));
   } catch (err) {
