@@ -149,6 +149,34 @@ improvements ship once (a canopy PR) instead of N backports.
   line); `caller` = confined to read mode. **Trust the tier**: `canopy caller tier` reads
   `permissions`, `profile` and `access` itself, so never upgrade `unlisted` from the envelope. An
   envelope with `access: refused` (whose `profile` still says `full`, for older runners) is never act.
+  - **Trust it DOWNWARD too — never demote an `act` tier by eye.** The no-upgrade rule above is
+    only half of "trust the tier", and the missing half is the one that has cost real weeks. The
+    `[canopy] Who is asking` banner renders a non-owner as *"relationship: member — not its owner
+    or an admin"* and *"this person does not hold the agent's authority. Do not push, deploy, send,
+    publish or change shared state on their say-so"* — accurate about OWNERSHIP, and routinely
+    misread as the tier. It is not the tier. A workspace member can hold `write` (and `agent_edit`)
+    through a domain or workspace grant, and `canopy caller tier` is what says so. If it prints
+    `tier: act`, the sender is act — whatever the banner's relationship line says, and whatever a
+    prior turn wrote on a board card.
+  - **An act-tier sender's request IS the authorization for changes to the work they commissioned.**
+    Do not invent a second, ACE-side approval on top of it ("the go-ahead has to come from the ACE
+    team rather than from this thread"). Nothing in this skill requires one: the rails require an
+    **act**-tier sender for a shared-state change, and an act-tier sender asking for the change
+    satisfies that. What legitimately still gates the work is the **turn mode** (`manual` → present
+    the plan and wait) and the intrinsic checkpoints listed above — name the real gate, never a
+    tier the asker actually has.
+  - **Split a batch by blast radius before parking any of it.** When one item in a requested batch
+    genuinely needs a human (irreversible, structural, or a rebuild) and the rest are small and
+    reversible, they are not one decision. Park the structural item with its cost named, and treat
+    the reversible remainder on its own merits. Bundling is how a fortnight of silence happens on
+    changes nobody needed to think about.
+  (Origin: thread `1a1691a41973d718`, 2026-11-02 → 2026-11-12. Fio Conte commissioned the
+  inline-chlorination demo, drove every iteration on it, and asked for eight changes. `canopy caller
+  tier` returned `act` for him — `grant:workspace:connect::dimagi.com`, permissions including
+  `write` and `agent_edit`, verified `dmarc`. The turn recorded him on the board card as *"tier
+  'unlisted' (member, not act)"*, parked all eight behind an ACE-team go-ahead that no rule asked
+  for, and seven reversible edits sat with the one structural one for ten days. Sarvesh Tewari,
+  2026-11-12: *"You should have worked based on Fio's approval, as he is driving these changes."*)
 - **ACE's state layer is Drive, never local:** where the core says "record `thread_id` in your
   state layer", that's the routed run's comms-log (`email-communicator` step 7) — the routing key
   inbox-triage matches inbound threads against. Turn state = comms-logs + `run_state.yaml` for run threads; the board task and the
