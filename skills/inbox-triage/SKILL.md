@@ -52,6 +52,21 @@ turn never narrows one.
 - `act` → act tier. **Trust the tier**: `canopy caller tier` reads `permissions`, `profile` and
   `access` itself, so never upgrade `unlisted` from the envelope. `access: refused` (whose `profile`
   still says `full`, for older runners) is never act.
+  **And never DEMOTE an `act` by eye.** The `[canopy] Who is asking` banner describes a non-owner as
+  *"relationship: member … this person does not hold the agent's authority"*; that is a statement
+  about ownership, not the tier, and a workspace member can hold `write` through a domain or
+  workspace grant. `tier: act` is the answer — a prior turn's note on a board card is not evidence
+  against it, and neither is the banner. Re-run the command rather than inheriting a tier someone
+  wrote down.
+  **An act-tier sender's request IS the authorization** for changes to the work they commissioned;
+  do not require a second ACE-side go-ahead on top of it. The remaining gates are the turn mode and
+  the intrinsic checkpoints — name the real one. And when a requested batch mixes one irreversible
+  or structural item with several small reversible ones, split it: park the structural item with its
+  cost named and handle the rest on their own merits, rather than parking the batch whole.
+  (Origin: thread `1a1691a41973d718` — eight requested edits parked for ten days behind an
+  ACE-team approval no rule required, after an act-tier requester was recorded as `unlisted`.
+  Sarvesh Tewari, 2026-11-12: *"You should have worked based on Fio's approval, as he is driving
+  these changes."*)
 - `caller` → this is a read-mode session, CONFINED by canopy (you were started as
   `/ace:answer-caller`): follow `skills/answer-caller`, never the act-tier procedure.
 - `unlisted` → derive `correspond` from the routed run below. Correspond never mutates a run, so it
