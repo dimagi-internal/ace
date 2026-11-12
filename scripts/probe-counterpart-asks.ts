@@ -48,6 +48,7 @@
 import { execFileSync } from 'node:child_process';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { loadPluginEnv } from '../lib/load-plugin-env.js';
 import { resolveGogIdentity } from '../lib/gog-identity.js';
 import {
   extractCounterpartRefs,
@@ -58,6 +59,23 @@ import {
   type IssueStatus,
   type OutboundMessage,
 } from '../lib/counterpart-asks.js';
+
+/**
+ * Load the plugin-data `.env` before the first `gog` call (dimagi-internal/ace#2844).
+ *
+ * gog keeps its OAuth client secret in a FILE keyring whose password is
+ * `GOG_KEYRING_PASSWORD`, which lives in that `.env` and in no shell profile.
+ * This probe shells out to `gog` in-process, so without this the child inherits
+ * a `process.env` that has no password and every search dies with
+ * `Secret not found in keyring (refresh token missing)` — which the catch below
+ * then reports as "is the mailbox authenticated?", sending the reader to
+ * `gog login` for a mailbox that is in fact perfectly authenticated.
+ *
+ * The turn skill tells humans to prefix `bin/ace-env`; that cannot be the
+ * contract for a script `skills/turn` itself invokes by bare `node …`, so the
+ * script loads its own env exactly as `probe-work-order-template-drift.ts` does.
+ */
+loadPluginEnv(import.meta.url);
 
 const REPO = join(dirname(fileURLToPath(import.meta.url)), '..');
 
