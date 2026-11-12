@@ -2,8 +2,8 @@
 name: cost-effectiveness
 description: >
   Say and defend what a round of spend buys in a place (deaths averted, cost per death, multiple of
-  GiveWell's bar) for malaria PMC, and where to find the answer for Connect's own programs (the CHC,
-  MBW and KC models). Use when a funder asks the expected return, or before a BOTEC goes into a pitch.
+  GiveWell's bar): Connect's own programs (the CHC, MBW and KC models, in Labs' cost-effectiveness
+  explorer) and malaria PMC. Use when a funder asks the expected return, or before a BOTEC goes into a pitch.
 disable-model-invocation: false
 ---
 
@@ -17,16 +17,14 @@ person values Connect programs the same way. Load it and follow it:
 project_skill "connect/givewell" "cost-effectiveness"
 ```
 
-(`mcp__plugin_canopy_projects__project_skill`, from the canopy plugin.) It picks the Connect Labs
-tool per intervention (`targeting_pmc_rank` and `targeting_pmc_run_model` for PMC), fixes the
-inputs from the proposal, runs the scenarios, and says what is not counted. **There is no ORS
-tool.** `targeting_cost_effectiveness` was removed on 11 Nov 2026 (connect-labs #2995): which
-components count for the Connect Child Health Campaign (ORS and zinc, vitamin A, deworming) is
-decided inside the CHC model, so for ORS-type questions use the CHC model's live Sheet, or the
-delivered-opportunity ranking in the cost-effectiveness explorer (`/labs/cea/implementation/`).
-PMC and the delivered ranking now value a death the same way (the CHC model's 118.05 units).
-If the project's `cost-effectiveness` skill still names `targeting_cost_effectiveness`, that part
-is out of date: say so and do not call it. The same project holds GiveWell's own models and values (`cea`) and
+(`mcp__plugin_canopy_projects__project_skill`, from the canopy plugin.) It says where each answer
+comes from in Connect Labs' cost-effectiveness explorer (`/labs/cea/`): the **Models** tab or the agent tool
+`cea_model_run` for Connect's own programmes (CHC, MBW, KC) at any inputs, with sensitivity; the
+**Implementation** tab for what delivered opportunities achieved; `targeting_pmc_rank` and
+`targeting_pmc_run_model` for PMC. It fixes the inputs from the proposal, runs the scenarios, and says what
+is not counted. **There is no ORS tool**: `targeting_cost_effectiveness` was removed on 11 Nov 2026, and
+which components count for the Child Health Campaign is the CHC model's own vitamin A and deworming
+switches (`va_on`, `dw_on`). The same project holds GiveWell's own models and values (`cea`) and
 the review a figure needs before it goes to GiveWell (`givewell-review`). Change the method there,
 never by copying it back into this file.
 
