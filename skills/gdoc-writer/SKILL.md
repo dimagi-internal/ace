@@ -20,13 +20,15 @@ e.g. a demo's scripts doc that people edit together.
   checkout or pass `--repo <ACE root>`.
 - **Root:** `$GDRIVE_ROOT_FOLDER`, a value in ACE's Canopy vault on canopy-web, written into the
   installed plugin's `.env` by `/ace:setup --force-env`. It is NOT in the shell
-  environment, so **source the `.env` in the same Bash call as the publish**, because shell
-  state does not persist between calls:
+  environment, so **read that one key from the `.env` in the same Bash call as the publish**
+  (shell state does not persist between calls), and **never `source` the file**: its values
+  carry shell metacharacters, so sourcing it errors and prints fragments of stored passwords
+  into the transcript (ace#3421):
 
   ```bash
   ACE_ENV="$HOME/.claude/plugins/data/ace-ace/.env"
   CANOPY_ROOT="$(bash "$(python3 -c "import json,os;print(json.load(open(os.path.expanduser('~/.claude/plugins/installed_plugins.json')))['plugins']['canopy@canopy'][0]['installPath'])")/scripts/canopy-runtime.sh")"
-  set -a; . "$ACE_ENV"; set +a
+  GDRIVE_ROOT_FOLDER="$(grep -E '^GDRIVE_ROOT_FOLDER=' "$ACE_ENV" | cut -d= -f2- | tr -d "'\"")"; export GDRIVE_ROOT_FOLDER
   uv run --project "$CANOPY_ROOT" canopy gdoc publish --repo . \
     --md <file.md> --name "<Doc title>" --project "<Project>" --share none
   # iterate in place: --replace <docId>   (same link, same permissions)
