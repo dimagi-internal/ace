@@ -26,13 +26,13 @@ current source answers thinly.
 | Source | Artifact | Used for |
 |---|---|---|
 | The request | indicator, or the gap that prompted the scan | what to sweep for |
-| Connect Labs MCP | `targeting_research` | what was already ruled in or out, and when |
-| Connect Labs MCP | `targeting_indicators` | current coverage and which methods answer |
-| Connect Labs MCP | `targeting_admin_levels` | the geography the source would have to match |
+| Connect Labs MCP | `indicators_research` | what was already ruled in or out, and when |
+| Connect Labs MCP | `indicators_list` | current coverage and which methods answer |
+| Connect Labs MCP | `indicators_admin_levels` | the geography the source would have to match |
 
 ## Products
 
-- A research note written back via `targeting_research_write`, carrying the
+- A research note written back via `indicators_research_write`, carrying the
   verdict, the alternatives table, and `scanned_now: true`
 - `<phase>/scan-data-sources_summary.md` — the sweep, for a human reader
 - Optionally a loader in `connect_labs/labs/indicators/sources/`, when a source
@@ -40,7 +40,7 @@ current source answers thinly.
 
 ## Process
 
-1. **Read the existing note before searching anything.** `targeting_research`
+1. **Read the existing note before searching anything.** `indicators_research`
    for the indicator. A prior scan's rejected list is the most valuable thing in
    it: re-litigating a source that was ruled out on licence wastes the scan.
    Note its `scan_age_days` — what you are doing is refreshing that clock.
@@ -72,7 +72,7 @@ current source answers thinly.
    declared weight. A rate aggregated by area mean lets empty land vote and is
    frequently indefensible — if there is no population grid to weight by, say so
    and consider deferring rather than shipping a weak number that looks strong.
-8. **Write the note back** with `targeting_research_write` and
+8. **Write the note back** with `indicators_research_write` and
    `scanned_now: true`. Include every source considered with its verdict
    (`adopted`, `rejected`, `candidate`) and the *why*. Give the note checks that
    would fail if the conclusion stopped holding.
@@ -80,10 +80,10 @@ current source answers thinly.
 ## MCP Tools Used
 
 **connect_labs** (remote HTTP, PAT auth)
-- `targeting_research` — built
-- `targeting_research_write` — built
-- `targeting_indicators` — built
-- `targeting_admin_levels` — built
+- `indicators_research` — built
+- `indicators_research_write` — built
+- `indicators_list` — built
+- `indicators_admin_levels` — built
 
 ## Writing checks that are worth having
 

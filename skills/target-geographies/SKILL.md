@@ -25,10 +25,10 @@ Every row except the optional Phase 1 PDD is an explicit argument or a live labs
 | Source | Artifact | Used for |
 |---|---|---|
 | The request | indicator, threshold(s), country scope | the query itself |
-| Connect Labs MCP | `targeting_research` | what is already known about this indicator's sources and traps |
-| Connect Labs MCP | `targeting_indicators` | indicator family, unit, which methods can answer |
-| Connect Labs MCP | `targeting_select` | totals, ranked areas, honesty fields |
-| Connect Labs MCP | `targeting_scenario` | cost basis and total |
+| Connect Labs MCP | `indicators_research` | what is already known about this indicator's sources and traps |
+| Connect Labs MCP | `indicators_list` | indicator family, unit, which methods can answer |
+| Connect Labs MCP | `indicators_select` | totals, ranked areas, honesty fields |
+| Connect Labs MCP | `cea_market_size` | cost basis and total |
 | Phase 1 (optional) | `1-design/idea-to-pdd.md` | intervention, unit cost and pricing basis |
 
 ## Products
@@ -39,7 +39,7 @@ Every row except the optional Phase 1 PDD is an explicit argument or a live labs
 
 ## Process
 
-1. **Read what is already known.** `targeting_research` for the indicator, first
+1. **Read what is already known.** `indicators_research` for the indicator, first
    and always. It returns prior findings with each claim re-run against live
    data. Read `trust` before using anything: `holds` means the note describes
    reality now, `drifted` means re-derive whatever the failed checks cover,
@@ -47,7 +47,7 @@ Every row except the optional Phase 1 PDD is an explicit argument or a live labs
    is set, say so and ask the user whether to run `scan-data-sources` — the
    checks confirm what we found, they cannot tell you whether something better
    has since been published.
-2. **Establish the indicator's family and unit.** Call `targeting_indicators`. A
+2. **Establish the indicator's family and unit.** Call `indicators_list`. A
    **burden** measure (mortality, stunting, malaria incidence) is worse when
    high and selects places *above* the threshold. A **coverage** measure
    (sanitation, ORS, immunisation, ITN use, effective treatment) is worse when
@@ -55,11 +55,11 @@ Every row except the optional Phase 1 PDD is an explicit argument or a live labs
    not the rate. More than half of the 29 targetable indicators are coverage
    measures — never assume. Units are not interchangeable either: mortality is per 1,000
    live births, so 8% is a threshold of 80, while 50% sanitation is 50.
-3. **Check which methods can answer it.** `targeting_indicators` lists per-method
+3. **Check which methods can answer it.** `indicators_list` lists per-method
    country counts. IGME publishes mortality only; MAP's surfaces answer malaria
    only; DHS answers what it surveyed. A method showing 0 countries returns an
    empty answer, which reads exactly like "no burden here".
-4. **Run `targeting_select`** for each threshold of interest, scoping with
+4. **Run `indicators_select`** for each threshold of interest, scoping with
    `iso_codes` when the question names countries.
 5. **Read the honesty fields before quoting any total.** `coverage` says how many
    selected units carry each count — short of the total means the figure is a
@@ -69,26 +69,26 @@ Every row except the optional Phase 1 PDD is an explicit argument or a live labs
    national figure repeated across regions, not a subnational finding.
    `countries_unsupported` names who was left out rather than answered at
    another level.
-6. **Cost it with `targeting_scenario`** when money is in the question. A unit
+6. **Cost it with `cea_market_size`** when money is in the question. A unit
    price is meaningless without a unit of measure, and the basis is a property of
    the programme: KMC per newborn, a bednet per child, a water connection per
    household, an antimalarial per case. Where an indicator implies no case count
    the per-case basis is refused rather than approximated — pick another basis.
 7. **Hand off before publishing.** `defend-a-figure` for anything a funder will
    read; `build-targeting-model` for a Doc and model. Do not shortcut either.
-8. **Write back anything new you learned** with `targeting_research_write`,
+8. **Write back anything new you learned** with `indicators_research_write`,
    especially a trap or a rejected source. The next session should not have to
    find it again.
 
 ## MCP Tools Used
 
 **connect_labs** (remote HTTP, PAT auth)
-- `targeting_research` — built
-- `targeting_research_write` — built
-- `targeting_indicators` — built
-- `targeting_select` — built
-- `targeting_scenario` — built
-- `targeting_admin_levels` — built
+- `indicators_research` — built
+- `indicators_research_write` — built
+- `indicators_list` — built
+- `indicators_select` — built
+- `cea_market_size` — built
+- `indicators_admin_levels` — built
 
 ## What has counts, and why it matters
 
@@ -145,7 +145,7 @@ start, or you will spend a dozen calls finding it out (ace#2560).
 - **"How many villages?"** Only where somebody has already drawn them: of 55
   African countries, three reach village level — Rwanda (14,815 *umudugudu*),
   Madagascar (17,465 *fokontany*), Burundi (2,615 *collines*). Twenty-one stop at
-  ward, twenty-five at district. Check `targeting_admin_levels` first. Detection
+  ward, twenty-five at district. Check `indicators_admin_levels` first. Detection
   from building footprints does not substitute: tested against Rwanda's register,
   the same buildings yield 68 or 2,403 clusters for one district depending only
   on the radius, and in Kigali one cluster absorbed 69% of the district. Where no
@@ -159,7 +159,7 @@ start, or you will spend a dozen calls finding it out (ace#2560).
   healthdata.org account on a dimagi.com address. Report it as excluded on
   licence grounds, and note it may well be better — not that it is worse.
 
-Each of these is recorded as a research note, so `targeting_research` returns the
+Each of these is recorded as a research note, so `indicators_research` returns the
 current version rather than this file's.
 
 ## Mode Behavior

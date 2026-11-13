@@ -27,11 +27,11 @@ Every row except the optional Phase 1 PDD is an explicit argument or a live labs
 |---|---|---|
 | Upstream | the selection and its totals | the headline figures |
 | `defend-a-figure` | the three paragraphs and Sources table | the document body |
-| Connect Labs MCP | `targeting_select` (high `limit`) | the ranked geography rows |
-| Connect Labs MCP | `targeting_scenario` | cost basis and unit price |
-| Connect Labs MCP | `targeting_methodology` | source URLs, licences, cross-check verdicts |
+| Connect Labs MCP | `indicators_select` (high `limit`) | the ranked geography rows |
+| Connect Labs MCP | `cea_market_size` | cost basis and unit price |
+| Connect Labs MCP | `indicators_methodology` | source URLs, licences, cross-check verdicts |
 | Phase 1 (optional) | `1-design/idea-to-pdd.md` | the intervention and its pricing basis |
-| `cost-effectiveness` (optional) | `targeting_pmc_rank` per scenario | a **Cost-effectiveness** sheet: the ranking as values, with price and units of value per death as yellow input cells and the multiple as a formula (deaths averted x units per death / spend / benchmark), and the uncounted benefits, so the funder can change the price live |
+| `cost-effectiveness` (optional) | `cea_model_run` per scenario | a **Cost-effectiveness** sheet: the ranking as values, with price and units of value per death as yellow input cells and the multiple as a formula (deaths averted x units per death / spend / benchmark), and the uncounted benefits, so the funder can change the price live |
 
 ## Products
 
@@ -54,10 +54,10 @@ ace#3232). Identifiers (case properties, slugs, ids, config keys) keep their spe
 1. **Confirm the figures have been defended.** If `defend-a-figure` has not run,
    run it. Publishing an undefended number is the failure this whole toolchain
    exists to prevent.
-2. **Pull the ranked rows** with `targeting_select` at a high `limit` — the
+2. **Pull the ranked rows** with `indicators_select` at a high `limit` — the
    document shows a headline, the model shows the list, and a reader who cannot
    see their own district loses interest in both.
-3. **Settle the cost basis explicitly** with `targeting_scenario`. A unit price
+3. **Settle the cost basis explicitly** with `cea_market_size`. A unit price
    is meaningless without a unit: per newborn, per child, per household, per
    case. Where an indicator implies no case count the per-case basis is refused
    rather than approximated — pick another basis, do not work around it.
@@ -78,9 +78,9 @@ ace#3232). Identifiers (case properties, slugs, ids, config keys) keep their spe
 ## MCP Tools Used
 
 **connect_labs** (remote HTTP, PAT auth)
-- `targeting_select` — built
-- `targeting_scenario` — built
-- `targeting_methodology` — built
+- `indicators_select` — built
+- `cea_market_size` — built
+- `indicators_methodology` — built
 
 **ace-gdrive**
 - `drive_create_doc_from_markdown` — built

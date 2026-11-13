@@ -51,8 +51,8 @@ design (that is Phase 1).
 |---|---|
 | `target-geographies` | The core loop: read prior research, establish the indicator's family and unit, select, read the honesty fields, cost it. |
 | `scan-data-sources` | Sweeps for sources that could answer an indicator, vets each on licence first, records the verdict as a durable note. |
-| `defend-a-figure` | Cross-checks against external ground truth, reports the method spread AND the criterion spread (`targeting_compare_criteria`), writes the three-paragraph defence. |
-| `cost-effectiveness` | What a round of spend buys: deaths averted, cost per death, the multiple of GiveWell's bar, in scenarios, with what is not counted. Connect's own programmes (CHC, MBW, KC) at any inputs, with sensitivity (`cea_model_run`, or CEA models at `/labs/cea/models/`); a market size per model and place (Market size at `/labs/cea/market/`); PMC, a one-off, per state and schedule (`targeting_pmc_rank`, on the lower of two death estimates, valued as the CHC model values a death). There is no ORS tool: ORS is part of the CHC model, whose vitamin A and deworming switches say which components count. |
+| `defend-a-figure` | Cross-checks against external ground truth, reports the method spread AND the criterion spread (`indicators_compare_criteria`), writes the three-paragraph defence. |
+| `cost-effectiveness` | What a round of spend buys: deaths averted, cost per death, the multiple of GiveWell's bar, in scenarios, with what is not counted. Connect's own programmes (CHC, MBW, KC) at any inputs, with sensitivity (`cea_model_run`, or CEA models at `/labs/cea/models/`); a market size per model and place (Market size at `/labs/cea/market/`); what delivered opportunities achieved (`cea_opportunities`). There is no ORS tool: ORS is part of the CHC model, whose vitamin A and deworming switches say which components count. |
 | `build-targeting-model` | The Google Doc and the formula-driven Excel model with a ranked geography table. |
 
 ## How it runs
@@ -83,14 +83,14 @@ rest credible.
 `admin_level: 2` is real and returns 814 areas across Africa, but targeting
 selects on **geoBoundaries only**, and six countries carry an ADM2 under a
 different source and none under geoBoundaries: **Nigeria, DR Congo, Kenya, Côte
-d'Ivoire, Mozambique and CAR**. Ask `targeting_admin_levels` and read
+d'Ivoire, Mozambique and CAR**. Ask `indicators_admin_levels` and read
 `selectable_by_targeting` — not `loaded`, which reports every source and will
 show you 774 Nigerian LGAs that cannot be selected on. A country with no
 boundary at the pinned level is DROPPED from the answer rather than downgraded;
 it comes back in `countries_missing_level`, so read that before treating a thin
 level-2 result as a finding.
 
-**Never take a stored note as gospel.** `targeting_research` re-runs every note's
+**Never take a stored note as gospel.** `indicators_research` re-runs every note's
 claims against live data and returns a `trust` verdict. `drifted` means
 re-derive. `unverified` means it is a lead. And when `rescan_due` is set, say so
 and ask — the checks confirm what we found, they cannot tell you whether
@@ -121,3 +121,4 @@ something better has since been published.
 | 2026-10-01 | `cost-effectiveness` skill over `targeting_cost_effectiveness` (connect-labs#2138): GiveWell's ORS chain per area, three scenarios, break-even price | ACE team |
 | 2026-11-11 | `targeting_cost_effectiveness` removed (connect-labs#2995): the CHC model decides which components count; `cost-effectiveness` is PMC and a pointer to the CHC model | ACE team |
 | 2026-11-12 | `cost-effectiveness` points at the explorer (`/labs/cea/`) and `cea_model_run` (connect-labs#3004, #3006) | ACE team |
+| 2026-11-13 | Malaria PMC retired (connect-labs#3030); the baseline tools are `indicators_*` and the sizing tool is `cea_market_size` (connect-labs#3032) | ACE team |
