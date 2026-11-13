@@ -23,8 +23,8 @@ comes from in Connect Labs' cost-effectiveness explorer (`/labs/cea/`): **CEA mo
 switch on; **Implementations**, or the agent tool `cea_opportunities` (full tokens only), for what delivered
 opportunities achieved: any selection by programme, partner, country or model, with its roll-up, and for one
 opportunity every step and a link that opens CEA models at that opportunity's own place and price; **Market size**
-for what it would cost to reach everyone in chosen places and where a model says it is worth it;
-It fixes the inputs from the proposal, runs the scenarios, and says what
+for what it would cost to reach everyone in chosen places and where a model says it is worth it, or the agent
+tool `cea_market_size` with `model` (the page's answer and its link). It fixes the inputs from the proposal, runs the scenarios, and says what
 is not counted. **There is no ORS tool**: `targeting_cost_effectiveness` was removed on 11 Nov 2026, and
 which components count for the Child Health Campaign is the CHC model's own vitamin A and deworming
 switches (`va_on`, `dw_on`). Malaria PMC was retired on 13 Nov 2026. The same project holds GiveWell's own models and values (`cea`) and

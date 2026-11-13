@@ -69,7 +69,9 @@ Every row except the optional Phase 1 PDD is an explicit argument or a live labs
    national figure repeated across regions, not a subnational finding.
    `countries_unsupported` names who was left out rather than answered at
    another level.
-6. **Cost it with `cea_market_size`** when money is in the question. A unit
+6. **Cost it with `cea_market_size`** when money is in the question. When a Connect model
+   fits (CHC, MBW, KC), pass `model`: it prices the places at that model's own cost per person
+   and says where the model clears GiveWell's bar, as the Market size page does. Otherwise a unit
    price is meaningless without a unit of measure, and the basis is a property of
    the programme: KMC per newborn, a bednet per child, a water connection per
    household, an antimalarial per case. Where an indicator implies no case count
