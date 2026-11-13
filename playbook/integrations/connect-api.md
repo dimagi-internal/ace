@@ -419,7 +419,7 @@ Playwright-backed writes report the POST status, not the saved state.
 | Change | How | Limits / not possible |
 |---|---|---|
 | Name, description, dates, budget, `active` | `connect_update_opportunity` (Playwright; no REST endpoint yet) | `short_description` and slug are truncated at 50 chars without warning (`docs/learnings/2026-05-12-connect-opp-short-description-50-char-trap.md`). **`target_organization_slug` (the holding org) can only be set at create time**, so a wrong holding org cannot be repaired; recreate the opportunity. |
-| Verification flags | Read the before state with `connect_get_verification_flags`, then write with `connect_set_verification_flags` (both Playwright) | PM-only page, served only when the request org ≠ the holding org (§ PM→NM org-URL matrix). Additive: existing rules are replayed, so a rule cannot be removed through the atom |
+| Verification flags | Read the before state with `connect_get_verification_flags`, then write with `connect_set_verification_flags` (both Playwright) | PM-only page, served only when the request org ≠ the holding org (§ PM→NM org-URL matrix). Additive: existing rules are replayed, so a rule cannot be removed — **and nor can an org admin remove one in the UI; see § A form_field_rules row cannot be deleted** |
 | Learn passing score | `connect_set_learn_passing_score` | Shared by every opportunity in the holding org on the same Learn app (§ above), so changing it for one changes it for all |
 | Add a payment unit | `connect_create_payment_units` | Needs an unbound deliver unit, and a reused Deliver release has none (ace#573) |
 | **Change or delete a payment unit (amount, caps, deliver units)** | **No atom; ACE cannot do this.** | Do it in the Connect UI, or create a new opportunity on a fresh Deliver release. |
@@ -427,6 +427,42 @@ Playwright-backed writes report the POST status, not the saved state.
 | Invite / remove workers | `connect_send_flw_invite`, `connect_delete_unaccepted_flw_invites` | The opportunity must be `active` for `/invite_users/` |
 | Add an LLO to the program | `connect_send_llo_invite` → `connect_accept_program_application`, then a new opportunity held by that org | Capture the application UUID from the invite POST; `connect_list_invites` never returns it |
 | Ship a new app version to a live opportunity | Re-release the app (`commcare-api.md` § Builds and releases) | **UNVERIFIED; see below** |
+
+### A `form_field_rules` row cannot be deleted — and never ask a partner to do it
+
+Once a verification rule exists on an opportunity it is there for the life of that
+opportunity. This is **not** an ACE-atom limitation that a human can work around in the
+UI, and reading it that way has already cost a partner an impossible instruction
+(ace#3410): ACE told the counterpart to "delete two verification rules on the Deliver
+screen — only the page you have admin on", and no such page exists for them.
+
+The mechanism, from upstream source:
+
+- The verification-config page builds its rule formset with
+  `modelformset_factory(FormJsonValidationRules, FormJsonValidationRulesForm, extra=1)`
+  (`dimagi/commcare-connect`, `commcare_connect/opportunity/views/__init__.py:1321-1325`).
+  `can_delete` is **not passed**, and Django defaults it to `False`, so the page renders
+  no delete control and accepts no `DELETE` key. A Connect **org admin** therefore cannot
+  remove a rule, however much admin they hold on the organization.
+- **Do not implement `form_json-<i>-DELETE` in the atom.** It is the obvious guess and it
+  silently does nothing: `BaseModelFormSet` only consults `DELETE` when `can_delete` is
+  true, so with it false Django drops the key and the POST returns success having deleted
+  nothing — the "no error means it worked" trap this repo keeps paying for. A removal path
+  would need the upstream formset to pass `can_delete=True` first.
+- The model *is* registered in Django admin
+  (`commcare_connect/opportunity/admin.py:42`, `admin.site.register(FormJsonValidationRules)`),
+  so deletion needs a Connect **superuser / staff** account — a Dimagi platform
+  credential, not anything an org or program admin has.
+
+**What to do instead.** A stale rule is usually *inert*, not harmful: it fails a visit only
+when its `question_path` resolves to its `question_value`. If the question has been removed
+from the form, keep a hidden field supplying the passing value and the rule can never fire —
+then say so plainly rather than asking anyone to delete it. If the rule must genuinely go,
+the opportunity has to be recreated (§ Changing a live opportunity above), which on ACE's
+side means a fresh Deliver release and a fresh opportunity (ace#573).
+
+**Never write "delete this rule" into an email, a work order or a training doc.** State that
+it cannot be removed, say whether it can fire, and name recreation as the only real removal.
 
 **UNVERIFIED residual: does a live opportunity pick up a re-released app?** Nothing in this
 repo has observed it.
