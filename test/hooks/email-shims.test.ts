@@ -288,8 +288,118 @@ describe('email shims over the canopy engine', () => {
       const { r, sent } = send(
         'About: https://canopy.dimagi.com/about\n\nGuide: https://canopy.dimagi.com/guide\n\n' +
           'Site: https://canopy.dimagi.com\n\nInvite: https://canopy.dimagi.com/invite/tok\n\n' +
-          'Labs: https://labs.connect.dimagi.com/labs/workflow/6585/run/?run_id=8476\n\n' +
+          // Scoped deep-link: `?run_id=` alone 302s with no body (measured 2026-11-13),
+          // so the old filler here was itself a broken link — see the labs check below.
+          'Labs: https://labs.connect.dimagi.com/labs/workflow/6585/run/?run_id=8476&opportunity_id=10174\n\n' +
           'Elsewhere: https://example.org/review/abc\n',
+      );
+      expect(r.status).toBe(0);
+      expect(sent).toBe(true);
+    });
+  });
+
+  describe('labs workflow link check (ace#3418)', () => {
+    function bodyFile(text: string) {
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ace-email-labs-'));
+      const p = path.join(dir, 'body.txt');
+      fs.writeFileSync(p, text);
+      return p;
+    }
+    const called = (log: string) => fs.existsSync(log) && fs.readFileSync(log, 'utf8').trim() !== '';
+    const send = (text: string, extra: string[] = []) => {
+      const { dir, log } = withFakeCanopy();
+      const r = runShim('ace-email', ['--to', 'x@y.z', '--subject', 's', '--body-file', bodyFile(text), ...extra], dir);
+      return { r, sent: called(log) };
+    };
+
+    // The exact four links that went out on the chlorination thread, 2026-11-13.
+    const SENT = [
+      'https://labs.connect.dimagi.com/labs/workflow/11988/run/',
+      'https://labs.connect.dimagi.com/labs/workflow/11991/run/',
+      'https://labs.connect.dimagi.com/labs/workflow/11993/run/',
+      'https://labs.connect.dimagi.com/labs/workflow/11995/run/',
+    ];
+
+    for (const url of SENT) {
+      it(`refuses the bare run link ${url.split('/').slice(-3)[0]} — canopy is never called`, () => {
+        const { r, sent } = send(`Start here: ${url}\n`);
+        expect(r.status).toBe(3);
+        expect(r.stderr).toContain('REFUSED');
+        expect(r.stderr).toContain('no run_id');
+        expect(r.stderr).toContain(url);
+        expect(r.stderr).not.toContain('Traceback');
+        expect(sent).toBe(false);
+      });
+    }
+
+    it('refuses a scoped link that still has no run_id (renders the list)', () => {
+      const { r, sent } = send('https://labs.connect.dimagi.com/labs/workflow/11988/run/?opportunity_id=10174\n');
+      expect(r.status).toBe(3);
+      expect(r.stderr).toContain('no run_id');
+      expect(sent).toBe(false);
+    });
+
+    it('refuses a run_id with no scope param', () => {
+      const { r, sent } = send('https://labs.connect.dimagi.com/labs/workflow/11988/run/?run_id=11990\n');
+      expect(r.status).toBe(3);
+      expect(r.stderr).toContain('no opportunity_id or program_id');
+      expect(sent).toBe(false);
+    });
+
+    it('refuses the definition page (no /run/), which is not the dashboard', () => {
+      const { r, sent } = send('https://labs.connect.dimagi.com/labs/workflow/11988/?opportunity_id=10174\n');
+      expect(r.status).toBe(3);
+      expect(r.stderr).toContain('no /run/');
+      expect(sent).toBe(false);
+    });
+
+    it('a dry-run gets the same verdict, so the draft is caught before approval', () => {
+      const { r, sent } = send(`${SENT[0]}\n`, ['--dry-run']);
+      expect(r.status).toBe(3);
+      expect(r.stderr).toContain('REFUSED (dry-run');
+      expect(sent).toBe(false);
+    });
+
+    it('the run-page override does not wave a bare labs link through', () => {
+      const { r, sent } = send(`${SENT[0]}\n`, ['--no-run-page', 'standalone demo']);
+      expect(r.status).toBe(3);
+      expect(sent).toBe(false);
+    });
+
+    it('passes the run deep-links that were verified live on 2026-11-13', () => {
+      const { r, sent } = send(
+        'Not meeting standard: https://labs.connect.dimagi.com/labs/workflow/11988/run/?run_id=11990&opportunity_id=10174\n\n' +
+          'Furthest points: https://labs.connect.dimagi.com/labs/workflow/11991/run/?run_id=11997&opportunity_id=10174\n\n' +
+          'Riders: https://labs.connect.dimagi.com/labs/workflow/11993/run/?run_id=11998&opportunity_id=10174\n\n' +
+          'Chlorine residual: https://labs.connect.dimagi.com/labs/workflow/11995/run/?run_id=11999&opportunity_id=10174\n',
+      );
+      expect(r.stderr).not.toContain('REFUSED');
+      expect(r.status).toBe(0);
+      expect(sent).toBe(true);
+    });
+
+    it('passes a program-owned dashboard scoped with program_id', () => {
+      const { r, sent } = send(
+        'https://labs.connect.dimagi.com/labs/workflow/5040/run/?run_id=5048&program_id=10037\n',
+      );
+      expect(r.status).toBe(0);
+      expect(sent).toBe(true);
+    });
+
+    it('leaves the machine API path and other labs pages alone', () => {
+      const { r, sent } = send(
+        'Stream: https://labs.connect.dimagi.com/labs/workflow/api/11988/pipeline-data/stream/\n\n' +
+          'Synthetic: https://labs.connect.dimagi.com/labs/synthetic/\n\n' +
+          'Run page: https://labs.connect.dimagi.com/ace/opps/dimagi-team/x/runs/y/summary\n',
+      );
+      expect(r.stderr).not.toContain('REFUSED');
+      expect(r.status).toBe(0);
+      expect(sent).toBe(true);
+    });
+
+    it('ignores sentence punctuation after a good link', () => {
+      const { r, sent } = send(
+        'Open https://labs.connect.dimagi.com/labs/workflow/11988/run/?run_id=11990&opportunity_id=10174.\n',
       );
       expect(r.status).toBe(0);
       expect(sent).toBe(true);

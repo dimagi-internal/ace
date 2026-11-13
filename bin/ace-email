@@ -273,6 +273,47 @@ def _check_canopy_urls(argv):
     sys.exit(REFUSED_EXIT)
 
 
+def _check_labs_workflow_urls(argv):
+    """Refuse a body whose labs workflow links are not run deep-links (ace#3418).
+
+    A bare `/labs/workflow/<def>/run/` resolves against the READER's currently-selected
+    opportunity, so it lands them on the workflow list — "No Workflows Found" — while
+    looking correct to the sender. No override: the deep-link form always exists
+    (`workflow_history_runs` gives the run_id), so the fix is to use it.
+    """
+    path = _body_file(argv)
+    if path is None or path == "-" or path.startswith("/dev/"):
+        return  # _check_run_page already refuses non-file bodies
+    try:
+        with open(path, encoding="utf-8") as f:
+            body = f.read()
+    except OSError:
+        return
+    sys.path.insert(0, os.path.join(REPO, "bin"))
+    from labs_workflow_url import bare_workflow_urls  # noqa: E402
+
+    bare = bare_workflow_urls(body)
+    if not bare:
+        return
+    dry = " (dry-run — a real send gets this same refusal)" if "--dry-run" in argv else ""
+    shown = "\n".join(f"  {u}\n    → {why}" for u, why in bare[:5])
+    print(
+        f"ace-email: REFUSED{dry}. The body has labs workflow links that will not open "
+        "their dashboard.\n"
+        "A bare link resolves against whatever opportunity the READER has selected, so they\n"
+        "get the workflow list — 'No Workflows Found' — while it looks right to you.\n"
+        "Use the run deep-link:\n"
+        "  https://labs.connect.dimagi.com/labs/workflow/<def>/run/?run_id=<run>&opportunity_id=<opp>\n"
+        "  (program-owned dashboards take &program_id=<prog> instead)\n"
+        "`workflow_history_runs(definition_id, opportunity_id)` gives the run_id. Open each\n"
+        "link before you send it: a 200 is not evidence — a wrong run_id still returns 200\n"
+        "with an empty shell.\n"
+        f"Links found:\n{shown}",
+        file=sys.stderr,
+    )
+    sys.exit(REFUSED_EXIT)
+
+
 _ARGV = sys.argv[1:]
 VERB = "forward" if _ARGV[:1] == ["forward"] else "send"
 if VERB == "forward":
@@ -280,6 +321,7 @@ if VERB == "forward":
 ARGS, _OVERRIDE = _take_run_page_override(_resolve_subject_file(_ARGV))
 _check_run_page(ARGS, _OVERRIDE)
 _check_canopy_urls(ARGS)
+_check_labs_workflow_urls(ARGS)
 
 _load_keyring_env()
 
