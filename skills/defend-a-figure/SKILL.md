@@ -17,9 +17,9 @@ project_skill "connect/givewell" "defend-a-figure"
 ```
 
 (`mcp__plugin_canopy_projects__project_skill`, from the canopy plugin.) Its rule is **lead with
-the weakest check**: `targeting_methodology` for the exact selection, its honesty fields and four
+the weakest check**: `indicators_methodology` for the exact selection, its honesty fields and four
 cross-checks, an outside source, the method spread, the criterion spread
-(`targeting_compare_criteria`), the traps in `targeting_research`, then the three paragraphs and a
+(`indicators_compare_criteria`), the traps in `indicators_research`, then the three paragraphs and a
 Sources table. Change the method there, never by copying it back into this file.
 
 ## In an ACE run
