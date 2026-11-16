@@ -61,6 +61,14 @@ describe('acting as you ("as me")', () => {
     expect(RULE).toMatch(/Never ask for the token in chat/);
   });
 
+  it('asks for a temporary token from off the person\'s computer, not only via localhost', () => {
+    // From Slack / email / a cloud runner the 127.0.0.1 helper has nowhere to land;
+    // labs' agent request (request_agent_token.py) is the way in there.
+    expect(RULE).toMatch(/request_agent_token\.py ask https:\/\/labs\.connect\.dimagi\.com --reason/);
+    expect(RULE).toMatch(/request_agent_token\.py collect <ref>/);
+    expect(RULE).not.toMatch(/In a cloud-runner turn the token has nowhere to land/);
+  });
+
   it('tells people not to put their own token in LABS_MCP_TOKEN', () => {
     expect(RULE).toMatch(/Never put your own labs token into `LABS_MCP_TOKEN`/);
   });

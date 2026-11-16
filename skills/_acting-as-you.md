@@ -87,9 +87,11 @@ for", connect-labs `docs/MCP_SETUP.md` § Which way in; skill
      and `collect` on your next turn in the conversation (it waits 30 minutes).
    - **The person's browser and this session on one computer** (their own Claude Code):
      `python setup_labs_token.py https://labs.connect.dimagi.com --temporary --no-uservisit-data --output <private file>`.
-     It redirects their browser to `127.0.0.1`, so it never works from a cloud runner.
-3. **Never** ask for the token in chat, never add a vault secret for it, and never
-   write a sign-in script against `/o/register/`.
+     It redirects their browser to `127.0.0.1` and labs rejects any other callback
+     (`connect_labs/mcp/admin_views.py`, `_validate_callback`), so it never works from a
+     cloud runner.
+3. **Keep it out of chat.** Never ask for the token in chat, never add a vault secret
+   for it, and never write a sign-in script against `/o/register/`.
 4. **Use it only for the job.** Call labs with `Authorization: Bearer $(cat <file>)`.
    Keep the token out of every output, delete the file when done, and say in the reply
    what you read with it. It does not touch `LABS_MCP_TOKEN` or any `claude mcp` entry.
