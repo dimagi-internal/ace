@@ -66,20 +66,30 @@ for", connect-labs `docs/MCP_SETUP.md` § Which way in; skill
    pipelines, indicator definitions, app structure, solicitations, the org directory,
    targeting) and never a real visit row. Ask for full access only when the job needs
    visit data; that also needs the person's passkey.
-2. **Run labs' helper**, from a connect-labs checkout (or fetch the one file with
-   `gh api repos/dimagi-internal/connect-labs/contents/.claude/skills/labs-token-setup/setup_labs_token.py`):
+2. **Pick labs' helper by where the person is.** Both live in connect-labs
+   `.claude/skills/labs-token-setup/`; run from a checkout, or fetch the one file with
+   `gh api repos/dimagi-internal/connect-labs/contents/.claude/skills/labs-token-setup/<file>`.
+   - **Not on this computer — the usual case** (a Slack, email or canopy chat turn, a
+     cloud runner): `request_agent_token.py`. ACE asks with its OWN labs token
+     (`$LABS_MCP_TOKEN`), the person approves on a labs page signed in as themselves and
+     confirms with their canopy passkey, and the token comes back sealed to a key only
+     this script holds:
 
-   ```
-   python setup_labs_token.py https://labs.connect.dimagi.com --temporary --no-uservisit-data --output <private file>
-   ```
+     ```
+     python request_agent_token.py ask https://labs.connect.dimagi.com --reason "what you will read, and why"
+     # → one JSON line with `ref` and `approve_url`: give the person approve_url
+     python request_agent_token.py collect <ref> --output <private file> --wait 600
+     # exit 0 approved (token in the file), 4 still pending, 3 declined or expired
+     ```
 
-   It prints an approval link. The person opens it signed in to labs and approves.
-3. **It only works where the person's browser and this session are on one computer.**
-   Labs sends the token back by redirecting the person's browser to `127.0.0.1`, and
-   rejects any other callback (`connect_labs/mcp/admin_views.py`, `_validate_callback`).
-   In a cloud-runner turn the token has nowhere to land. Say so plainly and ask them to
-   run it from their own Claude Code. Never ask for the token in chat, never add a vault
-   secret for it, and never write a sign-in script against `/o/register/`.
+     The default level is no user visit data; `--level full` only when the job needs
+     visit rows. If the person cannot answer within this turn, say the link is waiting
+     and `collect` on your next turn in the conversation (it waits 30 minutes).
+   - **The person's browser and this session on one computer** (their own Claude Code):
+     `python setup_labs_token.py https://labs.connect.dimagi.com --temporary --no-uservisit-data --output <private file>`.
+     It redirects their browser to `127.0.0.1`, so it never works from a cloud runner.
+3. **Never** ask for the token in chat, never add a vault secret for it, and never
+   write a sign-in script against `/o/register/`.
 4. **Use it only for the job.** Call labs with `Authorization: Bearer $(cat <file>)`.
    Keep the token out of every output, delete the file when done, and say in the reply
    what you read with it. It does not touch `LABS_MCP_TOKEN` or any `claude mcp` entry.
