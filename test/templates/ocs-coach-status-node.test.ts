@@ -16,13 +16,15 @@ src = open(sys.argv[1]).read()
 turns = json.loads(sys.argv[2])
 opts = json.loads(sys.argv[3])
 pd, ss, tmp = {}, dict(opts.get("session_state", {})), {}
-fetches, attachments = [], []
+fetches, attachments, formats = [], [], []
+if opts.get("send_cards"):
+    src = src.replace("SEND_CARDS = False", "SEND_CARDS = True")
 
 class Http:
     # OCS RestrictedHttpClient's shape: get() returns a dict, raises on transport errors.
     def get(self, url, *, params=None, headers=None, auth=None, timeout=None):
         fetches.append({"url": url, "auth": auth})
-        r = opts.get("http")
+        r = (opts.get("by_url") or {}).get(url, opts.get("http"))
         if r is None:
             raise RuntimeError("Connection error: refused")
         return {"status_code": r["status"], "headers": {"content-type": r.get("type", "")},
@@ -38,16 +40,24 @@ env = dict(
     add_file_attachment=lambda name, content, content_type=None: attachments.append(
         {"name": name, "bytes": len(content), "type": content_type, "turn": len(replies)}),
 )
+if opts.get("format_helper"):
+    env["set_message_format"] = lambda f: formats.append(f)
 exec(src, env)
 replies = []
 for t in turns:
     tmp["user_input"] = t.get("user", "")
     replies.append(env["main"](t["bot"]))
-print(json.dumps({"replies": replies, "pd": pd, "ss": ss, "fetches": fetches, "attachments": attachments}))
+print(json.dumps({"replies": replies, "pd": pd, "ss": ss, "fetches": fetches, "attachments": attachments, "formats": formats}))
 `;
 
 type HttpStub = { status: number; type?: string; body?: string } | null;
-type RunOpts = { session_state?: Record<string, unknown>; http?: HttpStub };
+type RunOpts = {
+  session_state?: Record<string, unknown>;
+  http?: HttpStub;
+  by_url?: Record<string, HttpStub>;
+  send_cards?: boolean;
+  format_helper?: boolean;
+};
 
 function run(turns: Array<{ bot: string; user?: string }>, opts: RunOpts = {}) {
   const r = spawnSync('python3', ['-I', '-c', HARNESS, NODE, JSON.stringify(turns), JSON.stringify(opts)], {
@@ -60,6 +70,7 @@ function run(turns: Array<{ bot: string; user?: string }>, opts: RunOpts = {}) {
     ss: Record<string, unknown>;
     fetches: Array<{ url: string; auth: string }>;
     attachments: Array<{ name: string; bytes: number; type: string; turn: number }>;
+    formats: string[];
   };
 }
 
@@ -124,6 +135,57 @@ describe('ACE Coach status node', () => {
         expect(out.ss.coach_image_error).toBeDefined();
         expect(out.replies).toEqual(['Good. The programme noticed something.', 'What happened?', 'Thanks.']);
       }
+    });
+  });
+
+  describe('optional case card (coach_card_url, card-html)', () => {
+    const IMG = 'https://labs.example/coach-image/signed-token/';
+    const CARD = 'https://labs.example/coach-card/signed-token/';
+    const PNG: HttpStub = { status: 200, type: 'image/png', body: 'PNGDATA' };
+    const HTML: HttpStub = { status: 200, type: 'text/html; charset=utf-8', body: '<!doctype html><p>card</p>' };
+    const CALL = '[Call the mother: +254712345678](tel:+254712345678)';
+    const state = { coach_image_url: IMG, coach_card_url: CARD, coach_card_call: CALL };
+    const turns = [
+      { user: 'yes', bot: 'Good. Let us look at Baby Amina.' },
+      { user: 'ok', bot: 'What happened?' },
+    ];
+
+    it('is off by default: the picture goes as before and the card link is never fetched', () => {
+      const out = run(turns, { session_state: state, by_url: { [IMG]: PNG, [CARD]: HTML } });
+      expect(out.fetches).toEqual([{ url: IMG, auth: 'connect-labs' }]);
+      expect(out.attachments.map((a) => a.name)).toEqual(['your-progress.png']);
+      expect(out.replies[0]).toBe('Good. Let us look at Baby Amina.');
+    });
+
+    it('on: the card replaces the picture on the first reply, with the call line in the text', () => {
+      const out = run(turns, { session_state: state, by_url: { [IMG]: PNG, [CARD]: HTML }, send_cards: true });
+      expect(out.fetches).toEqual([{ url: CARD, auth: 'connect-labs' }]);
+      expect(out.attachments).toEqual([{ name: 'index.html', bytes: 26, type: 'text/html', turn: 0 }]);
+      expect(out.replies[0]).toBe(`Good. Let us look at Baby Amina.\n\n${CALL}`);
+      expect(out.replies[1]).toBe('What happened?');
+      expect(out.formats).toEqual([]);
+    });
+
+    it('marks the reply as a card when this OCS offers set_message_format', () => {
+      const out = run(turns, {
+        session_state: state,
+        by_url: { [IMG]: PNG, [CARD]: HTML },
+        send_cards: true,
+        format_helper: true,
+      });
+      expect(out.formats).toEqual(['card-html']);
+    });
+
+    it('a card that cannot be fetched falls back to the picture, and says why', () => {
+      const out = run(turns, {
+        session_state: state,
+        by_url: { [IMG]: PNG, [CARD]: { status: 404, type: 'text/html', body: 'no' } },
+        send_cards: true,
+      });
+      expect(out.fetches.map((f) => f.url)).toEqual([CARD, IMG]);
+      expect(out.attachments.map((a) => a.name)).toEqual(['your-progress.png']);
+      expect(out.ss.coach_card_error).toBe('HTTP 404, text/html');
+      expect(out.replies[0]).toBe('Good. Let us look at Baby Amina.');
     });
   });
 });

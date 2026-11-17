@@ -241,6 +241,28 @@ both sides: nothing changes for a session that does not ask for one.
 - Connect delivers the picture only on apps with rich messaging (CommCare 2.66+,
   commcare-android#3946); older apps show an "update your app" notice instead.
 
+### The case card (card-html, optional)
+
+A CASE conversation (one baby, `start_ocs_outreach` with a worker item `case`) can
+open with a CARD instead of the picture: the same case as a phone-sized page that
+Connect draws inline (a `card-html` message). Labs builds it beside the picture
+(connect-labs `coach_charts/case_card.py`) and adds two more session keys:
+`coach_card_url` (the card's `index.html`, same signed link and same `connect-labs`
+token as the picture) and `coach_card_call` (a Markdown `tel:` line naming who to
+call: the mother when the case has a number, else the workflow's
+`supervisor_contact`, else empty).
+
+- **The status node** sends the card only with `SEND_CARDS = True` at its top. It
+  then fetches the card once, attaches it as `index.html` IN PLACE OF the picture,
+  appends `coach_card_call` to that first reply, and calls
+  `set_message_format("card-html")` when the OCS team's code nodes offer it. A card
+  it cannot fetch is recorded in `coach_card_error` and the picture goes instead.
+- **Keep `SEND_CARDS = False` until Open Chat Studio sends `format: "card-html"`**
+  to Connect for such a reply. Until then an `index.html` arrives as a bare file,
+  which is worse than the picture.
+- A card cannot dial: `tel:` links inside a card do nothing, so the number is shown
+  on the card and the tappable link is in the message text.
+
 ## Terminology
 
 Worker-facing text follows `skills/_terminology.md` — the platform is "Connect".
