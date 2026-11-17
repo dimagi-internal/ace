@@ -53,6 +53,50 @@ Inline, in order, against the actual body you are about to send.
 Same pass, same draft. Not an appendix, not a follow-up.
 
 ## F. ACE specifics — the same pass, continued
+- **OPEN EVERY LINK, AS THEY WILL OPEN IT — `skills/_verify-before-send.md`, and it comes
+  first because it is the one that reached a partner four times.** Before any body with a
+  link to one of our surfaces leaves: run `bin/ace-verify-links` and read its verdict.
+  `bin/ace-email` refuses an unverified body, so this is a rail, not a reminder — but the
+  rail only checks that *someone* opened the link, and these four are yours:
+  - **A `200` is not evidence.** A wrong-id dashboard returns 200 with the correct page
+    title and no data. Name the content you are promising and assert it is there.
+  - **Verify as the RECIPIENT.** A URL that resolves against the reader's own current
+    selection is a broken link however well it works for you. Put every identifier in it,
+    and state which rule grants *that person* access.
+  - **Never ask them to do something you have not confirmed they can do** — open the
+    surface, find the control, check their role reaches it. Naming a button you have not
+    looked at is the same error as sending a link you have not opened.
+  - **Never remove a surface without naming its replacement.** "Don't rely on that page"
+    with no alternative leaves them exactly where they were.
+  (Origin: thread `1a1691a41973d718`. ACE sent four Labs links it never opened, to a partner
+  who had already reported empty pages twice; the sending turn had run a check, recorded in
+  its own close-out that the check proved nothing, and sent anyway. The correct URL form was
+  already documented in this repo. *"This is the fourth time you sent me urls that lead to
+  pages not containing the information I wanted. Can you please be more careful?"*)
+- **A CORRECTION is held to a higher bar than the thing it corrects.** When the draft is an
+  apology, re-verify every claim in it *harder* than you verified the ones you are
+  apologising for — an unverified assertion inside a correction for unverified assertions is
+  the same failure with the credibility cost doubled. Measured on that thread: the reply
+  apologising for four unopened links itself claimed "checked that each one shows the data"
+  when only one of four had been checked at data level. Caught at review; it was one sentence
+  from shipping.
+- **An INHERITED claim is an unverified claim.** A fact carried from an earlier message, a
+  prior turn's summary or a board card is not verified by having been written down — and a
+  claim about *two* things is not verified by evidence about *one*. Re-read the artifact.
+  (Same thread: *"neither rule can fire"* was generalised from a note that had only ever
+  claimed it for one of the two rules. True, but luck until the released app was read.)
+- **The asker's tier is what `canopy caller tier` prints — never what a record says.** Before
+  treating a request as un-authorised, run it. A board card, a prior turn's note or the
+  `[canopy] Who is asking` relationship line is not the tier, and "member, not an owner or
+  admin" is a statement about OWNERSHIP. If the tier is `act`, their request IS the
+  authorisation for work they commissioned; inventing a second ACE-side approval on top of it
+  is not caution, it is a ten-day silence. What legitimately still gates the work is the turn
+  mode and the intrinsic checkpoints — name the real gate, never a tier they actually have.
+- **Split a batch by blast radius before parking any of it.** When one item genuinely needs a
+  human (irreversible, structural, a rebuild) and the rest are small and reversible, they are
+  not one decision. Park the structural item with its cost named and treat the remainder on
+  its own merits. (Same thread: seven reversible edits waited ten days on one structural one
+  nobody had asked to bundle them with.)
 - **A turn-closing report opens with the DECISION or the next step the human has to act on.**
   Canopy §C/7a covers the turn that concluded NO-OP and §7b the turn that FOUND a problem; this is
   the third shape they leave open — the turn that did real work and then buries the answer under
@@ -258,3 +302,14 @@ Same pass, same draft. Not an appendix, not a follow-up.
   never a local file the human must open; **verify the recipient set from the structured thread
   read** (raw dumps hide `Cc:`) before rating fidelity complete.
 - **Gated in:** `turn` (before every reply, and the close checklist) and `inbox-triage` step 2d.
+
+
+## Before anything leaves ACE
+
+**Nothing goes to a person until you have opened it yourself, as they will open it** —
+`skills/_verify-before-send.md`. In short: a `200` is not evidence (a wrong-id page returns
+200 with the right title and no data); verify as the RECIPIENT, not as yourself, because a
+link that resolves against the reader's own selection is a broken link; never ask someone to
+do something you have not confirmed they can do; and never remove a surface without naming
+the one that replaces it. `bin/ace-email` refuses an unverified body — use
+`bin/ace-verify-links` first.

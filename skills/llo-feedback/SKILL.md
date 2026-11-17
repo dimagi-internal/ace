@@ -163,3 +163,14 @@ binding on this skill's output.
 |------|--------|--------|
 | 2026-10-18 | Add `## Inputs` as parameters (opportunity, LLO contacts, archetype) with run defaults, plus live-program mode; sender is ACE's mailbox, not the retired `$ACE_GMAIL_ACCOUNT` (ace#1147). ace#3148. | ACE (build-vs-maintain audit) |
 | 2026-04-20 | Added `## Archetypes` with per-archetype feedback questions. `focus-group` replaces the app-usability / FLW-experience block with question-guide quality, facilitation experience, audio+upload workflow, participant recruitment, and session cadence. `multi-stage` asks per-stage questions plus cross-stage transition quality. Prevents the "facilitator asked about a Learn app they never used" anti-pattern that drifts responses thin | ACE team |
+
+
+## Before anything leaves ACE
+
+**Nothing goes to a person until you have opened it yourself, as they will open it** —
+`skills/_verify-before-send.md`. In short: a `200` is not evidence (a wrong-id page returns
+200 with the right title and no data); verify as the RECIPIENT, not as yourself, because a
+link that resolves against the reader's own selection is a broken link; never ask someone to
+do something you have not confirmed they can do; and never remove a surface without naming
+the one that replaces it. `bin/ace-email` refuses an unverified body — use
+`bin/ace-verify-links` first.

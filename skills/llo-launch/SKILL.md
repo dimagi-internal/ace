@@ -418,3 +418,14 @@ binding on this skill's output.
 | 2026-05-08 | Add `## Decisions Log` section: 4 anchor rows mapped 1:1 to `llo-launch-eval`'s viability axis (llo-capacity-actual, day-one-readiness, downstream-handoff-alignment, stop-loss-planning) + bar-criterion reference. Pairs with decisions-log PR #4 (Phase 3-10 writes). | ACE team (decisions-log PR #4) |
 | 2026-05-10 | Drop the deferred FLW pre-invite path: `connect-opp-setup` (Phase 4 Step 7) now invites `${ACE_E2E_PHONE}` directly after activating the opp in Phase 4 Step 6.5. Step 6 here is reframed from "activate the opp" to "confirm the opp is active" — the idempotent skip-if-active path is now the canonical case; the active-otherwise branch is a fallback for the rare operator-deactivated case. No behavior change for real-LLO invites (still sent in this skill); behavior change for ACE test-user invites (no longer rescued here). Closes the Phase-6-placeholder-screenshots chicken-and-egg. | ACE team |
 | 2026-10-05 | **Name NOT REACHED criteria at the gate (dimagi-internal/ace#2670).** Step 4 now prints every `not_reached` criterion from the deep app-UX verdict via `notReachedGateLines` (`lib/criterion-reachability.ts`) into the activation summary. Non-blocking: `app-ux-eval` already caps `journey_completion` at 2 for them. Earned by `spark-facilitator/20261004-1706`, where two `reachability: multi-day` criteria could not be reached in one session and nothing downstream said so. | ACE team |
+
+
+## Before anything leaves ACE
+
+**Nothing goes to a person until you have opened it yourself, as they will open it** —
+`skills/_verify-before-send.md`. In short: a `200` is not evidence (a wrong-id page returns
+200 with the right title and no data); verify as the RECIPIENT, not as yourself, because a
+link that resolves against the reader's own selection is a broken link; never ask someone to
+do something you have not confirmed they can do; and never remove a surface without naming
+the one that replaces it. `bin/ace-email` refuses an unverified body — use
+`bin/ace-verify-links` first.

@@ -279,6 +279,15 @@ improvements ship once (a canopy PR) instead of N backports.
   re-read every session; this corpus is Gmail. **Not the comms-log:** those record `thread_id` +
   `message_id` + recipients + date and a one-line gist, never the body, so the citing sentence is
   not in Drive at all. Naming the issue number in the correction is what retires the finding.
+- **A send is half the work — `bin/ace-pending-sends --check` before you close.** The other
+  half is recording it where the NEXT turn looks: the run's comms-log
+  (`email-communicator` step 7), or the thread's board card when Drive is down. `bin/ace-email`
+  logs every real send (not `--dry-run`) to a ledger; `--check` exits non-zero while any are
+  unrecorded, and `--ack <fingerprint|thread-id>` clears one once it is written down. Report
+  the result in the close-out. (Origin: 2026-11-13 — card CON-351 still read *"approve the
+  parked reply"* the morning after that reply had gone out, so the next turn opened on stale
+  instructions and came within one command of sending it twice. Nothing surfaced the gap,
+  because a send leaves no trace in the place a turn reads.)
 - **Close-out (core Step 4) ACE shape:** mark fully-handled threads read via
   `bin/ace-mark-read <threadId> …` — NOT threads still awaiting a human decision (`manual` mode, or
   an intrinsic checkpoint). Summary covers:
@@ -290,3 +299,14 @@ improvements ship once (a canopy PR) instead of N backports.
   outcome — see the checkpoint above; omitting it is the failure that checkpoint exists to catch).
 - **Gating note:** ACE's hook is plugin-level (fires in every session with ACE installed), so
   `config/gating.json` rails stay NARROW and identity-scoped — see its `_doc` before adding rails.
+
+
+## Before anything leaves ACE
+
+**Nothing goes to a person until you have opened it yourself, as they will open it** —
+`skills/_verify-before-send.md`. In short: a `200` is not evidence (a wrong-id page returns
+200 with the right title and no data); verify as the RECIPIENT, not as yourself, because a
+link that resolves against the reader's own selection is a broken link; never ask someone to
+do something you have not confirmed they can do; and never remove a surface without naming
+the one that replaces it. `bin/ace-email` refuses an unverified body — use
+`bin/ace-verify-links` first.

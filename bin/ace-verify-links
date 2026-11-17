@@ -1,0 +1,270 @@
+#!/usr/bin/env python3
+"""Open every link in an outbound body, as the recipient will, and record the verdict.
+
+    bin/ace-verify-links --body-file <body> \
+      --recipients "fconte@dimagi.com,stewari@dimagi.com" \
+      --expect "1=Hanna colorimeter" \
+      --control "1=<the same URL with a deliberately wrong id>" \
+      --access "labs.connect.dimagi.com=any @dimagi.com account (is_accessible_to grants Dimagi users)"
+
+Run it with no --expect first: it lists the body's gated links with their indices.
+
+The contract is `skills/_verify-before-send.md`; the mechanism and the measurements behind
+it are in `bin/link_verification.py`. `bin/ace-email` refuses a body whose gated links have
+no passing receipt covering its recipients.
+
+`--expect` is required per gated link and is the whole point: a wrong-id Labs dashboard
+returns HTTP 200 with the correct page title and no data, so only a string you chose —
+the figure, heading or wording you are telling them to look at — proves the page rendered.
+Links are addressed by INDEX because a deep-link's query string contains `=`, so a
+`<url>=<text>` form splits in the wrong place and silently matches nothing.
+
+`--control` fetches a deliberately-wrong variant alongside and reports the byte delta —
+the cheapest way to catch a page that renders chrome without data. Measured on the
+chlorination dashboard: the real run returned 189,184 bytes, the wrong-id control 172,835,
+a delta of +16,349 bytes of actual content.
+
+Sessions: ACE's saved Playwright storageState files are used when present, so a link is
+fetched the way a signed-in person sees it (~/.ace/labs-session.json, ~/.ace/connect-session.json).
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import re
+import sys
+import urllib.error
+import urllib.request
+from http.cookiejar import Cookie, CookieJar
+from urllib.parse import urlsplit
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+from link_verification import (  # noqa: E402
+    extract_urls,
+    gated_urls,
+    classify,
+    write_receipt,
+    is_gated,
+)
+
+SESSION_FILES = (
+    os.path.expanduser("~/.ace/labs-session.json"),
+    os.path.expanduser("~/.ace/connect-session.json"),
+)
+TIMEOUT = 45
+UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 ace-verify-links"
+
+
+def _cookie_jar() -> CookieJar:
+    """Every cookie ACE holds, from its Playwright storageState files."""
+    jar = CookieJar()
+    for path in SESSION_FILES:
+        try:
+            with open(path, encoding="utf-8") as f:
+                state = json.load(f)
+        except (OSError, ValueError):
+            continue
+        for c in state.get("cookies", []):
+            domain = c.get("domain", "")
+            jar.set_cookie(
+                Cookie(
+                    version=0,
+                    name=c.get("name", ""),
+                    value=c.get("value", ""),
+                    port=None,
+                    port_specified=False,
+                    domain=domain,
+                    domain_specified=bool(domain),
+                    domain_initial_dot=domain.startswith("."),
+                    path=c.get("path", "/"),
+                    path_specified=True,
+                    secure=bool(c.get("secure")),
+                    expires=None,
+                    discard=False,
+                    comment=None,
+                    comment_url=None,
+                    rest={},
+                )
+            )
+    return jar
+
+
+LOGIN_PATH = re.compile(r"/(?:login|accounts|signin|sign-in|oauth|auth)\b", re.IGNORECASE)
+
+
+def _fetch(url: str, jar: CookieJar) -> tuple[int | None, str, str | None, str]:
+    """(status, body, error, location). Redirects are NOT followed — a 302 is a failure."""
+
+    class _NoRedirect(urllib.request.HTTPRedirectHandler):
+        def redirect_request(self, *a, **k):  # noqa: D401, ANN002, ANN003
+            return None
+
+    opener = urllib.request.build_opener(
+        _NoRedirect, urllib.request.HTTPCookieProcessor(jar)
+    )
+    req = urllib.request.Request(url, headers={"User-Agent": UA})
+    try:
+        with opener.open(req, timeout=TIMEOUT) as resp:
+            raw = resp.read()
+            return resp.status, raw.decode("utf-8", "replace"), None, resp.headers.get("Location", "") or ""
+    except urllib.error.HTTPError as e:
+        try:
+            raw = e.read()
+        except Exception:  # noqa: BLE001
+            raw = b""
+        loc = ""
+        try:
+            loc = e.headers.get("Location", "") or ""
+        except Exception:  # noqa: BLE001
+            pass
+        return e.code, raw.decode("utf-8", "replace"), None, loc
+    except Exception as e:  # noqa: BLE001
+        return None, "", f"{type(e).__name__}: {e}", ""
+
+
+def _is_auth_bounce(status: int | None, location: str) -> bool:
+    """A redirect to a login page means OUR session died, not that the link is broken.
+
+    Worth its own branch: without it a stale session reports every link as broken, and the
+    obvious response — rewriting links that were already correct — makes things worse.
+    """
+    return bool(status and 300 <= status < 400 and LOGIN_PATH.search(location or ""))
+
+
+def _pairs(values, flag: str) -> dict[str, str]:
+    out: dict[str, str] = {}
+    for item in values or []:
+        if "=" not in item:
+            sys.exit(f"{flag} needs <key>=<value>, got: {item}")
+        k, v = item.split("=", 1)
+        out[k.strip()] = v.strip()
+    return out
+
+
+def _by_index(values, urls: list[str], flag: str) -> dict[str, str]:
+    """Resolve `--expect 1=TEXT` / bare `TEXT` against the body's gated links.
+
+    Addressing by INDEX rather than by URL is deliberate: a Labs deep-link contains `=`
+    inside its query string, so `--expect <url>=<text>` splits in the wrong place and
+    silently matches nothing — which presents as "no --expect given" for a flag you did
+    pass. Indices carry no separator hazard, and the tool prints them.
+    """
+    out: dict[str, str] = {}
+    for item in values or []:
+        head, sep, tail = item.partition("=")
+        if sep and head.strip().isdigit():
+            i = int(head.strip())
+            if not 1 <= i <= len(urls):
+                sys.exit(f"{flag} index {i} is out of range (the body has {len(urls)} link(s))")
+            out[urls[i - 1]] = tail.strip()
+        elif len(urls) == 1:
+            out[urls[0]] = item.strip()
+        else:
+            sys.exit(
+                f"{flag} needs <index>=<value> when the body has more than one link.\n"
+                + "\n".join(f"  {n}  {u}" for n, u in enumerate(urls, 1))
+            )
+    return out
+
+
+def main() -> int:
+    p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    p.add_argument("--body-file", required=True)
+    p.add_argument("--recipients", required=True,
+                   help="every To and Cc address — access differs per person")
+    p.add_argument("--expect", action="append", default=[], metavar="N=STRING",
+                   help="the content that proves link N rendered (1-based; bare STRING when "
+                        "the body has one link). Required per gated link.")
+    p.add_argument("--access", action="append", default=[], metavar="HOST=BASIS",
+                   help="which rule grants each recipient access to that host")
+    p.add_argument("--control", action="append", default=[], metavar="N=CONTROL_URL",
+                   help="a deliberately-wrong variant of link N, fetched alongside and "
+                        "reported as a byte delta — the cheapest way to catch a page that "
+                        "renders chrome without data")
+    p.add_argument("--json", action="store_true")
+    args = p.parse_args()
+
+    try:
+        with open(args.body_file, encoding="utf-8") as f:
+            body = f.read()
+    except OSError as e:
+        sys.exit(f"cannot read --body-file: {e}")
+
+    urls = extract_urls(body)
+    gated = gated_urls(body)
+    expects = _by_index(args.expect, gated, "--expect")
+    controls = _by_index(args.control, gated, "--control")
+    access = _pairs(args.access, "--access")
+    if not gated:
+        print("No links to our own surfaces in this body — nothing to verify.")
+        if urls:
+            print("Links present but not gated (ACE cannot authenticate them; open them yourself):")
+            for u in urls:
+                print(f"  {u}")
+        return 0
+
+    jar = _cookie_jar()
+    results: list[dict] = []
+    for url in gated:
+        status, page, err, location = _fetch(url, jar)
+        ok, why = classify(status, page, expects.get(url))
+        if err:
+            why = f"{why} ({err})"
+        entry = {"url": url, "status": status, "bytes": len(page), "ok": ok, "why": why,
+                 "expect": expects.get(url), "auth_stale": _is_auth_bounce(status, location)}
+        ctrl = controls.get(url)
+        if ctrl:
+            c_status, c_page, _, _ = _fetch(ctrl, jar)
+            entry["control"] = {"url": ctrl, "status": c_status, "bytes": len(c_page),
+                                "delta_bytes": len(page) - len(c_page)}
+            if ok and entry["control"]["delta_bytes"] <= 0:
+                entry["ok"] = False
+                entry["why"] = (
+                    f"{why} — but the control {ctrl} returned as much content, so this page "
+                    "is chrome, not data"
+                )
+                ok = entry["ok"]
+        results.append(entry)
+
+    # A dead session makes every link look broken. Say so instead, or the next move is
+    # rewriting links that were already correct.
+    stale = [r for r in results if r["auth_stale"]]
+    if stale and len(stale) == len(results):
+        print(
+            "ACE's session for these hosts has expired — every link bounced to a login page.\n"
+            "This says NOTHING about whether the links are good. Do not rewrite them.\n"
+            "Refresh the session and run this again:\n"
+            "  /ace:labs-login      (labs.connect.dimagi.com)\n"
+            "  /ace:connect-login   (connect.dimagi.com, www.commcarehq.org)\n"
+            "No receipt was written.",
+            file=sys.stderr,
+        )
+        return 2
+
+    path = write_receipt(body=body, recipients=args.recipients, results=results, access=access)
+    all_ok = all(r["ok"] for r in results)
+
+    if args.json:
+        print(json.dumps({"all_ok": all_ok, "receipt": path, "results": results}, indent=2))
+    else:
+        for r in results:
+            mark = "OK  " if r["ok"] else "FAIL"
+            print(f"{mark} {r['url']}\n       {r['why']}")
+            if "control" in r:
+                c = r["control"]
+                print(f"       control {c['url']} -> HTTP {c['status']}, delta {c['delta_bytes']:+d} bytes")
+        missing_access = sorted(
+            {(urlsplit(r["url"]).hostname or "") for r in results} - set(access)
+        )
+        if missing_access:
+            print("\nNo --access basis stated for: " + ", ".join(missing_access))
+            print("  Name the rule that lets EACH recipient reach it, or say what they must switch on.")
+        print(f"\nreceipt: {path}")
+        print("all_ok: " + ("yes" if all_ok else "NO — bin/ace-email will refuse this body"))
+    return 0 if all_ok else 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())

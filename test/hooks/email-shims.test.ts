@@ -11,12 +11,44 @@
  */
 import { describe, it, expect } from 'vitest';
 import { spawnSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
+
+// Link-verification receipts (ace#3426) live under ~/.ace by default; point them at a temp
+// dir so these tests never read or write the operator's real receipts.
+const RECEIPT_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'ace-link-receipts-'));
+process.env.ACE_LINK_RECEIPT_DIR = RECEIPT_DIR;
+
+const GATED = /^https?:\/\/(labs\.connect\.dimagi\.com|connect\.dimagi\.com|www\.commcarehq\.org)\b/i;
+
+/**
+ * Stand in for `bin/ace-verify-links` having opened this body's links.
+ *
+ * Every "this body passes" test below has to call it, which is the point: after ace#3426 a
+ * body carrying a link to one of our own surfaces cannot be sent until someone opened the
+ * link. The tests document the workflow rather than working around it.
+ */
+function recordLinkVerification(body: string, recipients: string[] = ['x@y.z']) {
+  const fingerprint = createHash('sha256').update(body, 'utf8').digest('hex');
+  const urls = [...body.matchAll(/https?:\/\/[^\s<>"')\]]+/g)]
+    .map((m) => m[0].replace(/[.,;:!?]+$/, ''))
+    .filter((u) => GATED.test(u));
+  fs.writeFileSync(
+    path.join(RECEIPT_DIR, `${fingerprint}.json`),
+    JSON.stringify({
+      fingerprint,
+      recipients: recipients.map((r) => r.toLowerCase()),
+      results: urls.map((url) => ({ url, ok: true, status: 200, why: 'test fixture' })),
+      all_ok: true,
+    }),
+  );
+  return body;
+}
 
 function withFakeCanopy() {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'fake-canopy-'));
@@ -124,7 +156,7 @@ describe('email shims over the canopy engine', () => {
 
     it('passes a body that leads with the run page and keeps Drive links behind it', () => {
       const { dir, log } = withFakeCanopy();
-      const body = bodyFile(`The run: ${RUN_PAGE}\n\nThe memo Doc, to comment on: ${DOC}\n`);
+      const body = bodyFile(recordLinkVerification(`The run: ${RUN_PAGE}\n\nThe memo Doc, to comment on: ${DOC}\n`));
       const r = runShim('ace-email', ['--to', 'x@y.z', '--subject', 's', '--body-file', body], dir);
       expect(r.status).toBe(0);
       expect(fs.readFileSync(log, 'utf8').trim()).toBe(
@@ -135,7 +167,9 @@ describe('email shims over the canopy engine', () => {
     it('passes the authenticated workbench URL form too', () => {
       const { dir } = withFakeCanopy();
       const body = bodyFile(
-        `https://labs.connect.dimagi.com/ace/w/dimagi-team/opps/poverty-graduation/runs/20260908-0510\n\n${DOC}\n`,
+        recordLinkVerification(
+          `https://labs.connect.dimagi.com/ace/w/dimagi-team/opps/poverty-graduation/runs/20260908-0510\n\n${DOC}\n`,
+        ),
       );
       const r = runShim('ace-email', ['--to', 'x@y.z', '--subject', 's', '--body-file', body], dir);
       expect(r.status).toBe(0);
@@ -286,12 +320,14 @@ describe('email shims over the canopy engine', () => {
 
     it('leaves non-tenant canopy pages and other hosts alone', () => {
       const { r, sent } = send(
-        'About: https://canopy.dimagi.com/about\n\nGuide: https://canopy.dimagi.com/guide\n\n' +
-          'Site: https://canopy.dimagi.com\n\nInvite: https://canopy.dimagi.com/invite/tok\n\n' +
-          // Scoped deep-link: `?run_id=` alone 302s with no body (measured 2026-11-13),
-          // so the old filler here was itself a broken link — see the labs check below.
-          'Labs: https://labs.connect.dimagi.com/labs/workflow/6585/run/?run_id=8476&opportunity_id=10174\n\n' +
-          'Elsewhere: https://example.org/review/abc\n',
+        recordLinkVerification(
+          'About: https://canopy.dimagi.com/about\n\nGuide: https://canopy.dimagi.com/guide\n\n' +
+            'Site: https://canopy.dimagi.com\n\nInvite: https://canopy.dimagi.com/invite/tok\n\n' +
+            // Scoped deep-link: `?run_id=` alone 302s with no body (measured 2026-11-13),
+            // so the old filler here was itself a broken link — see the labs check below.
+            'Labs: https://labs.connect.dimagi.com/labs/workflow/6585/run/?run_id=8476&opportunity_id=10174\n\n' +
+            'Elsewhere: https://example.org/review/abc\n',
+        ),
       );
       expect(r.status).toBe(0);
       expect(sent).toBe(true);
@@ -368,10 +404,12 @@ describe('email shims over the canopy engine', () => {
 
     it('passes the run deep-links that were verified live on 2026-11-13', () => {
       const { r, sent } = send(
-        'Not meeting standard: https://labs.connect.dimagi.com/labs/workflow/11988/run/?run_id=11990&opportunity_id=10174\n\n' +
-          'Furthest points: https://labs.connect.dimagi.com/labs/workflow/11991/run/?run_id=11997&opportunity_id=10174\n\n' +
-          'Riders: https://labs.connect.dimagi.com/labs/workflow/11993/run/?run_id=11998&opportunity_id=10174\n\n' +
-          'Chlorine residual: https://labs.connect.dimagi.com/labs/workflow/11995/run/?run_id=11999&opportunity_id=10174\n',
+        recordLinkVerification(
+          'Not meeting standard: https://labs.connect.dimagi.com/labs/workflow/11988/run/?run_id=11990&opportunity_id=10174\n\n' +
+            'Furthest points: https://labs.connect.dimagi.com/labs/workflow/11991/run/?run_id=11997&opportunity_id=10174\n\n' +
+            'Riders: https://labs.connect.dimagi.com/labs/workflow/11993/run/?run_id=11998&opportunity_id=10174\n\n' +
+            'Chlorine residual: https://labs.connect.dimagi.com/labs/workflow/11995/run/?run_id=11999&opportunity_id=10174\n',
+        ),
       );
       expect(r.stderr).not.toContain('REFUSED');
       expect(r.status).toBe(0);
@@ -380,7 +418,9 @@ describe('email shims over the canopy engine', () => {
 
     it('passes a program-owned dashboard scoped with program_id', () => {
       const { r, sent } = send(
-        'https://labs.connect.dimagi.com/labs/workflow/5040/run/?run_id=5048&program_id=10037\n',
+        recordLinkVerification(
+          'https://labs.connect.dimagi.com/labs/workflow/5040/run/?run_id=5048&program_id=10037\n',
+        ),
       );
       expect(r.status).toBe(0);
       expect(sent).toBe(true);
@@ -388,9 +428,11 @@ describe('email shims over the canopy engine', () => {
 
     it('leaves the machine API path and other labs pages alone', () => {
       const { r, sent } = send(
-        'Stream: https://labs.connect.dimagi.com/labs/workflow/api/11988/pipeline-data/stream/\n\n' +
-          'Synthetic: https://labs.connect.dimagi.com/labs/synthetic/\n\n' +
-          'Run page: https://labs.connect.dimagi.com/ace/opps/dimagi-team/x/runs/y/summary\n',
+        recordLinkVerification(
+          'Stream: https://labs.connect.dimagi.com/labs/workflow/api/11988/pipeline-data/stream/\n\n' +
+            'Synthetic: https://labs.connect.dimagi.com/labs/synthetic/\n\n' +
+            'Run page: https://labs.connect.dimagi.com/ace/opps/dimagi-team/x/runs/y/summary\n',
+        ),
       );
       expect(r.stderr).not.toContain('REFUSED');
       expect(r.status).toBe(0);
@@ -399,8 +441,166 @@ describe('email shims over the canopy engine', () => {
 
     it('ignores sentence punctuation after a good link', () => {
       const { r, sent } = send(
-        'Open https://labs.connect.dimagi.com/labs/workflow/11988/run/?run_id=11990&opportunity_id=10174.\n',
+        recordLinkVerification(
+          'Open https://labs.connect.dimagi.com/labs/workflow/11988/run/?run_id=11990&opportunity_id=10174.\n',
+        ),
       );
+      expect(r.status).toBe(0);
+      expect(sent).toBe(true);
+    });
+  });
+
+  /**
+   * Nothing goes to a person until you have opened it yourself (skills/_verify-before-send.md).
+   *
+   * The failure this encodes: on thread 1a1691a41973d718 ACE sent four Labs links it had
+   * never opened, to a partner who had already said twice that the pages were empty. In the
+   * same turn it ran a check, saw the check proved nothing, wrote so in its own close-out,
+   * and sent anyway. Knowing was never the gap — nothing stood between knowing and sending.
+   */
+  describe('link-verification check (ace#3426)', () => {
+    function bodyFile(text: string) {
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ace-email-verify-'));
+      const p = path.join(dir, 'body.txt');
+      fs.writeFileSync(p, text);
+      return p;
+    }
+    const called = (log: string) => fs.existsSync(log) && fs.readFileSync(log, 'utf8').trim() !== '';
+    const send = (text: string, extra: string[] = [], to = 'x@y.z') => {
+      const { dir, log } = withFakeCanopy();
+      const r = runShim('ace-email', ['--to', to, '--subject', 's', '--body-file', bodyFile(text), ...extra], dir);
+      return { r, sent: called(log) };
+    };
+    const GOOD = 'https://labs.connect.dimagi.com/labs/workflow/11988/run/?run_id=11990&opportunity_id=10174';
+
+    it('refuses a body whose links were never opened — canopy is never called', () => {
+      const { r, sent } = send(`Start here: ${GOOD}\n`);
+      expect(r.status).toBe(3);
+      expect(r.stderr).toContain('REFUSED');
+      expect(r.stderr).toContain('no link-verification receipt');
+      expect(r.stderr).toContain('ace-verify-links');
+      expect(r.stderr).not.toContain('Traceback');
+      expect(sent).toBe(false);
+    });
+
+    it('a dry-run gets the same verdict, so a draft is caught before the approval gate', () => {
+      const { r, sent } = send(`${GOOD}\n`, ['--dry-run']);
+      expect(r.status).toBe(3);
+      expect(r.stderr).toContain('REFUSED (dry-run');
+      expect(sent).toBe(false);
+    });
+
+    it('refuses when the receipt says a link FAILED — a 200 shell is not a pass', () => {
+      const body = `Open ${GOOD}\n`;
+      const fingerprint = createHash('sha256').update(body, 'utf8').digest('hex');
+      fs.writeFileSync(
+        path.join(RECEIPT_DIR, `${fingerprint}.json`),
+        JSON.stringify({
+          fingerprint,
+          recipients: ['x@y.z'],
+          results: [{ url: GOOD, ok: false, status: 200, why: 'HTTP 200 but expected text absent' }],
+          all_ok: false,
+        }),
+      );
+      const { r, sent } = send(body);
+      expect(r.status).toBe(3);
+      expect(r.stderr).toContain('not verified-good');
+      expect(r.stderr).toContain('expected text absent');
+      expect(sent).toBe(false);
+    });
+
+    it('refuses when the verification did not cover every recipient', () => {
+      const body = `Open ${GOOD}\n`;
+      recordLinkVerification(body, ['fconte@dimagi.com']);
+      const { r, sent } = send(body, ['--cc', 'satre@dimagi.com'], 'fconte@dimagi.com');
+      expect(r.status).toBe(3);
+      expect(r.stderr).toContain('did not cover satre@dimagi.com');
+      expect(sent).toBe(false);
+    });
+
+    it('passes once the links are opened and the recipients are covered', () => {
+      const body = `Open ${GOOD}\n`;
+      recordLinkVerification(body, ['fconte@dimagi.com', 'satre@dimagi.com']);
+      const { r, sent } = send(body, ['--cc', 'satre@dimagi.com'], 'fconte@dimagi.com');
+      expect(r.stderr).not.toContain('REFUSED');
+      expect(r.status).toBe(0);
+      expect(sent).toBe(true);
+    });
+
+    it('editing the body invalidates the receipt, by design', () => {
+      const body = `Open ${GOOD}\n`;
+      recordLinkVerification(body, ['x@y.z']);
+      const { r, sent } = send(`${body}One more line.\n`);
+      expect(r.status).toBe(3);
+      expect(r.stderr).toContain('no link-verification receipt');
+      expect(sent).toBe(false);
+    });
+
+    it('a body with no links to our own surfaces needs no receipt', () => {
+      const { r, sent } = send('No links at all here.\n\nSee https://example.org/whatever\n');
+      expect(r.stderr).not.toContain('REFUSED');
+      expect(r.status).toBe(0);
+      expect(sent).toBe(true);
+    });
+
+    it('the run-page override does not wave an unverified link through', () => {
+      const { r, sent } = send(`${GOOD}\n`, ['--no-run-page', 'standalone demo']);
+      expect(r.status).toBe(3);
+      expect(sent).toBe(false);
+    });
+  });
+
+  /**
+   * "Never tell a counterpart about logins, credentials or runner setup"
+   * (canopy agent-core/turn.md Step 1). The rule was prose; the leak happens on the send
+   * path, so the check lives there. Origin: a 2026-11-12 reply to a partner explained a
+   * Drive export restriction and ACE's own broken Google sign-in.
+   */
+  describe('internal-plumbing check (ace#3426)', () => {
+    function bodyFile(text: string) {
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ace-email-plumbing-'));
+      const p = path.join(dir, 'body.txt');
+      fs.writeFileSync(p, text);
+      return p;
+    }
+    const called = (log: string) => fs.existsSync(log) && fs.readFileSync(log, 'utf8').trim() !== '';
+    const send = (text: string, extra: string[] = []) => {
+      const { dir, log } = withFakeCanopy();
+      const r = runShim('ace-email', ['--to', 'x@y.z', '--subject', 's', '--body-file', bodyFile(text), ...extra], dir);
+      return { r, sent: called(log) };
+    };
+
+    for (const [name, phrase] of [
+      ['an OAuth client secret', 'Google refused the login (400 client_secret is missing)'],
+      ['a refresh token', 'the refresh token for the mailbox expired'],
+      ['the login command', 'someone needs to run gog login ace@dimagi-ai.com'],
+      ['the keyring', 'the credential lives in a keyring on the runner'],
+      ['a plugin env file', 'the value is set in .env on our side'],
+      ['a session path', 'the cookies live at ~/.ace/connect-session.json'],
+    ] as const) {
+      it(`refuses a body naming ${name}`, () => {
+        const { r, sent } = send(`Hi,\n\n${phrase}.\n`);
+        expect(r.status).toBe(3);
+        expect(r.stderr).toContain('narrates ACE');
+        expect(r.stderr).toContain('broken at our end');
+        expect(r.stderr).not.toContain('Traceback');
+        expect(sent).toBe(false);
+      });
+    }
+
+    it('a dry-run gets the same verdict', () => {
+      const { r, sent } = send('client_secret is missing\n', ['--dry-run']);
+      expect(r.status).toBe(3);
+      expect(r.stderr).toContain('REFUSED (dry-run');
+      expect(sent).toBe(false);
+    });
+
+    it('passes the honest form: what is broken, that it is ours, and no date', () => {
+      const { r, sent } = send(
+        'The run summary page is broken at our end and I cannot give you a fix date yet.\n' +
+          'It reads empty for every run on the site, not only yours.\n',
+      );
+      expect(r.stderr).not.toContain('REFUSED');
       expect(r.status).toBe(0);
       expect(sent).toBe(true);
     });

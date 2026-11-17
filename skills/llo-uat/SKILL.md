@@ -185,3 +185,14 @@ binding on this skill's output.
 |------|--------|--------|
 | 2026-10-18 | Add `## Inputs` as parameters (opportunity, LLO contacts, app ids, training materials, archetype) with run defaults, plus live-program mode; sender is ACE's mailbox, not the retired `$ACE_GMAIL_ACCOUNT` (ace#1147). ace#3148. | ACE (build-vs-maintain audit) |
 | 2026-04-20 | Added `## Archetypes` with per-archetype UAT checklists + sign-off criteria. `focus-group` replaces "test the apps" with "dry-run a facilitation session" (question guide + recording + consent + write-up + logistics); sign-off is "you could run Session 1 tomorrow." `multi-stage` uses per-stage checklists — full UAT for Stage 1, reference-only for later stages. Prevents LLOs from getting "download the app" UAT instructions when they have no app to download | ACE team |
+
+
+## Before anything leaves ACE
+
+**Nothing goes to a person until you have opened it yourself, as they will open it** —
+`skills/_verify-before-send.md`. In short: a `200` is not evidence (a wrong-id page returns
+200 with the right title and no data); verify as the RECIPIENT, not as yourself, because a
+link that resolves against the reader's own selection is a broken link; never ask someone to
+do something you have not confirmed they can do; and never remove a surface without naming
+the one that replaces it. `bin/ace-email` refuses an unverified body — use
+`bin/ace-verify-links` first.

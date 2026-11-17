@@ -158,3 +158,14 @@ puts in front of a human. The full rule, including the carve-outs for CommCare t
 mobile app, CommCare HQ and code-level identifiers, is
 [`skills/_terminology.md`](../_terminology.md). Read it before writing prose; it is
 binding on this skill's output.
+
+
+## Before anything leaves ACE
+
+**Nothing goes to a person until you have opened it yourself, as they will open it** —
+`skills/_verify-before-send.md`. In short: a `200` is not evidence (a wrong-id page returns
+200 with the right title and no data); verify as the RECIPIENT, not as yourself, because a
+link that resolves against the reader's own selection is a broken link; never ask someone to
+do something you have not confirmed they can do; and never remove a surface without naming
+the one that replaces it. `bin/ace-email` refuses an unverified body — use
+`bin/ace-verify-links` first.

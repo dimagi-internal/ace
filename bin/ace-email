@@ -65,12 +65,14 @@ scoped form always exists. Rule lives in bin/canopy_url_scope.py.
 
 Auth check: `canopy email preflight --repo <this repo>` (exact `gog login` fix on failure).
 """
+import hashlib
 import json
 import os
 import re
 import shutil
 import subprocess
 import sys
+import time
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -314,14 +316,169 @@ def _check_labs_workflow_urls(argv):
     sys.exit(REFUSED_EXIT)
 
 
+def _recipients_from_argv(argv):
+    """Every address this send will reach, from --to/--cc/--bcc (repeatable, = or space)."""
+    out = []
+    for i, arg in enumerate(argv):
+        for flag in ("--to", "--cc", "--bcc"):
+            if arg == flag and i + 1 < len(argv):
+                out.append(argv[i + 1])
+            elif arg.startswith(flag + "="):
+                out.append(arg.split("=", 1)[1])
+    return out
+
+
+def _check_links_verified(argv):
+    """Refuse a body whose links to OUR OWN surfaces have not been opened (ace#3426).
+
+    The contract is skills/_verify-before-send.md. A 200 is not evidence — a wrong-id Labs
+    dashboard returns 200 with the right title and no data — so the receipt records a
+    caller-declared string that proves the content rendered, and the recipients it was
+    checked for. No override: a link you could not open is a link you may not send.
+    """
+    path = _body_file(argv)
+    if path is None or path == "-" or path.startswith("/dev/"):
+        return  # _check_run_page already refuses non-file bodies
+    try:
+        with open(path, encoding="utf-8") as f:
+            body = f.read()
+    except OSError:
+        return
+    sys.path.insert(0, os.path.join(REPO, "bin"))
+    from link_verification import missing_coverage  # noqa: E402
+
+    # --reply-all derives recipients inside canopy, so they are not in argv. Anything the
+    # receipt covers is fine; what we can check here is that a receipt exists and passed.
+    why, _receipt = missing_coverage(body, _recipients_from_argv(argv))
+    if why is None:
+        return
+    dry = " (dry-run — a real send gets this same refusal)" if "--dry-run" in argv else ""
+    print(
+        f"ace-email: REFUSED{dry}. {why}.\n"
+        "Nothing goes to a person until you have opened it yourself, as they will open it\n"
+        "(skills/_verify-before-send.md). Open every link and record the verdict:\n"
+        "  bin/ace-verify-links --body-file <body> \\\n"
+        '    --recipients "<every To and Cc address>" \\\n'
+        '    --expect "<url>=<string that proves the content rendered>" \\\n'
+        '    --access "<host>=<which rule lets each recipient reach it>"\n'
+        "A 200 is not evidence: a wrong-id dashboard returns 200 with the right title and no\n"
+        "data, which is how four broken links reached a partner four times (ace#3426).\n"
+        "Editing the body invalidates the receipt, by design — re-verify after any edit.",
+        file=sys.stderr,
+    )
+    sys.exit(REFUSED_EXIT)
+
+
+SECRET_VOCABULARY = (
+    "client_secret",
+    "refresh token",
+    "gog login",
+    "service-account key",
+    "service account key",
+    "keyring",
+    "oauth token",
+    "access token",
+    "ACE_WEB_PAT_TOKEN",
+    "LABS_MCP_TOKEN",
+    "~/.ace/",
+    ".env",
+)
+
+
+def _check_no_internal_plumbing(argv):
+    """Refuse a body that narrates ACE's own credentials or runner setup (ace#3426).
+
+    canopy's agent-core/turn.md Step 1: "Never tell a counterpart about logins, credentials
+    or runner setup." A broken credential is ours to fix and to state as a fault — "the page
+    is broken at our end, I have no date yet" is the whole of what they need. The rule
+    existed in prose; the leak happens on the send path, so the check lives here.
+    """
+    path = _body_file(argv)
+    if path is None or path == "-" or path.startswith("/dev/"):
+        return
+    try:
+        with open(path, encoding="utf-8") as f:
+            body = f.read()
+    except OSError:
+        return
+    low = body.lower()
+    hits = [t for t in SECRET_VOCABULARY if t.lower() in low]
+    if not hits:
+        return
+    dry = " (dry-run — a real send gets this same refusal)" if "--dry-run" in argv else ""
+    print(
+        f"ace-email: REFUSED{dry}. The body narrates ACE's own plumbing: "
+        + ", ".join(repr(h) for h in hits)
+        + ".\n"
+        "Logins, tokens, keyrings, runner setup and .env are never a counterpart's business\n"
+        "(canopy agent-core/turn.md Step 1; skills/_verify-before-send.md § 6).\n"
+        "Say what they need instead: what is broken, that it is ours, and whether you have a\n"
+        "date — e.g. 'the run page is broken at our end and I have no fix date yet'.",
+        file=sys.stderr,
+    )
+    sys.exit(REFUSED_EXIT)
+
+
 _ARGV = sys.argv[1:]
 VERB = "forward" if _ARGV[:1] == ["forward"] else "send"
 if VERB == "forward":
     _ARGV = _ARGV[1:]
 ARGS, _OVERRIDE = _take_run_page_override(_resolve_subject_file(_ARGV))
+SEND_LEDGER = os.environ.get(
+    "ACE_SEND_LEDGER", os.path.expanduser("~/.ace/pending-sends.jsonl")
+)
+
+
+def _record_send_attempt(argv, verb):
+    """Log that a send is about to happen, so it cannot be silently lost (ace#3426).
+
+    A send is only half the work: the other half is recording it where the next turn looks
+    (the run's comms-log, or the thread's board card). On 2026-11-13 a card still read
+    "approve the parked reply" the morning after that reply had gone out, so a turn opened
+    on stale instructions and nearly re-sent it.
+
+    This runs immediately BEFORE exec, after every rail, and never on --dry-run: the shim
+    hands the process to canopy, so there is no after. `bin/ace-pending-sends` lists what
+    has not been acknowledged; `--ack` clears one once it is recorded.
+    """
+    if "--dry-run" in argv:
+        return
+    path = _body_file(argv)
+    fingerprint = ""
+    if path and path != "-" and not path.startswith("/dev/"):
+        try:
+            with open(path, encoding="utf-8") as f:
+                fingerprint = hashlib.sha256(f.read().encode("utf-8")).hexdigest()[:16]
+        except OSError:
+            pass
+    thread = ""
+    for i, arg in enumerate(argv):
+        if arg == "--thread-id" and i + 1 < len(argv):
+            thread = argv[i + 1]
+        elif arg.startswith("--thread-id="):
+            thread = arg.split("=", 1)[1]
+    record = {
+        "at": time.time(),
+        "verb": verb,
+        "thread_id": thread,
+        "recipients": _recipients_from_argv(argv),
+        "body_fingerprint": fingerprint,
+        "acknowledged": False,
+    }
+    try:
+        os.makedirs(os.path.dirname(SEND_LEDGER), exist_ok=True)
+        with open(SEND_LEDGER, "a", encoding="utf-8") as f:
+            f.write(json.dumps(record, sort_keys=True) + "\n")
+    except OSError:
+        pass  # the ledger is bookkeeping; never block a reviewed send on it
+
+
 _check_run_page(ARGS, _OVERRIDE)
 _check_canopy_urls(ARGS)
 _check_labs_workflow_urls(ARGS)
+_check_no_internal_plumbing(ARGS)
+_check_links_verified(ARGS)
+_record_send_attempt(ARGS, VERB)
 
 _load_keyring_env()
 
