@@ -1,0 +1,109 @@
+#!/usr/bin/env python3
+"""Sends that have gone out but have not been recorded anywhere the next turn will look.
+
+A send is half the work. The other half is writing it where the next turn reads: the run's
+comms-log (`email-communicator` step 7), or — when Drive is down — the thread's board card.
+Skip that and the next turn opens on stale instructions.
+
+That is not hypothetical. On 2026-11-13 card CON-351 still read "approve the parked reply"
+the morning after that reply had been sent, because the sending turn never came back to the
+card. The next turn read the card, believed a reviewed draft was still waiting, and came
+within one command of sending it twice.
+
+    bin/ace-pending-sends            # list unacknowledged sends
+    bin/ace-pending-sends --check    # exit 1 if any are unacknowledged (for a turn close-out)
+    bin/ace-pending-sends --ack <fingerprint|thread-id|all>
+
+The ledger is written by `bin/ace-email` immediately before it hands off to canopy
+(`ACE_SEND_LEDGER`, default ~/.ace/pending-sends.jsonl). It records the ATTEMPT, not the
+outcome: the shim execs canopy, so there is no after. An entry for a send that failed is
+still worth seeing — acknowledge it and say so.
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import sys
+import time
+
+LEDGER = os.environ.get("ACE_SEND_LEDGER", os.path.expanduser("~/.ace/pending-sends.jsonl"))
+
+
+def _load() -> list[dict]:
+    try:
+        with open(LEDGER, encoding="utf-8") as f:
+            out = []
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    out.append(json.loads(line))
+                except ValueError:
+                    continue
+            return out
+    except OSError:
+        return []
+
+
+def _save(records: list[dict]) -> None:
+    os.makedirs(os.path.dirname(LEDGER), exist_ok=True)
+    with open(LEDGER, "w", encoding="utf-8") as f:
+        for r in records:
+            f.write(json.dumps(r, sort_keys=True) + "\n")
+
+
+def _age(ts: float) -> str:
+    mins = max(0, int((time.time() - ts) / 60))
+    if mins < 60:
+        return f"{mins}m ago"
+    hours = mins // 60
+    return f"{hours}h ago" if hours < 48 else f"{hours // 24}d ago"
+
+
+def main() -> int:
+    p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    p.add_argument("--check", action="store_true", help="exit 1 when anything is unacknowledged")
+    p.add_argument("--ack", metavar="FINGERPRINT|THREAD|all")
+    p.add_argument("--json", action="store_true")
+    args = p.parse_args()
+
+    records = _load()
+
+    if args.ack:
+        n = 0
+        for r in records:
+            if r.get("acknowledged"):
+                continue
+            if args.ack == "all" or args.ack in (r.get("body_fingerprint"), r.get("thread_id")):
+                r["acknowledged"] = True
+                r["acknowledged_at"] = time.time()
+                n += 1
+        _save(records)
+        print(f"acknowledged {n} send(s)")
+        return 0
+
+    pending = [r for r in records if not r.get("acknowledged")]
+
+    if args.json:
+        print(json.dumps(pending, indent=2, sort_keys=True))
+    elif not pending:
+        print("No unrecorded sends — every send has been acknowledged.")
+    else:
+        print(f"{len(pending)} send(s) not yet recorded where the next turn will look:\n")
+        for r in pending:
+            who = ", ".join(r.get("recipients") or []) or "(reply-all)"
+            print(f"  {_age(r.get('at', 0)):>8}  thread {r.get('thread_id') or '(new)'}  -> {who}")
+            print(f"            body {r.get('body_fingerprint', '?')}")
+        print(
+            "\nRecord each in the run's comms-log (email-communicator step 7), or on the\n"
+            "thread's board card when Drive is down, then:\n"
+            "  bin/ace-pending-sends --ack <fingerprint|thread-id>"
+        )
+
+    return 1 if (args.check and pending) else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

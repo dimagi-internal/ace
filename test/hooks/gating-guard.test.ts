@@ -220,6 +220,55 @@ function railSuites(runGuard: RunGuard, runRaw: RunRaw): void {
       expect(r.exitCode).toBe(2);
     });
 
+    /**
+     * `--append-notes` with a task KEY silently REPLACES a card's notes (canopy#1193).
+     * `_task_by_ref` matches ext_id only and returns {} otherwise, so the read finds
+     * nothing and the "append" writes the new text alone — while the PATCH resolves the
+     * key fine and lands on the right card. Measured on CON-351, 2026-11-13: ~15 KB of
+     * multi-turn history destroyed, with no server-side copy to restore from.
+     */
+    it('DENIES --append-notes addressed by task KEY (it wipes the card)', () => {
+      const r = runGuard('Bash', {
+        command: 'canopy agent set --slug ace --task-id CON-351 --append-notes "today\'s record"',
+      });
+      expect(r.exitCode).toBe(2);
+      expect(r.stderr).toContain('DELETES');
+      expect(r.stderr).toContain('ext_id');
+      expect(r.stderr).toContain('canopy#1193');
+    });
+
+    it('DENIES --append-link addressed by task KEY (same helper, same flaw)', () => {
+      const r = runGuard('Bash', {
+        command: 'canopy agent set --slug ace --task-id ACE-12 --append-link "Run|https://x/y"',
+      });
+      expect(r.exitCode).toBe(2);
+    });
+
+    it('ALLOWS --append-notes addressed by ext_id — the safe spelling', () => {
+      const r = runGuard('Bash', {
+        command:
+          'canopy agent set --slug ace --task-id inline-chlorination-mali-edits-20261102 --append-notes "today\'s record"',
+      });
+      expect(r.exitCode).toBe(0);
+      expect(r.decision).toBeNull();
+    });
+
+    it('ALLOWS a wholesale --notes replace by key (that one really is a replace)', () => {
+      const r = runGuard('Bash', {
+        command: 'canopy agent set --slug ace --task-id CON-351 --notes "the whole rebuilt body"',
+      });
+      expect(r.exitCode).toBe(0);
+      expect(r.decision).toBeNull();
+    });
+
+    it('ALLOWS other canopy agent set fields by key (only the append helpers are unsafe)', () => {
+      const r = runGuard('Bash', {
+        command: 'canopy agent set --slug ace --task-id CON-351 --next-action "do the thing"',
+      });
+      expect(r.exitCode).toBe(0);
+      expect(r.decision).toBeNull();
+    });
+
     it('allows raw gog gmail send under a NON-ACE identity (operator mail is not ours to gate)', () => {
       const r = runGuard('Bash', {
         command: 'gog gmail send --account jjackson@dimagi.com --client jj --to x@y.com',

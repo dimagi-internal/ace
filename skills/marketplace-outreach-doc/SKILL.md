@@ -162,3 +162,14 @@ Every string this skill puts in front of a reader follows
 **US spelling, always** — program, enrollment, enroll, organization, behavior, center; never
 programme, enrolment, organisation (owner, 2026-10-20: *"everything should be US spelling"*,
 ace#3232). Identifiers (case properties, slugs, ids, config keys) keep their spelling.
+
+
+## Before anything leaves ACE
+
+**Nothing goes to a person until you have opened it yourself, as they will open it** —
+`skills/_verify-before-send.md`. In short: a `200` is not evidence (a wrong-id page returns
+200 with the right title and no data); verify as the RECIPIENT, not as yourself, because a
+link that resolves against the reader's own selection is a broken link; never ask someone to
+do something you have not confirmed they can do; and never remove a surface without naming
+the one that replaces it. `bin/ace-email` refuses an unverified body — use
+`bin/ace-verify-links` first.

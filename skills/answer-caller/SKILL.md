@@ -71,3 +71,14 @@ rest: no one has agreed to, and there is no team queue behind this session.
    (if the envelope's `turn_mode.mode` is `manual`, or absent, present the draft and wait for the human's yes first; in `auto` send it):
    `bin/ace-email --reply-all --thread-id <id> --subject-file .ace-ask/subject.txt --body-file .ace-ask/body.md`.
    Add `--no-run-page "<reason>"` only when the reply links no Drive artifact of a run.
+
+
+## Before anything leaves ACE
+
+**Nothing goes to a person until you have opened it yourself, as they will open it** —
+`skills/_verify-before-send.md`. In short: a `200` is not evidence (a wrong-id page returns
+200 with the right title and no data); verify as the RECIPIENT, not as yourself, because a
+link that resolves against the reader's own selection is a broken link; never ask someone to
+do something you have not confirmed they can do; and never remove a surface without naming
+the one that replaces it. `bin/ace-email` refuses an unverified body — use
+`bin/ace-verify-links` first.
