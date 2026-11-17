@@ -80,8 +80,11 @@ Every row except the optional Phase 1 PDD is an explicit argument or a live labs
    call returns a plan: the best places first, each up to what can be reached there (`dials.reach`;
    Kangaroo Care starts at 50% because not every case can be reached). Choose the grain with
    `grain` (`territory` for the places a team would work in, `country` to compare countries), and
-   limit the plan with `min_place`, `max_countries` and `max_conflict` (reported conflict deaths
-   per 100,000 a year; a place with no figure stays in, and a limit never changes a multiple).
+   limit the plan with `min_place`, `max_countries` and the ceilings `max_conflict` (reported conflict
+   deaths per 100,000 a year) and `max_remote` (share of a place's people beyond two hours' walk of
+   care); a place with no figure stays in, and a limit never changes a multiple. `cost_basis=observed`
+   moves a country's price per person toward what delivered opportunities cost there, weighted by how
+   much delivery stands behind it: evidence from small early programmes, not a price, and off by default.
    Kangaroo Care's risk is scaled to each place's neonatal mortality by default, a Labs reading:
    the model's owner holds it at 13% everywhere, so say so, and `place_risk=0` gives the model's
    own. Read what the plan says about itself before quoting it: `plan.check` (the plan if place
@@ -196,4 +199,5 @@ current version rather than this file's.
 | 2026-09-01 | `off_method_units` became `inherited_units` — a source a method does not declare is no longer used at all, so what remains to report is how much was inherited | ACE team |
 | 2026-09-30 | Added § Ranking countries against each other — national resolution answers only u5mr/lbw/surfaces; survey indicators split into regions; nmr covers 24 countries (ace#2560) | ACE team |
 | 2026-11-17 | Step 6: where to work (target, grain, plan limits incl. conflict, Kangaroo Care's place-scaled risk) and the plan's own honesty fields | ACE team |
+| 2026-11-17 | Step 6: remoteness ceiling (`max_remote`), `cost_basis=observed`; territory mortality is levelled to the country's current UN figure | ACE team |
 | 2026-09-30 | `nmr` now answers nationally for 54 countries via `national_igme` (connect-labs#2116); use it, not the 24-country survey route | ACE team |
