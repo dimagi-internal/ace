@@ -94,6 +94,14 @@ Every row except the optional Phase 1 PDD is an explicit argument or a live labs
    countries whose births total is more than 15% from the UN's). `trust` (0 to 100) pulls every
    local figure toward what is known a level up. `cea_market_size` returns `explorer_path`, the
    page's link for the same scenario; quote that, not a number alone.
+   **Scenarios that belong together live in a scenario group.** Before iterating on work that has
+   one (the first is "Reaching 1M Kangaroo Care cases"), read its summary with `cea_scenario_groups`
+   (it holds what is known, what was decided and what is open); the same call with `id` sets its
+   scenarios side by side, far smaller than sizing each, and shows what has moved since each was
+   baselined. Make a new scenario from the one it changes with `cea_scenario_save` (`group`,
+   `derived_from`), re-run the group, then update the summary with `cea_scenario_group_save`
+   (`overwrite`) and re-baseline (`rebaseline` on the group call) once the new numbers are the
+   ones to compare against. Never leave a finding only in a scenario's note.
 7. **Hand off before publishing.** `defend-a-figure` for anything a funder will
    read; `build-targeting-model` for a Doc and model. Do not shortcut either.
 8. **Write back anything new you learned** with `indicators_research_write`,
@@ -200,4 +208,5 @@ current version rather than this file's.
 | 2026-09-30 | Added § Ranking countries against each other — national resolution answers only u5mr/lbw/surfaces; survey indicators split into regions; nmr covers 24 countries (ace#2560) | ACE team |
 | 2026-11-17 | Step 6: where to work (target, grain, plan limits incl. conflict, Kangaroo Care's place-scaled risk) and the plan's own honesty fields | ACE team |
 | 2026-11-17 | Step 6: remoteness ceiling (`max_remote`), `cost_basis=observed`; territory mortality is levelled to the country's current UN figure | ACE team |
+| 2026-11-17 | Step 6: scenario groups (read the summary first; `cea_scenario_groups`, `cea_scenario_group_save`, `derived_from`) | ACE team |
 | 2026-09-30 | `nmr` now answers nationally for 54 countries via `national_igme` (connect-labs#2116); use it, not the 24-country survey route | ACE team |
