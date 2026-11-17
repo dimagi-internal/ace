@@ -76,6 +76,21 @@ Every row except the optional Phase 1 PDD is an explicit argument or a live labs
    the programme: KMC per newborn, a bednet per child, a water connection per
    household, an antimalarial per case. Where an indicator implies no case count
    the per-case basis is refused rather than approximated — pick another basis.
+   **Where to work, not just how much.** With `model` and a `target` (people to reach), the
+   call returns a plan: the best places first, each up to what can be reached there (`dials.reach`;
+   Kangaroo Care starts at 50% because not every case can be reached). Choose the grain with
+   `grain` (`territory` for the places a team would work in, `country` to compare countries), and
+   limit the plan with `min_place`, `max_countries` and `max_conflict` (reported conflict deaths
+   per 100,000 a year; a place with no figure stays in, and a limit never changes a multiple).
+   Kangaroo Care's risk is scaled to each place's neonatal mortality by default, a Labs reading:
+   the model's owner holds it at 13% everywhere, so say so, and `place_risk=0` gives the model's
+   own. Read what the plan says about itself before quoting it: `plan.check` (the plan if place
+   figures are only half believed), `plan.reliability` (deaths averted as mortality is redrawn
+   within its published interval, and how often each place is chosen), `plan.regional_proxy`
+   (people whose low-birthweight count rests on a regional rate) and `plan.births_off` (people in
+   countries whose births total is more than 15% from the UN's). `trust` (0 to 100) pulls every
+   local figure toward what is known a level up. `cea_market_size` returns `explorer_path`, the
+   page's link for the same scenario; quote that, not a number alone.
 7. **Hand off before publishing.** `defend-a-figure` for anything a funder will
    read; `build-targeting-model` for a Doc and model. Do not shortcut either.
 8. **Write back anything new you learned** with `indicators_research_write`,
@@ -180,4 +195,5 @@ current version rather than this file's.
 | 2026-08-29 | 29 indicators; countable families now include access (`pop_beyond_2h`) and settlement (`pop_rural`), not malaria alone | ACE team |
 | 2026-09-01 | `off_method_units` became `inherited_units` — a source a method does not declare is no longer used at all, so what remains to report is how much was inherited | ACE team |
 | 2026-09-30 | Added § Ranking countries against each other — national resolution answers only u5mr/lbw/surfaces; survey indicators split into regions; nmr covers 24 countries (ace#2560) | ACE team |
+| 2026-11-17 | Step 6: where to work (target, grain, plan limits incl. conflict, Kangaroo Care's place-scaled risk) and the plan's own honesty fields | ACE team |
 | 2026-09-30 | `nmr` now answers nationally for 54 countries via `national_igme` (connect-labs#2116); use it, not the 24-country survey route | ACE team |
