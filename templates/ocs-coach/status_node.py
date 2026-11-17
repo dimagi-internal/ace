@@ -18,6 +18,16 @@ def main(input: str, **kwargs) -> str:
     # Provider (a Labs bearer token), so the link alone cannot fetch the image.
     # A failed fetch never blocks the reply: it is recorded for staff in
     # session state `coach_image_error` and the reply goes out as text.
+    #
+    # Optional case CARD (card-html): a case conversation also carries
+    # `coach_card_url` (one case as a phone-sized page, Labs' coach_charts/case_card.py)
+    # and `coach_card_call` (a Markdown tap-to-call line). With SEND_CARDS on, the card's
+    # index.html rides on the first reply INSTEAD of the picture, and the call line is
+    # added to that reply's text (a card cannot dial). If the card cannot be fetched the
+    # picture goes as before. Keep SEND_CARDS off until Open Chat Studio marks a reply
+    # as `format: card-html` for Connect: before that an index.html reaches the worker
+    # as a bare file, which is worse than the picture.
+    SEND_CARDS = False
 
     participant_data = get_participant_data() or {}
     status = participant_data.get("chatbot_task_status", "")
@@ -107,10 +117,39 @@ def main(input: str, **kwargs) -> str:
     set_session_state_key("chatbot_review_needed", review_needed)
 
     image_url = get_session_state_key("coach_image_url")
-    if image_url and user_input and not get_session_state_key("coach_image_sent"):
+    card_url = get_session_state_key("coach_card_url") if SEND_CARDS else None
+    if (image_url or card_url) and user_input and not get_session_state_key("coach_image_sent"):
         # Mark it sent before fetching: one attempt per session, so a slow or broken
         # image endpoint costs the worker one delay at most, never one per turn.
         set_session_state_key("coach_image_sent", True)
+        sent_card = False
+        if card_url:
+            try:
+                response = http.get(card_url, auth="connect-labs", timeout=20)
+                content_type = (response["headers"].get("content-type") or "").split(";")[0].strip()
+                if response["status_code"] == 200 and response["content"] and content_type == "text/html":
+                    add_file_attachment("index.html", response["content"], "text/html")
+                    sent_card = True
+                    try:
+                        # The explicit card signal, if this OCS has one; without it OCS
+                        # marks a reply whose files include index.html as a card.
+                        set_message_format("card-html")
+                    except NameError:
+                        pass
+                    call = (get_session_state_key("coach_card_call") or "").strip()
+                    if call:
+                        reply = (reply + "\n\n" + call).strip()
+                else:
+                    set_session_state_key(
+                        "coach_card_error", "HTTP %s, %s" % (response["status_code"], content_type or "no content type")
+                    )
+            except Exception as error:
+                set_session_state_key("coach_card_error", str(error)[:300])
+        if sent_card:
+            image_url = None  # the card carries the picture's case; never both
+    else:
+        image_url = None  # not this turn: nothing to fetch
+    if image_url:
         try:
             response = http.get(image_url, auth="connect-labs", timeout=20)
             content_type = (response["headers"].get("content-type") or "").split(";")[0].strip()
