@@ -126,6 +126,36 @@ sessions expired. A broken credential is **our** fault to fix and to state as a 
 fleet rule is in canopy's `agent-core/turn.md` Step 1; this file restates it because the
 send path is where it leaks.
 
+## 7. When your own check fails, fix the check: the person is not your verifier
+
+ACE has its own accounts: Labs and Connect as `ace@dimagi-ai.com` (`/ace:labs-login`,
+`/ace:connect-login`), plus the HQ and OCS sessions. If you cannot open the page you are
+about to point someone at, the failure is in your setup: a stale session, a login that did
+not stick, or an account that lacks access. Debug it the way you would debug any other
+defect. **Do not hand the check to the person**: no "I couldn't open it, please check it",
+no "you should see X, tell me if you don't". That is § 2's "just try it and let me know"
+with an excuse attached. It is still wrong when the person is the owner, and when you have
+already said your login is broken.
+
+Owner, 2026-11-18, after ACE said its screenshots *"only reach the login page… Please open
+this Dayo link and check it"*: *"you have your own login to be able to login so I don't know
+what you mean."* The re-run of `/ace:labs-login` succeeded at once. What actually stood in
+the way was access: ACE's Labs user had no email on file, and Labs gates labs-only synthetic
+opps by email domain (`SyntheticOpportunity.is_visible_to` / `is_accessible_to`). ACE was
+signed in, but it could not see the opportunity.
+
+So, in order:
+
+1. **Re-run the login**, then retry the check. Most failures end here.
+2. **Find out which account you are**, and what it can see (`labs_context` returns `user.email`
+   and the opps it can see). Your own account may simply not have the access the person has.
+   That is a finding, not a reason to stop.
+3. **Fix what is yours to fix**, then verify.
+4. **Only a fix outside your authority goes back to the person.** Even then, give them the
+   diagnosis and the one action that unblocks it, never the verification. For example: "ACE's Labs user
+   has no email, so it can't see opp 10133; one-row fix, OK to run it?" That asks for a
+   decision. "Please open the link and check it" asks them to do your job.
+
 ---
 
 ## The rail
