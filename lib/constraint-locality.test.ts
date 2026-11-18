@@ -488,6 +488,23 @@ describe('checkRelevanceReachability', () => {
     expect(violations[0].whollyUnreachable).toBe(true);
   });
 
+  it('does not flag a Nova-generated calculated node (nova_trimmed_*), which has no screen (ace#3439)', () => {
+    // Observed on smallholder-seasonal/20261118-1344 Coach Deliver v48.
+    const xml = `<?xml version="1.0"?>
+<h:html xmlns:h="http://www.w3.org/1999/xhtml">
+  <h:head><model>
+    <bind nodeset="/data/nova_trimmed_community_name" calculate="normalize-space(/data/community_name)" relevant="count(/data/community_name) &gt; 0"/>
+    <bind nodeset="/data/community_name" required="true()"/>
+  </model></h:head>
+  <h:body/>
+</h:html>`;
+    const r = checkRelevanceReachability(xml);
+    expect(r.violations).toEqual([]);
+    // NEGATIVE CONTROL: the same relevance on a real question is still flagged.
+    const real = xml.replace(' calculate="normalize-space(/data/community_name)"', '');
+    expect(checkRelevanceReachability(real).violations.map((v) => v.fieldId)).toEqual(['nova_trimmed_community_name']);
+  });
+
   it('passes when relevance references only earlier answers', () => {
     const xml = `<?xml version="1.0"?>
 <h:html xmlns:h="http://www.w3.org/1999/xhtml">

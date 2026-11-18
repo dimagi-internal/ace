@@ -876,6 +876,12 @@ export function checkRelevanceReachability(
     const nodeset = b.getAttribute('nodeset');
     const relevant = b.getAttribute('relevant');
     if (!nodeset || !relevant) continue;
+    // A calculated node has no screen of its own: its relevance cannot stop a
+    // question from displaying. Nova's compiler emits such nodes itself
+    // (nova_trimmed_<name>, relevant = count(...) > 0) and ordering them by bind
+    // position read as "wholly unreachable" on a released Deliver app
+    // (smallholder-seasonal/20261118-1344, dimagi-internal/ace#3439).
+    if (b.getAttribute('calculate')) continue;
     relevancesChecked++;
 
     const ownIdx = bindOrder.get(nodeset);
