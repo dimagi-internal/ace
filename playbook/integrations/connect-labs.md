@@ -260,8 +260,11 @@ is `agents/synthetic-data-and-workflows.md § Step 3.92`.
 ## Reading what ACE's own account cannot see
 
 ACE's labs account (`ace@dimagi-ai.com`) sees only what it is a member of: the real CHC
-programme (217) answers "not found". The first-class ask is a temporary no-user-visit
-token the person approves in labs; rules and the cloud-runner limit are in
+programme (217) answers "not found", and a cross-programme question gets a partial
+answer. The first-class ask is a temporary no-user-visit token the person approves in
+labs with their passkey, requested from wherever ACE is running (a Slack or email turn on
+a cloud runner included) with connect-labs `request_agent_token.py`; ACE offers it in
+its first reply. Rules are in
 [`skills/_acting-as-you.md`](../../skills/_acting-as-you.md) § Short-lived access. Where
 to find what exists first: `marketplace_rounds_list`, `workflow_template_list` /
 `workflow_template_get` (public templates are readable, followers name the live
