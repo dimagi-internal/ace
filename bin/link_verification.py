@@ -131,6 +131,26 @@ def normalise_recipients(values) -> list[str]:
     return out
 
 
+_ACE_RUN_PAGE = re.compile(
+    r"^(?P<origin>https?://[^/]+/ace)/opps/(?P<ws>[^/]+)/(?P<opp>[^/]+)/runs/(?P<run>[^/?#]+)/summary/?(?:[?#].*)?$"
+)
+
+
+def content_url(url: str) -> str:
+    """The URL whose body actually carries what `url` shows a person.
+
+    ace-web's public run page is a client-rendered shell: its static HTML is identical for
+    every run id, so no `--expect` can distinguish a real run from a wrong one (ace#3429).
+    The page loads its data from `/ace/api/opps/public/<ws>/<opp>/runs/<run>/summary`, which
+    is run-specific and 404s on a wrong id, so that is the URL to open. Any other URL is
+    returned unchanged.
+    """
+    m = _ACE_RUN_PAGE.match(url)
+    if not m:
+        return url
+    return f"{m['origin']}/api/opps/public/{m['ws']}/{m['opp']}/runs/{m['run']}/summary"
+
+
 def classify(status: int | None, body: str, expect: str | None) -> tuple[bool, str]:
     """(ok, why) for one fetched link.
 

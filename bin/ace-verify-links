@@ -42,6 +42,7 @@ from urllib.parse import urlsplit
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from link_verification import (  # noqa: E402
+    content_url,
     extract_urls,
     gated_urls,
     classify,
@@ -208,7 +209,7 @@ def main() -> int:
     jar = _cookie_jar()
     results: list[dict] = []
     for url in gated:
-        status, page, err, location = _fetch(url, jar)
+        status, page, err, location = _fetch(content_url(url), jar)
         ok, why = classify(status, page, expects.get(url))
         if err:
             why = f"{why} ({err})"
@@ -216,7 +217,7 @@ def main() -> int:
                  "expect": expects.get(url), "auth_stale": _is_auth_bounce(status, location)}
         ctrl = controls.get(url)
         if ctrl:
-            c_status, c_page, _, _ = _fetch(ctrl, jar)
+            c_status, c_page, _, _ = _fetch(content_url(ctrl), jar)
             entry["control"] = {"url": ctrl, "status": c_status, "bytes": len(c_page),
                                 "delta_bytes": len(page) - len(c_page)}
             if ok and entry["control"]["delta_bytes"] <= 0:
