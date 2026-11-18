@@ -157,7 +157,13 @@ record others will read: cite the organisation's answers, never a person.
 4. **Pull every response, without contacts.**
    - Call `marketplace_round_responses(slug=…)`. Leave `include_contacts` false: the
      review never needs a person's address.
-   - If `truncated` is true, say so in the doc.
+   - **Page until `next_offset` is null.** One call returns at most 200 submissions
+     (the Community Health RFI 2026 has 333): call again with `offset` set to the previous
+     page's `next_offset`, and concatenate the pages before step 6. `truncated` true with
+     no further page read means the pool is incomplete, so say so in the doc; never review
+     a partial pool as if it were the round. Compare the number read with `total`.
+     (Before connect-labs#3135 deployed, the tool had no `offset`; if `offset` is rejected
+     as an unknown input, the deployed labs predates it and the read is capped at 200.)
    - Keep each answer's `question_id` and its `answer` text exactly as returned. Claims
      cite answers by `question_id`, and every `quote` is checked against that `answer`
      text, so never pass subagents a cleaned-up, summarised or re-wrapped copy.
