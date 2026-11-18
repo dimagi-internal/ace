@@ -58,9 +58,13 @@ it resolves them in the same session without asking:
   guessing at): skip it and say so in the report. Never work around the
   duplicate check.
 
-Then run the labs import (`marketplace_import --eoi` through connect-labs'
-`Run Labs management command` workflow) so the new orgs exist on labs, and
-confirm the round's unresolved count dropped. Tell the owner what was added,
+Then run the labs import so the new orgs exist on labs: call the connect-labs
+`marketplace_import` MCP tool (`eoi: true`, the default; connect-labs#3136). It runs as a
+job, so a slow run returns a `job_id` to poll with `job_status`. **No GitHub workflow
+dispatch and no engineer is needed.** The result's `rounds.per_round[]` gives each
+round's `matched` / `unmatched` submissions, so confirm the round's `unmatched` fell to
+the orgs you skipped. `IMPORT_IN_PROGRESS` means another import is running: wait and call
+again. A session started before 2026-11-18 does not list the tool: restart it. Tell the owner what was added,
 linked and skipped, with row numbers. A person's name in the org field is
 not a reason to skip: read the answers for the organisation's name.
 
@@ -298,8 +302,8 @@ send path (`bin/ace-email`, never raw gog), per the turn mode (`skills/turn` § 
 - the three row numbers, the join date and where it came from, and what was
   left blank and why (including a missing submission date)
 - **that labs does not see the org yet.** connect-labs never writes the sheet.
-  It reads it with `marketplace_import`, which runs daily on beat and can be run
-  by hand (the connect-labs `Run Labs management command` workflow). The org
+  It reads it with `marketplace_import`, which runs daily on beat and which you
+  run on demand with the connect-labs `marketplace_import` MCP tool. The org
   appears on the labs marketplace after the next import, not when the sheet
   changes. Check the import's current trigger in connect-labs before stating a
   schedule.
