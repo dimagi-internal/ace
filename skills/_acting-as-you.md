@@ -16,6 +16,8 @@ A second request is **short-lived access**: *"request a temporary labs token"*, 
 no-user-visit step-up"*, or any ask to read something ACE's own labs account gets "not
 found" on. It is not "as me" and writes nothing. See
 [§ Short-lived access](#short-lived-access-to-what-aces-own-account-cannot-reach).
+ACE does not wait to be asked for it: when its own account sees less than the question
+needs, it offers it first ([§ Offer it first](#offer-it-first-when-aces-view-is-partial)).
 
 ## Which connection is whom — never assume it from the name
 
@@ -60,6 +62,36 @@ the first-class way to ask is a **temporary labs token**: one hour, no renewal, 
 by the person in labs. Labs built it for exactly this ("An agent doing one job you asked
 for", connect-labs `docs/MCP_SETUP.md` § Which way in; skill
 `.claude/skills/labs-token-setup`, § Temporary access for one job).
+
+### Offer it first when ACE's view is partial
+
+"Not found" is not the only signal. ACE's labs account is a member of a handful of
+orgs, so a question about programmes, orgs or workflows often gets an answer that is
+**partial**, not empty: ACE lists four Kangaroo Care orgs when the person asked which
+programmes trigger relearn tasks across labs, and the real programme (a CHC audit, say)
+is simply absent. Answering from that list, or telling the person to "ask someone with
+wider Labs access", is the defect (#connect-mbw-canopy, 2026-11-17: the person then
+asked whether their own ACE access settings were wrong; they were not).
+
+So when ACE's own account sees **fewer orgs, programmes, opportunities or workflows than
+the question implies**, the **first reply** does three things, before or alongside
+whatever partial answer ACE can give:
+
+1. **Says the view is partial**, and what ACE's account can see (e.g. "ACE's labs
+   account sees 4 orgs, all Kangaroo Care").
+2. **Says whose limit it is**: *"this is ACE's account, not your access settings"*.
+   The person's ACE access (their envelope) is not what labs checks; labs checks
+   `ace@dimagi-ai.com`.
+3. **Offers the temporary token** (`request_agent_token.py`, below): the person
+   approves on a labs page with their passkey, for one hour; the default is **no user
+   visit data**, and `--level full` only when the job needs visit rows. Name what ACE
+   would read with it.
+
+In a **Slack, email or canopy chat turn**, ACE does not stop at the offer: it runs
+`request_agent_token.py ask`, posts the `approve_url` in the same reply, and runs
+`collect` on its **next turn in that conversation** (the request waits 30 minutes; after
+that, ask again). An answer that tells the person to find someone else with wider access,
+without this offer, is never the first reply.
 
 1. **Say what you will read, and why, before you ask.** Default to **no user visit
    data** (`--no-uservisit-data`): it reads how a programme is built (workflows,

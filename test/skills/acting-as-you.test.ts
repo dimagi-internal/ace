@@ -69,6 +69,21 @@ describe('acting as you ("as me")', () => {
     expect(RULE).not.toMatch(/In a cloud-runner turn the token has nowhere to land/);
   });
 
+  // 2026-11-17 (#connect-mbw-canopy): asked which programmes trigger relearn tasks, ACE answered
+  // from its own labs account (4 Kangaroo Care orgs, not the real CHC audit), never offered the
+  // person a way to lend it their view, and told them to ask "someone with wider Labs access".
+  // The rule reacted only to "not found" or to a person asking for a token.
+  it('offers the temporary token first when ACE\'s own view is partial, not only on request', () => {
+    expect(RULE).toMatch(/### Offer it first when ACE's view is partial/);
+    expect(RULE).toMatch(/fewer orgs, programmes, opportunities or workflows than\s+the question implies/);
+    expect(RULE).toMatch(/\*\*first reply\*\*/);
+    expect(RULE).toMatch(/this is ACE's account, not your access settings/);
+    expect(RULE).toMatch(/\*\*no user\s+visit data\*\*, and `--level full` only when the job needs visit rows/);
+    expect(RULE).toMatch(/posts the `approve_url` in the same reply/);
+    expect(RULE).toMatch(/`collect` on its \*\*next turn in that conversation\*\*/);
+    expect(RULE).toMatch(/waits 30 minutes/);
+  });
+
   it('tells people not to put their own token in LABS_MCP_TOKEN', () => {
     expect(RULE).toMatch(/Never put your own labs token into `LABS_MCP_TOKEN`/);
   });
