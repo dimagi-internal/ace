@@ -102,6 +102,14 @@ Every row except the optional Phase 1 PDD is an explicit argument or a live labs
    `derived_from`), re-run the group, then update the summary with `cea_scenario_group_save`
    (`overwrite`) and re-baseline (`rebaseline` on the group call) once the new numbers are the
    ones to compare against. Never leave a finding only in a scenario's note.
+   `cea_scenario_delete` removes one of your scenarios, or a group (its scenarios are kept). Existing
+   groups: "Reaching 1M Kangaroo Care cases" and "Reaching 100M children a year" (only the Child Health
+   Campaign has the people for 100M; the country limits 10, 15 and 20 are in it). When the person is on a
+   scenario page with the agent panel, prefer the page's own actions (`page_changeScenario`,
+   `page_saveScenario`, `page_moveScenarioInGroup`, `page_deleteScenario`, ...): they change what is on
+   screen as the person, and `cea_scenarios` / `cea_scenario_groups` return how to use them as `page_actions`
+   when called through canopy. On a labs page, follow [`_labs-on-a-page.md`](../_labs-on-a-page.md): the `cea_*`
+   tools are reached only through `site_call`, as the person. Nigeria being a large share of a plan is expected, not a defect.
 7. **Hand off before publishing.** `defend-a-figure` for anything a funder will
    read; `build-targeting-model` for a Doc and model. Do not shortcut either.
 8. **Write back anything new you learned** with `indicators_research_write`,
@@ -208,5 +216,6 @@ current version rather than this file's.
 | 2026-09-30 | Added § Ranking countries against each other — national resolution answers only u5mr/lbw/surfaces; survey indicators split into regions; nmr covers 24 countries (ace#2560) | ACE team |
 | 2026-11-17 | Step 6: where to work (target, grain, plan limits incl. conflict, Kangaroo Care's place-scaled risk) and the plan's own honesty fields | ACE team |
 | 2026-11-17 | Step 6: remoteness ceiling (`max_remote`), `cost_basis=observed`; territory mortality is levelled to the country's current UN figure | ACE team |
+| 2026-11-19 | Step 6: delete a scenario or group, the 100M group, the page actions | ACE team |
 | 2026-11-17 | Step 6: scenario groups (read the summary first; `cea_scenario_groups`, `cea_scenario_group_save`, `derived_from`) | ACE team |
 | 2026-09-30 | `nmr` now answers nationally for 54 countries via `national_igme` (connect-labs#2116); use it, not the 24-country survey route | ACE team |
