@@ -116,7 +116,11 @@ describe('llo-directory-add reads the layout live', () => {
     expect(skill).toMatch(/\*\*earliest\*\* submission/);
     expect(skill).toMatch(/\*\*Never\*\* the day ACE writes the row/);
     expect(skill).toMatch(/--submitted none/);
-    expect(skill).toMatch(/one run per org, each with its own submission date/);
+    expect(skill).toMatch(/Each org gets its own submission date, never one date for a whole round/);
+    // The batch path exists so a round's applicants are not added one slow org at a time, but each
+    // still carries its own date: the batch drafter dates from the applicant's own timestamp.
+    expect(skill).toMatch(/llo-directory-eoi\.ts/);
+    expect(skill).toMatch(/batch-apply/);
     expect(skill).not.toMatch(/EOI join\s+dates\) is an open product call/);
   });
 

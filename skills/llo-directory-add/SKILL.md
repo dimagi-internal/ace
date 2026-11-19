@@ -36,37 +36,57 @@ Us / HubSpot) still need a member's request.
 ## Standing approval: new EOI applicants
 
 Whenever ACE reads a labs marketplace round (a turn, a round review, any
-marketplace work) and finds **unresolved** applicants (connect-labs
-`marketplace_rounds_list` with `include_applicants`, `outcome: unresolved`),
-it resolves them in the same session without asking:
+marketplace work) and finds **unresolved** applicants, it resolves them in the same session
+without asking. **One command does the mechanical part**, for the open rounds:
 
-- **New organisation**: run this skill for it, one org at a time, with the
-  write gate in § 4 already satisfied by the standing approval. Every other
-  rule still holds: the duplicate check, join date = its own submission,
-  nothing inferred, and the read-back before any claim. The contact row's
-  email is the address the submission came from (the form's "Email Address",
-  which is labs' match key), so the next import links the submission. The
-  notes end `Added by ACE under <owner>'s standing approval for new EOI
-  applicants, <YYYY-MM-DD>.`
-- **Already in the directory** (a duplicate hit, or the same contact email,
-  website or acronym): no new row. Append a verdict on the `EOI Response
-  Mapping` tab (connect-labs `RESPONSE_MAPPING_TAB`): the form's key as Round
-  Slug, the response row, the exact Organizations name, `link`, the evidence as
-  Why, and `ACE (standing approval)` as Decided by. Read it back.
+```bash
+ACE_ROOT="${CLAUDE_PLUGIN_ROOT:-$(python3 -c "import json,os; d=json.load(open(os.path.expanduser('~/.claude/plugins/installed_plugins.json'))); print(d['plugins']['ace@ace'][0]['installPath'])")}"
+node "$ACE_ROOT/node_modules/tsx/dist/cli.mjs" "$ACE_ROOT/scripts/llo-directory-eoi.ts" run            # import, list, draft: writes nothing
+node "$ACE_ROOT/node_modules/tsx/dist/cli.mjs" "$ACE_ROOT/scripts/llo-directory-eoi.ts" run --apply    # ... and add them, import again
+```
+
+It runs the labs `marketplace_import` tool for the open rounds only (`--round <slug>` for named
+ones, `--all-rounds` for every round), takes the submissions no organisation could be certain for
+(`awaiting_verdict`), reads each one's row on its round's response sheet (once per form), drafts
+the three rows with `lib/eoi-directory-rows.ts`, writes them in **one pass**
+(`llo-directory.ts batch-apply`: each tab read once, one write per tab, each span read back once;
+a duplicate or a bad row is reported and the rest still go in), then imports on labs again and
+prints what is still awaiting. The report and the batch file are left in `--out`. Run it without
+`--apply` first when you want to read the drafts. 30 applicants took ~15 minutes one at a time
+(2026-11-19) and take seconds this way.
+
+What stays a person's: the report's **`needsDecision`** (a row it cannot draft, a form with no
+response sheet) and any applicant that is **plainly not an organisation** or whose **name is an
+individual's** (read its answers for an organisation's name; if there is none, leave it out with
+`--exclude <form>:<row>` and say so). To make that verdict stick, record `not an LLO` on the `EOI
+Response Mapping` tab, which is the owner's call, otherwise labs lists it every run. The
+name/title split of "Primary contact name and title" is a heuristic: read the drafted contacts and
+correct any with `--overrides <file.json>` (`{"<form>:<row>": {"name": "…", "title": "…"}}`).
+
+What it does for each applicant is the per-org procedure below, in bulk; every rule still holds:
+
+- **New organisation**: the duplicate check (against the sheet and against earlier orgs in the
+  batch), join date = its own submission, nothing inferred, and the read-back before any claim.
+  The contact row's email is the address the submission came from (the form's "Email Address",
+  which is labs' match key), so the next import links the submission. The notes end `Added by ACE
+  under <owner>'s standing approval for new EOI applicants, <YYYY-MM-DD>.`
+- **Already in the directory** (a duplicate hit, or the same contact email, website or acronym):
+  no new row. The batch reports it as a problem item. Append a verdict on the `EOI Response
+  Mapping` tab (connect-labs `RESPONSE_MAPPING_TAB`): the form's key as Round Slug, the response
+  row, the exact Organizations name, `link`, the evidence as Why, and `ACE (standing approval)` as
+  Decided by. Read it back.
 - **Plainly not an organisation**: a `not an LLO` verdict with the reason.
-- **Unclear** (a plan you can't make ready honestly, or a match you would be
-  guessing at): skip it and say so in the report. Never work around the
-  duplicate check.
+- **Unclear** (a plan you can't make ready honestly, or a match you would be guessing at): skip it
+  and say so in the report. Never work around the duplicate check.
 
-Then run the labs import so the new orgs exist on labs: call the connect-labs
-`marketplace_import` MCP tool (`eoi: true`, the default; connect-labs#3136). It runs as a
-job, so a slow run returns a `job_id` to poll with `job_status`. **No GitHub workflow
-dispatch and no engineer is needed.** The result's `rounds.per_round[]` gives each
-round's `matched` / `unmatched` submissions, so confirm the round's `unmatched` fell to
-the orgs you skipped. `IMPORT_IN_PROGRESS` means another import is running: wait and call
-again. A session started before 2026-11-18 does not list the tool: restart it. Tell the owner what was added,
-linked and skipped, with row numbers. A person's name in the org field is
-not a reason to skip: read the answers for the organisation's name.
+Tell the owner what was added, linked and skipped, with row numbers. A person's name in the org
+field is not a reason to skip: read the answers for the organisation's name.
+
+Labs now joins a contact, date, attribution or verdict to its organisation even when the name
+differs only in case, accents or spacing (connect-labs#3151), and reports those under
+`names_aligned` in the import result; tidy the sheet's spelling when you see them, but they no
+longer drop off. Other mismatches (a missing acronym, "and" for "&") still skip: the import's
+`skipped` list names each one, and fixing them is the sheet owner's.
 
 ## The layout is connect-labs', read live, never copied here
 
@@ -315,12 +335,12 @@ Mark the thread read only after the reply is sent (`bin/ace-mark-read`).
 - Never edit or delete an existing row. Corrections to someone else's row are
   the sheet owner's call; offer them.
 - Never fill a field from anything except the lead or the org's own site.
-- One org per run. Adding the applicants of an EOI round is
-  one run per org, each with its own submission date, never one date for the whole round.
-  `apply` re-plans the target rows, so runs go one after another; Sheets'
-  per-minute read quota needs ~25s between orgs (a 429 before any write is
-  safe to retry). Any list of orgs that are not EOI applicants or a member's
-  request (a bulk clean-up of the directory) still needs the owner. Ask.
+- Each org gets its own submission date, never one date for a whole round. Use
+  `llo-directory-eoi.ts run` (or `llo-directory.ts batch-apply` for a batch file you drafted) for a
+  round's applicants: it plans consecutive rows once, so there is no per-org pacing. The single-org
+  `plan` / `apply` below stay for one lead at a time; run several of them one after another with
+  ~25s between (a 429 before any write is safe to retry). Any list of orgs that are not EOI
+  applicants or a member's request (a bulk clean-up of the directory) still needs the owner. Ask.
 - Never write an Organizations row without its dates row. `plan` and `apply`
   write all three rows or none.
 

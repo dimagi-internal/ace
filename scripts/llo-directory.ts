@@ -40,6 +40,7 @@ import {
   IMPORT_COMMAND,
   QUALITY_MODULE,
   assertUpstreamRulesUnchanged,
+  batchDuplicates,
   buildRow,
   checkJoinDate,
   columnLetter,
@@ -55,6 +56,7 @@ import {
   headerKey,
   nextEmptyRow,
   parseDirectoryContract,
+  planBatchWrites,
   planRowWrites,
   requireHeaders,
   rowIsEmpty,
@@ -86,6 +88,9 @@ const defaultDeps: Deps = {
 export function gogUpdateArgs(id: string, w: RowWrite, who: { account: string; client: string }): string[] {
   return ['sheets', 'update', id, w.range, '--values-json', JSON.stringify(w.values), '--input', w.input, '-a', who.account, '--client', who.client];
 }
+
+/** Row numbers at or above this are batch items, not sheet rows (see `batchDuplicates`). */
+const IN_BATCH = 1_000_000;
 
 const quoteTab = (tab: string) => `'${tab.replace(/'/g, "''")}'`;
 
@@ -140,9 +145,157 @@ export function main(argv: string[], deps: Deps = defaultDeps): number {
   const contactTab = contract.contactsTab;
   const datesTab = contract.datesTab;
 
+  /**
+   * `batch-plan` / `batch-apply --batch file.json [--skip-problem-items]`: many orgs, one pass.
+   * The file is `[{ org, contact, dates, submitted, label? }]` (what `llo-directory-eoi.ts draft`
+   * writes). Reads each tab ONCE, gives the orgs consecutive rows, writes each tab in one call
+   * (plus one per formula column) and reads each span back once — a fixed ~20 reads however many
+   * orgs, where one-at-a-time plan/apply needed ~10 reads EACH and ~25 s of quota wait between.
+   * All-or-nothing unless `--skip-problem-items`, which drops items with a problem (reported) and
+   * writes the rest.
+   */
+  const runBatch = (): number => {
+    const file = arg('--batch');
+    if (!file) throw new Error('--batch <file.json> is required: [{org, contact, dates, submitted}]');
+    type Item = { org: Record<string, string>; contact: Record<string, string>; dates: Record<string, string>; submitted: string; label?: string };
+    const items: Item[] = JSON.parse(fs.readFileSync(file, 'utf8'));
+    if (!Array.isArray(items) || !items.length) throw new Error('--batch must be a non-empty array');
+
+    const orgHeader = sheetGet(id, `${quoteTab(orgTab)}!1:1`)[0] ?? [];
+    const contactHeader = sheetGet(id, `${quoteTab(contactTab)}!1:1`)[0] ?? [];
+    const datesHeader = sheetGet(id, `${quoteTab(datesTab)}!1:1`)[0] ?? [];
+    requireHeaders(orgHeader, [...contract.orgColumns], orgTab);
+    requireHeaders(contactHeader, [...contract.contactColumns], contactTab);
+    requireHeaders(datesHeader, [...contract.datesColumns], datesTab);
+
+    const orgAll = sheetGet(id, `${quoteTab(orgTab)}!A:ZZ`);
+    const contactAll = sheetGet(id, `${quoteTab(contactTab)}!A:ZZ`);
+    const datesAll = sheetGet(id, `${quoteTab(datesTab)}!A:ZZ`);
+    const idx = headerIndex(orgHeader);
+    const nameCol = idx.get(headerKey(contract.orgNameHeader))!;
+    const siteCol = idx.get(headerKey('Website'));
+    const existing = orgAll.slice(1).map((r, i) => ({
+      row: i + 2,
+      name: String(r[nameCol] ?? '').trim(),
+      website: siteCol === undefined ? '' : String(r[siteCol] ?? ''),
+    }));
+    const dIdx = headerIndex(datesHeader).get(headerKey(contract.orgNameHeader))!;
+    const existingDates = datesAll.map((r, i) => ({ row: i + 1, name: String(r[dIdx] ?? '').trim() })).filter((r) => r.row > 1 && r.name);
+    const dataRows = (rows: unknown[][], header: string[]) => rows.map((r) => (r ?? []).slice(0, dataWidth(header)));
+
+    // Per-item checks, exactly the single-org ones, plus duplicates against earlier items in the batch.
+    const accepted: { item: Item; name: string }[] = [];
+    const problems: { label: string; problems: string[] }[] = [];
+    for (const item of items) {
+      const name = fieldFor(item.org, contract.orgNameHeader);
+      const label = item.label ?? name ?? '(unnamed)';
+      const why: string[] = [];
+      if (!name) why.push(`org must set "${contract.orgNameHeader}"`);
+      if (headerKey(fieldFor(item.contact, contract.orgNameHeader)) !== headerKey(name)) why.push('the contact\'s organisation name must equal the org row\'s, or labs cannot join them');
+      if (fieldFor(item.dates, contract.orgNameHeader).trim() !== name.trim()) why.push('the dates row\'s organisation name must equal the org row\'s exactly, or labs never finds the join date');
+      if (!fieldFor(item.contact, 'Email Address').trim()) why.push('the contact has no email address, which labs needs to join it');
+      const joinDate = checkJoinDate({
+        joined: fieldFor(item.dates, contract.datesJoinedHeader),
+        submitted: item.submitted ?? 'none',
+        today: deps.today(),
+        isoPattern: contract.isoDatePattern,
+      });
+      if (!joinDate.ok) why.push(...joinDate.problems);
+      if (!fieldFor(item.dates, contract.datesBasisHeader).trim()) why.push(`"${contract.datesBasisHeader}" is blank`);
+      if (name) {
+        const dup = batchDuplicates(
+          { name, website: fieldFor(item.org, 'Website') },
+          existing,
+          accepted.map((a) => ({ name: a.name, website: fieldFor(a.item.org, 'Website') })),
+          IN_BATCH,
+        );
+        for (const d of dup) why.push(`duplicate of ${d.reason === 'website' ? 'the site of' : 'the organisation'} ${JSON.stringify(d.name)} (${d.row >= IN_BATCH ? 'earlier in this batch' : `Organizations row ${d.row}`}), by ${d.reason}`);
+        if (existingDates.some((r) => fold(r.name) === fold(name))) why.push('the dates tab already has a row for this organisation; resolving that is the sheet owner\'s call');
+      }
+      if (why.length) problems.push({ label, problems: why });
+      else accepted.push({ item, name });
+    }
+    const skipProblems = argv.includes('--skip-problem-items');
+    const writeItems = skipProblems ? accepted.map((a) => a.item) : problems.length ? [] : items;
+
+    const orgFirst = nextEmptyRow(dataRows(orgAll, orgHeader));
+    const contactFirst = nextEmptyRow(dataRows(contactAll, contactHeader));
+    const datesFirst = nextEmptyRow(dataRows(datesAll, datesHeader));
+    const n = writeItems.length;
+    const span = (tab: string, header: string[], first: number, count: number) =>
+      rowRange(tab, header, first).replace(/(\d+)$/, String(first + Math.max(count, 1) - 1));
+    const formulasAbove = (tab: string, header: string[], target: number) => {
+      if (target <= 2) return new Map<number, string>();
+      const first = Math.max(2, target - FORMULA_WINDOW);
+      const range = rowRange(tab, header, first).replace(/(\d+)$/, String(target - 1));
+      return nearestFormulaColumns(sheetGet(id, range, 'FORMULA'), first, target - 1);
+    };
+    const spansEmpty = n === 0 ? true :
+      rowIsEmpty(sheetGet(id, span(orgTab, orgHeader, orgFirst, n))) &&
+      rowIsEmpty(sheetGet(id, span(contactTab, contactHeader, contactFirst, n))) &&
+      rowIsEmpty(sheetGet(id, span(datesTab, datesHeader, datesFirst, n)));
+    const rowsFor = (key: 'org' | 'contact' | 'dates', header: string[], tab: string) => writeItems.map((i) => buildRow(header, i[key], tab));
+    const orgRows = rowsFor('org', orgHeader, orgTab);
+    const contactRows = rowsFor('contact', contactHeader, contactTab);
+    const datesRows = rowsFor('dates', datesHeader, datesTab);
+    const orgFormulas = n ? formulasAbove(orgTab, orgHeader, orgFirst) : new Map<number, string>();
+    const contactFormulas = n ? formulasAbove(contactTab, contactHeader, contactFirst) : new Map<number, string>();
+    const datesFormulas = n ? formulasAbove(datesTab, datesHeader, datesFirst) : new Map<number, string>();
+    const writes = n
+      ? [
+          ...planBatchWrites({ tab: orgTab, headerRow: orgHeader, rows: orgRows, firstRow: orgFirst, precedentRow: orgFirst - 1, formulas: orgFormulas }),
+          ...planBatchWrites({ tab: contactTab, headerRow: contactHeader, rows: contactRows, firstRow: contactFirst, precedentRow: contactFirst - 1, formulas: contactFormulas }),
+          ...planBatchWrites({ tab: datesTab, headerRow: datesHeader, rows: datesRows, firstRow: datesFirst, precedentRow: datesFirst - 1, formulas: datesFormulas }),
+        ]
+      : [];
+    const ready = n > 0 && spansEmpty && (problems.length === 0 || skipProblems);
+    const rows = writeItems.map((i, k) => ({
+      organization: fieldFor(i.org, contract.orgNameHeader),
+      submitted: i.submitted,
+      organizations_row: orgFirst + k,
+      contacts_row: contactFirst + k,
+      dates_row: datesFirst + k,
+    }));
+    const plan = { connectLabsSha: sha, directory_id: id, count: n, spans_empty: spansEmpty, problems, ready, rows, writes: cmd === 'batch-plan' ? writes : undefined };
+
+    if (cmd === 'batch-plan') {
+      print(plan);
+      return 0;
+    }
+    if (!ready) {
+      print({ applied: false, reason: n === 0 ? 'nothing to write (every item has a problem, or the batch is empty)' : !spansEmpty ? 'a target row is not empty' : 'some items have problems: fix them or pass --skip-problem-items', ...plan });
+      return 1;
+    }
+    const who = deps.identity();
+    for (const w of writes) deps.exec('gog', gogUpdateArgs(id, w, who)); // one attempt each: a write is not retried blind
+
+    // One read of each span, formatted and as formulas, then per-row diffs.
+    const readBack = (tab: string, header: string[], first: number) => ({
+      formatted: sheetGet(id, span(tab, header, first, n)),
+      formulas: sheetGet(id, span(tab, header, first, n), 'FORMULA'),
+    });
+    const check = (tab: string, header: string[], first: number, written: string[][], above: Map<number, string>) => {
+      const rb = readBack(tab, header, first);
+      return written.map((row, k) =>
+        diffRowReadBack(row, [rb.formatted[k] ?? []], expectedFormulas(above, first - 1, first + k), [rb.formulas[k] ?? []]),
+      );
+    };
+    const orgDiffs = check(orgTab, orgHeader, orgFirst, orgRows, orgFormulas);
+    const contactDiffs = check(contactTab, contactHeader, contactFirst, contactRows, contactFormulas);
+    const datesDiffs = check(datesTab, datesHeader, datesFirst, datesRows, datesFormulas);
+    const verified = rows.map((r, k) => ({ ...r, ok: !orgDiffs[k].length && !contactDiffs[k].length && !datesDiffs[k].length, diff: { organizations: orgDiffs[k], contacts: contactDiffs[k], dates: datesDiffs[k] } }));
+    const ok = verified.every((v) => v.ok);
+    print({ applied: true, ok, count: n, skipped_problem_items: problems, rows: verified, write_calls: writes.length });
+    return ok ? 0 : 1;
+  };
+
   if (cmd === 'contract') {
     print({ connectLabsSha: sha, ...contract });
     return 0;
+  }
+
+  if (cmd === 'batch-plan' || cmd === 'batch-apply') {
+    return runBatch();
   }
 
   const orgFields = readJson(arg('--org'), '--org');
@@ -288,7 +441,7 @@ export function main(argv: string[], deps: Deps = defaultDeps): number {
   }
 
   throw new Error(
-    'usage: llo-directory.ts contract | plan --org f --contact f --dates f --submitted YYYY-MM-DD|none | apply (same as plan) | ' +
+    'usage: llo-directory.ts contract | batch-plan|batch-apply --batch f.json [--skip-problem-items] | plan --org f --contact f --dates f --submitted YYYY-MM-DD|none | apply (same as plan) | ' +
       'verify --org f --org-row n --contact f --contact-row n --dates f --dates-row n',
   );
 }

@@ -688,3 +688,65 @@ export function checkJoinDate(args: { joined: string; submitted: string; today: 
   }
   return { ok: problems.length === 0, submitted, joined, problems };
 }
+
+// --- Batch adds ---------------------------------------------------------------
+//
+// One-org-at-a-time `plan` + `apply` re-reads every tab for each org and waited ~25 s between
+// orgs to stay under Sheets' per-minute read quota: 30 EOI applicants took ~15 minutes
+// (2026-11-19). A batch reads each tab once, gives the orgs consecutive rows, and writes each
+// tab in one call (plus one write per formula column), then reads each span back once.
+
+/**
+ * The exact-range writes for `rows` laid down consecutively from `firstRow`: ONE RAW write for the
+ * whole block (formula cells blank), then ONE USER_ENTERED write per formula column carrying the
+ * precedent row's formula moved down to each row. Same rules as `planRowWrites`: a drafted value in
+ * a formula column is refused rather than written over the formula.
+ */
+export function planBatchWrites(args: {
+  tab: string;
+  headerRow: string[];
+  rows: string[][];
+  firstRow: number;
+  precedentRow: number;
+  formulas: Map<number, string>;
+}): RowWrite[] {
+  const { tab, headerRow, rows, firstRow, precedentRow, formulas } = args;
+  if (!rows.length) return [];
+  const inRow = [...formulas.keys()].filter((i) => i < headerRow.length).sort((a, b) => a - b);
+  rows.forEach((row, k) => {
+    const clash = inRow.filter((i) => (row[i] ?? '').trim() !== '');
+    if (clash.length) {
+      throw new DirectoryContractError(
+        `On the '${tab}' tab, ${clash.map((i) => JSON.stringify(headerRow[i])).join(', ')} holds a formula ` +
+          `(row ${precedentRow}). Leave it out of drafted row ${k + 1}; the formula is copied in.`,
+      );
+    }
+  });
+  const quoted = `'${tab.replace(/'/g, "''")}'`;
+  const lastRow = firstRow + rows.length - 1;
+  const width = columnLetter(Math.max(headerRow.length, 1) - 1);
+  const writes: RowWrite[] = [{ range: `${quoted}!A${firstRow}:${width}${lastRow}`, input: 'RAW', values: rows }];
+  for (const i of inRow) {
+    const letter = columnLetter(i);
+    writes.push({
+      range: `${quoted}!${letter}${firstRow}:${letter}${lastRow}`,
+      input: 'USER_ENTERED',
+      values: rows.map((_, k) => [rowFormula(formulas.get(i)!, precedentRow, firstRow + k)]),
+    });
+  }
+  return writes;
+}
+
+/**
+ * Whether a candidate collides with a row ALREADY on the tab or one EARLIER in the same batch.
+ * Two applicants of one round with the same organisation name (or site) must not both be added.
+ */
+export function batchDuplicates(
+  candidate: { name: string; website?: string },
+  existing: { row: number; name: string; website?: string }[],
+  earlier: { name: string; website?: string }[],
+  firstBatchRow: number,
+): DuplicateHit[] {
+  const asRows = earlier.map((e, k) => ({ row: firstBatchRow + k, name: e.name, website: e.website }));
+  return findDuplicates(candidate, [...existing, ...asRows]);
+}

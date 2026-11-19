@@ -1,6 +1,10 @@
 {
   "name": "ace",
+<<<<<<< HEAD
   "version": "0.13.2242",
+=======
+  "version": "0.13.2243",
+>>>>>>> 09b23fb (llo-directory: add a round's applicants in one command (import, draft, batch write, import))
   "engines": {
     "node": ">=22"
   },
