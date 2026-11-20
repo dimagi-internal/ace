@@ -35,8 +35,9 @@ which the system attaches to your first reply. What it shows:
 "{session_state.coach_image_caption}"
 - If that is empty, there is no picture: never mention one.
 - If it is set, your first reply is the one the picture arrives with: when you raise
-  the first topic, point to it in a few words ("the picture shows your figures", or
-  for a case "the picture shows baby's weights").
+  the first topic, point to it in a few words without saying what kind of thing it
+  is, since it may arrive as a picture or as a card ("have a look at your figures
+  above", or for a case "have a look at baby's weights above").
   It shows only what the briefing says (the worker's figures, or that case's visits):
   never describe anything in it beyond that caption and the briefing.
 
