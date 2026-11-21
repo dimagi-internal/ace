@@ -1785,6 +1785,49 @@
           "execution-management-products": {
             "type": "object",
             "properties": {
+              "messaging_playbooks": {
+                "type": "object",
+                "properties": {
+                  "program_id": {
+                    "type": [
+                      "string",
+                      "number"
+                    ]
+                  },
+                  "written_as": {
+                    "type": "string"
+                  },
+                  "playbooks": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "key": {
+                          "type": "string"
+                        },
+                        "version": {
+                          "type": "number"
+                        },
+                        "direction": {
+                          "type": "string",
+                          "enum": [
+                            "outbound",
+                            "inbound"
+                          ]
+                        },
+                        "enabled": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "key"
+                      ],
+                      "additionalProperties": true
+                    }
+                  }
+                },
+                "additionalProperties": true
+              },
               "supply_chain": {
                 "type": "object",
                 "properties": {
@@ -2047,7 +2090,8 @@
       "productProducers": {
         "launch": "llo-launch",
         "supply_chain": "supply-chain-setup",
-        "simulation": "simulated-execution"
+        "simulation": "simulated-execution",
+        "messaging_playbooks": "messaging-playbook-setup"
       },
       "unattributedProductKeys": []
     },

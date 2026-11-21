@@ -820,6 +820,30 @@ const SolicitationProducts = z
 const ExecutionProducts = z
   .object({
     /**
+     * The program's labs Messaging playbooks, as `messaging-playbook-setup`
+     * set them (its § Products). Labs Settings is the authority; this is the
+     * record of what the run set and as whom.
+     */
+    messaging_playbooks: z
+      .object({
+        program_id: z.union([z.string(), z.number()]).optional(),
+        written_as: z.string().optional(),
+        playbooks: z
+          .array(
+            z
+              .object({
+                key: z.string(),
+                version: z.number().optional(),
+                direction: z.enum(['outbound', 'inbound']).optional(),
+                enabled: z.boolean().optional(),
+              })
+              .passthrough(),
+          )
+          .optional(),
+      })
+      .passthrough()
+      .optional(),
+    /**
      * Optional simulated track (spec 2026-10-18 § F, § H), written only when
      * `phases.execution-management.mode: simulated`. The ids of labs
      * supply-chain records. None of them can be deleted (§ F6), so each is
@@ -1127,6 +1151,7 @@ export const PRODUCT_PRODUCERS: Partial<Record<PhaseName, Record<string, string>
     // § Simulated mode S0; every other key (synthetic_opportunity_id,
     // workflow_id, weekly_reviews) by simulated-execution, its skill writer.
     simulation: 'simulated-execution',
+    messaging_playbooks: 'messaging-playbook-setup',
   },
   closeout: {
     // Each "Sole writer of `products.<key>`" per its SKILL.md.

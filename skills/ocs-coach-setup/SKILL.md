@@ -19,6 +19,15 @@ starts each conversation from the Labs run page — the workflow's
 then sends with the Send button on Labs' coaching card in canopy's chat (MCP Apps,
 connect-labs#2348). The agent never holds a send token for a worker. QA conversations to Dimagi staff use the action's `deliver_to` argument.
 
+## Superseded by Messaging
+
+When a program moves its coaching to labs Messaging (PersonalID, answered by the
+`connect-coach` agent), this skill no longer builds that program's Coach:
+`skills/messaging-playbook-setup` writes the program's `coach-on-flags` and
+`coach-followup` playbooks instead. Until a program has moved, this skill is still
+how its Coach is built, and a run that builds an OCS Coach still runs it. The
+program context doc says which route a program is on.
+
 ## When it runs
 
 Phase 7 Step 1.9 (`agents/synthetic-data-and-workflows.md`), after the semantic
@@ -272,3 +281,4 @@ Worker-facing text follows `skills/_terminology.md` — the platform is "Connect
 | Date | Change | Author |
 |---|---|---|
 | 2026-10-18 | Inputs are parameters (`source_experiment_id`, `registry_id`, `app_summary`, `collection_id`, `report_workflow_ids[]`) with the run's Phase 5/7 state as defaults; live-program mode names and records outside the run; `## Existing objects` for live-report patching and rebuilds. ace#3148. | ACE (build-vs-maintain audit) |
+| 2026-11-21 | § Superseded by Messaging: a program that moves to labs Messaging gets `messaging-playbook-setup` playbooks answered by `connect-coach`; this skill stays for programs still on OCS. | ACE |
