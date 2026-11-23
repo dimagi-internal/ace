@@ -151,6 +151,22 @@ against `date: 2026-09-14 12:26`; message 0 was Neal's, on 21 July, and the 14 S
 
   a. **Read** the full thread via `email-communicator` (read).
 
+     **Then read what happened on this work OUTSIDE the thread since ACE's last message on it.**
+     The same work is often handled in a Slack thread or in someone's own Claude Code session, and
+     neither writes to the email thread, the comms-log or the board card. List the sessions
+     on canopy-web since ACE's last send (`search_sessions` with `since`, `q` = the subject, an
+     opportunity id or the counterpart's name) and read any that touch this work, especially one
+     run by a person on their own runner. If one already resolved the ask, do not answer the
+     thread with an older theory. Say that it was resolved, and where, or say nothing. Then write
+     the resolution on the board card so the next turn starts from it. (Origin: thread
+     `1a1691a41973d718`. Sarvesh Tewari and Fio fixed a labs fault on Slack and in Sarvesh's
+     laptop session on 2026-11-19, and on 2026-11-20 the daily turn emailed Fio a fix that was
+     already superseded, because it read only the email and the card.)
+
+     **A reported labs page fault:** when the thread reports "Please select an opportunity from the
+     labs context" or a link losing its `&opportunity_id=`, the first remedy is to log out of labs
+     and back in (`playbook/integrations/connect-labs.md` § Troubleshooting). Lead with it.
+
   b. **Route the thread to an opp/run or a program project — and cite the evidence.** Routing
      evidence comes from the thread itself, in this order:
      1. Match the Gmail `thread_id` against the run comms-logs (`<skill>_comms-log.md` under

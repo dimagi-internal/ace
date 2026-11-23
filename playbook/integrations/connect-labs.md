@@ -561,6 +561,23 @@ Auth is the labs **UI session** (`~/.ace/labs-session.json`, via
 
 ## Troubleshooting
 
+- **A person says a labs report shows "Please select an opportunity from the
+  labs context", and the `&opportunity_id=` in the link disappears when the
+  page loads: tell them to log out of labs and log back in. Do that first,
+  before any other diagnosis.** Labs caches the person's org tree in their
+  session when they sign in. If that copy is stale or was saved empty, labs
+  treats every `?opportunity_id=` as "no access", strips it, and shows the
+  context picker. Re-typing the link, choosing the opportunity in Select
+  Context and the `/labs/synthetic/` toggle all fail the same way while the
+  stale session lasts. (The mechanism: `docs/learnings/2026-06-13-labs-workflow-run-deeplink.md`
+  § 2.) A page that opens for ACE proves nothing about the person's session,
+  and the data behind the report is not the cause. Suggest the synthetic-opps
+  toggle, a domain allowlist or an org grant only if the page still fails
+  after a fresh login, and say that the login was tried. Observed 2026-11-19
+  on the inline-chlorination demo (thread `1a1691a41973d718`): ACE sent the
+  toggle, then the allowlist, while logging out and back in was the fix.
+  Sarvesh Tewari asked for this step to be in the debugging instructions.
+
 - **`401 Unauthorized` on any atom** — `LABS_MCP_TOKEN` is missing,
   expired, or revoked. Rotate via `/ace:labs-token-mint` and re-inject
   `.env`. `bin/ace-doctor` reports this at session start.
@@ -669,6 +686,7 @@ Auth is the labs **UI session** (`~/.ace/labs-session.json`, via
 | Date | Change |
 |------|--------|
 | 2026-10-18 | Capability map regrouped by resource, not phase; removed the never-built `workflows-instantiate` skill and `mbw_dashboard_*` atoms; added registry/explorer/history/supply-chain families, § A solicitation is not tied to a Connect opportunity, § Workflow template lifecycle, § Changing live labs objects |
+| 2026-11-23 | `## Troubleshooting` opens with the "Please select an opportunity" fix: log out of labs and back in, first. The inline-chlorination demo (2026-11-18..20) got the toggle and the domain-allowlist theories while a fresh login was the fix. |
 | 2026-04-26 | Initial connect-labs MCP shipped as stdio proxy (9 atoms, Phase 8 only) |
 | 2026-05-02 | Synthetic + workflows atoms added (Phase 7) |
 | 2026-05-09 | `## Synthetic-manifest schema gotchas` added — captures the 5-retry tax observed on `leep-paint-collection` run `20260509-1448`; conform on first attempt to skip it |
