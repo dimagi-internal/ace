@@ -362,7 +362,17 @@ class RecordTests(TmpPaths):
         self.assertIn("s3://bkt/out/rec/journey.mp4", host.uploads)
         adb_calls = [c[1:] for c in host.calls if c[0] == am.ADB]
         self.assertIn(["shell", "pkill", "-INT", "screenrecord"], adb_calls)  # SIGINT, never -9
-        self.assertNotIn("-9", json.dumps(adb_calls))
+        # Match "-9" as a whole ARGUMENT, not as a substring of the serialized
+        # calls. `adb pull` carries a local path under TMPDIR, and the wrapper
+        # in test/infra/android-emulator-cli.test.ts gives the suite its own
+        # `ace-emu-cli-tests-XXXXXX` dir — so whenever mkdtemp's random suffix
+        # happens to start with "9" the path contains "-9" and a json.dumps()
+        # substring check fails on a run that sent nothing but SIGINT. That is
+        # a ~1-in-60 false failure, and because `unit-tests` runs ONLY in the
+        # merge_group (it is skipped on pull_request by design), it surfaces as
+        # a PR that is green and then silently ejected from the merge queue.
+        # Observed 2026-11-24 on TMPDIR=/tmp/ace-emu-cli-tests-9plM0M.
+        self.assertEqual([c for c in adb_calls if "-9" in c], [], "SIGKILL: screenrecord leaves no moov atom")
         self.assertEqual(adb_calls[-1], ["shell", "rm", "-f", "/sdcard/ace-rec-journey.mp4"])
         self.assertFalse(Path(am.RECORD_STATE_PATH).exists())
         self.assertEqual(cli(["record", "stop", "--out", "s3://bkt/o"], host)[1]["error"], "no-recording")
