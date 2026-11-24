@@ -25,9 +25,10 @@
  *
  * ## Auth
  *
- * Reads ONE key — `LABS_MCP_TOKEN` — out of the plugin-data `.env`, rather than
- * sourcing the file: it holds shell metacharacters and fragments of stored
- * passwords (ace#3421). An explicit `LABS_MCP_TOKEN` in the environment wins.
+ * `LABS_MCP_TOKEN` comes from the plugin-data `.env` via `loadPluginEnv`, the
+ * shared loader every Bash-reachable script uses (ace#1964) — a Bash tool call
+ * inherits none of ACE's secrets. Never `source` the file: it holds shell
+ * metacharacters and fragments of stored passwords (ace#3421).
  *
  * ## Usage
  *
@@ -45,35 +46,17 @@
  * prints one tool name per line.
  * Exit codes: 0 ok, 1 usage / auth / transport error, 2 labs returned an error.
  */
-import { readFileSync } from 'node:fs';
-import { homedir } from 'node:os';
-import { join } from 'node:path';
+import { loadPluginEnv } from '../lib/load-plugin-env.js';
 
-const ENV_PATH =
-  process.env.ACE_PLUGIN_ENV_PATH ?? join(homedir(), '.claude', 'plugins', 'data', 'ace-ace', '.env');
+// Before the first process.env read below — a Bash-invoked script inherits
+// none of ACE's secrets (ace#1957, ace#1964).
+const __env = loadPluginEnv(import.meta.url);
+
 const LABS_MCP_URL = process.env.LABS_MCP_URL ?? 'https://labs.connect.dimagi.com/mcp/';
 
 function die(msg: string, code = 1): never {
   process.stderr.write(`labs-call: ${msg}\n`);
   process.exit(code);
-}
-
-/** One key out of the .env — never a `source` of the whole file (ace#3421). */
-export function readEnvKey(key: string, envPath = ENV_PATH): string | undefined {
-  let text: string;
-  try {
-    text = readFileSync(envPath, 'utf8');
-  } catch {
-    return undefined;
-  }
-  for (const line of text.split('\n')) {
-    if (!line.startsWith(`${key}=`)) continue;
-    return line
-      .slice(key.length + 1)
-      .trim()
-      .replace(/^["']|["']$/g, '');
-  }
-  return undefined;
 }
 
 /** Labs answers `tools/call` as JSON or as an SSE `data:` stream. */
@@ -121,8 +104,13 @@ async function main() {
     return;
   }
 
-  const token = process.env.LABS_MCP_TOKEN ?? readEnvKey('LABS_MCP_TOKEN');
-  if (!token) die(`no LABS_MCP_TOKEN in the environment or ${ENV_PATH} — mint one with /ace:labs-token-mint`);
+  // `loadPluginEnv` injects into `process.env` and returns only metadata about
+  // the file it read — so the token comes from `process.env`, and `__env` is
+  // used to say WHICH `.env` was consulted when it is missing.
+  const token = process.env.LABS_MCP_TOKEN;
+  if (!token) {
+    die(`no LABS_MCP_TOKEN in the environment or ${__env.path ?? 'the plugin-data .env'} — mint one with /ace:labs-token-mint`);
+  }
 
   const res = await fetch(LABS_MCP_URL, {
     method: 'POST',
