@@ -95,6 +95,24 @@ process.env.ACE_ENV_FILE = path.join(workerTmpDir, 'no-ace.env');
 // ACE_CANOPY_BIN at it.
 process.env.ACE_CANOPY_BIN = path.join(workerTmpDir, 'no-canopy');
 
+// (7) the send ledger (`~/.ace/pending-sends.jsonl`, ace#3426). `bin/ace-email`
+// appends to it before every non-dry-run send, and `bin/ace-pending-sends --check`
+// reads it at every turn close-out. The shim tests run the real shim against a fake
+// canopy, so without this every `npm test` appended fixture sends (`x@y.z`, ...) to
+// the machine's real ledger: 90 bogus entries by 2026-11-24, a close-out check that
+// was always red, and the real unrecorded sends lost among them.
+// Proven end to end by test/setup/send-ledger-isolation.test.ts.
+process.env.ACE_SEND_LEDGER = path.join(workerTmpDir, 'pending-sends.jsonl');
+
+// (8) a canopy runner's per-turn secrets file. A cloud runner exports
+// `CANOPY_AGENT_ENV_FILE` into every turn, and `scripts/labs-auth-headers.mjs` and
+// `lib/load-plugin-env.ts` read ACE's REAL tokens from it. Tests that sandbox HOME and
+// delete LABS_MCP_TOKEN still inherited it, so on a runner headers-helper.test.ts
+// resolved a live labs token where it expected none (red on every cloud-runner
+// `npm test`, green in CI, 2026-11-24). Tests of that path set their own value.
+delete process.env.CANOPY_AGENT_ENV_FILE;
+delete process.env.AGENT_ENV_FILE;
+
 afterAll(() => {
   try {
     fs.rmSync(workerTmpDir, { recursive: true, force: true });
