@@ -226,3 +226,82 @@ jobs:
           else
             [ "$UNIT" = success ]
           fi
+
+  # Tell the PR when the merge queue drops it. Nothing else does.
+  #
+  # ## Why this exists
+  #
+  # `unit-tests` does not run on `pull_request` (see "ONE full run per PR"), so
+  # the full suite first runs in the merge GROUP — after the PR is already
+  # green. When it fails there, GitHub dequeues the PR and writes nothing back:
+  # the checks on the PR still read pass, and the only trace is a workflow run
+  # on a `gh-readonly-queue/...` ref that is DELETED on dequeue, taking the
+  # evidence with it. The PR looks mergeable and silently never merges.
+  #
+  # Measured: PR #3438 was dequeued five times over six days while reading
+  # CLEAN throughout. Two separate sessions diagnosed it as a permissions or
+  # merge-queue-configuration problem and escalated on that basis; both were
+  # wrong, and the real cause each time was an ordinary test failure nobody
+  # could see. The cost was not the bugs, it was the silence.
+  #
+  # ## Why it is free
+  #
+  # The job is skipped unless the merge-group run FAILED, so a passing run pays
+  # nothing — no runner, no minutes, no added latency. Running the unit suite
+  # on every PR instead would tax EVERY merge to catch a rare failure, which is
+  # the trade this repo deliberately declined (Jonathan Jackson, 2026-11-24:
+  # "it adds non-trivial time to each merge which isn't worth it when you're
+  # doing a ton of merging since merge-group failures are rare"). This reports
+  # the rare case instead of slowing down the common one.
+  #
+  # ## Known gap, deliberately not papered over
+  #
+  # A merge group can batch up to `max_entries_to_build` PRs (5 here) and the
+  # ref names only ONE of them. A PR dequeued because a NEIGHBOUR in its batch
+  # failed still gets no comment. That is strictly better than today's zero
+  # signal, but it is not full coverage — do not read a silent PR as a healthy
+  # one.
+  report-merge-group-failure:
+    if: always() && github.event_name == 'merge_group' && needs.clean-install.result == 'failure'
+    # static-checks and unit-tests are in `needs` so their `.result` is readable
+    # below — `needs.<job>.result` only resolves for jobs this one declares.
+    needs: [static-checks, unit-tests, clean-install]
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+    steps:
+      - name: Comment the dequeue reason on the PR
+        env:
+          # Via env, never inlined into the script: a ref is attacker-shaped input.
+          REF: ${{ github.ref }}
+          HEAD_REF: ${{ github.event.merge_group.head_ref }}
+          STATIC: ${{ needs.static-checks.result }}
+          UNIT: ${{ needs.unit-tests.result }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          REPO: ${{ github.repository }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # refs/heads/gh-readonly-queue/main/pr-<number>-<base-sha>
+          PR=$(printf '%s\n%s\n' "$REF" "$HEAD_REF" | sed -n 's#.*/pr-\([0-9][0-9]*\)-.*#\1#p' | head -1)
+          if [ -z "$PR" ]; then
+            echo "No PR number in '$REF' / '$HEAD_REF' — nothing to comment on."
+            exit 0
+          fi
+          FAILED=""
+          [ "$STATIC" = success ] || FAILED="$FAILED static-checks"
+          [ "$UNIT" = success ] || FAILED="$FAILED unit-tests"
+          {
+            echo "**Dequeued from the merge queue — this PR did not merge.**"
+            echo
+            echo "The merge-group run failed:$FAILED"
+            echo
+            echo "[Failed run]($RUN_URL)"
+            echo
+            echo "The checks above may still read green. \`unit-tests\` does not run on"
+            echo "\`pull_request\` — the full suite runs only in the merge group — so a"
+            echo "failure there is invisible on the PR. That is what this comment is for."
+            echo
+            echo "Fix the failure above and re-queue. If a PR ahead of this one in the"
+            echo "same batch was the cause, this PR may merge unchanged on a retry."
+          } > comment.md
+          gh pr comment "$PR" --repo "$REPO" --body-file comment.md
