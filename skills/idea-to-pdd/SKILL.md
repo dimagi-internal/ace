@@ -154,19 +154,41 @@ and four working days for work the partner said needs ten. The partner's own rec
 
 ACE cannot research its way to these. The partner already knows them.
 
-### The sequence — review-mode runs only
+### The sequence, and what fires it
+
+**ACE drafts the questionnaire. A human sends it.** That is the default and it is not negotiable
+by mode.
 
 1. **Draft the plan.** Research and expand as normal (step 3), to the point where the open
    local-context questions are visible.
-2. **Send the questionnaire** to the partner and STOP. This is a wait state: a human at the
-   partner replies on their own schedule.
-3. **Write the PDD from their responses**, recording each answer as a decision row.
+2. **Write `1-design/partner-context-questionnaire.md`** and STOP, reporting it to the operator
+   for sending. Do **not** email it.
+3. **Write the PDD from the responses** once they come back, recording each answer as a decision
+   row.
 4. **A Dimagi human reviewer confirms the PDD.** Only then is it the source of truth for every
    later phase.
 
-**On a run that does not require PDD review, skip all of it.** ACE does not contact the partner
-and makes the judgement calls itself. Operator wording: *"for ace runs that do not require any
-review, ace does not need to reach out to the partner and can make judgement calls."*
+#### ACE sends it itself only on an explicit, per-run authorisation
+
+Set `run_state.yaml.phases.idea-to-design.partner_questionnaire.ace_may_send: true`, or an
+equivalent explicit operator instruction in the dispatch. **Never infer the authorisation from
+`--mode`, from the presence of a partner name, or from the opp having an email route.**
+
+The reason is blast radius, not caution for its own sake. Phase 1 is not currently a
+partner-contact surface anywhere in ACE — the platform invite in a later phase is normally a
+partner's first contact from the system. A skill that emails from Phase 1 on a mode flag changes
+who speaks to a partner first **on every opportunity in the fleet**, including opportunities whose
+operator never asked for it and whose partner has no idea ACE exists. `--mode review` is an
+ordinary everyday mode; it is not consent to contact someone's partner.
+
+Same reasoning for the stop: parking a run in a wait state is correct when the operator chose the
+questionnaire, and is an unexplained hang when they did not.
+
+#### Runs that need no PDD review skip all of it
+
+ACE does not contact the partner and makes the judgement calls itself. Operator wording: *"for ace
+runs that do not require any review, ace does not need to reach out to the partner and can make
+judgement calls."*
 
 ### Why a Dimagi reviewer, and not the partner's answers directly
 

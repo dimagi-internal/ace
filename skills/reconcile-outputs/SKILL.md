@@ -97,6 +97,23 @@ always-fires check that gets routed around inside one run.
    regenerate. **Do not fix the artifact in place** — the producer that wrote the wrong value will
    write it again next run unless the producer is the thing that changes.
 
+## Fleet safety — report, do not block, on first deployment
+
+This skill runs on **every** opportunity's Phase 6, including opportunities whose operator has
+never heard of it. Until it has run clean on several real opps, a failure here is **reported to
+the operator and does not halt the phase**. A brand-new cross-cutting check that blocks is how a
+guard gets disabled fleet-wide in its first week.
+
+Two design rules keep it from being a false blocker on someone else's programme:
+
+- **A check that depends on a per-run fact no-ops when the PDD has not settled that fact.**
+  `contingent_phase_not_called_separate` fires only when `hasContingentPhase: true` — a programme
+  whose next stage genuinely needs its own work order must be able to say "separate engagement"
+  without being failed for it. Same for the caps and the payment-condition count.
+- **A check encodes a standing operator policy, not one opp's preference.** "Approvals stay
+  generic" and "no device guidance" are fleet-wide rulings of 2026-11-25. If a future check would
+  only be right for one programme, it belongs in that programme's inputs, not here.
+
 ## Program facts
 
 The facts this skill reconciles, and the invariants it enforces, are defined in

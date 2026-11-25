@@ -54,6 +54,16 @@ export interface SettledFacts {
   campaignTotal?: number;
   /** How many conditions the payment test has. Round 1: contract 5, training 4. */
   paymentConditionCount?: number;
+  /**
+   * Does this run have a later phase that sits INSIDE this contract (contingent
+   * Phase B), as opposed to one that genuinely needs its own work order?
+   *
+   * Gates `contingent_phase_not_called_separate`. Undefined means the PDD has
+   * not settled it and the check no-ops: a programme whose next stage really is
+   * a separate engagement must be able to say so, and a fleet-wide check that
+   * fired on the phrase alone would be a false blocker on every one of them.
+   */
+  hasContingentPhase?: boolean;
 }
 
 function norm(s: string): string {
@@ -307,7 +317,15 @@ export function checkConsentPrecedesQuestions(artifacts: Artifact[]): QACheckRes
  *
  * Three of five Round 1 documents did.
  */
-export function checkContingentPhaseNotCalledSeparate(artifacts: Artifact[]): QACheckResult {
+export function checkContingentPhaseNotCalledSeparate(
+  artifacts: Artifact[],
+  facts: SettledFacts = {},
+): QACheckResult {
+  // Only a run that HAS a contingent phase can mis-describe one. Without the
+  // fact there is nothing to be wrong about.
+  if (facts.hasContingentPhase !== true) {
+    return pass('run has no declared contingent phase; nothing to reconcile');
+  }
   const SEPARATE = /\bseparate engagement\b/i;
   const offenders = artifacts
     .filter((a) => SEPARATE.test(norm(a.text)))
@@ -559,7 +577,7 @@ export const CHECKS: ReconcileCheck[] = [
   { id: 'payment_condition_count_agrees', run: (a, f) => checkPaymentConditionCountAgrees(a, f) },
   { id: 'caps_reach_the_coordinator', run: (a, f) => checkCapsReachTheCoordinator(a, f) },
   { id: 'consent_precedes_questions', run: (a) => checkConsentPrecedesQuestions(a) },
-  { id: 'contingent_phase_not_called_separate', run: (a) => checkContingentPhaseNotCalledSeparate(a) },
+  { id: 'contingent_phase_not_called_separate', run: (a, f) => checkContingentPhaseNotCalledSeparate(a, f) },
   { id: 'no_device_or_camera_guidance', run: (a) => checkNoDeviceOrCameraGuidance(a) },
   { id: 'approvals_stay_generic', run: (a) => checkApprovalsStayGeneric(a) },
   { id: 'one_name_per_field', run: (a, _f, g) => checkOneNamePerField(a, g) },

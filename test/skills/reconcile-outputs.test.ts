@@ -59,6 +59,8 @@ const ROUND_1_FACTS = {
   perWorkerCap: 20,
   campaignTotal: 100,
   paymentConditionCount: 5,
+  // Round 1's Phase B sat inside the same work order, same period, same cap.
+  hasContingentPhase: true,
 };
 
 const STOCK_ALIASES = [['stock', 'availability']];
@@ -93,7 +95,7 @@ describe('reconcile-outputs: the real Round 1 artifacts must FAIL', () => {
   });
 
   it('catches a contingent phase called a separate engagement — row 24', () => {
-    const r = checkContingentPhaseNotCalledSeparate(ROUND_1);
+    const r = checkContingentPhaseNotCalledSeparate(ROUND_1, ROUND_1_FACTS);
     expect(r.pass).toBe(false);
     expect(r.detail).toMatch(/manager guide/);
   });
@@ -183,7 +185,7 @@ Verify the availability answer is picked from the published list.
   });
 
   it('accepts Phase B described as contingent', () => {
-    expect(checkContingentPhaseNotCalledSeparate(FIXED).pass).toBe(true);
+    expect(checkContingentPhaseNotCalledSeparate(FIXED, ROUND_1_FACTS).pass).toBe(true);
   });
 
   it('accepts one name for the field across artifacts', () => {
@@ -253,6 +255,16 @@ describe('reconcile-outputs: does not over-fire', () => {
   it('does not judge a payment test only one artifact states', () => {
     const r = checkPaymentConditionCountAgrees([ROUND_1[0]], ROUND_1_FACTS);
     expect(r.pass, 'one artifact cannot disagree with itself').toBe(true);
+  });
+
+  it('does not fire on a programme whose next stage IS a separate engagement', () => {
+    // Fleet safety. Every opp in the fleet runs this check; one whose next stage
+    // genuinely needs its own work order must be able to say so without being
+    // failed by a rule written for a programme that had a contingent phase.
+    expect(checkContingentPhaseNotCalledSeparate(ROUND_1, {}).pass).toBe(true);
+    expect(
+      checkContingentPhaseNotCalledSeparate(ROUND_1, { hasContingentPhase: false }).pass,
+    ).toBe(true);
   });
 
   it('does not fire on caps the PDD has not settled', () => {
