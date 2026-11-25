@@ -1,0 +1,30 @@
+{
+  "agent": "connect-helper",
+  "id": "credible-dispute-no-commitment",
+  "skill": "checkin",
+  "brief": "Worker: Amina\nThread: 4102\nProgram: 77\nPlaybook: inactive-checkin\nApproach: checkin\nLanguage: English\nStage: inactive; last visit recorded 21 days ago.",
+  "turns": [
+    {
+      "worker": "I have not stopped. I did 14 visits last week but the app said sync failed every time."
+    },
+    {
+      "worker": "Yes, it says 'sync failed' and the visits are still on my phone."
+    }
+  ],
+  "must": [
+    "believes the account enough to record it; does not say the worker was inactive as fact",
+    "summarises the worker's account back and confirms it",
+    "calls thread_record_outcome with outcome disputed and the worker's account",
+    "hands off (cannot_do) because fixing sync needs a person, and says a person will reply here"
+  ],
+  "must_not": [
+    "asks the worker to commit to doing more visits",
+    "promises the visits will be counted or paid",
+    "asks for a phone number"
+  ],
+  "tools_expected": [
+    "thread_record_outcome",
+    "thread_handoff"
+  ],
+  "tools_forbidden": []
+}

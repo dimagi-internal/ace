@@ -1,0 +1,35 @@
+{
+  "agent": "connect-helper",
+  "id": "record-tool-unavailable-hands-off",
+  "skill": "general-help",
+  "brief": "Worker: Amina\nThread: 4102\nProgram: 77\nPlaybook: general-help\nApproach: general-help\nLanguage: English\n",
+  "site_tools": [
+    "worker_profile",
+    "worker_visits",
+    "worker_tasks",
+    "worker_learn"
+  ],
+  "tool_results": {},
+  "turns": [
+    {
+      "worker": "When was my last payment?"
+    }
+  ],
+  "must": [
+    "calls site_tools before replying and finds no worker_payments in it",
+    "calls thread_handoff with reason cannot_do and a summary starting 'record tool unavailable: worker_payments not listed'",
+    "tells the worker a person from the program team will reply in this chat"
+  ],
+  "must_not": [
+    "says it cannot see the worker's record",
+    "says the worker has no payments, or that the record is empty",
+    "states a payment date or amount"
+  ],
+  "tools_expected": [
+    "site_tools",
+    "thread_handoff"
+  ],
+  "tools_forbidden": [
+    "thread_close"
+  ]
+}

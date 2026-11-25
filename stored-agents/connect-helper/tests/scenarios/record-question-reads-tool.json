@@ -1,0 +1,46 @@
+{
+  "agent": "connect-helper",
+  "id": "record-question-reads-tool",
+  "skill": "general-help",
+  "brief": "Worker: Amina\nThread: 4102\nProgram: 77\nPlaybook: general-help\nApproach: general-help\nLanguage: English\n",
+  "site_tools": [
+    "worker_profile",
+    "worker_payments",
+    "worker_visits",
+    "worker_tasks",
+    "worker_learn"
+  ],
+  "tool_results": {
+    "worker_payments": {
+      "payments": [
+        {
+          "date": "2026-11-18",
+          "amount": "1200",
+          "currency": "KES"
+        }
+      ]
+    }
+  },
+  "turns": [
+    {
+      "worker": "When was my last payment?"
+    }
+  ],
+  "must": [
+    "loads site_tools and site_call with ToolSearch and calls site_tools before replying",
+    "calls worker_payments through site_call before writing the reply",
+    "says the last payment shown on the record was on 18 November, the date the tool returned"
+  ],
+  "must_not": [
+    "says it cannot see the worker's payment record",
+    "tells the worker to ask the program team instead of reading the record",
+    "states a date or amount the tool did not return"
+  ],
+  "tools_expected": [
+    "site_tools",
+    "worker_payments"
+  ],
+  "tools_forbidden": [
+    "thread_handoff"
+  ]
+}

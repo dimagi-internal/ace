@@ -1,0 +1,15 @@
+{
+  "_doc": "Rails, not gates (canopy docs/agent-operating-model.md § Invariants; docs/architecture/shared-gog-gdrive.md § Gating): hooks carry DENY rails only — make the wrong path impossible and name the right one, so Connect Helper self-corrects and keeps going at zero autonomy cost. `channels` mounts the FLEET-BASELINE deny rails shipped in the installed canopy plugin (agent-core/gating-baseline.json) — canopy's session gating hook (agent-core/gating_guard.py --session, registered by the canopy plugin, not by this agent) merges them in front of this file's own `deny` list at call time, so a baseline rail fix reaches every agent via /canopy:update. ADD-ONLY: this file can add rails; it can never remove a baseline one. `approve` stays EMPTY by default: a PreToolUse 'ask' is a blocking modal that stalls autonomous work; approval semantics live in the procedural layer (skills/turn Step 2's 'present for approval'). Patterns are regex tested against the Bash command, or the file_path for Edit/Write.",
+  "slug": "connect-helper",
+  "channels": [
+    "email"
+  ],
+  "deny": [
+    {
+      "tool": "Bash",
+      "pattern": "(?:connect\\-helper-email\\b|canopy\\s+email\\s+send\\b|gog\\s+gmail\\s+(?:send|reply)\\b)",
+      "message": "BLOCKED: Connect Helper has no mailbox and sends nothing itself. A Connect Worker gets the turn's final prose, which Connect Labs relays over PersonalID; a person on the program team gets a conversation through `thread_handoff` (site_call on connect-messaging). See skills/worker-chat/SKILL.md."
+    }
+  ],
+  "approve": []
+}
