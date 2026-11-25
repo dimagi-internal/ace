@@ -77,24 +77,22 @@ which rule triggered, what to do>
 
 <answer from connect Programs payment cadence>
 
-**[LLO] Q: Do test submissions get paid?** — REQUIRED, do not omit
+**[LLO] Q: Does a submission my team makes while testing count?** — REQUIRED, do not omit
 
-No. A record submitted while testing the app is recorded but is never payable, and it does not
-count toward a worker's delivery cap. Operator ruling 2026-11-25.
+Yes. Connect cannot tell a test submission from a real one in a live opportunity: any visit a
+worker logs there counts toward their cap and is payable if it meets the payment conditions. Plan
+your headcount and your cap with that in mind, and do your walkthrough testing before the
+opportunity goes live wherever you can.
 
-State it plainly and in both directions, because Round 1 had it both ways: the PDD said review
-data "is not paid" while the Work Order carried no carve-out, so a conforming test submission
-auto-approved, paid out and consumed one of the worker's slots.
+Do **not** tell a coordinator that test submissions are unpaid or uncounted — both are false in a
+live opportunity, and a coordinator who believes them will plan against a cap that is smaller than
+they think. Measured on `tekzal/20261013-2314`: one device-walk record was paid and consumed a
+slot.
 
-**[FLW] Q: I submitted a survey while practising. Do I get paid for it?**
-
-No — practice and test submissions are not paid. They are saved so your coordinator can check your
-work, and they do not use up any of your paid surveys.
-
-**Say "not payable", never "Connect does not pay for these".** Connect does not move money at all:
-Dimagi pays the partner organization and the partner pays the worker. Phrasing it as Connect
-declining to pay for *these* implies it pays for the others, which is the contradiction
-`skills/_program-facts.md` § Payment flows exists to prevent.
+**Say "not payable", never "Connect does not pay for these"** where a genuinely unpayable case
+exists. Connect does not move money at all — Dimagi pays the partner organization and the partner
+pays the worker — so phrasing it as Connect declining to pay for *these* implies it pays for the
+others. See `skills/_program-facts.md` § Payment flows.
 
 ## Logistics
 

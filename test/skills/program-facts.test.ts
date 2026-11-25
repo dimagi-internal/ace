@@ -131,6 +131,25 @@ describe('the program-facts contract still binds', () => {
     expect(contract).toMatch(/One name per field/i);
   });
 
+  it('states the live-opportunity test-submission truth', () => {
+    expect(contract).toMatch(/no concept of a test submission/i);
+    expect(contract).toMatch(/counts toward that worker's delivery cap/i);
+  });
+
+  it('does NOT carry the false claim it briefly shipped with', () => {
+    // Ratchet. v0.13.2259 asserted that test submissions are "never payable"
+    // and "do not count toward a worker's delivery cap". BOTH ARE FALSE in a
+    // live opportunity: Connect carries no test/real flag, so any visit a
+    // worker logs is a real visit. Measured on tekzal/20261013-2314, where one
+    // device-walk record was paid (GHS 7 + GHS 4) and consumed a slot.
+    //
+    // The claim is attractive and wrong, which is exactly the kind that comes
+    // back. A partner who believes it plans headcount against a cap larger than
+    // the one they actually have.
+    expect(contract).not.toMatch(/does not count toward a worker's delivery cap/i);
+    expect(contract).not.toMatch(/test submissions are never payable/i);
+  });
+
   it('points at its own detector', () => {
     expect(contract).toMatch(/reconcile-outputs/);
   });
