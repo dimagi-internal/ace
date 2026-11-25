@@ -431,7 +431,16 @@ const KNOWN_OPTIONAL_INPUTS_TO_REQUIRED = new Set([
   'inputs-manifest.yaml',
   'eval-calibration/known-issues.md',
   '1-design/idea-to-pdd-qa_result.yaml',
+  // Review-mode only by contract: a run that needs no PDD review never contacts
+  // the partner, so the questionnaire is absent by design rather than missing.
+  // `required: true` would fail every auto-mode run (operator directive 2026-11-25).
+  '1-design/partner-context-questionnaire.md',
   '1-design/pdd-to-work-order-qa_result.yaml',
+  // Same class as the QA result above, for the same reason plus one more: a run
+  // with fewer than two fact-asserting artifacts has nothing to reconcile and
+  // returns `incomplete`, and every run that completed before this skill shipped
+  // has none at all. `required: true` would retroactively fail all of them.
+  '6-qa-and-training/reconcile-outputs_result.yaml',
   '1-design/pdd-to-work-order.gdoc',
   '2-research/partnership-research-qa_result.yaml',
   '2-scenarios/pdd-to-test-prompts-qa_result.yaml',

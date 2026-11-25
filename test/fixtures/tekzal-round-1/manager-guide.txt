@@ -1,0 +1,84 @@
+LLO Manager Guide — Turmeric Market Survey, Ghana (Round 1)
+For the tekzal coordinator overseeing frontline-worker deployment of this opportunity on Connect.
+
+
+Round 1 is a review build. Your team walks both apps end to end on your own devices and sends feedback. Anything recorded during the review is test data — not part of any dataset, and not paid. The field round is designed after your feedback and runs as a separate engagement.
+What your workers are doing
+Each worker visits turmeric sellers in a local market and records one short survey per seller: which forms of turmeric they sell, the price and its unit, how much is in stock, and photographs taken with a yellow MTN scratchcard laid flat beside the turmeric so color and size stay comparable across markets, phones and lighting. Workers never take, buy or carry away any turmeric, and they make no claim to a seller about their product.
+Day-to-day responsibilities
+* Morning check-in. Every worker has their MTN scratchcard from the single batch you purchased, a charged phone, and has synced. Confirm they know which market they are going to and exactly how to spell its name — the market is a free-text box the worker types, so consistent spelling is yours to enforce, not the app's: Market and seller screen.
+  
+
+* Quality watch — the first submissions matter most. Open each worker's first few records and look at the photographs. Nothing in the app checks that the card is actually in frame, flat, fully visible and lit the same as the turmeric — the single condition the whole comparability method rests on. It is taught in Module 4, tested in certification, and reviewed by people afterwards; there is no in-app check and no platform control for it. Watch it first during your walkthrough. The photo screen carries the full framing instruction: Photographs with the yellow MTN card.
+  
+
+* Duplicate review. Two records are the same seller when market, seller type and stall description match and both location readings are within 15 m of each other, provided both are accurate to better than 15 m; otherwise stall details alone decide. This is a review-time judgment made by a person, never a payment gate — nothing in the app rejects a duplicate.
+* Practice photographs. Each worker takes two or three practice shots during training and you review them. This does not gate activation. Only the certification test score unlocks survey work, and the app says so: Practice photographs are guidance, not a gate.
+  
+
+* Coverage. No per-market cap exists and the platform holds no per-market control. Spreading collection across markets and days is your supervisory job.
+* Escalations. Seller hostile or unsafe → the worker leaves and tells you the same day. Seller asks whether the turmeric is safe → the worker says the survey makes no judgment about any seller's product, and refers the question to you. Worker cannot complete the training → you, then the ACE program team.
+Payment mechanics
+* GHS 7 to the worker and GHS 4 to tekzal per verified vendor survey. Decided figures, not proposals.
+* Caps: 15 surveys per worker per day, 20 per worker in total. Twenty surveys is GHS 140 for the whole campaign — under two days of work at the daily cap. Brief on that basis: a short validation exercise, not ongoing employment.
+* Campaign total: 100 surveys, GHS 1,100 budget (100 × GHS 11).
+* How workers are paid. Workers are paid through Connect's standard worker payment: Connect works out each worker's earned total from approved records, and your organization sends the payment and records it in Connect, where the worker confirms it.
+* What makes a survey payable — all four, and nothing else. Started between 07:00 and 19:00 Ghana time; took at least 5 minutes from opening to sending; consent recorded as given; the seller recorded as selling turmeric. Photograph quality, price, the number of turmeric forms and every other answer have no effect on payment.
+* Not set, deliberately: duplicate detection, GPS gate, GPS radius, catchment areas, attachment checks. The platform carries no control for any of them, so no survey is ever refused on its location reading: Accuracy is good. Carry on.
+  
+
+* The Contact Log is never paid and carries no deliver unit. A refusal, a closed stall or a seller who does not sell turmeric goes there and does not consume one of the worker's 20 slots — the most important operational rule to brief, because routing those onto the paid survey would quietly cut the campaign short.
+* Window: 2026-10-13 to 2026-11-13, a 31-day window. The job card's "Days to complete" is a countdown from the device clock to 13 November, not the length of the window. Read the window from the opportunity, not the card.
+When a paid record turns out to be false
+If review shows a record was fabricated after Connect approved it and accrued payment:
+
+
+1. Do not try to reject the visit in Connect. This opportunity runs with automatic visit verification, so the per-visit Reject control is unavailable and the visit import is hidden. There is no screen you can use to reject a completed work.
+2. Hold that record's payment. Do not include it in your next payment run.
+3. Send the record ID (worker, visit date, entity), the evidence and the reason to the ACE program team at ace@dimagi-ai.com, who get the rejection applied in Connect.
+4. Before you pay, check that the worker's earned total on the opportunity's Worker Payments tile has gone down. Until it does, do not pay the record. Once rejected, it drops out of the payment recompute and stops accruing the GHS 4 organization fee — do not invoice a record that is held or rejected.
+5. Connect does not claw back money already paid. Recovering it is between you and the worker, under your own terms with them. Do not offset it against another worker's payment.
+6. Stopping future payment to that worker is a program-manager action. Request the suspension from the ACE program team and supply the evidence; once suspended, Connect rejects that worker's later visits on arrival.
+
+
+The design names no consequence ladder for the worker. That decision is yours under your own terms with them, and it should be recorded.
+Pre-deployment UAT — do this before inviting workers
+* The worker reaches the first assessment, submits a passing score, and the Module 1 row shows a completion indicator on return to the module list — observable in a screenshot, without reading a database.
+* All seven modules are present and in the designed order: what this survey is; identifying turmeric; the card and how to read it; taking a good photograph; approaching a seller; location and one record per seller; certification.
+* The pre-test is reachable before the modules and does not block progress — a worker who scores badly on it, or skips past it, still reaches Module 1.
+* Module 3's colour-comparison teaching is text, not a picture of two shades; and wherever a supplied photograph of the MTN card or of a worker at a stall appears, a caption on the same screen says it is a sample image rather than the exact card to carry.
+* The screens appear in the designed order — consent first, then market and seller details, then turmeric forms sold, then the conditional photographs, then price and packaging, then availability and origin, then the optional note, then submit — and no question asks for something the worker cannot yet know.
+* Photograph requirements follow the forms-sold selection: powder selected makes the powder-with-card photograph required, any root selected makes the root-with-card photograph required, and the stall-context shot stays optional.
+* Every enumerable answer is picked from a list rather than typed — seller/stall type, packaging, stated origin, availability, and the price unit. Market is the single deliberate exception and must be a plain text input.
+* Location is captured without the worker being asked for it, and the reading's accuracy is shown to the worker on screen and submitted with the record.
+* The Contact Log is reachable in two taps or fewer from the opportunity's menu, and a worker standing in front of a trader can tell which of the two entries they need without reading instructions.
+* The outcome field offers exactly declined / does not sell turmeric / stall closed, and market on this form is the same free-text input as on the survey.
+* The price field rejects 0, a negative number and anything above 10,000, and accepts a plausible value with its unit; the rejection names the allowed range rather than saying the entry is invalid.
+* A required photograph cannot be skipped past, and a retake replaces the previous image rather than adding a second one.
+* Stall description is a required field, not skippable, and its purpose is evident from the question text.
+* Market, seller type and stall description — the three identifiers the review-time rule uses — are all present and populated on every submitted survey.
+
+
+Record at least five distinct, actionable feedback items. Your end-to-end sign-off on usability is the gate for proceeding to a deployment round.
+Where the data lives
+* CommCare HQ project space: connect-ace-prod. Learn app 3bf3e92e5d0a46c6aecca7972ac55a40, Deliver app 55423a5731c1403bb0f8f21dd3043acc.
+* Connect opportunity: https://connect.dimagi.com/a/tekzal/opportunity/370deae7-c9aa-48f6-933e-3fc5d022b365/
+* Reviewing submissions: the opportunity's Deliver tab lists every submitted survey with its worker, date and approval status; the Payments tab carries each worker's earned and paid totals. Submitted photographs and the full form data are in the CommCare HQ project space above.
+* What the worker sees after a sync: Deliver home after Sync with Server — the "Daily Visits 1/15" counter is server-derived. The "Delivery Hours" chip beside it renders in the device's local time zone, so a phone set to a zone other than Ghana shows the 07:00–19:00 window shifted. The stored window is unchanged; only the display moves.
+  
+
+Where to get help
+* tekzal coordinator (you): [name, phone and expected reply time, to be filled in by tekzal at onboarding] — your workers' first contact for anything about their work.
+* ACE program team: ace@dimagi-ai.com — platform questions, false-record escalations, worker suspensions. Reply time within one working day.
+* Connect platform reference: Monitoring an opportunity · Verify and approve visits · Payments for verified service delivery
+
+
+There is no support chatbot for this round. Where a worker needs help, the path is their tekzal coordinator, then the ACE program team.
+
+
+________________
+
+
+
+
+Screenshots in this guide were captured from the built apps on 2026-10-15. The apps a worker installs are copies of the ones photographed, so the screens are identical. One cosmetic difference: any Connect job-card frame shows the opportunity under its earlier name — the live opportunity is "20261013-2314 · Turmeric Market Survey — Ghana R1".

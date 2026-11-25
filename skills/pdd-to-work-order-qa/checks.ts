@@ -1398,6 +1398,134 @@ export function checkNoDenyListedParty(raw: string, ctx?: QACheckContext): QAChe
   return checkTextAgainstDenyList(normalizeDriveExport(raw), denyList, 'The work order');
 }
 
+// ── Dates inside the period of performance (tekzal Round 1, item 2) ──
+
+/**
+ * Every date the document commits to must fall inside its own Period of
+ * Performance.
+ *
+ * tekzal Round 1 blocker: the period ended 13 November, and fifteen business
+ * days of review from the Week 3 submission window closed on 17 or 23 November.
+ * So if Dimagi took its full review window the partner's resubmission right
+ * expired before it could be used, and the mobilization advance was not payable
+ * until 9 December — nearly a month after the engagement it was meant to
+ * mobilize. The partner's summary: "The document's own deadlines fall outside
+ * its period of performance."
+ *
+ * SCOPE: the header table is excluded. The Work Order Date legitimately
+ * predates the period (that is when the contract was drawn), and the Period of
+ * Performance row is the thing being compared against, not a date inside it.
+ * A bracketed period — the sanctioned pre-partner form — passes: there is no
+ * range to compare against, and inventing one would fail every pre-award draft.
+ *
+ * LIMIT, stated because the captured Round 1 work order PASSES this check:
+ * it catches dates WRITTEN in the document. Round 1's actual defect was a
+ * DERIVED one — fifteen business days of review counted from a submission
+ * window, landing on 17 or 23 November against a period ending the 13th. That
+ * date appears nowhere in the text, so no literal scan can see it. Catching it
+ * needs the review window and the cadences modelled, not matched. Until then
+ * this check is the cheap half, and the § 5 deadline table is the structural
+ * fix: the template now asserts every date in it falls inside the period.
+ */
+export function checkDatesInsidePeriodOfPerformance(raw: string): QACheckResult {
+  const wo = normalizeDriveExport(raw);
+
+  const mdMatch = wo.match(/\|\s*Period of Performance\s*\|\s*([^|\n]+?)\s*\|/i);
+  const gdocMatch = wo.match(/Period of Performance[\s\r\n]*?[\t ]+([^\r\n]+)/i);
+  const periodCell = (mdMatch ?? gdocMatch)?.[1]?.trim();
+  if (!periodCell) {
+    return { pass: true, detail: 'no Period of Performance row; period_of_performance_complete owns that failure' };
+  }
+  if (/^\[[^\]]+\]$/.test(periodCell)) {
+    return { pass: true, detail: 'period is a bracketed placeholder; no range to compare against' };
+  }
+
+  const bounds = [...periodCell.matchAll(/(\d{4})-(\d{2})-(\d{2})/g)].map((m) => m[0]);
+  if (bounds.length < 2) {
+    return { pass: true, detail: `period "${periodCell}" is not ISO; comparison skipped` };
+  }
+  const [start, end] = [bounds[0], bounds[bounds.length - 1]].sort();
+
+  // Skip the header table — everything before § 1 Background.
+  const bodyStart = wo.search(/^#{1,3}\s*1\.\s/m);
+  const body = bodyStart === -1 ? wo : wo.slice(bodyStart);
+
+  const outside: string[] = [];
+  for (const m of body.matchAll(/\b(\d{4}-\d{2}-\d{2})\b/g)) {
+    const d = m[1];
+    if (d < start || d > end) outside.push(d);
+  }
+
+  if (outside.length === 0) return { pass: true, detail: `all body dates inside ${start}..${end}` };
+  const dedup = [...new Set(outside)];
+  return {
+    pass: false,
+    detail: `${dedup.length} date(s) outside the Period of Performance ${start}..${end}: ${dedup.join(', ')}`,
+    auto_fix_hint:
+      `Bring every committed date inside the Period of Performance ${start}..${end}, or widen the ` +
+      `period. Check the review window and the payment timing in particular: a review window that ` +
+      `closes after the period ends makes the partner's resubmission right unusable, and an advance ` +
+      `payable after the engagement finishes cannot mobilize it. Dates outside: ${dedup.join(', ')}.`,
+  };
+}
+
+// ── Cross-references resolve (tekzal Round 1, item 7) ───────────────
+
+/**
+ * Every "Section N" / "§ N" the document cites must exist as a heading in it.
+ *
+ * tekzal Round 1: "Section 6.2 cites itself four times, once wrongly for
+ * deliverables that live in Section 4.1." A reader following a reference to a
+ * section that does not say what the citation claims loses the thread of a
+ * contract they are being asked to sign.
+ *
+ * SCOPE: existence only. Whether § 6.2's citation of § 4.1 is SEMANTICALLY
+ * right is not decidable statically, and a check that guesses would be the
+ * always-fires kind. A dangling pointer is decidable, and it is the half that
+ * can be fixed mechanically.
+ */
+export function checkCrossReferencesResolve(raw: string): QACheckResult {
+  const wo = normalizeDriveExport(raw);
+
+  const headings = new Set<string>();
+  // Headings arrive in THREE shapes and all three have to match, because this
+  // check runs on a Drive plain-text export at runtime, not on the markdown
+  // mirror (the ace#1609 class). Measured against the captured Round 1 work
+  // order: with a `^#{1,4}` requirement it found ZERO headings and returned a
+  // clean pass over every reference in the document.
+  //
+  //   `## 4. Deliverables`                  markdown source, trailing dot
+  //   `### 4.2 Definition of a Verified Unit`  markdown source, no dot
+  //   `4.2 Definition of a Verified Unit`      plain-text export, no marker
+  //
+  // Requiring a capital after the number, and no sentence-ending period on the
+  // line, keeps enumerated conditions out — "1. started between 07:00 and 19:00
+  // Ghana time;" is lower-case, and "1. Greet. Introduce yourself." has interior
+  // periods. A list item wrongly read as a heading would only make references
+  // resolve more readily, so the residual error is in the quiet direction.
+  for (const m of wo.matchAll(/^#{0,4}[ \t]*(\d+(?:\.\d+)?)\.?[ \t]+[A-Z][^.\n]*$/gm)) {
+    headings.add(m[1]);
+  }
+  if (headings.size === 0) return { pass: true, detail: 'no numbered headings found' };
+
+  const dangling = new Set<string>();
+  for (const m of wo.matchAll(/(?:§\s*|Section\s+)(\d+(?:\.\d+)?)\b/g)) {
+    const ref = m[1];
+    // A reference to § 6 is satisfied by § 6 OR by any § 6.x subsection.
+    const ok = headings.has(ref) || [...headings].some((h) => h.startsWith(ref + '.'));
+    if (!ok) dangling.add(ref);
+  }
+
+  if (dangling.size === 0) return { pass: true, detail: `${headings.size} sections, all references resolve` };
+  return {
+    pass: false,
+    detail: `reference(s) to section(s) that do not exist: ${[...dangling].sort().join(', ')}`,
+    auto_fix_hint:
+      `Point each reference at a section the document actually has, or add the section. ` +
+      `Sections present: ${[...headings].sort().join(', ')}. Dangling: ${[...dangling].sort().join(', ')}.`,
+  };
+}
+
 export const CHECKS: QACheck[] = [
   {
     id: 'rendered_from_template',
@@ -1459,6 +1587,23 @@ export const CHECKS: QACheck[] = [
       'No renderer instructions survived into the delivered contract — "per archetype", an unrendered ' +
       'payment-unit alternation, or a TODO/TBD/FIXME marker (dimagi-internal/ace#1004)',
     run: (wo: string) => checkNoRendererInstructions(wo),
+  },
+  {
+    id: 'dates_inside_period_of_performance',
+    type: 'static',
+    description:
+      'Every date in the body falls inside the header Period of Performance. tekzal Round 1: the ' +
+      'review window closed after the period ended, so the resubmission right expired before it ' +
+      'could be used, and the advance was not payable until a month after the engagement.',
+    run: (wo: string) => checkDatesInsidePeriodOfPerformance(wo),
+  },
+  {
+    id: 'cross_references_resolve',
+    type: 'static',
+    description:
+      'Every "Section N" / "§ N" cited exists as a heading. Existence only — whether a citation ' +
+      'is semantically right is not statically decidable (tekzal Round 1, item 7).',
+    run: (wo: string) => checkCrossReferencesResolve(wo),
   },
   {
     id: 'no_scaffolding_markers',

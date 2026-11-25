@@ -19,6 +19,8 @@ import {
   checkSignatureBlocksPresent,
   checkArchetypeAppropriateScope,
   checkNoScaffoldingMarkers,
+  checkDatesInsidePeriodOfPerformance,
+  checkCrossReferencesResolve,
   checkNoRendererInstructions,
   checkPaymentUnitMatchesEntityGrain,
   checkAdvanceContingentWhenCapUnresolved,
@@ -487,8 +489,8 @@ describe('checkNoScaffoldingMarkers', () => {
 });
 
 describe('CHECKS array', () => {
-  test('exports eighteen checks in canonical order', () => {
-    expect(CHECKS).toHaveLength(18);
+  test('exports twenty checks in canonical order', () => {
+    expect(CHECKS).toHaveLength(20);
     const ids = CHECKS.map((c) => c.id);
     expect(ids).toEqual([
       // First deliberately: "this is not a template render" explains every
@@ -502,6 +504,12 @@ describe('CHECKS array', () => {
       'signature_blocks_present',
       'archetype_appropriate_scope',
       'no_renderer_instructions',
+      // Internal-consistency pair (tekzal Round 1). Both ask whether the
+      // document agrees with ITSELF — its dates against its own stated period,
+      // its cross-references against its own headings — rather than reading one
+      // field in isolation, which is why they sit together here.
+      'dates_inside_period_of_performance',
+      'cross_references_resolve',
       'no_scaffolding_markers',
       'advance_contingent_when_cap_unresolved',
       'payment_models_reconciled',
@@ -1791,5 +1799,115 @@ describe('checkNoDenyListedParty (ace#3190)', () => {
     const c = CHECKS.find((x) => x.id === 'no_deny_listed_party');
     expect(c).toBeDefined();
     expect((c!.run('funded by GiveDirectly', { confidentialityYaml }) as { pass: boolean }).pass).toBe(false);
+  });
+});
+
+// ─── tekzal Round 1 internal-consistency checks ──────────────────────
+//
+// Both fixtures below reproduce the defect the partner logged, with the real
+// numbers. A check that passes the document which caused the blocker is not
+// checking anything.
+
+describe('dates_inside_period_of_performance (tekzal Round 1 item 2)', () => {
+  const header = (period: string) =>
+    `| Work Order Number | 1 |\n|---|---|\n| Period of Performance | ${period} |\n\n`;
+
+  test('fails when a committed date falls after the period ends', () => {
+    // Round 1: the period ended 2026-11-13; fifteen business days of review
+    // from the Week 3 submission closed 2026-11-23, and the advance was not
+    // payable until 2026-12-09.
+    const wo =
+      header('2026-10-13 to 2026-11-13') +
+      '## 1. Background\n\nBody.\n\n' +
+      '## 5. Deliverables and Deadlines\n\n| Deliverable | Due |\n|---|---|\n' +
+      '| Final reconciliation | 2026-11-23 |\n| Advance payable | 2026-12-09 |\n';
+    const r = checkDatesInsidePeriodOfPerformance(wo);
+    expect(r.pass).toBe(false);
+    expect(r.detail).toMatch(/2026-11-23/);
+    expect(r.detail).toMatch(/2026-12-09/);
+  });
+
+  test('passes when every committed date is inside the period', () => {
+    const wo =
+      header('2026-10-13 to 2026-12-31') +
+      '## 1. Background\n\nBody.\n\n' +
+      '## 5. Deliverables and Deadlines\n\n| Deliverable | Due |\n|---|---|\n' +
+      '| Final reconciliation | 2026-11-23 |\n';
+    expect(checkDatesInsidePeriodOfPerformance(wo).pass).toBe(true);
+  });
+
+  test('ignores the header, so a Work Order Date before the period is fine', () => {
+    // The contract is drawn before the work starts. Flagging that would fail
+    // every work order ever written.
+    const wo =
+      '| Work Order Date | 2026-10-01 |\n|---|---|\n' +
+      '| Period of Performance | 2026-10-13 to 2026-11-13 |\n\n' +
+      '## 1. Background\n\nNo dates here.\n';
+    expect(checkDatesInsidePeriodOfPerformance(wo).pass).toBe(true);
+  });
+
+  test('no-ops on the sanctioned bracketed period rather than inventing a range', () => {
+    const wo =
+      header('[Start and end dates set at award]') +
+      '## 1. Background\n\nDelivery due 2027-03-01.\n';
+    const r = checkDatesInsidePeriodOfPerformance(wo);
+    expect(r.pass, 'a pre-partner draft has no range to compare against').toBe(true);
+  });
+});
+
+describe('cross_references_resolve (tekzal Round 1 item 7)', () => {
+  test('fails on a reference to a section the document does not have', () => {
+    const wo = '## 4. Deliverables\n\nSee Section 12.4 for the schedule.\n';
+    const r = checkCrossReferencesResolve(wo);
+    expect(r.pass).toBe(false);
+    expect(r.detail).toMatch(/12\.4/);
+  });
+
+  test('accepts a reference to a parent section satisfied by a subsection', () => {
+    // "§ 6" is a real reference when the document has § 6.1 and § 6.2 but no
+    // bare "## 6." heading. Treating that as dangling would fire on the
+    // commonest citation form in the template.
+    const wo = '## 6.1 Total\n\nText.\n\n## 6.2 Schedule\n\nAs set out in Section 6.\n';
+    expect(checkCrossReferencesResolve(wo).pass).toBe(true);
+  });
+
+  test('accepts § notation and resolves it the same way', () => {
+    const wo = '## 4.1 Primary\n\nText.\n\n## 6. Payment\n\nPer § 4.1 above.\n';
+    expect(checkCrossReferencesResolve(wo).pass).toBe(true);
+  });
+});
+
+// ─── Grounded controls: the captured Round 1 work order ──────────────
+//
+// `test/fixtures/tekzal-round-1/work-order.txt` is the real Drive export of the
+// contract tekzal was asked to sign. It is here because the two checks below
+// behaved differently against it than against literals typed beside them:
+// `cross_references_resolve` found ZERO headings in it and returned a clean pass
+// over the whole document, because the plain-text export carries no `##` markers
+// at all (the ace#1609 class). The literal fixtures agreed with the bug.
+
+describe('the two internal-consistency checks against the real Round 1 export', () => {
+  const REAL_WO = readFileSync(
+    join(__dirname, '..', '..', 'fixtures', 'tekzal-round-1', 'work-order.txt'),
+    'utf8',
+  );
+
+  test('cross_references_resolve finds the plain-text export’s headings', () => {
+    const r = checkCrossReferencesResolve(REAL_WO);
+    // The ratchet: if a future edit reintroduces a `#`-only heading pattern this
+    // drops back to "no numbered headings found" and passes everything.
+    expect(r.detail).toMatch(/\d+ sections/);
+    expect(r.detail).not.toMatch(/no numbered headings/);
+    expect(r.pass).toBe(true);
+  });
+
+  test('dates_inside_period_of_performance reads the real period and passes it', () => {
+    // Documents the LIMIT rather than claiming a catch: Round 1's deadline
+    // defect was derived (a review window counted forward), not written, so a
+    // literal scan cannot see it. What this asserts is that the check parsed the
+    // real period instead of silently skipping.
+    const r = checkDatesInsidePeriodOfPerformance(REAL_WO);
+    expect(r.detail).toMatch(/2026-10-13\.\.2026-11-13/);
+    expect(r.pass).toBe(true);
   });
 });

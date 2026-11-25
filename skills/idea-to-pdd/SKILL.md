@@ -28,6 +28,7 @@ Pipeline-only: authors a run's PDD from that run's frozen `inputs-manifest.yaml`
 Pause-time summary at the Phase 1→3 Pause Point is composed by the
 orchestrator from the per-skill QA + eval verdicts on the fly. -->
 
+- `1-design/partner-context-questionnaire.md` — local-context questions put to the partner before the PDD is drafted. Review-mode runs only; absent by design on runs that need no PDD review (operator directive 2026-11-25). See `## The partner context questionnaire, and who approves the PDD` below.
 - `ACE/<opp-name>/runs/<run-id>/decisions.yaml` — structured per-run decisions log (always emitted; see `## Decisions Log Convention` below)
 - `run_state.yaml.phases.idea-to-design.products.pdd` — `{title, description, file_id}` typed handoff for downstream readers (ace-web summary, future skills) so they don't need to parse the PDD body. This skill is the sole writer. (Pre-2026-05-26: `phases.design.products.pdd` — moved under the actual phase block to satisfy `lib/run-state-validator.ts` which requires every top-level `phases.*` key to be a phase block with `status`; see bednet-spot-check Phase 1 finding.)
 
@@ -135,6 +136,70 @@ Read it in step 1 alongside the inputs (`resolve_opp_path` → `inputs/` →
 spark-facilitator the owner ruled on 2026-10-04 that devices are costed
 separately and asked about. *Enforced:* `test/lib/operator-rulings.test.ts`
 (fixture `test/fixtures/operator-rulings/spark-facilitator.yaml`).
+
+
+## The partner context questionnaire, and who approves the PDD
+
+Operator directive, 2026-11-25, after the tekzal Round 1 review.
+
+### Why
+
+Round 1's PDD and work order rested on four things that are obvious locally and invisible from
+outside: a reference object no longer in general use in the country, a permission no authority
+there issues, a survey window opening an hour after the markets are at their best for interviews,
+and four working days for work the partner said needs ten. The partner's own recommendation:
+
+> *"Each is obvious to anyone here and invisible from outside. A local-context pass, or a question
+> put to the partner before issue, would catch all of them."*
+
+ACE cannot research its way to these. The partner already knows them.
+
+### The sequence — review-mode runs only
+
+1. **Draft the plan.** Research and expand as normal (step 3), to the point where the open
+   local-context questions are visible.
+2. **Send the questionnaire** to the partner and STOP. This is a wait state: a human at the
+   partner replies on their own schedule.
+3. **Write the PDD from their responses**, recording each answer as a decision row.
+4. **A Dimagi human reviewer confirms the PDD.** Only then is it the source of truth for every
+   later phase.
+
+**On a run that does not require PDD review, skip all of it.** ACE does not contact the partner
+and makes the judgement calls itself. Operator wording: *"for ace runs that do not require any
+review, ace does not need to reach out to the partner and can make judgement calls."*
+
+### Why a Dimagi reviewer, and not the partner's answers directly
+
+> *"The reason we want it this way because the partner may suggest things that we do not want to
+> approve."*
+
+The questionnaire gathers local facts; it does not delegate design authority. A partner answer
+that changes scope, cost or method is a proposal for Dimagi to accept or decline, and the PDD is
+not the source of truth until a Dimagi human has confirmed it.
+
+### What goes in it
+
+Anything whose right answer depends on being there. Ask for facts and constraints, never for
+approval of a design decision:
+
+- **The reference object or equipment the method depends on** — is it available locally, can it be
+  bought as a uniform batch, and what would you use instead? Whatever comes back must be a single
+  standard issued to every worker, or the data is not comparable.
+- **Working hours** — when does the site actually operate, and when are respondents able to talk?
+- **Headcount and calendar slack** — how many workers can you field, how many do you need spare,
+  and how long do your own approvals take?
+- **Local feasibility of the subject** — is the thing being surveyed actually present in the
+  proposed location in the numbers the design assumes?
+
+**Do not ask about approvals or permissions.** That is the partner's process and ACE says one
+generic line about it — see [`skills/_program-facts.md`](../_program-facts.md) § Approvals are
+generic. Asking which permissions apply invites ACE to write them into the contract, which is the
+defect, not the fix.
+
+### Product
+
+`1-design/partner-context-questionnaire.md`, plus one decision row per answer received so the PDD
+body and the questionnaire cannot drift apart.
 
 ## Terminology — read before drafting any PDD prose
 
@@ -2151,6 +2216,20 @@ When `--dry-run` is active:
 - Write the admin email summary (recipients, subject, body) to `comms-log/dry-run-idea-to-pdd.md`
 - Do not send emails to the admin group
 - State tracks as `dry-run-success`
+
+
+## Program facts
+
+Facts that **more than one artifact asserts** — who pays the field worker, the caps, the payment
+conditions, consent order, the name of each captured field — have exactly one correct value per
+run. They are defined in [`skills/_program-facts.md`](../_program-facts.md).
+
+Read the settled value from the PDD. Never re-derive it here, and never infer it from another
+artifact — that is how drift starts. If the PDD has not settled it, propose a value there for
+confirmation rather than deciding silently in this document.
+
+Round 1 of `tekzal/20261013-2314` shipped a work order and four training documents that disagreed
+on who pays the worker. The partner stopped there and rated the round 2/4.
 
 ## Change Log
 

@@ -65,16 +65,23 @@ const META = new Set(['snake_case', 'token']);
  * SKILL.md: "There is NO single `{{scope_body}}` token in the live template."
  * That warning is load-bearing (ace#819) and must not be read as a declaration.
  */
-const DOCUMENTED_NEGATIVES = new Set(['scope_body']);
+const DOCUMENTED_NEGATIVES = new Set(['scope_body', 'permissions_body']);
 
 /**
- * The template enumerates repeated table rows (`{{week_3_dates}}`,
- * `{{raci_11_partner}}`); the docs write the family once (`{{week_N_dates}}`).
- * Collapse both sides to the family so the comparison is about WHICH tokens
- * exist, not how many rows the table happens to have.
+ * The template enumerates repeated table rows (`{{deliverable_3_due}}`,
+ * `{{raci_11_partner}}`); the docs write the family once
+ * (`{{deliverable_N_due}}`). Collapse both sides to the family so the
+ * comparison is about WHICH tokens exist, not how many rows the table happens
+ * to have.
+ *
+ * `deliverable` replaced `week` when § 5 stopped prescribing a week-by-week
+ * schedule (operator ruling 2026-11-25, tekzal Round 1). This list is the one
+ * place the family prefixes are named — a new repeated-row table that is not
+ * added here fails the contract as a per-row mismatch rather than a family one,
+ * which reads as a dozen missing tokens and sends the reader to the wrong file.
  */
 function normalize(token: string): string {
-  return token.replace(/^(week|raci)_\d+_/, '$1_N_');
+  return token.replace(/^(deliverable|raci)_\d+_/, '$1_N_');
 }
 
 function tokensIn(rel: string): Set<string> {

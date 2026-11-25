@@ -152,7 +152,7 @@ Take the approved PDD and decisions.yaml and produce a contractual Work Order dr
    - **Resolve-or-create the `1-design/` phase subfolder first** — `drive_create_folder({name: '1-design', parentFolderId: <run-folder file_id>, findOrCreate: true})` — and pass its id (NOT the run-folder id) as `parentFolderId` below. Passing the run-folder id lands the work order flat at the run root, which fails the Phase boundary's `verify_phase_artifacts` (it walks `1-design/`; jjackson/ace#623).
    - `docs_copy_template(templateDocId=<WORK_ORDER_TEMPLATE_ID from env>, parentFolderId=<1-design folder id>, title="pdd-to-work-order.gdoc", replacements={...})`. Pass all token replacements directly to `docs_copy_template` — it runs a single `replaceAllText` batch under the hood, no separate `docs_batch_update` needed. If the run already has a `pdd-to-work-order.gdoc`, title the new one `pdd-to-work-order-2.gdoc`, etc.
    - **After the copy returns, call `docs_finalize_bullets(documentId=<new-doc-id>)` (required).** This atom applies real Google Docs bullet styling to paragraphs enclosed in `<<<BULLETS_<NAME>_START>>>` / `<<<BULLETS_<NAME>_END>>>` anchor pairs, deletes the anchors, and returns the count of pairs processed. **The live `WORK_ORDER_TEMPLATE_ID` template carries FIVE anchor pairs** (the two §2 scope blocks, §4.2 verified-unit criteria, §4.3 reporting, §8.1 permissions), so the expected result is `anchorsProcessed: 5` (a non-zero `emptyBulletsRemoved` is normal when some bullet lines go unused). A `processed: 0` result now means the anchors were destroyed (e.g. by a bad token replacement) — investigate before shipping the doc; it is no longer the expected no-op it was pre-anchor-landing (history: jjackson/ace#614; doc staleness caught as jjackson/ace#819).
-   - Body tokens for bulleted regions (`{{scope_will_body}}`, `{{scope_will_not_body}}`, `{{verified_unit_body}}`, `{{reporting_body}}`, `{{permissions_body}}`) take a `\n`-separated string with one bullet item per line. `replaceAllText` honors `\n` as paragraph breaks; `docs_finalize_bullets` then bullet-styles each resulting paragraph inside the anchor pairs.
+   - Body tokens for bulleted regions (`{{scope_will_body}}`, `{{scope_will_not_body}}`, `{{verified_unit_body}}`, `{{reporting_body}}`) take a `\n`-separated string with one bullet item per line. `replaceAllText` honors `\n` as paragraph breaks; `docs_finalize_bullets` then bullet-styles each resulting paragraph inside the anchor pairs.
    - **Then call `docs_finalize_bold(documentId=<new-doc-id>)` (required, and AFTER `docs_finalize_bullets`).** It converts the literal `**bold**` in your prose tokens into real Google Docs bold and deletes the markers, walking table cells recursively (§2 scope, §4.2 criteria and §8.1 permissions are all inside tables). It sets only the `bold` field, so the template's fonts, colours and sizes survive. Ordering matters: `docs_finalize_bullets` deletes anchor paragraphs and therefore shifts document indices, so running bold first would style stale ranges. `spansBolded: 0` on a document whose tokens contained `**` means the markers were destroyed upstream — investigate rather than shipping flattened emphasis. Idempotent: a re-run finds no markers and reports 0.
    - **Token-coverage check (class-level preventer, jjackson/ace#819).** After `docs_copy_template` + `docs_finalize_bullets` + `docs_finalize_bold`, read the rendered doc back (`drive_read_file` or `docs_get`) and scan for any surviving `{{` — a leftover token means the skill's replacement keys and the live template's tokens have drifted (exactly how `{{scope_will_body}}`/`{{scope_will_not_body}}` leaked into a contractual artifact when this doc still described a single `{{scope_body}}`). On a hit, fix via `docs_batch_update` replaceAllText and file the drift before proceeding.
    - **Read `unmatchedReplacements` on the `docs_copy_template` result — it is not decoration (ace#2126).** The scan above looks for a token the template kept; this covers the OPPOSITE direction — a key YOU pass that the template does not contain. That one leaves nothing behind to find, so the scan is structurally blind to it and the atom reports it instead: a non-empty `unmatchedReplacements` (plus a `warning`) means those values were **silently dropped from the rendered document**. It is a report, not a rollback — the doc exists and looks fine. Treat any entry as a **halt**: `{{partner_first_reference}}` was dropped exactly this way on `spark-facilitator/20260907-1120`, and the Work Order shipped using "the partner" ~30 times with no antecedent while `pdd-to-work-order-qa` returned 14/14 pass.
@@ -280,10 +280,14 @@ Take the approved PDD and decisions.yaml and produce a contractual Work Order dr
      - There is NO single `{{scope_body}}` token in the live template. Passing one silently drops all scope content AND leaks the two real tokens verbatim into § 2 Scope of Work (a `no_scaffolding_markers`-class QA defect) — the exact failure from bednet-spot-check/20260701-1644 (jjackson/ace#819).
      - `{{verified_unit_body}}` — criteria a unit must meet to be "verified" (one bullet per line)
      - `{{reporting_body}}` — required reporting deliverables (one bullet per line)
-     - `{{permissions_body}}` — required permissions (one bullet per line)
+     - There is NO `{{permissions_body}}` token. § 8.1 is a fixed generic line in the template and takes no content — see **Approvals stay generic** below.
 
-   **Timeline table (9 rows × 3 cols, header + 8 weeks):**
-     - `{{week_N_dates}}`, `{{week_N_activities}}` for N=1..8 (from PDD Timeline)
+   **Deliverables and Deadlines table (7 rows × 2 cols, header + 6 deliverables):**
+     - `{{deliverable_N_item}}`, `{{deliverable_N_due}}` for N=1..6.
+     - **Do NOT emit a week-by-week schedule.** Operator decision 2026-11-25: *"a better design will be to not create a week by week plan. Let the partners decide how they want to plan it. Ace and dimagi just tell them what needs to be done and the timelines."* The former § 5 was an 8-row Week/Dates/Activities table, and sequencing the partner's own work is what produced tekzal Round 1's blocker #1 — cards distributed to field workers in Week 3 whom Week 4 recruits, with the mobilization advance triggering on that distribution. Stating a deliverable and its deadline cannot produce that class of defect because it never asserts an order.
+     - **Every `{{deliverable_N_due}}` must fall inside the Period of Performance.** Round 1's review window closed after the period ended, so the partner's resubmission right expired before it could be used, and the advance was not payable until nearly a month after the engagement finished. *Enforced:* `pdd-to-work-order-qa § dates_inside_period_of_performance`.
+     - A deliverable the design commits the partner to — recruitment, certification, practice review — belongs HERE, where the acceptance test in § 6.2 can see it. Round 1 left committed Phase A work outside § 4.1 entirely, so nothing could accept it.
+     - If the design needs fewer than 6 rows, fill trailing rows with empty strings.
 
    **Payment Schedule table (3 rows × 6 cols, header + 2 milestones):**
      - Milestone 1: `{{wo_mobilization_advance_pct}}`, `{{wo_mobilization_amount}}`, `{{wo_mobilization_trigger}}`, `{{wo_mobilization_timing}}`
@@ -305,6 +309,9 @@ Take the approved PDD and decisions.yaml and produce a contractual Work Order dr
 
    **Data Handling table (9 rows × 2 cols, header + 8 fields):**
      - `{{data_project_overview}}`, `{{data_subjects}}`, `{{data_personal_info}}`, `{{data_purpose}}`, `{{data_security}}`, `{{data_partner_measures}}`, `{{data_storage_location}}`, `{{data_protection}}`
+     - **`{{data_personal_info}}` must agree with what the app actually captures. Never "None recorded" while the same section regulates those records.** Round 1 declared no personal information recorded, then described the market, the stall type, a locating description and the stall's coordinates — and imposed named-staff access control and 24-hour breach notification on exactly those records. The partner's note: *"A market, a locating description and coordinates identify a stall, and in a market a stall identifies a trader."*
+     - **GPS is always identifying information and is declared as such.** Operator ruling 2026-11-25. If the Deliver app captures location at submission, `{{data_personal_info}}` says so. A free-text locating description and a stall photograph are identifying for the same reason — they resolve to one trader.
+     - Derive this cell from the app's captured fields, not from an assumption about the design's intent. The declaration and the controls in the same table must describe the same data.
 
    **Signatures table (2 rows × 2 cols, header + signer blocks):**
      - `{{partner_signatory_name}}`, `{{partner_signatory_title}}`, `{{partner_address}}` (left cell — Subcontractor)
@@ -423,6 +430,83 @@ puts in front of a human. The full rule, including the carve-outs for CommCare t
 mobile app, CommCare HQ and code-level identifiers, is
 [`skills/_terminology.md`](../_terminology.md). Read it before writing prose; it is
 binding on this skill's output.
+
+
+
+## Contract rules from the tekzal Round 1 partner review
+
+Binding on every work order, not only tekzal's. Each is an operator ruling of 2026-11-25 on a
+defect a real implementing partner found, logged and rated.
+
+### Payment direction
+
+Dimagi pays the partner; the partner pays each Frontline Worker and records the payment in
+Connect. **Dimagi never pays a Frontline Worker directly, and Connect does not move money.**
+
+Never generate "FLW payments are disbursed through Connect directly to the FLW", and never make
+Dimagi the party that processes a worker payment. That was Round 1's § 6.2. It contradicted all
+four training documents, and the partner called it the most consequential disagreement in the
+round because it decides who funds the float — they believed the contract. Full rule:
+[`skills/_program-facts.md`](../_program-facts.md).
+
+### Approvals stay generic
+
+§ 8.1 is a fixed line in the template and takes no generated content:
+
+> The partner will take all required approvals from respective authorities for smooth deployment.
+
+**Never name a permission, an authority, a fee or a lead time**, and never require the partner to
+send Dimagi copies of permissions obtained. Round 1 required a permission for workers to carry a
+reference object that no authority in the country issues, and required market permission with no
+schedule time, no budget line and no stated consequence — while the partner knew it was two
+permissions, days to weeks, and usually a fee. The partner owns the process: *"if they don't like
+the terms and conditions of work order, they can reject the work."*
+
+### Local-language material is the partner's responsibility
+
+State it plainly: interpreting or translating worker-facing material into local languages is the
+partner's responsibility, and the partner may translate the English text and hand a document to
+each worker. ACE does not supply, standardize or commission a translated script.
+
+Say it rather than leaving it unsaid. Round 1's silence is what the partner noticed, because the
+consent script — the one part of the visit that has to be exact — is read aloud in the seller's
+language off an English screen.
+
+### No duplicate-monitoring obligation
+
+**Do not write a duplicate definition, or a duplicate-monitoring obligation, into the contract.**
+Operator ruling: *"duplicate rule cannot be system verified so does not need to be included. Only
+include the rule for work timing and submission duration."* Round 1 required duplicate monitoring
+without ever defining a duplicate, so the rule lived only in training material while the contract
+reviewed against nothing.
+
+### No device or camera standard
+
+No handset recommendation, no camera specification, no HDR or filter instruction. The only capture
+control is **live photo only, no gallery upload**, and it is enforced in the app build rather than
+asserted here. Operator ruling: *"make sure the artifacts shared with partner doesn't proactively
+recommend anything on devices."*
+
+### Headcount and calendar slack
+
+If the design caps field workers at N and each worker at M, and N × M is exactly the campaign
+total, the contract has no slack — one worker short caps delivery below target with no replacement
+provided for. Allow a replacement worker, and leave working days inside the Period of Performance
+after the last field day so review and payment have somewhere to happen. Round 1's last field day
+was also the last day of the period.
+
+## Program facts
+
+Facts that **more than one artifact asserts** — who pays the field worker, the caps, the payment
+conditions, consent order, the name of each captured field — have exactly one correct value per
+run. They are defined in [`skills/_program-facts.md`](../_program-facts.md).
+
+Read the settled value from the PDD. Never re-derive it here, and never infer it from another
+artifact — that is how drift starts. If the PDD has not settled it, propose a value there for
+confirmation rather than deciding silently in this document.
+
+Round 1 of `tekzal/20261013-2314` shipped a work order and four training documents that disagreed
+on who pays the worker. The partner stopped there and rated the round 2/4.
 
 ## Change Log
 

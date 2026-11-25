@@ -453,6 +453,20 @@ existence; this is distinctness. Two producers asserted the former, self-scored
 `image_hygiene` near 10, and still captioned alias frames as distinct states.
 The self-eval criterion must assert duplicate handling explicitly.
 
+
+## Program facts
+
+Facts that **more than one artifact asserts** — who pays the field worker, the caps, the payment
+conditions, consent order, the name of each captured field — have exactly one correct value per
+run. They are defined in [`skills/_program-facts.md`](../_program-facts.md).
+
+Read the settled value from the PDD. Never re-derive it here, and never infer it from another
+artifact — that is how drift starts. If the PDD has not settled it, propose a value there for
+confirmation rather than deciding silently in this document.
+
+Round 1 of `tekzal/20261013-2314` shipped a work order and four training documents that disagreed
+on who pays the worker. The partner stopped there and rated the round 2/4.
+
 ## Change Log
 
 - v1 (0.10.83): Initial skill. Owns `training-flw-guide.md` only.

@@ -72,7 +72,6 @@ The template has six real Google Docs tables (preserved through markdown→gdoc 
 - `BULLETS_SCOPE_WILL_NOT` — §2 "the partner will not" bullets
 - `BULLETS_VERIFIED_UNIT` — §4.2 verified-unit criteria
 - `BULLETS_REPORTING` — §4.3 weekly + end-of-pilot reporting
-- `BULLETS_PERMISSIONS` — §8.1 required permissions
 
 Each varying cell or bullet contains one `{{snake_case}}` token. Body-token replacement values for bulleted regions take `\n`-separated content (one bullet per line).
 
@@ -94,13 +93,12 @@ Each varying cell or bullet contains one `{{snake_case}}` token. Body-token repl
 | `{{verified_unit_body}}` ★ | Newline-separated verified-unit criteria (one bullet per line) |
 | `{{verified_unit_closing}}` | Closing paragraph after the verified-unit bullets |
 | `{{reporting_body}}` ★ | Newline-separated reporting deliverables |
-| `{{week_N_dates}}`, `{{week_N_activities}}` (N=1..8) | PDD Timeline per-week rows |
+| `{{deliverable_N_item}}`, `{{deliverable_N_due}}` (N=1..6) | § 5 deliverables and their deadlines. Replaced the Week/Dates/Activities table (operator ruling 2026-11-25): ACE states what is due and when; the partner plans the sequence. |
 | `{{wo_total_not_to_exceed_usd}}` | `wo-total-not-to-exceed-usd` decision |
 | `{{wo_mobilization_advance_pct}}`, `{{wo_mobilization_amount}}`, `{{wo_mobilization_trigger}}`, `{{wo_mobilization_timing}}` | Payment milestone 1 (from `wo-payment-schedule-split` + `wo-mobilization-advance-pct`) |
 | `{{wo_reconciliation_pct}}`, `{{wo_reconciliation_amount}}`, `{{wo_reconciliation_trigger}}`, `{{wo_reconciliation_timing}}` | Payment milestone 2 |
 | `{{payment_unit_closing}}` | § 6.2's closing sentence, **archetype-branched** (per-visit / per-session / named payable stage). Was hardcoded until ace#1004 — see `skills/pdd-to-work-order/SKILL.md § Process` step 5 for the per-archetype wording. |
 | `{{raci_N_responsibility}}`, `{{raci_N_dimagi}}`, `{{raci_N_partner}}` (N=1..11) | Archetype-derived RACI |
-| `{{permissions_body}}` ★ | Newline-separated required permissions (one bullet per line) |
 | `{{ethics_body}}` | Ethics paragraph (prose; template defaults + PDD scope) |
 | `{{data_project_overview}}`, `{{data_subjects}}`, `{{data_personal_info}}`, `{{data_purpose}}`, `{{data_security}}`, `{{data_partner_measures}}`, `{{data_storage_location}}`, `{{data_protection}}` | Per-field cells (templated defaults + PDD's data-subject treatment) |
 | `{{partner_signatory_name}}`, `{{partner_signatory_title}}`, `{{partner_address}}` | Signature block left cell |

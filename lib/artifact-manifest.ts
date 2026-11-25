@@ -562,6 +562,28 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     description: 'Verbatim markdown `idea-to-pdd.md` was composed from, stored as a plain text/markdown file so `run-surface-audit`\'s DOC-FIDELITY-UNVERIFIED check has a real source to diff the published Doc against (ace#1687). Optional by contract: runs that completed before this shipped have none.',
   },
   {
+    path: '1-design/partner-context-questionnaire.md',
+    producedBy: 'idea-to-pdd',
+    consumedBy: ['idea-to-pdd'],
+    phase: 'design',
+    // Review-mode only. A run that needs no PDD review does not contact the
+    // partner at all (operator directive 2026-11-25), so this is absent by
+    // design on those — `required: true` would fail every auto-mode run.
+    required: false,
+    // Rendered as a Doc because the partner opens and answers it — a .md is a
+    // file, not a link you can send someone.
+    rendered: true,
+    recipientFacing: true,
+    shareRole: 'commenter',
+    description:
+      'Local-context questions put to the partner BEFORE the PDD is drafted — availability of the ' +
+      'reference object the method depends on, real working hours, headcount and calendar slack, ' +
+      'local feasibility of the subject. Added after tekzal Round 1, where the PDD rested on a ' +
+      'reference object no longer in general use in the country and a survey window opening an hour ' +
+      'after the markets were at their best. Deliberately asks NO question about permissions: ' +
+      'approvals are the partner\'s process and ACE says one generic line (skills/_program-facts.md).',
+  },
+  {
     path: '1-design/idea-to-pdd-qa_result.yaml',
     producedBy: 'idea-to-pdd-qa',
     role: 'qa-result',
@@ -1607,6 +1629,24 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     // it cannot exist when Phase 5 was skipped (ace#1069).
     notRequiredInModes: ['app-QA-only'],
     description: 'Companion-eval verdict from `training-quick-reference-eval`. Grades scannability, key-number coverage, numeric accuracy, printability, glance-priority ordering.',
+  },
+  {
+    path: '6-qa-and-training/reconcile-outputs_result.yaml',
+    producedBy: 'reconcile-outputs',
+    role: 'qa-result',
+    consumedBy: ['ace-orchestrator', 'opp-eval'],
+    phase: 'qa-and-training',
+    // Optional by contract: runs that completed before this shipped have none,
+    // and a run with fewer than two fact-asserting artifacts has nothing to
+    // reconcile (it returns `incomplete` rather than failing).
+    required: false,
+    description:
+      "HORIZONTAL reconciliation verdict: does this run's work order agree with its training set? " +
+      'Every other -qa/-eval judges one artifact against the PDD, which cannot see two documents ' +
+      'contradicting each other — tekzal Round 1 shipped a work order saying FLW payments are ' +
+      'disbursed through Connect directly to the FLW alongside four training documents saying the ' +
+      'partner pays, and the partner stopped there and rated the round 2/4. Ten static checks over ' +
+      'the artifact set; contract in skills/_program-facts.md.',
   },
 
   // ── Synthetic Data and Workflows phase (Phase 7) ───────────────

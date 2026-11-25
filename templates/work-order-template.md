@@ -63,20 +63,22 @@ A unit qualifies as "verified" and is payable under this Work Order only when al
 
 <<<BULLETS_REPORTING_END>>>
 
-## 5. Timeline and Milestones
+## 5. Deliverables and Deadlines
 
-| Week | Dates | Activities |
-|---|---|---|
-| 1 | {{week_1_dates}} | {{week_1_activities}} |
-| 2 | {{week_2_dates}} | {{week_2_activities}} |
-| 3 | {{week_3_dates}} | {{week_3_activities}} |
-| 4 | {{week_4_dates}} | {{week_4_activities}} |
-| 5 | {{week_5_dates}} | {{week_5_activities}} |
-| 6 | {{week_6_dates}} | {{week_6_activities}} |
-| 7 | {{week_7_dates}} | {{week_7_activities}} |
-| 8 | {{week_8_dates}} | {{week_8_activities}} |
+The partner plans and sequences the work. This Work Order states what is due and by when; it does not prescribe a week-by-week schedule.
 
-The partner will flag any timeline risk in writing to Dimagi within 24 hours of identification.
+| Deliverable | Due |
+|---|---|
+| {{deliverable_1_item}} | {{deliverable_1_due}} |
+| {{deliverable_2_item}} | {{deliverable_2_due}} |
+| {{deliverable_3_item}} | {{deliverable_3_due}} |
+| {{deliverable_4_item}} | {{deliverable_4_due}} |
+| {{deliverable_5_item}} | {{deliverable_5_due}} |
+| {{deliverable_6_item}} | {{deliverable_6_due}} |
+
+Every date in this table falls inside the Period of Performance stated in the header.
+
+The partner will flag any delivery risk in writing to Dimagi within 24 hours of identification.
 
 ## 6. Payment Terms
 
@@ -111,17 +113,11 @@ Dimagi's total financial commitment under this Work Order is USD {{wo_total_not_
 
 ## 8. Permissions, Ethics, and Compliance
 
-### 8.1 Permissions
+### 8.1 Approvals
 
-The partner is responsible for securing all in-country permissions required to conduct the field activities, including:
+The partner will take all required approvals from respective authorities for smooth deployment.
 
-<<<BULLETS_PERMISSIONS_START>>>
-
-{{permissions_body}}
-
-<<<BULLETS_PERMISSIONS_END>>>
-
-The partner will provide Dimagi with copies of all written permissions or notifications obtained.
+The partner holds the local context and owns the approval process. This Work Order names no specific permission, authority, fee or lead time.
 
 ### 8.2 Ethics
 

@@ -19,6 +19,7 @@ skills:
   - { name: training-deck-generate,    has_judge: true, eval_skill: training-deck-generate-eval }
   - { name: training-deck-render,      has_judge: true, eval_skill: training-deck-render-eval }
   - { name: training-onboarding-email, has_judge: true, eval_skill: training-onboarding-email-eval }
+  - { name: reconcile-outputs,       has_judge: false } # horizontal pass: runs once every fact-asserting artifact exists
   - { name: ocs-knowledge-refresh,     has_judge: false } # LAST — puts this phase's docs into the Phase 5 chatbot's RAG collection
 # Note: `training-materials` umbrella was removed in 0.10.87. The
 # Phase 6 agent dispatches each per-artifact skill directly; the

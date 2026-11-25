@@ -1,0 +1,162 @@
+Field Worker Guide — Turmeric Market Survey, Ghana (Round 1)
+For the field worker doing the surveys. Read it once before you start, and keep it for the first few days.
+
+
+This is a review round. Your organisation is trying both apps end to end and sending feedback before any wider rollout. Anything recorded now is test data.
+What you will be doing
+You visit people who sell turmeric in a local market. At each seller you do two things: take a few standard photographs with a yellow MTN scratchcard lying flat beside the turmeric, and ask a few short questions — the training says it in those words.
+  
+
+
+
+The card matters more than it looks. Every phone camera decides its own colours, so two photographs of the same turmeric on two phones do not match. The card is always the same yellow and the same size, so it gives whoever looks at your picture later something fixed to compare against.
+
+
+You never take, buy or carry away any turmeric, and you never tell a seller anything about whether her turmeric is good or bad. This survey makes no judgement about anybody's product.
+Before you start
+1. Get your card from your coordinator — one MTN scratchcard from the single batch your organisation bought. Not your own card from a shop: the point is that every worker carries the same printed yellow.
+2. Open Connect, find the job under New Opportunities, tap View Opportunity.
+3. Read the job card and tap START — this is what it looks like.
+  
+
+4. The training app installs and opens on a home screen with four tiles: Start, View Job Status, Sync with Server, Log out of CommCare — here.
+  
+
+
+
+One thing there looks wrong and is not: Delivery Hours shows the working window in your phone's time zone. Set to Ghana time it reads 7:00 AM – 7:00 PM, which is right. Set to anything else, the hours on screen shift even though the real window has not.
+Work through the training
+Tap Start for the eight modules — the module grid. Do them top to bottom. Everything is in English; with a seller you say it in her language yourself.
+  
+
+
+
+Before you start is a quick check, not the test — six questions, and nobody passes or fails.
+  
+
+
+
+What this survey is — the two things you do at each seller, and the rule that you never take turmeric away.
+
+
+Identifying turmeric — powder, whole polished root, whole unpolished root. A seller may have one, two or all three. Yellow is not enough: curry blend and ground chilli are yellow too.
+  
+
+
+
+The card and how to read it — what it is, and why it goes in every photograph. The card pictures in this module are sample images showing the idea, not the exact card you will carry.
+  
+
+
+
+Taking a good photograph — steady, in focus, tap the turmeric on screen so the phone focuses there. Then look at what you took: if the edge of the grains or the root is not crisp, take it again. Ten seconds at the stall, and it cannot be fixed afterwards.
+  
+
+
+
+Approaching a seller — greet, introduce yourself, explain in two sentences, ask permission, answer simply. Permission comes first. No photograph and no question before she has said yes.
+  
+
+
+
+Location and one record per seller — fill the survey in at the stall and send it at the stall. The app records where you are. One survey per seller, never two.
+  
+
+
+
+Certification test — ten questions, 8 out of 10 to pass. Every question comes from a module, nothing is a trick, and you can go back and re-read. If you do not pass, take it again.
+  
+
+
+
+When you pass, the app says so and repeats the rules that decide payment. One screen follows it: you take two or three practice photographs for your supervisor, but that review is guidance, not a gate. Passing the test is what unlocks survey work. Nothing else does.
+  
+   
+Doing one survey
+Open the survey app from Connect — its home screen shows Daily Visits and your working hours — and tap Start. You get exactly two choices:
+  
+   
+
+
+* Vendor Survey — she sells turmeric and agreed. The paid one.
+* Contact Log — she declined, the stall is closed, or she sells no turmeric. Ten seconds, not paid, and it does not use up one of your twenty slots.
+
+
+Pick before you open anything; you already know which you need.
+
+
+1. Consent. Read the script out loud, in her language, before asking anything. It says who you work for, that it takes about ten minutes, that she may stop at any time without a reason, and that her name is written down nowhere. Then record whether she agreed.
+  
+
+2. Market and seller. The market is a box you type — no list. Type it exactly as your coordinator gave it, spelled the same way every time, up to 60 characters. Then the kind of seller, and a stall description that would let somebody else find that stall again.
+  
+
+3. Does she sell turmeric? Curry blend or ground chilli means No — and that seller belongs on the Contact Log.
+  
+
+4. Which forms are on sale. Tick every form actually on the stall now. This decides which photographs and prices you are asked for next.
+  
+
+5. Photographs. Card flat beside the turmeric, same light, both filling the frame. Watch out: both picture questions have an identical TAKE PICTURE button. The second is the optional wide shot of the stall, and the only thing telling them apart is the word (optional). Read the question, not the button.
+  
+
+6. Price. The number she actually quoted, in cedis, and the exact measure she quoted. Never convert: two cedis per mudu means 2, and Per mudu.
+  
+
+7. Packaging. Loose or open, branded packet, or repackaged, and whether you can actually see printed brand wording.
+  
+
+8. Stock and origin. Your own rough judgement of how much she has — never ask her to weigh anything. Origin only if she volunteers it.
+  
+
+9. Location. Tap RECORD LOCATION standing at the stall; aim for 50 m or better. The app tells you how it came out — "Accuracy is good. Carry on." If it is poor, step into the open and retake, but a poor reading never stops you submitting and never costs you payment.
+  
+   
+10. Anything else, then FINISH. The note is optional. The green FINISH button is at the top of that same screen — there is no summary page, so check your answers before pressing. You land back on the menu once it has sent.
+  
+   
+
+
+Sync when you have signal. The home screen then confirms it and shows your count for the day.
+  
+
+Things that go wrong
+* The card missing, or half out of frame. Nothing in the app checks this. It accepts the picture, the survey is still paid, and the photograph is still useless. Check the card is flat, whole and in the same light before moving on.
+* Sending after you have walked away. The location follows you, not the seller.
+* Rushing. Under five minutes from opening to sending is not paid, however good it is.
+* Putting a refusal on the Vendor Survey. It burns a slot for nothing. Refusals go on the Contact Log.
+* Spelling the market differently each day — "Makola", "makola market", "Makkola". One spelling, always.
+* Surveying the same seller twice. One record per seller, for the whole round.
+What you are paid for
+GHS 7 for each verified survey. A survey is verified when all four are true:
+
+
+1. Started between 07:00 and 19:00 Ghana time.
+2. Took at least five minutes from opening to sending.
+3. Consent recorded as given.
+4. The seller recorded as selling turmeric.
+
+
+Nothing else affects payment — not photograph quality, not price, not stock, not any other answer.
+
+
+Your limits: 15 surveys a day, 20 in total. Twenty surveys is GHS 140 for the whole round: this is short validation work, not ongoing employment. Contact Log entries are never paid and never count against the twenty.
+
+
+You are paid through Connect's standard worker payment — Connect works out your earned total from approved records, and your organisation sends the money and records the payment in Connect, where you confirm it.
+Where to get help
+Your coordinator: ______________________    Phone: ______________________
+
+
+Call your coordinator if a seller is hostile or the situation feels unsafe (leave first, call the same day); if a seller asks whether her turmeric is safe — tell her the survey makes no judgement about anybody's product, and pass the question on; if you cannot finish the training; or if the app will not sync.
+
+
+There is no chat or help button inside the app, and no support line other than your coordinator. If they cannot resolve it, they raise it with the programme team.
+
+
+________________
+
+
+
+
+Screens here were photographed from the built apps on 2026-10-15. The apps you install are copies of the ones photographed, so the screens are the same. One difference to ignore: the job card in these pictures carries an earlier name ending "— 15 Oct"; yours reads "20261013-2314 · Turmeric Market Survey — Ghana R1".
