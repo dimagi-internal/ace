@@ -16,18 +16,37 @@ appId: org.commcare.dalvik
 #                  "Chlorine Coach"; ocs-coach-build.ts --connect-bot-name).
 #   PIN          — the test user's device PIN, for the "Unlock PersonalID" prompt.
 #
-# Live-verified 2026-10-07 on CommCare 2.64.0 (selectors: connect-2.64.0.yaml
+# Live-verified 2026-10-07 on CommCare 2.64.0 and 2026-11-25 on 2.66 (selectors: connect-2.64.0.yaml
 # § PersonalID messaging).
 - launchApp
 - waitForAnimationToEnd:
     timeout: 3000
 
-# From Connect home the toolbar shows "Navigate up" instead of the drawer toggle:
-# back out to the CommCare shell first.
+# CommCare 2.66 asks for the device unlock ("Unlock PersonalID") at launch, before
+# the CommCare shell is drawn; 2.64 only asked after Messaging was tapped. Answer
+# it here too (live-observed 2026-11-25, APK 2.66, emulator-5554).
+- runFlow:
+    when:
+      visible:
+        id: "${SELECTOR:system-lockpassword}"
+    commands:
+      - tapOn:
+          id: "${SELECTOR:system-lockpassword}"
+      - inputText: ${PIN}
+      - pressKey: Enter
+      - waitForAnimationToEnd:
+          timeout: 4000
+
+# On 2.64, Connect home showed "Navigate up" instead of the drawer toggle, so we
+# backed out to the CommCare shell first. On 2.66 Connect home carries the drawer
+# toggle itself and Back exits the app to the launcher (live-observed 2026-11-25),
+# so back out only when the toggle is missing.
 - runFlow:
     when:
       visible:
         id: "${SELECTOR:home-jobs-recycler}"
+      notVisible:
+        text: "${SELECTOR:nav-drawer-toggle}"
     commands:
       - back
       - waitForAnimationToEnd:
