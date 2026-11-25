@@ -3103,14 +3103,28 @@ The single capture control is **live photo only, no gallery upload**, applied in
 2026-11-25: no camera standard, no HDR or filter instruction, and no device recommendation
 anywhere a partner reads. Do not reintroduce one as a question hint.
 
-### OPEN — a review step before submission
+### A review step before submission
 
-Round 1 had no summary screen: *"FINISH sits at the top of the last question and the worker is
-told to check answers with no described way of reviewing them"* (issue-log row 15, Major).
+Round 1 had none: *"FINISH sits at the top of the last question and the worker is told to check
+answers with no described way of reviewing them"* (issue-log row 15, Major).
 
-**Whether Nova can author a read-back summary screen is NOT established.** It is not in Table A or
-Table B of the component library, no ACE build has attempted it, and `end-of-form-previous` is a
-Learn-only POST-submit navigation setting, not a pre-submit review. Establish it by construction
-on a scratch app and read it back — the way the Table B rows were established — before either
-building it or recording it as a limit. Do not assert to a partner that a review step exists, and
-do not assert that it is impossible.
+**Build one. Nova supports the structure** — established 2026-11-25 by reading Nova's own
+`get_authoring_guide(topic: "fields")` live against app `c724befb`, not inferred:
+
+- **`label`** — *"Display-only text. Renders a read-only message. Collects no input."*
+- **`section`** — *"One page of a form… On a phone each section is one screen. Next checks the
+  section's answers, Back does not."*
+
+So a final `section` holding `label` fields is a real review screen, and `Back` is the described
+way of changing an answer that Round 1 was missing. Note `end-of-form-previous` does NOT do this —
+it is a Learn-only POST-submit navigation setting, not a pre-submit review.
+
+**Still open, and do not assert either way to a partner:** whether a `label`'s text can
+interpolate the captured ANSWERS, so the screen echoes what the worker entered rather than only
+telling her to check. The `fields` and `expressions` guides document `#form/<name>` for
+calculations and conditions; neither states that label text interpolates. Establish that by
+construction on a scratch app and read it back before promising a value-by-value read-back.
+
+A review screen that only says *"Check your answers — use Back to change anything, then FINISH"*
+already closes the partner's complaint. Echoing the values is the better version, not the
+required one.

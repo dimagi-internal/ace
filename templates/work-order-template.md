@@ -63,20 +63,20 @@ A unit qualifies as "verified" and is payable under this Work Order only when al
 
 <<<BULLETS_REPORTING_END>>>
 
-## 5. Timeline and Milestones
+## 5. Deliverables and Deadlines
 
-| Week | Dates | Activities |
+| # | Deliverable | Due |
 |---|---|---|
-| 1 | {{week_1_dates}} | {{week_1_activities}} |
-| 2 | {{week_2_dates}} | {{week_2_activities}} |
-| 3 | {{week_3_dates}} | {{week_3_activities}} |
-| 4 | {{week_4_dates}} | {{week_4_activities}} |
-| 5 | {{week_5_dates}} | {{week_5_activities}} |
-| 6 | {{week_6_dates}} | {{week_6_activities}} |
-| 7 | {{week_7_dates}} | {{week_7_activities}} |
-| 8 | {{week_8_dates}} | {{week_8_activities}} |
+| 1 | {{deliverable_1_item}} | {{deliverable_1_due}} |
+| 2 | {{deliverable_2_item}} | {{deliverable_2_due}} |
+| 3 | {{deliverable_3_item}} | {{deliverable_3_due}} |
+| 4 | {{deliverable_4_item}} | {{deliverable_4_due}} |
+| 5 | {{deliverable_5_item}} | {{deliverable_5_due}} |
+| 6 | {{deliverable_6_item}} | {{deliverable_6_due}} |
+| 7 | {{deliverable_7_item}} | {{deliverable_7_due}} |
+| 8 | {{deliverable_8_item}} | {{deliverable_8_due}} |
 
-The partner will flag any timeline risk in writing to Dimagi within 24 hours of identification.
+Every date in this table falls inside the Period of Performance stated in the header. The partner plans and sequences the work; this Work Order states what is due and by when, and does not prescribe a week-by-week schedule. The partner will flag any delivery risk in writing to Dimagi within 24 hours of identification.
 
 ## 6. Payment Terms
 

@@ -68,8 +68,8 @@ const META = new Set(['snake_case', 'token']);
 const DOCUMENTED_NEGATIVES = new Set(['scope_body']);
 
 /**
- * The template enumerates repeated table rows (`{{week_3_dates}}`,
- * `{{raci_11_partner}}`); the docs write the family once (`{{week_N_dates}}`).
+ * The template enumerates repeated table rows (`{{deliverable_3_due}}`,
+ * `{{raci_11_partner}}`); the docs write the family once (`{{deliverable_N_due}}`).
  * Collapse both sides to the family so the comparison is about WHICH tokens
  * exist, not how many rows the table happens to have.
  *
@@ -78,7 +78,7 @@ const DOCUMENTED_NEGATIVES = new Set(['scope_body']);
  * same step, because the renderer copies the gdoc and not this repo.
  */
 function normalize(token: string): string {
-  return token.replace(/^(week|raci)_\d+_/, '$1_N_');
+  return token.replace(/^(deliverable|raci)_\d+_/, '$1_N_');
 }
 
 function tokensIn(rel: string): Set<string> {
