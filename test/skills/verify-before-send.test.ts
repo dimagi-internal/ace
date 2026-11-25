@@ -98,6 +98,9 @@ describe('verify before you send', () => {
     ['an inherited claim is unverified', /inherited claim is an unverified claim/i],
     ['a correction is held to a higher bar', /higher bar than the thing it corrects/i],
     ['no internal plumbing in a counterpart message', /internal plumbing in a counterpart/i],
+    // Owner, 2026-11-18: ACE's own Labs check failed and it asked the owner to open the page
+    // instead. ACE has its own logins; a failed self-check is a defect to fix, not a handback.
+    ['a failed self-check is fixed, never handed to the person', /the person is not your verifier/i],
   ];
 
   for (const [name, pattern] of REQUIRED_CLAUSES) {
