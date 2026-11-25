@@ -3055,3 +3055,62 @@ Each row this skill writes uses `phase: 3-commcare` and
 | 2026-08-24 | **Step 4f gains a partner-register halt (ace#1621).** 4f's halt was scoped to payment correctness — a still-degraded select halts only when it `feeds_entity_id` on a PAYABLE deliver unit — so a field that fails neither test recorded an `option_source_gaps` entry and proceeded. That is right for a genuinely unknowable set and wrong for a register that EXISTS: on `spark-facilitator/20260820-0817` the meeting-activity repeat shipped 11 ACE-authored placeholders identical on all 24 FCAP steps while Spark's own 78-activity register sat in the run's `inputs/`, and the recorded gap deferred the catch to an operator reading the residual days later. When the PDD declares `<field> from <tag> [source: …] [filtered by …]`, an inline invented option list is now a **HALT** whatever the payability status, and is never dischargeable as a named gap; both inline rungs of the step-5 escape ladder are withdrawn for such a field. Mechanical via `lib/option-register.ts` (`parseRegisterDeclaration` + `diffOptionRegister`), sourcing rows from the partner's `.ccz` fixture XML in preference to a prose guide because a production CCZ carries the REAL value codes the partner's M&E joins on. Where ACE cannot finish, the terminal behaviour is extract → build the table → halt naming the remaining operator step. *(Both reasons recorded for this halt have since been overtaken. The 2026-08-24 reason — a missing create atom — was superseded 2026-09-01, when `create_lookup_table` proved to ship columns and rows atomically. The 2026-09-01 replacement reason — a refused BINDING, `voidcraft-labs/commcare-nova#545` — was itself superseded on 2026-09-06, when that issue closed COMPLETED and the bind was accepted and read back live. Neither is a current constraint; see the 2026-09-06 row.)* Paired with `_app-component-library § partner-option-register` and the eval's `option_register_fidelity` hard-gate. *Enforced:* `test/lib/option-register.test.ts`. | ACE team |
 | 2026-08-23 | **New Step 4l — entity state-taxonomy fidelity (ace#1564).** The followed entity's state model lived only as PROSE in the PDD's § Entity Lifecycle, and nothing in Step 3's brief-composition checklist asked for it — while `longitudinal-visits` REQUIRES a case list showing state, so the architect must name every state and invents the set when the brief carries none. On `spark-facilitator/20260820-0817` the PDD's `1 = Planning (steps 1–14)` … `4 = Transition (steps 23–24)`, sourced from Spark's own published FCAP guide sitting in the run's `inputs/`, shipped as four invented labels over a different partition, with all 24 step names invented too. Learn then teaches one mapping while Deliver offers another, and the invented words reach real workers and the partner. Step 3 now emits `_app-component-library § entity-state-taxonomy` (always for this archetype) and parses `program_parameters.entity_state_taxonomy` with `parseStateTaxonomy` BEFORE briefing — `declared: false` or non-empty `problems` is a **HALT** with a Phase-1 finding, never a licence to invent; where the row names a source document the brief is composed from THAT file out of `inputs/`. 4l then diffs the built option set with `diffStateTaxonomy`: any invented, dropped, relabelled or re-partitioned state is a **HALT with a bounded 3-iteration repair loop**, not a warn. Deliberately ships NO canonical vocabulary — hard-coding one would impose ACE's words on every partner, the mirror image of the defect. Paired with the eval's `entity_state_fidelity` hard-gate. *Enforced:* `test/lib/entity-state-taxonomy.test.ts` + `test/skills/entity-state-taxonomy-component.test.ts` + `test/skills/deliver-l0-loop-integrity.test.ts`. **The language layer moved 4l → 4m** in the same change: it must stay LAST of the 4x steps because every English-editing step has to precede it, and 4l's repair loop calls `edit_field` on option labels — running it after the layer would demote those translations to `out-of-date`. Pointers updated in `_app-component-library § app-language-layer`, both `-eval` change logs, and `test/skills/app-language-layer.test.ts`. | ACE team |
 | 2026-08-20 | **New Step 4k — fixed-instrument constant fidelity (ace#1527).** Nothing on this path opened the `[FIXED]` source instrument in `inputs/` and diffed it, so on `hh-poverty-targeting/20260819-1435` the digitised Nigeria PPI 2020 shipped with **9 of 17 point values wrong and all 101 poverty-likelihood values invented** — and every gate passed it, because each one is structurally blind to a constant's VALUE (`validate_app` checks structure, the eval grades against a narrative PDD, `app-release-qa` checks counts and install-time behaviour, and the architect transcribes from a model-authored brief). 4k resolves the source file from `inputs-manifest.yaml`, fetches it with `drive_download_binary` + `writeToPath`, and runs `lib/instrument-constants.ts`: `assertExtractionTrusted` FIRST (endpoints + strict monotonicity + row count — the first repair-round extraction produced `score 4 -> 79.0` from an undecoded `t="s"` shared-string index), then `diffScoringConstants` and `compareMaxScore` over the built literals read via `get_field`. Any mismatch, or a `clampDead` verdict, is a **HALT with a bounded 3-iteration repair loop**, not a warn — a built max of 96 against an official 102 made the PDD's `min(ppi_score, 100)` clamp dead code, which is how the instrument stayed internally consistent with its own wrong numbers. Paired with `_app-component-library § fixed-instrument-transcription` and the eval's `fixed_instrument_fidelity` hard-gate. *Enforced:* `test/lib/instrument-constants.test.ts` + `test/skills/deliver-l0-loop-integrity.test.ts`. | ACE team |
+
+
+## Capture rules from the tekzal Round 1 partner review
+
+The Deliver app was never opened in Round 1 — no field worker could be onboarded — so every item
+below was read off the documents. They are build rules, not observations of a running app.
+
+### Every photograph control is labelled for the photograph it takes
+
+Round 1 gave both photograph questions an identical `TAKE PICTURE` button, *"marked apart only by
+the word (optional)"*, and a third appeared when powder and root were both on sale. The guide
+warned the worker in prose instead, which is where a label defect goes to hide.
+
+Label each control for its own subject — "Photograph the turmeric with the reference card",
+"Photograph the stall" — including the branch where two forms are on sale and three controls
+appear. A worker choosing between identical buttons is choosing at random.
+
+### One name per captured field, and its options published
+
+Round 1 called the same field `stock` in worker-facing training and `availability` in the manager
+guide and the contract, and its answer options appeared in **no document** — while the manager
+guide asked the coordinator to verify the value was "picked from a list" without saying what the
+list held. A field worker asked for a defined scale and suggested low / medium / high; nothing in
+the set supplied one.
+
+So: settle ONE name in the PDD and use it in the app, the contract, the guide and the training;
+and author the answer options explicitly so the training can teach what each one means. A select
+whose options are undocumented is a free-text field with extra steps.
+
+See [`skills/_program-facts.md`](../_program-facts.md) § One name per field.
+
+### An outcome list covers every outcome a worker will actually meet
+
+Round 1's Contact Log offered declined / does not sell turmeric / stall closed. A seller who
+consents to talk but refuses the photograph was therefore recorded as **declined**, and only the
+optional free-text note could carry the distinction.
+
+Enumerate the outcomes from the journey, not from the happy path: every branch the consent script
+and the capture sequence can produce needs its own value. Where an outcome changes what the worker
+does next, it is not a note — it is an option.
+
+### Live photo only — and nothing else about capture
+
+The single capture control is **live photo only, no gallery upload**, applied in the build (see
+[`live-photo-capture`](../_app-component-library.md#live-photo-capture)). Operator ruling
+2026-11-25: no camera standard, no HDR or filter instruction, and no device recommendation
+anywhere a partner reads. Do not reintroduce one as a question hint.
+
+### OPEN — a review step before submission
+
+Round 1 had no summary screen: *"FINISH sits at the top of the last question and the worker is
+told to check answers with no described way of reviewing them"* (issue-log row 15, Major).
+
+**Whether Nova can author a read-back summary screen is NOT established.** It is not in Table A or
+Table B of the component library, no ACE build has attempted it, and `end-of-form-previous` is a
+Learn-only POST-submit navigation setting, not a pre-submit review. Establish it by construction
+on a scratch app and read it back — the way the Table B rows were established — before either
+building it or recording it as a limit. Do not assert to a partner that a review step exists, and
+do not assert that it is impossible.

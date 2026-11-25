@@ -404,6 +404,20 @@ mobile app, CommCare HQ and code-level identifiers, is
 [`skills/_terminology.md`](./_terminology.md). Read it before writing prose; it is
 binding on this skill's output.
 
+
+## Program facts
+
+Facts that **more than one artifact asserts** — who pays the field worker, the caps, the payment
+conditions, consent order, the name of each captured field — have exactly one correct value per
+run. They are defined in [`skills/_program-facts.md`](./_program-facts.md).
+
+Read the settled value from the PDD. Never re-derive it here, and never infer it from another
+artifact — that is how drift starts. If the PDD has not settled it, propose a value there for
+confirmation rather than deciding silently in this document.
+
+Round 1 of `tekzal/20261013-2314` shipped a work order and four training documents that disagreed
+on who pays the worker. The partner stopped there and rated the round 2/4.
+
 ## Change Log
 
 | Date | Change | Author |

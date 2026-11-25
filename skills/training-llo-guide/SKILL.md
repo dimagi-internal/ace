@@ -490,6 +490,64 @@ existence; this is distinctness. Two producers asserted the former, self-scored
 `image_hygiene` near 10, and still captioned alias frames as distinct states.
 The self-eval criterion must assert duplicate handling explicitly.
 
+
+
+## Who the sign-off gate belongs to
+
+**The partner's UAT sign-off is an input to Dimagi's decision, not the decision.**
+
+Round 1's guide told tekzal *"Your end-to-end sign-off on usability is the gate for proceeding to
+a deployment round."* Work Order § 2 puts that gate at **Dimagi's acceptance and written
+authorisation**. The guide handed the partner an authority the contract reserves, and they caught
+it (issue-log row 13).
+
+Write the UAT section so it asks for the feedback and says what happens to it:
+
+> Record at least five distinct, actionable feedback items. Dimagi reviews your feedback together
+> with its own acceptance checks; a deployment round proceeds only on Dimagi's written
+> authorisation under § 2 of the Work Order.
+
+Never describe a partner action as "the gate" for anything the contract gates elsewhere. If the
+guide and the work order disagree about who decides, the work order is right and the guide is the
+defect — see [`skills/_program-facts.md`](../_program-facts.md).
+
+## Guidance the partner may adapt — say so explicitly
+
+Where the contract forbids something but does not say what to do instead, supply the positive
+version AND mark it as a suggestion.
+
+Round 1's § 8.2 required every worker to be briefed that the survey must never be represented as
+an inspection, an enforcement activity or a test of product safety — and then stopped. The partner
+was left to invent the part that actually happens at the stall, and said so:
+
+> *"Sellers are mostly not educated, and do not know the difference between what a survey is and
+> what enforcement activity is… This is one area we genuinely feel the agent has not provided
+> enough guidance on how the situation should be managed. Does this mean Tekzal might have to
+> devise our own strategy among ourselves and our field workers on how to handle this issue?"*
+
+So: give them an approach script and the handling guidance for the cases the prohibition creates —
+how to open, what to say when asked who sent you, what to do when a seller assumes an inspection.
+Then carry this sentence, operator ruling 2026-11-25:
+
+> This wording is a suggestion from Dimagi. You are free to adapt it to local context and to your
+> team's experience.
+
+The partner holds the local context. Prescribing without that sentence is how a suggestion reads
+as a requirement they did not agree to.
+
+## Program facts
+
+Facts that **more than one artifact asserts** — who pays the field worker, the caps, the payment
+conditions, consent order, the name of each captured field — have exactly one correct value per
+run. They are defined in [`skills/_program-facts.md`](../_program-facts.md).
+
+Read the settled value from the PDD. Never re-derive it here, and never infer it from another
+artifact — that is how drift starts. If the PDD has not settled it, propose a value there for
+confirmation rather than deciding silently in this document.
+
+Round 1 of `tekzal/20261013-2314` shipped a work order and four training documents that disagreed
+on who pays the worker. The partner stopped there and rated the round 2/4.
+
 ## Change Log
 
 - v1 (0.10.84): Initial skill. Owns `training-llo-guide.md` only.

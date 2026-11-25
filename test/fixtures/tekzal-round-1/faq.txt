@@ -1,0 +1,102 @@
+FAQ — Turmeric Market Survey, Ghana (Round 1)
+Common questions from coordinators and field workers. [LLO] marks a coordinator question, [FLW] a field-worker one.
+
+
+This is a review round. tekzal walks both apps end to end and sends feedback before any wider rollout. Anything recorded now is test data. Answers below describe how the configured opportunity would behave in a collection round.
+Seller interaction
+[FLW] Q: What exactly do I say to a seller before I start? The app gives you the words. The first screen of the Vendor Survey is headed Consent and carries a script in quotation marks, with the instruction to read it out loud to the seller, in the language she speaks, before you ask her anything. Read that screen aloud — do not paraphrase it from memory. It tells her who you work for, that it takes about ten minutes, that taking part is her choice and she can stop at any time without giving a reason, and that her name is not written down anywhere. Then record her answer on the same screen.
+
+
+[FLW] Q: She says no, or changes her mind halfway through. What do I do? Stop. If she declines before you start, back out and record her on the Contact Log with the outcome declined. If she withdraws partway through a survey you already opened, record consent as No — the app stops asking the rest of the questions, because a record without consent is not a qualifying survey. Either way it is not a failure on your part and it does not cost you a survey slot. Thank her and move on.
+
+
+[FLW] Q: A seller asks whether her turmeric is safe, or whether it has lead in it. What do I say? Tell her plainly that the survey makes no judgement about anybody's product, that nothing is being tested, and that you are not able to tell her anything about her turmeric. Then pass the question to your coordinator. You must never tell a seller her turmeric is good, bad, safe or unsafe — that is a hard rule of this programme, not a matter of tone.
+
+
+[FLW] Q: She agreed to talk but does not want to be photographed. Then this is not a qualifying survey, because the required photographs are the point of the record. Record her on the Contact Log as declined and move on. Do not press her, and do not photograph the turmeric anyway.
+
+
+[FLW] Q: The stall sells ground yellow chilli and curry powder, but no actual turmeric. Not a survey. Answer No at Does this seller sell turmeric? and that seller goes on the Contact Log with the outcome does not sell turmeric. The app says so on the screen itself. Yellow is not enough — curry blends and ground chilli are yellow too.
+
+
+[FLW] Q: A woman is walking around with a basin of turmeric rather than keeping a stall. Is she eligible? Yes. The survey covers fixed shops, open stalls and mobile sellers. Choose the seller type that matches, and write a stall description that would let somebody else work out where you found her.
+
+
+[FLW] Q: A seller is shouting that we are accusing her of poisoning people, and a crowd is gathering. Leave. Do not argue, do not finish the survey, do not photograph anything. Stop the interaction, walk away, and call your coordinator the same day so they know what happened and where. Your safety comes before the record.
+
+
+[LLO] Q: Are we testing the turmeric for lead? What do I tell someone who asks? No. No samples are collected — ever — and there is no laboratory testing, no on-site measurement, and no automated scoring of the photographs in this round. The programme produces standardised, comparable photographs and structured records, and draws no conclusion from them about any seller.
+App and device
+[FLW] Q: How do I enter the market name? Is there a list to pick from? There is no list. The market is a plain text box you type into, up to 60 characters. Type the name exactly as your coordinator gave it to you, and spell it the same way every time — the app will accept any spelling, so consistency is on you and your coordinator, not on the app.
+
+
+[FLW] Q: Which photographs are required? It follows what you ticked at Which forms of turmeric are on sale. Powder ticked makes the powder-with-card photograph required. Either root ticked — polished or unpolished — makes the root-with-card photograph required, and that one photograph covers both. The wide shot of the stall is always optional. Watch the labels: both buttons read TAKE PICTURE, and the only thing marking the optional one is the word (optional) in its question.
+
+
+[FLW] Q: A seller sells both powder and polished root. How many prices do I enter? Two — one for the powder, one for the polished root. The app asks once per form you ticked, and names the form in the question, so you can tell which price belongs to which. Both the powder-with-card and the root-with-card photographs are required in that case.
+
+
+[FLW] Q: The app warned me my location reading was bad. Did my survey not count? It counted. The accuracy figure is advisory only — the app aims for 50 m or better and tells you how your reading came out, but a poor reading never blocks submission and never affects payment. If you can, step into the open and tap RECORD LOCATION again; if the roof or the buildings make it impossible, carry on and submit.
+
+
+[FLW] Q: Can I use a photograph I already took, from my gallery? No. The photograph questions offer only TAKE PICTURE — there is no option to choose an existing image, by design. Every photograph is taken at the stall, at the time.
+
+
+[FLW] Q: I opened the Vendor Survey by mistake and this seller does not qualify. Back out before submitting and open the Contact Log instead. Nothing you abandon is sent, and an unsubmitted survey never becomes a record. What matters is that you do not push a non-qualifying approach through the paid form.
+
+
+[FLW] Q: I had no signal for the whole visit. Will the survey be lost? No. Both apps work offline. Fill the survey in and press FINISH at the stall as normal; the record and its photographs stay on the phone and go to the server the next time you have signal. Tap Sync with Server when you do, and the home screen will confirm it.
+
+
+[FLW] Q: What counts as a good photograph? The card flat on the surface beside the turmeric, the whole card in frame, the card and the turmeric lit the same way, the frame filled with the two of them, and the edges sharp. Tap the turmeric on the screen so the phone focuses there rather than on the stall behind it, then look at the picture you took. If it is soft, take it again — nothing can fix it afterwards.
+Payment and verification
+[LLO] Q: What does a verified survey pay, and what are the limits? GHS 7 to the worker and GHS 4 to tekzal per verified survey — GHS 11 combined, against 100 surveys and a GHS 1,100 budget for the round. The limits are fifteen surveys per worker per day and twenty per worker in total, both held by Connect, so a worker's whole allocation is GHS 140. There is no per-market cap and the platform carries no per-market control, so spreading coverage across markets is your supervisory job.
+
+
+[FLW] Q: I started a survey at 18:55 and sent it at 19:06. Is it paid? Yes. The window applies to when the survey was started, not when it was sent — you began inside 07:00 to 19:00, so that condition is met. Ghana keeps GMT all year, so the time on the platform and the time where you are standing agree.
+
+
+[LLO] Q: One of my team did eighteen surveys in a day. What happens to the extra three? The fifteen-per-day cap is on payability, not on submission: the extra records are submitted and stored, but they are not paid. The app may show a running count, but a phone that has been offline cannot know what has already synced, so treat the cap as a briefing matter rather than something the device will enforce for you.
+
+
+[FLW] Q: One of my photographs came out badly. Do I lose the payment for that survey? No. You are still paid your GHS 7. Photograph quality has no effect on payment at all. Only four things decide it: the survey started between 07:00 and 19:00, it took at least five minutes, consent was recorded as given, and the seller was recorded as selling turmeric. Take the photograph again anyway — a weak photograph is still a weak record, and that is what the work is for.
+
+
+[LLO] Q: Why would a survey that looks complete not get paid? One of the four conditions failed. Most often it is the five-minute minimum: a survey sent four minutes after it was opened is not paid however complete it is. The other three are the 07:00–19:00 start window, consent recorded as given, and the seller recorded as selling turmeric. Nothing else is checked — not photographs, not price, not stock.
+
+
+[LLO] Q: A survey was approved weeks ago and the worker still has not been paid. Connect works out each worker's earned total from approved records automatically, but it does not move money. Your organisation sends the payment and records it in Connect, where the worker confirms it. An earned amount with no recorded payment in Connect is yours to pay — check the opportunity's payment figures and then run your payment.
+
+
+[LLO] Q: Does the system check that a photograph was actually attached before it pays? No. The attachment check is deliberately not set on this opportunity, along with duplicate detection, the GPS gate and catchment areas. The required photographs cannot be skipped inside the form, but nothing on the platform inspects them. Reviewing what the photographs actually show is a human job, and it is the main thing to watch in the first days.
+
+
+[LLO] Q: Will the app stop a worker submitting the same seller twice? No. Nothing in the app or the platform rejects a duplicate, and the worker is given no signal that one was caught. The control is the rule they were taught — one survey per seller, never twice. Afterwards, two records are treated as the same seller when market, seller type and stall description match and both location readings are within 15 m of each other, provided both are accurate to better than 15 m; otherwise the stall details decide. That is a judgement a person makes at review time and it never reverses a payment.
+Training and logistics
+[LLO] Q: What is in the training and what does a worker have to pass? Eight modules in the training app: a short quick check, then six teaching modules — what the survey is, identifying turmeric, the card and how to read it, taking a good photograph, approaching a seller, location and one record per seller — and then the certification test. The test is ten questions and the pass mark is eight. Passing it is the only thing that unlocks survey work.
+
+
+[FLW] Q: I failed the test the first time. Am I out? No. You can take the test again, and the app tells you so. It is the same ten questions each time, and the answers are all in the module content, so go back and re-read the modules you were unsure about before retaking it.
+
+
+[LLO] Q: The training is only in English. Several of my workers would be more comfortable in Twi. Are translations coming? Not this round — English only is a settled decision for round 1, and no app or training translations are being built. Your team translates locally as needed, which is also how the consent script works in practice: the worker reads it out in the language the seller speaks.
+
+
+[LLO] Q: Do practice photographs have to be signed off before someone can start surveying? No. Workers take two or three practice photographs during training and you review them, but that review does not gate anything — the app says so on its own closing screen. Only the certification test score unlocks survey work. Review the practice shots because they tell you who needs more coaching, not because the platform is waiting on you.
+
+
+[LLO] Q: Can we set it so a worker cannot submit from outside the market we assigned them? No, and not by oversight. The platform carries no location or radius control, so no such gate can be configured, and the design deliberately treats location as advisory: a survey is never refused on its GPS reading. Keeping workers in their assigned markets is a supervisory matter.
+
+
+[LLO] Q: Is this round going to the field, or is it just us testing it? Just you, testing it. tekzal walks the training app and the survey app end to end on your own devices and connectivity and gives feedback — on whether the training is clear, whether the card workflow is understood, whether the questions and answer options match how turmeric is actually sold in your markets, whether the greeting script fits locally, and whether the terms and units are right. The round that goes to the field with your own workers is a separate, later engagement designed after that feedback.
+Where to get help
+Field workers:
+
+
+Your coordinator: ______________________    Phone: ______________________
+
+
+Your coordinator is your first and only contact for anything about your work. There is no chat or help button inside the app.
+
+
+Coordinators: the ACE programme team at ace@dimagi-ai.com, for platform questions, opportunity configuration, false-record escalations and worker suspensions. Reply within one working day.

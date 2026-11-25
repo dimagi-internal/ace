@@ -280,10 +280,12 @@ Take the approved PDD and decisions.yaml and produce a contractual Work Order dr
      - There is NO single `{{scope_body}}` token in the live template. Passing one silently drops all scope content AND leaks the two real tokens verbatim into § 2 Scope of Work (a `no_scaffolding_markers`-class QA defect) — the exact failure from bednet-spot-check/20260701-1644 (jjackson/ace#819).
      - `{{verified_unit_body}}` — criteria a unit must meet to be "verified" (one bullet per line)
      - `{{reporting_body}}` — required reporting deliverables (one bullet per line)
-     - `{{permissions_body}}` — required permissions (one bullet per line)
+     - `{{permissions_body}}` — § 8.1 content. **Emit the single generic approvals line and nothing else** — see **Approvals stay generic** below. Never a list of named permissions.
 
    **Timeline table (9 rows × 3 cols, header + 8 weeks):**
      - `{{week_N_dates}}`, `{{week_N_activities}}` for N=1..8 (from PDD Timeline)
+     - **PENDING — the week-by-week table is being retired.** Operator ruling 2026-11-25: *"a better design will be to not create a week by week plan. Let the partners decide how they want to plan it. Ace and dimagi just tell them what needs to be done and the timelines."* The replacement is a Deliverable / Due table. It is NOT shipped yet because the renderer copies the LIVE gdoc, not this repo, and changing the tokens here without the matching `docs_batch_update` on `WORK_ORDER_TEMPLATE_ID` would put literal `{{week_1_dates}}` into contracts while the deliverable values silently evaporate (`playbook/integrations/work-order-template.md § Mirror-vs-live drift`). Until both land together: keep the week table, and **do not sequence the partner's own work inside it** — state what is due and when, not who does what in which week. The ordering defect that produced tekzal Round 1's blocker #1 (cards distributed in Week 3 to workers Week 4 recruits, with the advance triggering on that distribution) comes from prescribing sequence, not from the table itself.
+     - **Every date must fall inside the Period of Performance.** *Enforced:* `pdd-to-work-order-qa § dates_inside_period_of_performance`.
 
    **Payment Schedule table (3 rows × 6 cols, header + 2 milestones):**
      - Milestone 1: `{{wo_mobilization_advance_pct}}`, `{{wo_mobilization_amount}}`, `{{wo_mobilization_trigger}}`, `{{wo_mobilization_timing}}`
@@ -305,6 +307,9 @@ Take the approved PDD and decisions.yaml and produce a contractual Work Order dr
 
    **Data Handling table (9 rows × 2 cols, header + 8 fields):**
      - `{{data_project_overview}}`, `{{data_subjects}}`, `{{data_personal_info}}`, `{{data_purpose}}`, `{{data_security}}`, `{{data_partner_measures}}`, `{{data_storage_location}}`, `{{data_protection}}`
+     - **`{{data_personal_info}}` must agree with what the app actually captures. Never "None recorded" while the same section regulates those records.** Round 1 declared no personal information recorded, then described the market, the stall type, a locating description and the stall's coordinates — and imposed named-staff access control and 24-hour breach notification on exactly those records. The partner's note: *"A market, a locating description and coordinates identify a stall, and in a market a stall identifies a trader."*
+     - **GPS is always identifying information and is declared as such.** Operator ruling 2026-11-25. If the Deliver app captures location at submission, `{{data_personal_info}}` says so. A free-text locating description and a stall photograph are identifying for the same reason — they resolve to one trader.
+     - Derive this cell from the app's captured fields, not from an assumption about the design's intent. The declaration and the controls in the same table must describe the same data.
 
    **Signatures table (2 rows × 2 cols, header + signer blocks):**
      - `{{partner_signatory_name}}`, `{{partner_signatory_title}}`, `{{partner_address}}` (left cell — Subcontractor)
@@ -423,6 +428,83 @@ puts in front of a human. The full rule, including the carve-outs for CommCare t
 mobile app, CommCare HQ and code-level identifiers, is
 [`skills/_terminology.md`](../_terminology.md). Read it before writing prose; it is
 binding on this skill's output.
+
+
+
+## Contract rules from the tekzal Round 1 partner review
+
+Binding on every work order, not only tekzal's. Each is an operator ruling of 2026-11-25 on a
+defect a real implementing partner found, logged and rated.
+
+### Payment direction
+
+Dimagi pays the partner; the partner pays each Frontline Worker and records the payment in
+Connect. **Dimagi never pays a Frontline Worker directly, and Connect does not move money.**
+
+Never generate "FLW payments are disbursed through Connect directly to the FLW", and never make
+Dimagi the party that processes a worker payment. That was Round 1's § 6.2. It contradicted all
+four training documents, and the partner called it the most consequential disagreement in the
+round because it decides who funds the float — they believed the contract. Full rule:
+[`skills/_program-facts.md`](../_program-facts.md).
+
+### Approvals stay generic
+
+Emit `{{permissions_body}}` as exactly this one line, and nothing else:
+
+> The partner will take all required approvals from respective authorities for smooth deployment.
+
+**Never name a permission, an authority, a fee or a lead time**, and never require the partner to
+send Dimagi copies of permissions obtained. Round 1 required a permission for workers to carry a
+reference object that no authority in the country issues, and required market permission with no
+schedule time, no budget line and no stated consequence — while the partner knew it was two
+permissions, days to weeks, and usually a fee. The partner owns the process: *"if they don't like
+the terms and conditions of work order, they can reject the work."*
+
+### Local-language material is the partner's responsibility
+
+State it plainly: interpreting or translating worker-facing material into local languages is the
+partner's responsibility, and the partner may translate the English text and hand a document to
+each worker. ACE does not supply, standardize or commission a translated script.
+
+Say it rather than leaving it unsaid. Round 1's silence is what the partner noticed, because the
+consent script — the one part of the visit that has to be exact — is read aloud in the seller's
+language off an English screen.
+
+### No duplicate-monitoring obligation
+
+**Do not write a duplicate definition, or a duplicate-monitoring obligation, into the contract.**
+Operator ruling: *"duplicate rule cannot be system verified so does not need to be included. Only
+include the rule for work timing and submission duration."* Round 1 required duplicate monitoring
+without ever defining a duplicate, so the rule lived only in training material while the contract
+reviewed against nothing.
+
+### No device or camera standard
+
+No handset recommendation, no camera specification, no HDR or filter instruction. The only capture
+control is **live photo only, no gallery upload**, and it is enforced in the app build rather than
+asserted here. Operator ruling: *"make sure the artifacts shared with partner doesn't proactively
+recommend anything on devices."*
+
+### Headcount and calendar slack
+
+If the design caps field workers at N and each worker at M, and N × M is exactly the campaign
+total, the contract has no slack — one worker short caps delivery below target with no replacement
+provided for. Allow a replacement worker, and leave working days inside the Period of Performance
+after the last field day so review and payment have somewhere to happen. Round 1's last field day
+was also the last day of the period.
+
+## Program facts
+
+Facts that **more than one artifact asserts** — who pays the field worker, the caps, the payment
+conditions, consent order, the name of each captured field — have exactly one correct value per
+run. They are defined in [`skills/_program-facts.md`](../_program-facts.md).
+
+Read the settled value from the PDD. Never re-derive it here, and never infer it from another
+artifact — that is how drift starts. If the PDD has not settled it, propose a value there for
+confirmation rather than deciding silently in this document.
+
+Round 1 of `tekzal/20261013-2314` shipped a work order and four training documents that disagreed
+on who pays the worker. The partner stopped there and rated the round 2/4.
 
 ## Change Log
 

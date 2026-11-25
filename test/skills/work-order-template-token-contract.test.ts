@@ -72,6 +72,10 @@ const DOCUMENTED_NEGATIVES = new Set(['scope_body']);
  * `{{raci_11_partner}}`); the docs write the family once (`{{week_N_dates}}`).
  * Collapse both sides to the family so the comparison is about WHICH tokens
  * exist, not how many rows the table happens to have.
+ *
+ * `week` becomes `deliverable` when § 5 is retired (operator ruling
+ * 2026-11-25) — that change is held until the LIVE gdoc can be edited in the
+ * same step, because the renderer copies the gdoc and not this repo.
  */
 function normalize(token: string): string {
   return token.replace(/^(week|raci)_\d+_/, '$1_N_');
