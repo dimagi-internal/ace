@@ -35,7 +35,7 @@ proposal doc, if one is written, is shared only with Dimagi people (`@dimagi.com
 | Source | Artifact | Used for |
 |---|---|---|
 | Requester or `current_page` | round slug, e.g. `ulab-scoping-2026` | which round |
-| connect-labs | `marketplace_rounds_list(slug=…)` | title, deadline, countries, the form's questions, announcement link |
+| connect-labs | `marketplace_rounds_list(slug=…)` | title, deadline, countries, `priority_countries`, the form's questions, announcement link |
 | Drive | the round's announcement doc (`announcement_url`) | what the call needs: activities, roles, units and rates, budget, priority geographies, timeline |
 | connect-labs | `marketplace_round_responses(slug=…)` | every submission's answers; `round.evaluation_criteria` and `round.rubric_version` (existing criteria, if any) |
 | connect-labs | `marketplace_orgs_get(slugs=…)` | whether labs history (delivered programmes) can be judged for enough of the pool to carry a criterion |
@@ -91,6 +91,10 @@ request to "discuss the observations"): this is a revision, held as a conversati
    - Pull out the work, the roles, the units and rates, the budget, the priority
      geographies and the timeline. These are what the call *needs*; a criterion that
      traces to none of them needs a strong reason from the pool.
+   - Read `priority_countries` from `marketplace_rounds_list`. A `geography` criterion is
+     anchored on it: presence in a priority country scores above presence elsewhere. If it is
+     empty and the announcement names priority countries, say so in the proposal and, once
+     approved, set them with `marketplace_round_priorities_set`.
    - Note what the announcement asked applicants to provide. A requirement the call stated
      but the form never asked about cannot be scored from the answers (see step 8).
 
