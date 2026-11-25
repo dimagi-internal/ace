@@ -58,7 +58,7 @@ Take the approved PDD and decisions.yaml and produce a contractual Work Order dr
    | `wo-period-of-performance` | Start + end dates, **as ONE cell value**: either `YYYY-MM-DD to YYYY-MM-DD` / `Mon DD, YYYY to Mon DD, YYYY`, or a SINGLE bracketed placeholder spanning the whole cell (e.g. `[Start and end dates set on contract execution]`) — never two bracketed spans joined by "to", which `pdd-to-work-order-qa § period_of_performance_complete` rejects | Header + Timeline section |
    | `wo-total-not-to-exceed-usd` | Total NTE budget cap | Payment Terms section |
    | `wo-payment-schedule-split` | Milestone payment percentages (e.g., 40/60) | Payment Schedule sub-table |
-   | `wo-mobilization-advance-pct` | Mobilization advance % of cap | Payment Schedule row 1 |
+   | `wo-mobilization-advance-pct` | Advance as % of the total contract value. **Default 10**, paid ON EXECUTION and recoverable against the first invoice (operator ruling 2026-11-25) — not triggered by mobilization or any later deliverable | Payment Schedule row 1 |
    | `wo-reporting-cadence` | Frequency of progress reports (default: weekly) | Reporting sub-section |
    | `wo-ethics-scope` | What kind of data does the work touch? **Options:** `operational-no-personal-data` · `operational-with-personal-data` · `patient-level-clinical` | Ethics section |
    | `wo-data-storage-region` | Server region for data storage (default: `united-states`). A qualifier such as "provisional, pending confirmation" goes in `params.caveat`. **Options:** `united-states` · `european-union` · `in-country` | Data Handling section |
@@ -292,6 +292,17 @@ Take the approved PDD and decisions.yaml and produce a contractual Work Order dr
    **Payment Schedule table (3 rows × 6 cols, header + 2 milestones):**
      - Milestone 1: `{{wo_mobilization_advance_pct}}`, `{{wo_mobilization_amount}}`, `{{wo_mobilization_trigger}}`, `{{wo_mobilization_timing}}`
      - Milestone 2: `{{wo_reconciliation_pct}}`, `{{wo_reconciliation_amount}}`, `{{wo_reconciliation_trigger}}`, `{{wo_reconciliation_timing}}`
+     - **The advance is paid ON EXECUTION, and it is recoverable.** Operator ruling 2026-11-25. Milestone 1 is **10% of the total contract value**, paid when the Work Order is executed so the partner can start — it does NOT trigger on mobilization, on card or equipment distribution, or on any later deliverable. Set `wo-mobilization-advance-pct` to `10`.
+
+       Emit this clause verbatim into § 6.2, substituting the amount and the **programme's own currency code**:
+
+       > Dimagi will pay the partner an advance of `<CUR> <10% of total contract value>` upon execution of this Work Order to enable them to commence work. The advance will be deducted from the partner's first invoice, and payments for completed visits will be made after accounting for the advance.
+
+       **Never write `$` or `USD` unless `opportunity_currency` IS `USD`** — see the relabel-never-convert rule under `{{wo_total_not_to_exceed_usd}}` above. The operator's wording was given with a `$` placeholder; on a GHS programme it reads `GHS 1,100`, not `$1,100`, and writing the local figure after a dollar sign misstates a signed contract.
+
+       This replaces the Round 1 structure, which named the milestone "Mobilization advance" and then triggered it on cards being procured *and* distributed *and* Phase A accepted — paying within 30 days of that. tekzal's blocker #1: the money turned on a step the schedule placed after the work it was meant to fund. An advance that pays on signature cannot have that defect. Name the milestone for what it is (e.g. "Advance on execution"), not for a phase it no longer depends on.
+
+       It also satisfies `payment_models_reconciled` by construction: the clause states how the milestone model and the per-unit model relate, which is the thing a reviewer cannot sign without.
      - **If `wo-total-not-to-exceed-usd` is a bracketed placeholder rather than a number, `{{payment_unit_closing}}` MUST state that nothing is payable yet.** Keep the percentage split — a 40/60 structure pending a cap is an ordinary pre-award shape, and `payment_schedule_sums_to_100` requires the percentages to stay readable. What is not ordinary is presenting a percentage of an undefined base as a commitment: § 6.1 reads `USD [TBD]` while § 6.2 reads "40% mobilization advance" with an amount cell of "[Amount derived from the agreed cap]". Add one sentence, e.g.:
 
        > These percentages are indicative of the agreed split only. No amount is payable under this schedule until the total not-to-exceed in § 6.1 is fixed at contract execution.
