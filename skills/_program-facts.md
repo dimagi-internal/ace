@@ -43,17 +43,24 @@ Connect does not move money. Reference:
 The partner reasonably treated the contract as authoritative over the training, so this one
 disagreement decided who they believed had to fund the float.
 
-### Test submissions are never payable
+### A live opportunity has no concept of a test submission
 
-A record submitted while testing or practising with the app is **recorded but never payable**, and
-does not count toward a worker's delivery cap. Operator ruling 2026-11-25.
+**Connect cannot mark a submission as a test.** Any visit a worker logs in a live opportunity is a
+real visit: it counts toward that worker's delivery cap, and it is payable if it meets the payment
+conditions. This is a platform fact, not a policy choice, and no wording in a work order or a
+training document can change it.
 
-Say **"not payable"**. Never "Connect does not pay for these" — Connect does not move money at all,
-so phrasing it that way implies it pays for the others, which contradicts the payment flow above.
+Measured, not assumed: on `tekzal/20261013-2314` the Phase 6 device walk submitted one record into
+live opportunity `61db5faf`. It was payable — GHS 7 to the worker, GHS 4 to the partner — and it
+consumed one of the 20 per-worker slots. See `_app-component-library.md` Table A.
 
-Round 1 asserted this two ways: the PDD said review data "is not paid" while the work order
-carried no carve-out at all, so a conforming test submission auto-approved, paid GHS 7 to the
-worker and GHS 4 to the partner, and consumed one of the 20 per-worker slots.
+**So never write that test submissions are unpaid, or that they do not count, in any artifact
+describing a live opportunity.** Both claims are false there, and a partner who reads them will
+plan headcount and budget against a cap that is smaller than they think.
+
+Where a programme genuinely needs unpaid testing, that is a DESIGN decision about where testing
+happens — a separate opportunity, or an explicit allowance in the cap — and it belongs in the PDD
+as such. It is not a sentence anyone can add to the contract.
 
 ### Consent comes before any question
 
