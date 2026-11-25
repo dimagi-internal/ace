@@ -100,10 +100,15 @@ export function checkNoDirectFlwPayment(artifacts: Artifact[]): QACheckResult {
   const DIRECT = /\b(disbursed|paid|transferred|remitted)\b[^.]{0,80}?\bdirect(ly)?\b[^.]{0,40}?\b(to the )?(FLW|field worker|worker)s?\b/i;
   // "Dimagi pays the FLW" with no partner in between.
   const DIMAGI_PAYS_WORKER = /\bDimagi\b[^.]{0,40}?\b(pays|will pay|disburses|disburse)\b[^.]{0,40}?\b(the )?(FLW|field worker|worker)s?\b/i;
+  // "Connect does not pay FOR <x>" implies it pays for everything else.
+  // Deliberately scoped to `pay ... for <noun>`: "Connect does not move money"
+  // and "Connect does not pay anyone" are CORRECT and must keep passing, so a
+  // bare `Connect.*pay` pattern would be the always-fires version of this.
+  const CONNECT_PAYS_FOR = /\bConnect\b[^.]{0,30}?\b(?:does not |never |doesn't )?pays?\s+for\b/i;
 
   for (const a of artifacts) {
     const t = norm(a.text);
-    const hit = t.match(DIRECT) ?? t.match(DIMAGI_PAYS_WORKER);
+    const hit = t.match(DIRECT) ?? t.match(DIMAGI_PAYS_WORKER) ?? t.match(CONNECT_PAYS_FOR);
     if (hit) offenders.push(`${a.label}: "${hit[0].trim()}"`);
   }
 
@@ -116,7 +121,8 @@ export function checkNoDirectFlwPayment(artifacts: Artifact[]): QACheckResult {
     auto_fix_hint:
       'Payment flows Dimagi → partner organization → FLW, with no exception. Rewrite to ' +
       '"Dimagi pays {partner}. {partner} pays each Frontline Worker and records the payment in ' +
-      'Connect." Connect does not move money. See skills/_program-facts.md § Payment flows.',
+      'Connect." Connect does not move money — so do not write "Connect does not pay for X" '+
+      'either, which implies it pays for everything else. See skills/_program-facts.md § Payment flows.',
   };
 }
 

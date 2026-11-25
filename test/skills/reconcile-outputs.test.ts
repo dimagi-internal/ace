@@ -226,6 +226,29 @@ Verify the availability answer is picked from the published list.
 // ── Counter-ratchets: legitimate prose must not trip ───────────────
 
 describe('reconcile-outputs: does not over-fire', () => {
+  it('flags "Connect does not pay for X", which implies it pays for the rest', () => {
+    // The trap introduced by the test-submission ruling of 2026-11-25. The rule
+    // is right; this phrasing of it contradicts the payment flow.
+    const a: Artifact = {
+      label: 'FAQ',
+      text: 'Connect does not pay for test submissions.',
+    };
+    expect(checkNoDirectFlwPayment([a]).pass).toBe(false);
+  });
+
+  it('allows the correct phrasings that mention Connect and payment', () => {
+    // These must keep passing, or the check above becomes the always-fires kind
+    // and gets routed around inside one run.
+    const ok: Artifact[] = [
+      { label: 'FAQ', text: 'Connect does not move money.' },
+      { label: 'guide', text: 'Test submissions are recorded but never payable.' },
+      { label: 'work order', text: 'Tekzal pays each Frontline Worker and records the payment in Connect.' },
+    ];
+    for (const a of ok) {
+      expect(checkNoDirectFlwPayment([a]).pass, `should pass: ${a.text}`).toBe(true);
+    }
+  });
+
   it('allows Connect to RECORD a payment the partner makes', () => {
     // Connect legitimately records payments. The rule is against Connect or
     // Dimagi being the PAYER, not against mentioning both in one sentence.

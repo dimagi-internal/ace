@@ -43,6 +43,18 @@ Connect does not move money. Reference:
 The partner reasonably treated the contract as authoritative over the training, so this one
 disagreement decided who they believed had to fund the float.
 
+### Test submissions are never payable
+
+A record submitted while testing or practising with the app is **recorded but never payable**, and
+does not count toward a worker's delivery cap. Operator ruling 2026-11-25.
+
+Say **"not payable"**. Never "Connect does not pay for these" — Connect does not move money at all,
+so phrasing it that way implies it pays for the others, which contradicts the payment flow above.
+
+Round 1 asserted this two ways: the PDD said review data "is not paid" while the work order
+carried no carve-out at all, so a conforming test submission auto-approved, paid GHS 7 to the
+worker and GHS 4 to the partner, and consumed one of the 20 per-worker slots.
+
 ### Consent comes before any question
 
 Consent precedes **every** question, including what the seller sells, and before any photograph.
