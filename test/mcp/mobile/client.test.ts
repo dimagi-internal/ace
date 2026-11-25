@@ -137,6 +137,24 @@ describe('MobileClient.registerTestUser', () => {
     const partBAt = maestro.runRecipe.mock.invocationCallOrder[1];
     expect(gmsOffAt).toBeLessThan(presetAt);
     expect(presetAt).toBeLessThan(partBAt);
+    // GMS goes back ON after part B: left off, the device cannot receive FCM
+    // push, so PersonalID Messaging never notifies (observed live 2026-11-25).
+    const calls = avd.setGmsEnabled.mock.calls;
+    expect(calls[calls.length - 1]).toEqual(['AVD', true]);
+    const gmsBackOnAt = avd.setGmsEnabled.mock.invocationCallOrder[calls.length - 1];
+    expect(gmsBackOnAt).toBeGreaterThan(partBAt);
+  });
+
+  it('turns GMS back on even when part B fails', async () => {
+    const { avd, maestro } = fakeMaestroAndAvd({ registerToOtp: 'pass', registerFromOtp: 'fail', otp: '123456' });
+    const client = new MobileClient({ avd, maestro, staticRecipesDir: REAL_STATIC_DIR });
+    await client.registerTestUser({
+      avdName: 'AVD', phone: '+74260000001', phoneLocal: '4260000001', countryCode: '+7',
+      pin: '111111', backupCode: '222222', name: 'ACE Test',
+    }).catch(() => undefined);
+    const calls = avd.setGmsEnabled.mock.calls;
+    expect(calls).toContainEqual(['AVD', false]);
+    expect(calls[calls.length - 1]).toEqual(['AVD', true]);
   });
 
   // Regression guard for jjackson/ace#682: the heal-funnel / auto-bootstrap

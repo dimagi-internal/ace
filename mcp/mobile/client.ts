@@ -3097,6 +3097,7 @@ export class MobileClient {
     const toContinue = path.join(prep.tempDir, 'connect-register-to-otp.yaml');
     const fromContinue = path.join(prep.tempDir, 'connect-register-from-otp.yaml');
     let success = false;
+    let gmsDisabledForFaceCapture = false;
     try {
       // Pre-grant runtime permissions BEFORE launching CommCare. Both
       // pm clear (Step 1.5 of runLocalBootstrap) AND fresh APK installs
@@ -3154,6 +3155,7 @@ export class MobileClient {
       // already passed its launch check above, and doesn't re-check GMS
       // mid-session.
       await this.avd.setGmsEnabled(args.avdName, false);
+      gmsDisabledForFaceCapture = true;
       // Pre-set the device PIN so part B skips the Settings lock chooser.
       // See `AvdBackend.presetScreenLockPin`.
       await this.avd.presetScreenLockPin(args.avdName, args.pin);
@@ -3205,6 +3207,16 @@ export class MobileClient {
       success = true;
       return { alreadyRegistered: false, phone: args.phone, backupCode: args.backupCode };
     } finally {
+      // Turn GMS back on once face capture is behind us. Left disabled, the
+      // device cannot receive FCM push, so a PersonalID Messaging reply never
+      // raises a notification while the app is in the background (observed
+      // 2026-11-25 on APK 2.66: shade full of "Enable Google Play services",
+      // no CommCare notification; after `pm enable` the "New Message"
+      // notification landed ~6 s after labs sent). Best-effort, like the
+      // disable.
+      if (gmsDisabledForFaceCapture) {
+        await this.avd.setGmsEnabled(args.avdName, true).catch(() => {});
+      }
       // Record that this AVD has PROVEN itself (ace#1047 fix 2). Reaching here
       // with success means CommCare is installed and a test user exists — the
       // only evidence that makes this AVD a safe fallback for a concurrent
