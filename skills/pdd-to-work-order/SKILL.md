@@ -279,6 +279,7 @@ Take the approved PDD and decisions.yaml and produce a contractual Work Order dr
      - `{{scope_will_not_body}}` — the out-of-scope bullet lines ONLY, one item per line (the template supplies the "The partner will not:" lead-in).
      - There is NO single `{{scope_body}}` token in the live template. Passing one silently drops all scope content AND leaks the two real tokens verbatim into § 2 Scope of Work (a `no_scaffolding_markers`-class QA defect) — the exact failure from bednet-spot-check/20260701-1644 (jjackson/ace#819).
      - `{{verified_unit_body}}` — criteria a unit must meet to be "verified" (one bullet per line)
+     - **State the test-submission carve-out in `{{verified_unit_closing}}`.** Operator ruling 2026-11-25: a record submitted while testing the app is recorded but **never payable**, and does not count toward a worker's delivery cap. Round 1 had no carve-out while the PDD said review data "is not paid", so a conforming test submission auto-approved, paid out and consumed one of the 20 per-worker slots. Write it as "not payable" — never as Connect declining to pay, which implies Connect pays for the rest (`skills/_program-facts.md` § Payment flows).
      - `{{reporting_body}}` — required reporting deliverables (one bullet per line)
      - `{{permissions_body}}` — § 8.1 content. **Emit the single generic approvals line and nothing else** — see **Approvals stay generic** below. Never a list of named permissions.
 

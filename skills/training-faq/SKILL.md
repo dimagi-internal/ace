@@ -77,6 +77,25 @@ which rule triggered, what to do>
 
 <answer from connect Programs payment cadence>
 
+**[LLO] Q: Do test submissions get paid?** — REQUIRED, do not omit
+
+No. A record submitted while testing the app is recorded but is never payable, and it does not
+count toward a worker's delivery cap. Operator ruling 2026-11-25.
+
+State it plainly and in both directions, because Round 1 had it both ways: the PDD said review
+data "is not paid" while the Work Order carried no carve-out, so a conforming test submission
+auto-approved, paid out and consumed one of the worker's slots.
+
+**[FLW] Q: I submitted a survey while practising. Do I get paid for it?**
+
+No — practice and test submissions are not paid. They are saved so your coordinator can check your
+work, and they do not use up any of your paid surveys.
+
+**Say "not payable", never "Connect does not pay for these".** Connect does not move money at all:
+Dimagi pays the partner organization and the partner pays the worker. Phrasing it as Connect
+declining to pay for *these* implies it pays for the others, which is the contradiction
+`skills/_program-facts.md` § Payment flows exists to prevent.
+
 ## Logistics
 
 **[LLO] Q: <opp-specific operational question>**
