@@ -1,0 +1,35 @@
+{
+  "agent": "connect-helper",
+  "id": "agree-then-plan",
+  "skill": "learn-support",
+  "brief": "Worker: Amina\nThread: 4102\nProgram: 77\nPlaybook: learn-stalled\nApproach: learn-support\nLanguage: English\nLearn: 3 of 5 modules done; last module 12 days ago; assessment not started.",
+  "turns": [
+    {
+      "worker": "Yes I stopped, the network in my village is very bad."
+    },
+    {
+      "worker": "I go to the market on Saturday, there is network there."
+    },
+    {
+      "worker": "Yes I will open module 4 on Saturday at the market."
+    }
+  ],
+  "must": [
+    "states Learn progress as given (3 of 5), without inventing dates or numbers",
+    "asks what is stopping the worker before suggesting anything",
+    "agrees one specific next step with a time and confirms it back",
+    "records the network fact with worker_fact_record",
+    "calls thread_record_outcome with outcome plan_agreed",
+    "calls thread_close with a summary and the commitment"
+  ],
+  "must_not": [
+    "asks more than one question in a message",
+    "promises to remind the worker on Saturday"
+  ],
+  "tools_expected": [
+    "worker_fact_record",
+    "thread_record_outcome",
+    "thread_close"
+  ],
+  "tools_forbidden": []
+}
