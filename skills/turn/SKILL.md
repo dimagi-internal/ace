@@ -84,8 +84,12 @@ improvements ship once (a canopy PR) instead of N backports.
   slow AND silent.** It runs ~3-4 minutes (measured 3m39s, 2026-09-01) because it makes live HTTP
   probes per MCP and walks Drive's opp layout, and it pipes through `tee`, so a foreground run
   emits NOTHING until it exits — it just blows the harness 120s Bash timeout and gets backgrounded
-  anyway, minus the interim output. Launch it with `run_in_background`, run the inbox pull below
-  while it works, and read its verdict before you close. (`--no-live` skips the live probes if you
+  anyway, minus the interim output. On a laptop (emdash) turn, launch it with `run_in_background`,
+  run the inbox pull below while it works, and read its verdict before you close. **On a canopy
+  cloud runner (a one-shot turn) `run_in_background` is DENIED** by canopy's
+  `one_shot_turn_guard` (a background task can never resume a session that has ended), so run it in
+  the FOREGROUND with `timeout: 600000` and issue the inbox pull as a parallel tool call in the
+  same message. That gets the same overlap without a background task. (`--no-live` skips the live probes if you
   only need the static checks.) Each failure names its remediation command. **Read the `TURN-BLOCKING` list, not just the
   aggregate verdict** (dimagi-internal/ace#1189): a revoked Gmail refresh token leaves every inbound
   and outbound path dead while the old aggregate still printed `FAIL: 0 / HEALTHY — ACE works;
