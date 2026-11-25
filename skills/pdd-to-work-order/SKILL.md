@@ -282,10 +282,12 @@ Take the approved PDD and decisions.yaml and produce a contractual Work Order dr
      - `{{reporting_body}}` — required reporting deliverables (one bullet per line)
      - `{{permissions_body}}` — § 8.1 content. **Emit the single generic approvals line and nothing else** — see **Approvals stay generic** below. Never a list of named permissions.
 
-   **Timeline table (9 rows × 3 cols, header + 8 weeks):**
-     - `{{week_N_dates}}`, `{{week_N_activities}}` for N=1..8 (from PDD Timeline)
-     - **PENDING — the week-by-week table is being retired.** Operator ruling 2026-11-25: *"a better design will be to not create a week by week plan. Let the partners decide how they want to plan it. Ace and dimagi just tell them what needs to be done and the timelines."* The replacement is a Deliverable / Due table. It is NOT shipped yet because the renderer copies the LIVE gdoc, not this repo, and changing the tokens here without the matching `docs_batch_update` on `WORK_ORDER_TEMPLATE_ID` would put literal `{{week_1_dates}}` into contracts while the deliverable values silently evaporate (`playbook/integrations/work-order-template.md § Mirror-vs-live drift`). Until both land together: keep the week table, and **do not sequence the partner's own work inside it** — state what is due and when, not who does what in which week. The ordering defect that produced tekzal Round 1's blocker #1 (cards distributed in Week 3 to workers Week 4 recruits, with the advance triggering on that distribution) comes from prescribing sequence, not from the table itself.
-     - **Every date must fall inside the Period of Performance.** *Enforced:* `pdd-to-work-order-qa § dates_inside_period_of_performance`.
+   **Deliverables and Deadlines table (9 rows × 3 cols, header + 8 deliverables):**
+     - `{{deliverable_N_item}}`, `{{deliverable_N_due}}` for N=1..8.
+     - **Do NOT emit a week-by-week schedule.** Operator ruling 2026-11-25: *"a better design will be to not create a week by week plan. Let the partners decide how they want to plan it. Ace and dimagi just tell them what needs to be done and the timelines."* Sequencing the partner's own work is what produced tekzal Round 1's blocker #1 — cards distributed to field workers in Week 3 whom Week 4 recruits, with the mobilization advance triggering on that distribution. A deliverable and its deadline cannot produce that defect, because it never asserts an order.
+     - **Every `{{deliverable_N_due}}` must fall inside the Period of Performance.** *Enforced:* `pdd-to-work-order-qa § dates_inside_period_of_performance`.
+     - A deliverable the design commits the partner to — recruitment, certification, practice review — belongs HERE, where § 6.2's acceptance test can see it. Round 1 left committed Phase A work outside § 4.1 entirely, so nothing could accept it.
+     - If the design needs fewer than 8 rows, fill trailing rows with empty strings.
 
    **Payment Schedule table (3 rows × 6 cols, header + 2 milestones):**
      - Milestone 1: `{{wo_mobilization_advance_pct}}`, `{{wo_mobilization_amount}}`, `{{wo_mobilization_trigger}}`, `{{wo_mobilization_timing}}`

@@ -94,7 +94,7 @@ Each varying cell or bullet contains one `{{snake_case}}` token. Body-token repl
 | `{{verified_unit_body}}` ★ | Newline-separated verified-unit criteria (one bullet per line) |
 | `{{verified_unit_closing}}` | Closing paragraph after the verified-unit bullets |
 | `{{reporting_body}}` ★ | Newline-separated reporting deliverables |
-| `{{week_N_dates}}`, `{{week_N_activities}}` (N=1..8) | PDD Timeline per-week rows |
+| `{{deliverable_N_item}}`, `{{deliverable_N_due}}` (N=1..8) | § 5 deliverables and their deadlines. Replaced the Week/Dates/Activities table (operator ruling 2026-11-25). |
 | `{{wo_total_not_to_exceed_usd}}` | `wo-total-not-to-exceed-usd` decision |
 | `{{wo_mobilization_advance_pct}}`, `{{wo_mobilization_amount}}`, `{{wo_mobilization_trigger}}`, `{{wo_mobilization_timing}}` | Payment milestone 1 (from `wo-payment-schedule-split` + `wo-mobilization-advance-pct`) |
 | `{{wo_reconciliation_pct}}`, `{{wo_reconciliation_amount}}`, `{{wo_reconciliation_trigger}}`, `{{wo_reconciliation_timing}}` | Payment milestone 2 |
