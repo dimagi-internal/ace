@@ -41,3 +41,22 @@ describe('connect-helper writes nothing but the reply', () => {
     expect(skill).toMatch(/Write no\s+text at all until the reply/);
   });
 });
+
+describe('connect-helper has its setup in context without reading it', () => {
+  // Thread 9, 2026-11-26: every turn ran a Bash `cat` the contact-turn guard blocks, then Read
+  // persona.md and worker-chat: about 4 s of every reply. A cloud contact turn is a fresh
+  // Claude session (only a sensitive conversation is resumed), so the files must be in context
+  // from the start: CLAUDE.md imports them.
+  const claude = readFileSync(
+    join(__dirname, '..', '..', 'stored-agents', 'connect-helper', 'CLAUDE.md'),
+    'utf8',
+  );
+  it('imports the persona and the entry skill', () => {
+    expect(claude).toMatch(/^@persona\.md$/m);
+    expect(claude).toMatch(/^@skills\/worker-chat\/SKILL\.md$/m);
+  });
+  it('tells the agent not to read them again', () => {
+    expect(claude).toMatch(/Do not Read or `cat`\s+them/);
+    expect(skill).toMatch(/do not Read them/);
+  });
+});
