@@ -30,7 +30,11 @@ follows: [`_verify-before-send.md`](../_verify-before-send.md) and
 | `message` | what the worker sends | explicit arg; default: "Smoke test from the ACE test worker at <UTC time>. What can you help me with?" |
 | `thread_id` | the open labs conversation | default: `messaging_thread_list` for `program_id` + `worker`, state `open` |
 
-No run is needed; it runs on any program with a playbook that names the test worker.
+No run is needed; it runs on any program with a playbook that names the test worker. **An
+agent-answered playbook must grant the worker tools** (`tools`, the list
+`skills/messaging-playbook-setup` gives): labs serves the agent only those, so a playbook without
+them leaves it unable to read the record (failure class D). A conversation keeps the playbook
+version it opened with, so after adding `tools` close the open conversation and start a new one.
 
 ## Products
 
@@ -102,6 +106,13 @@ No run is needed; it runs on any program with a playbook that names the test wor
   Fixed in dimagi-internal/canopy-web#2953, which also makes such a turn fail so labs flags the
   thread for a person. Check the playbook is enabled, the handler, `needs_attention` and
   `attention_reason`, then the canopy turn.
+- **D. The answer says it cannot see the worker's record.** Read the canopy session (the agent's
+  admins can, read-only): if `site_tools` answered `"tools": []`, the conversation's playbook
+  version grants no `tools`. Fix the playbook, close the conversation, open a new one. Seen on
+  2026-11-26 (`smoke-test` v1, threads 7 and 8).
+- **E. The answer is sent but the phone only shows it when the thread is reopened.** No push: Play
+  services is off on the emulator (registration turns it off for face capture). `adb shell pm
+  enable com.google.android.gms`; ace ≥ the release with PR #3465 turns it back on itself.
 - **C. The answer is in labs but not on the phone.** Labs stored and sent it, the app did not show
   it: the key fetch or decryption failed. Historically an http `key_url` became a 301, okhttp
   re-sent the POST as a GET and labs' POST-only `/messaging/personalid/key/` answered 405, fixed
