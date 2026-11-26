@@ -12,7 +12,12 @@ within one command of sending it twice.
 
     bin/ace-pending-sends            # list unacknowledged sends
     bin/ace-pending-sends --check    # exit 1 if any are unacknowledged (for a turn close-out)
-    bin/ace-pending-sends --ack <fingerprint|thread-id|all>
+    bin/ace-pending-sends --ack <id|fingerprint|thread-id|all>
+
+Every entry has an `id` (its send time in whole seconds, printed in the listing). It is the only
+handle on an attempt that captured no thread and no body fingerprint (a body from stdin or an
+inline flag): without it, such an entry could be cleared only with `--ack all`, which would also
+clear real unrecorded sends.
 
 The ledger is written by `bin/ace-email` immediately before it hands off to canopy
 (`ACE_SEND_LEDGER`, default ~/.ace/pending-sends.jsonl). It records the ATTEMPT, not the
@@ -62,10 +67,14 @@ def _age(ts: float) -> str:
     return f"{hours}h ago" if hours < 48 else f"{hours // 24}d ago"
 
 
+def _id(r: dict) -> str:
+    return str(int(r.get("at", 0)))
+
+
 def main() -> int:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--check", action="store_true", help="exit 1 when anything is unacknowledged")
-    p.add_argument("--ack", metavar="FINGERPRINT|THREAD|all")
+    p.add_argument("--ack", metavar="ID|FINGERPRINT|THREAD|all")
     p.add_argument("--json", action="store_true")
     args = p.parse_args()
 
@@ -76,7 +85,7 @@ def main() -> int:
         for r in records:
             if r.get("acknowledged"):
                 continue
-            if args.ack == "all" or args.ack in (r.get("body_fingerprint"), r.get("thread_id")):
+            if args.ack == "all" or args.ack in (_id(r), r.get("body_fingerprint"), r.get("thread_id")):
                 r["acknowledged"] = True
                 r["acknowledged_at"] = time.time()
                 n += 1
@@ -93,13 +102,15 @@ def main() -> int:
     else:
         print(f"{len(pending)} send(s) not yet recorded where the next turn will look:\n")
         for r in pending:
-            who = ", ".join(r.get("recipients") or []) or "(reply-all)"
-            print(f"  {_age(r.get('at', 0)):>8}  thread {r.get('thread_id') or '(new)'}  -> {who}")
-            print(f"            body {r.get('body_fingerprint', '?')}")
+            who = ", ".join(r.get("recipients") or []) or (
+                "(reply-all)" if r.get("thread_id") else "(recipients not captured)"
+            )
+            print(f"  {_age(r.get('at', 0)):>8}  id {_id(r)}  thread {r.get('thread_id') or '(new)'}  -> {who}")
+            print(f"            body {r.get('body_fingerprint') or '(not captured)'}")
         print(
             "\nRecord each in the run's comms-log (email-communicator step 7), or on the\n"
             "thread's board card when Drive is down, then:\n"
-            "  bin/ace-pending-sends --ack <fingerprint|thread-id>"
+            "  bin/ace-pending-sends --ack <id|fingerprint|thread-id>"
         )
 
     return 1 if (args.check and pending) else 0
