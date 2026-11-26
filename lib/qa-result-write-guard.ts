@@ -18,6 +18,9 @@
 
 import { parse as parseYaml, parseAllDocuments } from 'yaml';
 import { validateQAResult } from './qa-types.js';
+import { parseDecisionOverridesYaml } from './decision-overrides.js';
+import { parseOperatorRulingsYaml } from './operator-rulings.js';
+import { kebabFeedbackRef } from './feedback-ledger.js';
 
 export const QA_RESULT_NAME = /-qa_result\.ya?ml$/i;
 
@@ -149,5 +152,144 @@ export function yamlParseWriteRefusal(name: string, text: string): string | null
     'Serialize the document (`yaml.stringify`, or `update_yaml_file`, which serializes 1.1-safely) ' +
     'rather than hand-authoring the text; an unparseable state file is unreadable AND unwritable, ' +
     'because update_yaml_file is read-parse-merge-write (ace#2866).'
+  );
+}
+
+// ---------------------------------------------------------------------------
+// The two opp-level ruling stores — a SHAPE the parse floor cannot see
+// ---------------------------------------------------------------------------
+
+/**
+ * `<opp>/inputs/decision-overrides.yaml` — saved reviewer rulings.
+ * `<opp>/inputs/operator-rulings.yaml` — per-opp operator rulings.
+ *
+ * Matched on the BASENAME so a path-qualified name (`inputs/…`) is caught too.
+ */
+export const DECISION_OVERRIDES_WRITE_NAME = /(?:^|\/)decision-overrides\.ya?ml$/i;
+export const OPERATOR_RULINGS_WRITE_NAME = /(?:^|\/)operator-rulings\.ya?ml$/i;
+
+/**
+ * null ⇒ write allowed; else the refusal (INVALID_DECISION_OVERRIDES … /
+ * INVALID_OPERATOR_RULINGS …).
+ *
+ * ## Why these two files need a guard the parse floor cannot give them
+ *
+ * Live incident, `accra-vendor-survey` / `20261125-1637`, Phase 1 blocked
+ * 2026-11-26. The opp was stood up fresh carrying eleven operator rulings
+ * forwarded from the prior run. One row bound its ruling to a key of that
+ * run's `run_state.yaml` and kept the YAML key's underscores:
+ *
+ *     feedback_ref: 20261013-2314-run_state/blockers_for_operator
+ *
+ * `DecisionOverrideRowSchema.feedback_ref` is kebab-case on both sides of the
+ * slash. The file still PARSES, so `yamlParseWriteRefusal` waved it through,
+ * and the only reader that checks the shape — `parseDecisionOverridesYaml`,
+ * at the decisions write boundary — does not run until a phase writes a
+ * decision. By design that reader is ALL-OR-NOTHING (`lib/decision-overrides.ts`:
+ * a malformed file means a reviewer's saved intent would otherwise be silently
+ * dropped, so ACE halts rather than ship a run that ignores an expert review).
+ * One bad ref therefore discarded all eleven rulings and blocked the phase,
+ * a day and a run away from the write that caused it.
+ *
+ * **There is no synthesizer to fix instead.** Nothing in this repo, and
+ * nothing in ace-web, ever emits a `feedback_ref` into
+ * `decision-overrides.yaml`: ace-web's `make_override_row`
+ * (`apps/opps/decision_overrides.py`) writes a fixed field list that does not
+ * include it. Both ruling stores are hand-authored through
+ * `drive_create_file` / `drive_update_file` / `drive_upload_binary` /
+ * `update_yaml_file` — which is exactly the authoring path this module
+ * already polices for `*-qa_result.yaml`, `*_verdict.yaml` and unparseable
+ * YAML (ace#2866), and these two were the hole left in it.
+ *
+ * **It refuses; it never repairs.** `feedback_ref` is a BINDING KEY naming
+ * one reviewer comment or one operator ruling, so kebab-casing it silently
+ * would bind a saved ruling to whatever the corrected spelling happens to
+ * name — the data-integrity property the all-or-nothing reader exists to
+ * protect. The refusal offers the kebab spelling (`kebabFeedbackRef`) and
+ * leaves the choice with the author.
+ *
+ * `operator-rulings.yaml` is here for the same class one file over: a ruling
+ * `id` becomes the second half of `feedback_ref: operator-rulings/<id>`
+ * (`rulingDecisionRow`, `lib/operator-rulings.ts`), so an id this file
+ * accepted but the decisions schema would not is the same defect.
+ */
+export function rulingStoreWriteRefusal(name: string, text: string): string | null {
+  const fname = String(name ?? '');
+  const body = String(text ?? '').replace(/\r\n/g, '\n');
+
+  if (DECISION_OVERRIDES_WRITE_NAME.test(fname)) {
+    return rulingStoreRefusal(
+      'INVALID_DECISION_OVERRIDES',
+      fname,
+      body,
+      () => parseDecisionOverridesYaml(body),
+      'lib/decision-overrides.ts (schema v1)',
+      'ONE malformed row discards EVERY ruling in the file and halts the decisions write ' +
+        '(the file is validated all-or-nothing on purpose), so this has to be right before it lands.',
+    );
+  }
+
+  if (OPERATOR_RULINGS_WRITE_NAME.test(fname)) {
+    return rulingStoreRefusal(
+      'INVALID_OPERATOR_RULINGS',
+      fname,
+      body,
+      () => parseOperatorRulingsYaml(body),
+      'lib/operator-rulings.ts (schema v1)',
+      'A ruling id becomes the second half of `feedback_ref: operator-rulings/<id>` on every ' +
+        'decision row it stamps, so an id this file accepts but the decisions schema rejects ' +
+        'fails later, in a phase, with the whole file as collateral.',
+    );
+  }
+
+  return null;
+}
+
+function rulingStoreRefusal(
+  code: string,
+  name: string,
+  body: string,
+  parse: () => unknown,
+  contract: string,
+  why: string,
+): string | null {
+  try {
+    parse();
+    return null;
+  } catch (e) {
+    const detail = (e as Error).message;
+    return (
+      `${code}: ${name} does not match ${contract} — ${detail}. ` +
+      `Nothing was written. ${why}${kebabHints(body)}`
+    );
+  }
+}
+
+/**
+ * Name the offending ids and the kebab spelling that would be legal.
+ *
+ * The schema message states the RULE; with eleven rows in a file the author
+ * still has to find which value broke it. Underscores carried over from a
+ * YAML key are the observed cause, so every non-kebab id-ish scalar in the
+ * bytes about to be written is quoted back with its suggested spelling.
+ */
+function kebabHints(body: string): string {
+  const seen = new Map<string, string>();
+  const scalar = /(?:^|[\s:>|"'[{,-])([A-Za-z0-9][A-Za-z0-9_-]*(?:\/[A-Za-z0-9][A-Za-z0-9_-]*)?)(?=["'\s,\]}]|$)/gm;
+  for (const m of body.matchAll(scalar)) {
+    const value = m[1];
+    if (!value.includes('_')) continue; // only the observed failure shape
+    const suggestion = value.includes('/')
+      ? kebabFeedbackRef(value)
+      : value.toLowerCase().replace(/_+/g, '-');
+    if (suggestion && suggestion !== value && !seen.has(value)) seen.set(value, suggestion);
+  }
+  if (seen.size === 0) return '';
+  const list = [...seen].map(([bad, good]) => `\`${bad}\` -> \`${good}\``).join(', ');
+  return (
+    ` Underscores are illegal on either side of the slash; these look like the cause: ${list}. ` +
+    'Re-point the ref deliberately rather than pasting the suggestion — it is a BINDING key ' +
+    'naming one reviewer comment or one operator ruling, and the corrected spelling must name ' +
+    'the record you actually mean.'
   );
 }

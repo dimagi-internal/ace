@@ -5,6 +5,45 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.13.2267 — 2026-11-26
+
+**A malformed ruling store is refused at the WRITE, not three days later inside a phase.**
+`accra-vendor-survey` / `20261125-1637` had Phase 1 blocked: its `inputs/decision-overrides.yaml` carried
+eleven operator rulings forwarded from the prior run, and one of them bound its ruling to a key of that run's
+`run_state.yaml` keeping the YAML key's own underscores — `feedback_ref: 20261013-2314-run_state/blockers_for_operator`,
+where `DecisionOverrideRowSchema` is kebab-case on both sides of the slash. The file still PARSES, so
+`yamlParseWriteRefusal` waved it through, and the only reader that checks the shape runs at the decisions write
+boundary, where it is **all-or-nothing by design** (`lib/decision-overrides.ts`: a malformed overrides file means a
+reviewer's saved intent would otherwise be silently dropped, so ACE halts rather than ship a run that ignores an
+expert review). One bad ref therefore discarded all eleven rulings and blocked the phase, a day and a run away from
+the write that caused it.
+
+**There was no synthesizer to fix instead, and that is the finding.** Nothing in this repo and nothing in ace-web
+emits a `feedback_ref` into `decision-overrides.yaml` — ace-web's `make_override_row`
+(`apps/opps/decision_overrides.py`) writes a fixed field list that does not include the field. The two opp-level
+ruling stores are hand-authored through `drive_create_file` / `drive_update_file` / `drive_upload_binary` /
+`update_yaml_file`, which is exactly the authoring path `lib/qa-result-write-guard.ts` already polices for
+`*-qa_result.yaml`, `*_verdict.yaml` and unparseable YAML (ace#2866) — and these two files were the hole left in it,
+the worst kind to leave because they parse.
+
+- **`rulingStoreWriteRefusal`** (`lib/qa-result-write-guard.ts`) runs each file's own canonical parser —
+  `parseDecisionOverridesYaml`, `parseOperatorRulingsYaml` — over the bytes about to be written, keyed on the
+  basename so `inputs/decision-overrides.yaml` matches too. Wired into all four write paths: chained after
+  `verdictWriteRefusal` and before the parse floor on `drive_create_file` / `drive_update_file` /
+  `drive_upload_binary`, and on the MERGED document inside `handleUpdateYamlFile` — that atom builds its own bytes,
+  and a patch adding one row is valid alone and invalid against what the file already holds.
+- **It refuses; it never repairs.** `feedback_ref` is a BINDING key naming one reviewer comment or one operator
+  ruling, so silently kebab-casing it would bind a saved ruling to whatever the corrected spelling happens to name —
+  the data-integrity property the all-or-nothing reader exists to protect. The refusal quotes the offending values
+  and SUGGESTS the kebab spelling (`kebabFeedbackRef`, new next to the ref grammar in `lib/feedback-ledger.ts`
+  alongside `kebabSegment`, which `slugifyName` now shares), and says to re-point the ref deliberately.
+- `operator-rulings.yaml` is covered for the same class one file over: a ruling `id` becomes the second half of
+  `feedback_ref: operator-rulings/<id>` on every decision row it stamps (`rulingDecisionRow`).
+
+*Enforced:* `test/lib/ruling-store-write-guard.test.ts` replays the verbatim incident row (refused, named, with the
+kebab spelling offered) and proves the other three guards are blind to it; `test/mcp/gdrive/yaml-write-guard-wiring.test.ts`
+gains the structural ratchet for all four call sites, so the guard cannot be shipped without a caller.
+
 ## 0.13.2192 — 2026-11-03
 
 **A turn's posture is canopy's `turn_mode`, not a hard-coded review posture.** `commands/turn.md`, `skills/turn`,

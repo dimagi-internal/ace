@@ -63,6 +63,26 @@ describe('every Drive write path reaches the YAML parse guard (ace#2866)', () =>
     expect(src).not.toMatch(/\^skill:\\s\*\\S\+-\(qa\|eval\)/);
   });
 
+  it('chains the ruling-store guard on all three atoms, between verdict and the parse floor', () => {
+    // `inputs/decision-overrides.yaml` and `inputs/operator-rulings.yaml` PARSE
+    // when they are wrong, so the floor cannot see them and the only shape
+    // check used to run deep inside a phase, all-or-nothing. That is what
+    // blocked accra-vendor-survey/20261125-1637 Phase 1 on 2026-11-26.
+    const chains = src.match(
+      /verdictWriteRefusal\([^;]*?\?\?[\s\S]{0,120}?rulingStoreWriteRefusal\([^;]*?\?\?[\s\S]{0,120}?yamlParseWriteRefusal\(/g,
+    ) ?? [];
+    expect(chains.length).toBe(3);
+  });
+
+  it('update_yaml_file runs it too — it BUILDS its bytes, so the other three cannot cover it', () => {
+    // A patch adding one override row is valid alone and invalid against what
+    // the file already holds, so the merged document is the only thing worth
+    // checking, and this handler is the only place it exists.
+    expect(src).toMatch(
+      /const yamlRefusal = rulingStoreWriteRefusal\(String\(current\.name \?\? ''\), newContent\);\s*\n\s*if \(yamlRefusal\) throw new Error\(yamlRefusal\);/,
+    );
+  });
+
   it('refuses before any Drive write at every site', () => {
     // Each guard result is returned as an error, never logged and continued.
     const returns = src.match(/if \((?:qaRefusal|writeRefusal)\) return error\((?:qaRefusal|writeRefusal)\);/g) ?? [];

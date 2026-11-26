@@ -372,6 +372,41 @@ export function formatFeedbackRef(slug: string, itemId: string): string {
   return `${slug}/${itemId}`;
 }
 
+/**
+ * One kebab-case segment of a ref: lowercase alphanumerics, single hyphens,
+ * no leading or trailing hyphen. Empty when the input had nothing to keep.
+ *
+ * The canonical spelling of every id in this grammar — `FeedbackRecordSchema`
+ * `slug`, `FeedbackItemSchema` `id`, `DecisionOverrideRowSchema`
+ * `feedback_ref`'s two halves and `OperatorRulingSchema` `id` all enforce it
+ * with the same regex.
+ */
+export function kebabSegment(text: string): string {
+  return text
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+}
+
+/**
+ * The kebab-case spelling of a `<record-slug>/<item-id>` ref, or null when
+ * the input is not a single-slash ref with something to keep on both sides.
+ *
+ * A SUGGESTION, never an automatic repair. `feedback_ref` is a BINDING key —
+ * it names one reviewer comment or one operator ruling — so rewriting it
+ * silently would bind a saved ruling to whatever the corrected spelling
+ * happens to name. The write guard that uses this offers the spelling and
+ * refuses the write; the author decides (dimagi-internal/ace, the
+ * `accra-vendor-survey` Phase 1 block, 2026-11-26).
+ */
+export function kebabFeedbackRef(ref: string): string | null {
+  const parts = String(ref ?? '').trim().split('/');
+  if (parts.length !== 2) return null;
+  const [slug, itemId] = parts.map(kebabSegment);
+  if (!slug || !itemId) return null;
+  return formatFeedbackRef(slug, itemId);
+}
+
 export function parseFeedbackRef(
   ref: string,
 ): { slug: string; itemId: string } | null {
@@ -611,11 +646,7 @@ export interface ReviewerIdentity {
 }
 
 function slugifyName(name: string): string {
-  const s = name
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '');
-  return s || 'unknown';
+  return kebabSegment(name) || 'unknown';
 }
 
 function makeIdentity(

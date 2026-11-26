@@ -28,7 +28,7 @@ import { Readable } from 'stream';
 import { fileURLToPath } from 'url';
 import YAML from 'yaml';
 import { resolvePluginDataDir, logPluginDataDirDiag } from '../lib/plugin-data-dir.js';
-import { qaResultWriteRefusal, verdictWriteRefusal, yamlParseWriteRefusal } from '../lib/qa-result-write-guard.js';
+import { qaResultWriteRefusal, rulingStoreWriteRefusal, verdictWriteRefusal, yamlParseWriteRefusal } from '../lib/qa-result-write-guard.js';
 import { GATE_FILE, googleRunTreeReader, stampGateArtifactSha } from '../lib/gate-artifact-hash.js';
 import { resolveUpdateFileContent, resolveInlineOrLocalFile, resolveYamlPatch, updateFileMediaMimeType } from '../lib/atom-payload-resolver.js';
 import { resolveGogIdentity } from '../lib/gog-identity.js';
@@ -942,6 +942,7 @@ server.tool(
       const writeRefusal =
         qaResultWriteRefusal(fname, newContent) ??
         verdictWriteRefusal(fname, newContent) ??
+        rulingStoreWriteRefusal(fname, newContent) ??
         yamlParseWriteRefusal(fname, newContent);
       if (writeRefusal) return error(writeRefusal);
       // A grade records the hash of what it graded (lib/gate-artifact-hash.ts, ace#3092).
@@ -1016,6 +1017,7 @@ server.tool(
       const qaRefusal =
         qaResultWriteRefusal(fileName, resolved) ??
         verdictWriteRefusal(fileName, resolved) ??
+        rulingStoreWriteRefusal(fileName, resolved) ??
         yamlParseWriteRefusal(fileName, resolved);
       if (qaRefusal) return error(qaRefusal);
       // A grade records the hash of what it graded (lib/gate-artifact-hash.ts, ace#3092).
@@ -1126,6 +1128,7 @@ server.tool(
       const qaRefusal =
         qaResultWriteRefusal(fileName, uploadedText) ??
         verdictWriteRefusal(fileName, uploadedText) ??
+        rulingStoreWriteRefusal(fileName, uploadedText) ??
         yamlParseWriteRefusal(fileName, uploadedText);
       if (qaRefusal) return error(qaRefusal);
       // A grade records the hash of what it graded (lib/gate-artifact-hash.ts, ace#3092).
@@ -2376,6 +2379,17 @@ export async function handleUpdateYamlFile(
           `trim or restructure that key (e.g. notes as a list of short strings) and retry. No write was performed.`,
       );
     }
+
+    // --- Ruling-store shape guard, on the MERGED document ------------------
+    //
+    // The other three write atoms run the name-keyed guards on the bytes the
+    // caller handed them. This atom BUILDS its bytes, so it is the one path a
+    // malformed `inputs/decision-overrides.yaml` could still reach Drive
+    // through — and the merge is exactly how it would happen: a patch adding
+    // one row is valid in isolation and invalid against what is already there.
+    // `current.name` comes free off the read this loop already performs.
+    const yamlRefusal = rulingStoreWriteRefusal(String(current.name ?? ''), newContent);
+    if (yamlRefusal) throw new Error(yamlRefusal);
 
     try {
       const resp = await withTransientRetry(() => driveClient.files.update({
