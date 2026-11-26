@@ -77,17 +77,22 @@ which rule triggered, what to do>
 
 <answer from connect Programs payment cadence>
 
-**[LLO] Q: Does a submission my team makes while testing count?** — REQUIRED, do not omit
+**[FLW] Q: I was just trying the app out. Does that survey still count?** — REQUIRED, do not omit
 
-Yes. Connect cannot tell a test submission from a real one in a live opportunity: any visit a
-worker logs there counts toward their cap and is payable if it meets the payment conditions. Plan
-your headcount and your cap with that in mind, and do your walkthrough testing before the
-opportunity goes live wherever you can.
+Yes. Everything you send from this opportunity is real. A survey you send while finding your way
+around still counts as one of your surveys, and it uses up one of the surveys you can be paid
+for. If you send two while practising, you have eighteen left to earn from, not twenty. Ask your
+coordinator before you send anything you are unsure about.
 
-Do **not** tell a coordinator that test submissions are unpaid or uncounted — both are false in a
-live opportunity, and a coordinator who believes them will plan against a cap that is smaller than
-they think. Measured on `tekzal/20261013-2314`: one device-walk record was paid and consumed a
-slot.
+**[LLO] Q: Can my team practise inside this opportunity?** — REQUIRED, do not omit
+
+No. Connect makes either a test opportunity, which holds only test data, or a real one. This is a
+real opportunity, so it cannot hold test users or test data — every entry is a real entry,
+counted against verified or rejected visits, and it comes out of that worker's own total. Do your
+practising before the opportunity goes live.
+
+Do **not** tell anyone that test submissions are unpaid or uncounted — both are false here, and a
+coordinator who believes them plans against a cap larger than the one they have.
 
 **Say "not payable", never "Connect does not pay for these"** where a genuinely unpayable case
 exists. Connect does not move money at all — Dimagi pays the partner organization and the partner

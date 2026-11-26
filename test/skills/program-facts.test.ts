@@ -131,9 +131,13 @@ describe('the program-facts contract still binds', () => {
     expect(contract).toMatch(/One name per field/i);
   });
 
-  it('states the live-opportunity test-submission truth', () => {
-    expect(contract).toMatch(/no concept of a test submission/i);
-    expect(contract).toMatch(/counts toward that worker's delivery cap/i);
+  it('states the test-vs-real opportunity model', () => {
+    expect(contract).toMatch(/either a TEST opportunity or a REAL one/i);
+    expect(contract).toMatch(/cannot have test users or any test data/i);
+    // The consequence a reader has to act on, not just the model.
+    expect(contract).toMatch(/earning surveys out of 20/i);
+    // And the budget rule, which is where the liability is.
+    expect(contract).toMatch(/liable to pay/i);
   });
 
   it('does NOT carry the false claim it briefly shipped with', () => {

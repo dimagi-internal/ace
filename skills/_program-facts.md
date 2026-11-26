@@ -43,24 +43,36 @@ Connect does not move money. Reference:
 The partner reasonably treated the contract as authoritative over the training, so this one
 disagreement decided who they believed had to fund the float.
 
-### A live opportunity has no concept of a test submission
+### Connect makes either a TEST opportunity or a REAL one
 
-**Connect cannot mark a submission as a test.** Any visit a worker logs in a live opportunity is a
-real visit: it counts toward that worker's delivery cap, and it is payable if it meets the payment
-conditions. This is a platform fact, not a policy choice, and no wording in a work order or a
-training document can change it.
+Operator, 2026-11-26, stated as the governing model:
 
-Measured, not assumed: on `tekzal/20261013-2314` the Phase 6 device walk submitted one record into
-live opportunity `61db5faf`. It was payable — GHS 7 to the worker, GHS 4 to the partner — and it
-consumed one of the 20 per-worker slots. See `_app-component-library.md` Table A.
+> Connect creates either a test opportunity, which will only have test data, or a real
+> opportunity. **A real opportunity cannot have test users or any test data.** Anything done
+> inside a real opportunity is always a real dataset and is counted against verified or
+> rejected visits.
 
-**So never write that test submissions are unpaid, or that they do not count, in any artifact
-describing a live opportunity.** Both claims are false there, and a partner who reads them will
-plan headcount and budget against a cap that is smaller than they think.
+There is no third category and no per-submission test flag. So in a real opportunity:
 
-Where a programme genuinely needs unpaid testing, that is a DESIGN decision about where testing
-happens — a separate opportunity, or an explicit allowance in the cap — and it belongs in the PDD
-as such. It is not a sentence anyone can add to the contract.
+- An entry a worker makes while finding their feet is a **real entry**. It consumes one of their
+  per-worker slots and is payable if it meets the conditions. Two such entries leave a worker
+  **18** earning surveys out of 20, not 20.
+- **Never write that test submissions are unpaid, or that they do not count.** Both are false
+  there, and a partner who reads them plans headcount and budget against a cap larger than the
+  one they have.
+- **Never pad the budget or the cap "for testing".** Whatever sits in an opportunity's budget is
+  what Dimagi is liable to pay the LLO. Headroom for work that may never happen is real
+  liability.
+- This is in the Connect help wiki, so it belongs in the FAQ in the worker's own terms.
+
+Measured: on `tekzal/20261013-2314` the Phase 6 device walk submitted one record into live
+opportunity `61db5faf`. It was payable — GHS 7 to the worker, GHS 4 to the partner — and it
+consumed one of the 20 per-worker slots.
+
+**The consequence for ACE's own testing: walk a separate test opportunity.** A device walk uses
+ACE's test-worker pool, which is exactly "a test user in a real opportunity". Stand up a second
+opportunity with `is_test: true` for the walk and leave the production one to the partner's own
+workers. See `_app-component-library.md` Table A.
 
 ### Consent comes before any question
 

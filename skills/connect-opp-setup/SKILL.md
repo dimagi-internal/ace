@@ -482,6 +482,18 @@ ace#3232). Identifiers (case properties, slugs, ids, config keys) keep their spe
        planned payment units, **the opp-budget floor WINS** and the program
        budget must be raised to accommodate (see `connect-program-setup`
        headroom, jjackson/ace#588). Archetype-agnostic — applies to every opp.
+   - **FIRST PRODUCTION FLIP, 2026-11-26.** `accra-vendor-survey` (the tekzal
+     deployment round) sets `is_test: false`. This is the deliberate operator
+     decision the rule below reserved, not a defaulted-off slip: a real partner
+     collecting a real dataset against a budget Dimagi is liable to pay. Two
+     consequences worth knowing before the next one. **(a)** The run-id
+     name-prefix rule applies only to `is_test: true` opportunities, so a
+     production opp gets a clean partner-facing name — do not bolt a run id onto
+     it. **(b)** A production opportunity cannot hold test users or test data, so
+     an ACE device walk must run against a SEPARATE `is_test: true` opportunity;
+     walking the production one makes a real, payable visit that consumes one of
+     a worker's slots. See `skills/_program-facts.md` § Connect makes either a
+     TEST opportunity or a REAL one.
    - `is_test`: **set explicitly to `true`** for every ACE-driven run. The
      server defaults to `true` if omitted, but sending it explicitly makes
      the value visible in the create-response and auditable in the
