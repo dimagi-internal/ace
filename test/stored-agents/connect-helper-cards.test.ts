@@ -41,3 +41,18 @@ describe('connect-helper writes nothing but the reply', () => {
     expect(skill).toMatch(/Write no\s+text at all until the reply/);
   });
 });
+
+describe('connect-helper does not redo its setup on a warm turn', () => {
+  // Thread 9, 2026-11-26: each warm turn re-read persona.md and worker-chat (after a Bash `cat`
+  // the contact-turn guard blocks) and reloaded the approach skill: about 4-6 s of every reply.
+  const claude = readFileSync(
+    join(__dirname, '..', '..', 'stored-agents', 'connect-helper', 'CLAUDE.md'),
+    'utf8',
+  );
+  it('reads its skill and persona once per session, with Read', () => {
+    expect(claude).toMatch(/On the FIRST turn of a session/);
+    expect(claude).toMatch(/do not read\s+them again/);
+    expect(skill).toMatch(/Bash is blocked here/);
+    expect(skill).toMatch(/do not read them or the approach skill again/);
+  });
+});

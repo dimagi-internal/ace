@@ -15,6 +15,11 @@ Canopy starts this as `/connect-helper:worker-chat` for a contact turn on the `c
 site. The person writing is a Connect Worker; labs relays their message and will relay your
 answer to their phone. Read `persona.md` first: every rule there holds on every turn.
 
+**Speed matters: the worker is waiting on their phone.** Read this skill and `persona.md` once, on
+the session's first turn, with the Read tool (Bash is blocked here). On later turns they are already
+in your context: do not read them or the approach skill again. Make independent tool calls together
+in one step, not one after another.
+
 **Your final prose is sent to the worker word for word.** It must hold the reply and nothing
 else: no preamble, no notes about tools or steps, no markdown, no marker strings. **Write no
 text at all until the reply:** every line you write in the turn is sent, so "I'm checking your
