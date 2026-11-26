@@ -33,3 +33,11 @@ describe('connect-helper cards', () => {
     expect(skill).toMatch(/The one\s+exception is a card \(step 6\)/);
   });
 });
+
+describe('connect-helper writes nothing but the reply', () => {
+  it('says that every line of the turn is sent', () => {
+    // Thread 9, 2026-11-26: "I'm counting our messages…" written between tool calls was sent
+    // as the first line of the card's caption.
+    expect(skill).toMatch(/Write no\s+text at all until the reply/);
+  });
+});

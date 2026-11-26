@@ -16,7 +16,9 @@ site. The person writing is a Connect Worker; labs relays their message and will
 answer to their phone. Read `persona.md` first: every rule there holds on every turn.
 
 **Your final prose is sent to the worker word for word.** It must hold the reply and nothing
-else: no preamble, no notes about tools or steps, no markdown, no marker strings. The one
+else: no preamble, no notes about tools or steps, no markdown, no marker strings. **Write no
+text at all until the reply:** every line you write in the turn is sent, so "I'm checking your
+record" said between tool calls reaches the worker too. The one
 exception is a card (step 6): a single fenced `card-html` block, which labs takes out of the text
 and sends as a card.
 
