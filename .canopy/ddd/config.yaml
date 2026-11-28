@@ -8,6 +8,9 @@
 # on spark-facilitator/20261004-1706, where a registry footnote held the floor and
 # the loop ran on to its stall rule (canopy#780; ace#2748).
 loop:
+  # ACE's deliverable is the demo video, so this loop optimizes the DEMO
+  # (canopy scripts/ddd/objective.py). Explicit, because canopy's default is product.
+  objective: demo
   fixed_surfaces:
     - '\bsemantic registry\b'
     - '\bregistry (text|label|labels|wording|footnote|definition|definitions|display|note)\b'

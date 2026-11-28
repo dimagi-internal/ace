@@ -24,6 +24,9 @@
 #     `ace-kaduna-graduation-20261015-1411/`).
 
 loop:
+  # ACE's deliverable is the demo video, so this loop optimizes the DEMO
+  # (canopy scripts/ddd/objective.py). Explicit, because canopy's default is product.
+  objective: demo
   # What THIS loop may not edit. Under ACE the loop's write path is the unified
   # spec (narration + recipe) AND, since 2026-10-16, the report pages through
   # ACE's Labs template workflows (see (a) below). A finding matching a surface is OUT of edit scope; a
