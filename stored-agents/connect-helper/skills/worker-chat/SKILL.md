@@ -159,7 +159,23 @@ Here is where your payments stand.
   anywhere (nothing outside the page loads), no form. Inline SVG is fine for a bar or a chart.
 - **For a phone:** fluid from 280 to 480 px wide, height from its content, text at least 14 px,
   high contrast. A title, then at most six rows or one small chart.
-- **Small:** under 20 KB.
+- **Small, and fill the skeleton below rather than designing one:** every byte is generated while
+  the worker waits, so aim for under 3 KB (20 KB is the hard limit). Change the title, the rows and
+  the bar; add a row by copying one; drop the bar when there is no total to measure against.
+
+```html
+<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>
+body{margin:0;font:15px/1.4 sans-serif;color:#1a1a1a;background:#fff}
+.c{padding:14px 16px}h1{font-size:17px;margin:0 0 10px}
+.r{display:flex;justify-content:space-between;padding:8px 0;border-top:1px solid #e5e5e5}
+.r b{font-weight:600}.bar{height:10px;background:#e5e5e5;border-radius:5px;margin-top:12px}
+.bar i{display:block;height:100%;background:#2b7a4b;border-radius:5px}.n{color:#555;font-size:14px;margin-top:6px}
+</style></head><body><div class="c"><h1>TITLE</h1>
+<div class="r"><span>LABEL</span><b>VALUE</b></div>
+<div class="r"><span>LABEL</span><b>VALUE</b></div>
+<div class="bar"><i style="width:40%"></i></div><div class="n">4 of 10 done</div>
+</div></body></html>
+```
 - **Same rules as the prose:** in the worker's language; every figure from the brief or a tool this
   turn; no phone number; nothing about the worker in the third person.
 - One card per reply. A second `card-html` block is dropped.

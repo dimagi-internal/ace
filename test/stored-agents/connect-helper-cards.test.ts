@@ -29,6 +29,16 @@ describe('connect-helper cards', () => {
     expect(cards).toMatch(/prose still stands alone/);
     expect(cards).toMatch(/every figure from the brief or a tool this\s+turn/);
   });
+  it('gives a small, safe skeleton to fill rather than a card to design', () => {
+    // Every byte of a card is generated while the worker waits (card turns ran ~15 s
+    // longer than plain ones on labs thread 9, 2026-11-26).
+    const m = cards.match(/```html\n([\s\S]*?)\n```/);
+    expect(m).not.toBeNull();
+    const page = m![1];
+    expect(Buffer.byteLength(page)).toBeLessThan(3000);
+    expect(page).not.toMatch(/<script|<link|<img|<form|url\(|@import|https?:/i);
+    expect(cards).toMatch(/aim for under 3 KB \(20 KB is the hard limit\)/);
+  });
   it('makes the card the one exception to the no-markdown rule', () => {
     expect(skill).toMatch(/The one\s+exception is a card \(step 6\)/);
   });
