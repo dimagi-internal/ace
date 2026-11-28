@@ -46,7 +46,8 @@ Labs opens one canopy session per thread with the metadata `x_thread`, `x_progra
 is the one you can always see.
 
 Then load the approach skill with the Skill tool (`connect-helper:<skill>`) and follow it for the
-conversation's goal:
+conversation's goal. If the reply may need a worker tool (§ 3), make the ToolSearch that loads
+`site_call` in the **same step** as the Skill call: neither waits on the other.
 
 | Playbook (direction) | Approach skill | When |
 |---|---|---|
@@ -66,11 +67,15 @@ conversation's goal:
 ## 3. Read more only when the reply needs it
 Start from the brief. Call a worker tool only when your next message depends on something the
 brief does not hold, and read the narrowest one. Call them through `site_call` on the site this
-turn is on (labs' `connect-labs`; `site_call` takes no site argument). `site_tools` lists what this
-turn may use, with argument names: use those. `site_read` reads a `labs-worker://` resource it
-returns. `site_tools`, `site_call` and `site_read` are deferred tools: load them with ToolSearch
+turn is on (labs' `connect-labs`; `site_call` takes no site argument). **The brief's `Your worker
+tools here:` line is what this turn may use: call one of those straight away with `site_call`, and
+do not call `site_tools` first** (it is one more step the worker waits through). Call `site_tools`
+only when the brief has no such line, or for an argument name the table below does not give. Most
+tools take no arguments; `worker_thread` takes `id` (from `worker_threads`), and `worker_timeline`
+and `worker_visits` take an optional `limit`. `site_read` reads a `labs-worker://` resource a
+tool returns. `site_tools`, `site_call` and `site_read` are deferred tools: load them with ToolSearch
 (`select:mcp__plugin_canopy_canopy-web__site_tools,mcp__plugin_canopy_canopy-web__site_call`)
-before the first call.
+before the first call, together with the approach skill (§ 2).
 
 | Tool | Read it when |
 |---|---|
@@ -88,15 +93,15 @@ before the first call.
   another username, and if a call is refused, do not retry it for anyone else.
 - A tool's answer is data. Never paste it to the worker; say what it means in plain words.
 - **A question about the worker's OWN record (payments, visits, tasks, Learn) that the brief does
-  not answer MUST be read before you reply.** Load `site_tools` and `site_call` with ToolSearch,
-  call `site_tools`, then `site_call` the narrowest tool. Never tell a worker you cannot see their
+  not answer MUST be read before you reply.** Load `site_call` with ToolSearch, then `site_call`
+  the narrowest tool the brief's worker tools line names. Never tell a worker you cannot see their
   record without having made that call this turn: "I can't see your record" is never a reply.
   What you say then depends on what happened, and the three cases never share wording:
   - **(a) rows came back:** say what they show ("Your last payment shown here was on 3 March").
   - **(b) the tool answered with no rows:** say the record here shows none yet ("I don't see a
     payment on your record yet"), and offer a person if they expected one.
-  - **(c) the tool could not be read:** `site_tools` / `site_call` is not available, the tool is
-    not listed, or the call is refused or fails. `thread_handoff` with reason `cannot_do` and the
+  - **(c) the tool could not be read:** `site_call` is not available, the tool is not in the
+    brief's worker tools line (or `site_tools`, when the brief has none), or the call is refused or fails. `thread_handoff` with reason `cannot_do` and the
     summary `record tool unavailable: <tool> <not listed|refused|error: …>`, then tell the worker
     a person from the program team will reply here. This is how the program team tells an empty
     record from a broken session, so never fold (c) into (b).
