@@ -38,7 +38,15 @@ describe('connect-helper worker-chat § 3: record questions are read, never wave
     expect(s3).toMatch(/OWN record \(payments, visits, tasks, Learn\)/);
     expect(s3).toMatch(/MUST be read before you reply/);
     expect(s3).toMatch(/ToolSearch/);
-    expect(s3).toMatch(/call `site_tools`, then `site_call` the narrowest tool/);
+    expect(s3).toMatch(/then `site_call`\s+the narrowest tool the brief's worker tools line names/);
+    // The brief already names the granted tools: site_tools first is a wasted step.
+    expect(s3).toMatch(/do not call `site_tools` first/);
+    expect(s3).not.toMatch(/call `site_tools`, then `site_call`/);
+  });
+
+  it('loads site_call in the same step as the approach skill', () => {
+    const s2 = section(read('skills/worker-chat/SKILL.md'), '## 2. Find the thread and the approach');
+    expect(s2).toMatch(/ToolSearch that loads\s+`site_call` in the \*\*same step\*\* as the Skill call/);
   });
 
   it('forbids "cannot see your record" without the call', () => {
@@ -101,7 +109,9 @@ describe('connect-helper scenarios cover both record outcomes', () => {
     const sc = load('record-question-reads-tool');
     expect(sc.turns[0].worker).toBe('When was my last payment?');
     expect(sc.site_tools).toContain('worker_payments');
-    expect(sc.tools_expected).toEqual(expect.arrayContaining(['site_tools', 'worker_payments']));
+    expect(sc.brief).toMatch(/Your worker tools here: .*worker_payments/);
+    expect(sc.tools_expected).toContain('worker_payments');
+    expect(sc.tools_forbidden).toContain('site_tools');
     expect(sc.must.join('\n')).toMatch(/18 November/);
     expect(sc.must_not.join('\n')).toMatch(/cannot see/);
   });
@@ -110,6 +120,8 @@ describe('connect-helper scenarios cover both record outcomes', () => {
     const sc = load('record-tool-unavailable-hands-off');
     expect(sc.turns[0].worker).toBe('When was my last payment?');
     expect(sc.site_tools).not.toContain('worker_payments');
+    expect(sc.brief).toMatch(/Your worker tools here: /);
+    expect(sc.brief).not.toMatch(/worker_payments/);
     expect(sc.tools_expected).toContain('thread_handoff');
     const must = sc.must.join('\n');
     expect(must).toMatch(/cannot_do/);
